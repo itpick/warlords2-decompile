@@ -45,8 +45,6 @@ void FUN_100001f8(void);
 void FUN_10000228(void);
 void FUN_10000240(void);
 void FUN_10000258(void);
-void FUN_10000270(void);
-void FUN_10000288(void);
 void FUN_100002b8(void);
 void FUN_100002d0(void);
 void FUN_100002e8(void);
@@ -82,7 +80,6 @@ void FUN_10000648(void);
 void FUN_10000660(void);
 void FUN_10000690(void);
 void FUN_100006c0(void);
-void FUN_10000708(void);
 void FUN_10000720(void);
 void FUN_10000738(void);
 void FUN_10000750(void);
@@ -97,8 +94,6 @@ void FUN_10000810(void);
 void FUN_10000828(void);
 void FUN_10000840(void);
 void FUN_10000858(void);
-void FUN_10000870(void);
-void FUN_10000888(void);
 void FUN_100008a0(void);
 void FUN_10000930(void);
 void FUN_10000978(void);
@@ -118,7 +113,6 @@ void FUN_10000b10(void);
 void FUN_10000b28(void);
 void FUN_10000b40(void);
 void FUN_10000b58(void);
-void FUN_10000b70(void);
 void FUN_10000b88(void);
 void FUN_10000ba0(void);
 void FUN_10000bb8(void);
@@ -190,7 +184,6 @@ void FUN_10001230(void);
 void FUN_10001248(void);
 void FUN_10001260(void);
 void FUN_10001278(void);
-void FUN_10001290(void);
 void FUN_100012a8(void);
 void FUN_10001308(void);
 void FUN_10001320(void);
@@ -232,17 +225,14 @@ void FUN_10001950(void);
 void FUN_10001968(void);
 void FUN_10001980(void);
 void FUN_10001998(void);
-void FUN_100019c8(void);
 void FUN_100019e0(void);
 void FUN_10001a10(void);
 void FUN_10001a28(void);
 void FUN_10001a40(void);
 void FUN_10001a58(void);
-void FUN_10001a70(void);
 void FUN_10001aa0(void);
 void FUN_10001ab8(void);
 void FUN_10001ae8(void);
-void FUN_10001b18(void);
 void FUN_10001b48(void);
 void FUN_10001b78(void);
 void FUN_10001b90(void);
@@ -312,7 +302,6 @@ void FUN_10002328(void);
 void FUN_10002370(void);
 void FUN_10002388(void);
 void FUN_100023a0(void);
-void FUN_100023b8(void);
 void FUN_100023d0(void);
 void FUN_100023e8(void);
 void FUN_10002418(void);
@@ -377,10 +366,8 @@ void FUN_10002a78(void);
 void FUN_10002a90(void);
 void FUN_10002aa8(void);
 void FUN_10002ac0(void);
-void FUN_10002ad8(void);
 void FUN_10002af0(void);
 void FUN_10002b08(void);
-void FUN_10002b20(void);
 void FUN_10002b38(void);
 void FUN_10002b50(void);
 void FUN_10002b68(void);
@@ -435,7 +422,6 @@ void FUN_100030a8(void);
 void FUN_100030c0(void);
 void FUN_100030d8(void);
 void FUN_100030f0(void);
-void FUN_10003108(void);
 void FUN_10003120(void);
 void FUN_10003138(void);
 void FUN_10003150(void);
@@ -467,7 +453,6 @@ void FUN_10003408(void);
 void FUN_10003420(void);
 void FUN_10003438(void);
 void FUN_10003450(void);
-void FUN_10003468(void);
 void FUN_10003480(void);
 void FUN_10003498(void);
 void FUN_100034b0(void);
@@ -532,7 +517,6 @@ void FUN_10008e8c(void);
 long long FUN_1000931c(long long param_1,short param_2,short param_3);
 void FUN_10009520(void);
 void FUN_100095fc(void);
-unsigned short FUN_10009630(short param_1,short param_2,short param_3);
 void FUN_10009700(void);
 void FUN_10009944(long long param_1);
 void FUN_100099b4(void);
@@ -5419,6 +5403,36 @@ void FUN_10003960(int *param_1,int *param_2) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: 0x10003a48 Size: 92 bytes */
 int * FUN_10003a48(int *param_1,int *param_2)
 
@@ -5437,6 +5451,39 @@ int * FUN_10003a48(int *param_1,int *param_2)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_10003aa4(void) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6390,9 +6437,45 @@ void FUN_10008c0c(short param_1,short param_2,long long param_3,short param_4,
   return;
 }
 
-/* Address: stubbed - had compile errors on 64-bit */
-void FUN_10008de4(void) { }
+/* Address: 0x10008de4 Size: 168 bytes */
+void FUN_10008de4(void)
 
+{
+  int iVar1;
+  int *piVar2;
+  int *ppuVar3;
+  int *puVar4;
+  short sVar5;
+  char *puVar6;
+  short sVar7;
+  int **local_2c;
+  
+  piVar2 = piRam10115cf0;
+  ppuVar3 = 0 /* TVect base */;
+  puVar4 = (int *)FUN_100f15e0(0x4440);
+  *piVar2 = (int)puVar4;
+  if (puVar4 != (int *)0x0) {
+    FUN_10002598(puVar4);
+    ppuVar3 = local_2c;
+  }
+  puVar6 = (char *)*puVar4;
+  *(char **)(*(int*)((char*)ppuVar3 - 0x6eb)) = puVar6;
+  sVar7 = 0;
+  do {
+    sVar5 = 0;
+    do {
+      *puVar6 = 0;
+      puVar6 = puVar6 + 1;
+      sVar5 = sVar5 + 1;
+    } while (sVar5 < 0x70);
+    sVar7 = sVar7 + 1;
+  } while (sVar7 < 0x9c);
+  iVar1 = *piVar2;
+  if (iVar1 != 0) {
+    FUN_10002ad8(iVar1);
+  }
+  return;
+}
 
 
 
@@ -6467,8 +6550,56 @@ void FUN_10008de4(void) { }
 
 
 
-/* Address: stubbed - had compile errors on 64-bit */
-void FUN_10008e8c(void) { }
+
+/* Address: 0x10008e8c Size: 228 bytes */
+void FUN_10008e8c(void)
+
+{
+  unsigned char bVar1;
+  short sVar2;
+  int *puVar3;
+  int iVar4;
+  int *piVar5;
+  int *piVar6;
+  int *ppuVar7;
+  int iVar8;
+  unsigned char *pbVar9;
+  int iVar10;
+  short sVar11;
+  int **local_34;
+  
+  piVar6 = piRam10117354;
+  piVar5 = piRam10115cf0;
+  puVar3 = (int *)*piRam10115cf0;
+  ppuVar7 = 0 /* TVect base */;
+  if (puVar3 != (int *)0x0) {
+    FUN_10002598(puVar3);
+    ppuVar7 = local_34;
+  }
+  pbVar9 = (unsigned char *)*puVar3;
+  *(unsigned char **)(*(int*)((char*)ppuVar7 - 0x6eb)) = pbVar9;
+  sVar2 = *(short *)(*(int *)(*(int*)((char*)ppuVar7 - 0x151)) + 0x110);
+  iVar8 = 0;
+  do {
+    iVar10 = 0;
+    do {
+      bVar1 = *pbVar9;
+      pbVar9 = pbVar9 + 1;
+      iVar4 = *piVar6 + iVar8 * 0x70;
+      *(unsigned int *)(iVar4 + iVar10) =
+           (unsigned int)((unsigned short)((unsigned short)bVar1 & (unsigned short)(1 << ((int)sVar2 & 0x3fU))) != 0) << 0x1d |
+           *(unsigned int *)(iVar4 + iVar10) & 0xdfffffff;
+      sVar11 = (short)iVar10 + 1;
+      iVar10 = (int)sVar11;
+    } while (sVar11 < 0x70);
+    sVar11 = (short)iVar8 + 1;
+    iVar8 = (int)sVar11;
+  } while (sVar11 < 0x9c);
+  if (*piVar5 != 0) {
+    FUN_10002ad8(*piVar5);
+  }
+  return;
+}
 
 
 
@@ -6713,11 +6844,107 @@ void FUN_100095fc(void) { }
 
 
 
+
+
+
+
+
 /* FUN_10009630 defined elsewhere */
 
 
-/* Address: stubbed - had compile errors on 64-bit */
-void FUN_10009700(void) { }
+/* Address: 0x10009700 Size: 580 bytes */
+void FUN_10009700(void)
+
+{
+  int *piVar1;
+  int iVar2;
+  long long lVar3;
+  int bVar4;
+  int *piVar5;
+  int *piVar6;
+  int *piVar7;
+  int *piVar8;
+  long long uVar9;
+  unsigned short uVar10;
+  short sVar12;
+  int iVar11;
+  unsigned long long uVar13;
+  int iVar14;
+  long long lVar15;
+  short sVar16;
+  
+  piVar8 = piRam1011735c;
+  piVar7 = piRam10117358;
+  piVar6 = piRam10115cf4;
+  piVar5 = piRam10115cf0;
+  if (*(short *)(*piRam1011735c + 0x124) != 0) {
+    bVar4 = true;
+    sVar16 = 0;
+    uVar10 = 0;
+    uVar13 = 0;
+    do {
+      iVar14 = *piRam1011735c + (int)((uVar13 & 0xffffffff) << 1);
+      if (*(short *)(iVar14 + 0xd0) == 0) {
+        if (*(short *)(iVar14 + 0x138) != 0) {
+          sVar16 = sVar16 + 1;
+          goto LAB_10009778;
+        }
+LAB_10009790:
+        uVar10 = uVar10 | (unsigned short)(1 << ((unsigned int)uVar13 & 0x3f));
+      }
+      else {
+LAB_10009778:
+        if (*(short *)(*piRam1011735c + (int)((uVar13 & 0xffffffff) << 1) + 0x138) == 0)
+        goto LAB_10009790;
+      }
+      sVar12 = (short)uVar13 + 1;
+      uVar13 = (unsigned long long)sVar12;
+    } while (sVar12 < 8);
+    piVar1 = (int *)*piRam10115cf0;
+    if (piVar1 != (int *)0x0) {
+      FUN_10002598(piVar1);
+    }
+    *piVar6 = *piVar1;
+    iVar14 = 0;
+    if (0 < *(short *)(*piVar8 + 0x1602)) {
+      do {
+        iVar2 = *piVar8 + iVar14 * 0x42;
+        iVar11 = (int)*(short *)(iVar2 + 0x1606);
+        sVar12 = *(short *)(iVar2 + 0x1604);
+        lVar3 = -(long long)
+                 *(char *)(*piVar8 + (*(unsigned int *)(*piVar7 + iVar11 * 0xe0 + sVar12 * 2) >> 0x18) +
+                          0x711);
+        lVar15 = lVar3 + 10;
+        if (((lVar15 + (-(unsigned long long)(lVar15 == 0) - (lVar3 + 9)) & 0xff) == 0) &&
+           (iVar11 = *piVar6 + iVar11 * 0x70, iVar2 = iVar11 + sVar12,
+           (unsigned short)((unsigned short)(unsigned char)(*(unsigned char *)(iVar11 + sVar12) | *(unsigned char *)(iVar2 + 1) |
+                                   *(unsigned char *)(iVar2 + 0x70) | *(unsigned char *)(iVar2 + 0x71)) |
+                   uVar10 & 0xff) != 0xff)) {
+          bVar4 = false;
+          break;
+        }
+        sVar12 = (short)iVar14 + 1;
+        iVar14 = (int)sVar12;
+      } while (sVar12 < *(short *)(*piVar8 + 0x1602));
+    }
+    if (*piVar5 != 0) {
+      FUN_10002ad8(*piVar5);
+    }
+    if (bVar4) {
+      *(short *)(*piVar8 + 0x124) = 0;
+      FUN_100095fc();
+      if (sVar16 < 1) {
+        uVar9 = FUN_1005f678(0x13,0);
+        FUN_1003cac4(uVar9,0xf);
+      }
+      else {
+        uVar9 = FUN_1005f678(0x13,0);
+        FUN_1003cac4(uVar9,0x19);
+      }
+    }
+  }
+  return;
+}
 
 
 
@@ -7079,6 +7306,29 @@ void FUN_1000a9e4(short param_1,short param_2,short param_3) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: 0x1000aaa8 Size: 200 bytes */
 void FUN_1000aaa8(long long param_1,long long param_2)
 
@@ -7368,8 +7618,141 @@ void FUN_1000b278(short param_1,short param_2) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_1000b3d8(short param_1,short param_2,short param_3,char param_4) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8407,6 +8790,7 @@ void FUN_1000fde4(int param_1,short param_2)
   FUN_1002b91c();
   return;
 }
+
 
 
 
