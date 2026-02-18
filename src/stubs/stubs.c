@@ -84,12 +84,12 @@ int CARRY8(int a, int b) { return ((unsigned char)a + (unsigned char)b) > 0xFF; 
 
 /* Missing symbols from duplicate resolution */
 
-/* Missing stubs */
+/* Missing stubs - these are only called, never defined elsewhere */
+int FUN_10007f78() { return 0; }
+int FUN_100c3d2c() { return 0; }
+int FUN_100f15e0() { return 0; }
 
 /* High-address function stubs (globals/data region) */
 
 /* Missing function stubs */
 
-void FUN_10007f78() { }
-void FUN_100c3d2c() { }
-void FUN_100f15e0() { }

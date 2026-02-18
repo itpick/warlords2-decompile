@@ -32,8 +32,14 @@ def find_func_defs(lines):
         m = re.match(r'^(\w[\w *]*?)\s+(FUN_[0-9a-f]+)\s*\(', line)
         if m:
             fname = m.group(2)
+            # Skip extern declarations (not definitions)
+            if line.lstrip().startswith('extern'):
+                i += 1
+                continue
             # Check if this is a forward declaration (ends with ;)
-            if line.rstrip().endswith(';'):
+            # Strip trailing comments first: "int foo(int); /* comment */" -> "int foo(int);"
+            stripped = re.sub(r'/\*.*?\*/', '', line).rstrip()
+            if stripped.endswith(';'):
                 i += 1
                 continue
 

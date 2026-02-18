@@ -81,6 +81,10 @@ def clean_types(code):
             code = code[:brace_pos+1] + '\n' + decls + code[brace_pos+1:]
 
     # Fix PEF_Debug references (debug symbols)
+    # Must handle member access BEFORE replacing with 0, to avoid "0.type" etc.
+    # PEF_Debug_0x..._ADDR.member -> 0 (the whole expression becomes 0)
+    code = re.sub(r'\bPEF_Debug_0x[0-9a-f_]+(?:\.\w+(?:\._\d+_\d+_)?)*\b', '0', code)
+    # Catch any remaining bare PEF_Debug references
     code = re.sub(r'\bPEF_Debug_0x[0-9a-f_]+\b', '0', code)
 
     # Fix _DAT_ references (data labels)
@@ -110,6 +114,47 @@ def clean_types(code):
 
     # Fix (*(code *)...) function pointer calls
     code = re.sub(r'\(\*\(void \*\)', '((void (*)(void))', code)
+
+    # === Fix Ghidra bitfield sub-field accessors: var._OFFSET_SIZE_ ===
+    # Ghidra generates e.g. local_34._0_2_ meaning "2 bytes at offset 0 in local_34"
+    # For assignments: local_34._0_2_ = expr  -> (handled by CONCAT22 usage)
+    # For reads: local_34._0_2_ -> ((short)((unsigned int)local_34 >> 16))  [offset 0, size 2 of a 4-byte int = high 16 bits]
+    #           local_34._2_2_ -> ((short)(local_34))  [offset 2, size 2 of a 4-byte int = low 16 bits]
+    # Generalized: ._0_2_ -> high short, ._2_2_ -> low short, ._0_1_ -> highest byte, etc.
+    # We convert writes to no-ops (the value gets reconstructed via CONCAT22 on the next line)
+    # For reads, extract the appropriate portion
+    def replace_bitfield(m):
+        var = m.group(1)
+        offset = int(m.group(2))
+        size = int(m.group(3))
+        if size == 2 and offset == 0:
+            return f'((short)((unsigned int){var} >> 16))'
+        elif size == 2 and offset == 2:
+            return f'((short){var})'
+        elif size == 1 and offset == 0:
+            return f'((char)((unsigned int){var} >> 24))'
+        elif size == 1 and offset == 1:
+            return f'((char)((unsigned int){var} >> 16))'
+        elif size == 1 and offset == 2:
+            return f'((char)((unsigned int){var} >> 8))'
+        elif size == 1 and offset == 3:
+            return f'((char){var})'
+        elif size == 4 and offset == 0:
+            return var  # whole value
+        else:
+            # Generic: shift right by (4-offset-size)*8 bits, mask to size
+            shift = (4 - offset - size) * 8
+            if shift > 0:
+                return f'(({var} >> {shift}) & {"0xFF" if size==1 else "0xFFFF" if size==2 else "0xFFFFFFFF"})'
+            else:
+                return f'({var} & {"0xFF" if size==1 else "0xFFFF" if size==2 else "0xFFFFFFFF"})'
+
+    # Handle assignment pattern: var._N_N_ = expr  -> (void)0; /* bitfield write */
+    # These are always followed by a CONCAT that reconstructs the full value
+    code = re.sub(r'(\w+)\._(\d+)_(\d+)_\s*=\s*([^;]+);',
+                  r'/* \1._\2_\3_ = \4; */', code)
+    # Handle read pattern: var._N_N_ -> extracted portion
+    code = re.sub(r'(\w+)\._(\d+)_(\d+)_', replace_bitfield, code)
 
     # === PPC32 -> 64-bit: fix struct member access on int/long long types ===
     # Ghidra generates: var->field_0xHH (struct member access via ->)
@@ -153,6 +198,15 @@ def clean_types(code):
 
     # Fix ___start reference
     code = re.sub(r'\b___start\b', '0 /* __start */', code)
+
+    # Fix .glue::FUN_xxx() Ghidra artifacts (glue code references)
+    code = re.sub(r'\.glue::(FUN_[0-9a-f]+)', r'\1', code)
+
+    # Fix 0.unknown floating constants (Ghidra artifact for unknown float values)
+    code = re.sub(r'\b(\d+)\.unknown\b', r'\1.0', code)
+
+    # Fix FLOAT_xxx constants (Ghidra floating point representations)
+    code = re.sub(r'\bFLOAT_[0-9a-f]+\b', '0.0f', code)
 
     return code
 
@@ -209,6 +263,12 @@ def generate_c_file(functions, func_names, output_path, batch_name):
 
         # Helper macros
         f.write('/* Helper macros for Ghidra patterns */\n')
+        f.write('#ifndef CONCAT11\n')
+        f.write('#define CONCAT11(hi, lo) ((unsigned short)(((unsigned short)(unsigned char)(hi) << 8) | (unsigned char)(lo)))\n')
+        f.write('#endif\n')
+        f.write('#ifndef CONCAT13\n')
+        f.write('#define CONCAT13(hi, lo) ((unsigned int)(((unsigned int)(unsigned char)(hi) << 24) | ((unsigned int)(lo) & 0x00FFFFFF)))\n')
+        f.write('#endif\n')
         f.write('#ifndef CONCAT22\n')
         f.write('#define CONCAT22(hi, lo) ((int)(((unsigned int)(unsigned short)(hi) << 16) | (unsigned short)(lo)))\n')
         f.write('#endif\n')

@@ -50,6 +50,9 @@ def get_externs(body):
         if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern char *{g};'); seen.add(g)
     for g in re.findall(r'\b(pdRam[0-9a-f]+)\b', body):
         if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern double {g};'); seen.add(g)
+    # High-address FUN_1011xxxx references used as data/pointers (not just calls)
+    for g in re.findall(r'\b(FUN_1011[0-9a-f]+)\b', body):
+        if g not in seen: lines.append(f'int {g}();'); seen.add(g)
     return '\n'.join(lines)
 
 def test_one(args):

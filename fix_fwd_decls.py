@@ -58,7 +58,7 @@ for wf in wave2_files:
     func_sigs = []
     seen = set()
     search_content = content[content_start:]
-    for m in re.finditer(r'^(\w[\w\s\*]*?)\s+(FUN_[0-9a-f]+)\s*\(([^)]*)\)\s*\{', search_content, re.MULTILINE):
+    for m in re.finditer(r'^(\w[\w\s\*]*?)\s+(FUN_[0-9a-f]+)\s*\(([^)]*)\)\s*[\n{]', search_content, re.MULTILINE):
         ret_type = m.group(1).strip()
         name = m.group(2)
         params = m.group(3).strip()

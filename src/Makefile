@@ -45,7 +45,8 @@ INCLUDES = -Iinclude
 # On PPC32: int = long = pointer = 4 bytes, so int-to-pointer casts are valid.
 WARN_SUPPRESS = -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast \
                 -Wno-incompatible-pointer-types -Wno-int-conversion \
-                -Wno-implicit-function-declaration
+                -Wno-implicit-function-declaration \
+                -Wno-deprecated-non-prototype
 
 ifeq ($(PLATFORM),powerpc)
     # PowerPC Mac OS target (CodeWarrior or Retro68)
