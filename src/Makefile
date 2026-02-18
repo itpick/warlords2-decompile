@@ -24,7 +24,7 @@ SOUND_SRCS   = sound/sound.c
 SERIAL_SRCS  = serialization/serialization.c
 MAPGEN_SRCS  = mapgen/mapgen.c
 FRAME_SRCS   = framework/framework.c
-STUB_SRCS    = stubs/stubs.c stubs/globals_extra.c stubs/reconstructed_1.c stubs/reconstructed_4.c main.c
+STUB_SRCS    = stubs/stubs.c stubs/globals_extra.c stubs/reconstructed_1.c stubs/reconstructed_2.c stubs/reconstructed_4.c stubs/reconstructed_5.c stubs/reconstructed_named.c main.c
 
 ALL_SRCS = $(CORE_SRCS) $(COMBAT_SRCS) $(AI_SRCS) $(MOVE_SRCS) \
            $(ECON_SRCS) $(RENDER_SRCS) $(SOUND_SRCS) $(SERIAL_SRCS) \

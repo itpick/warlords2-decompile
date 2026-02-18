@@ -9,7 +9,7 @@
 
 /* Forward declarations for called functions not in this file */
 int FUN_100f56e4(int size);
-void FUN_100012c0(void);
+int FUN_100012c0(void);
 void FUN_100012d8(void);
 void FUN_100f12a8(void);
 void FUN_100d9034(int *param_1);
@@ -18,7 +18,7 @@ void FUN_100f5108(int *param_1);
 void FUN_100da394(int *param_1);
 void FUN_100c6178(int, int);
 void FUN_100ef088(int, int, int);
-void FUN_100efc78(int);
+int FUN_100efc78(int);
 void FUN_100014a0(int);
 int FUN_10001728(int, int);
 void FUN_10001b00(int);
@@ -104,7 +104,7 @@ void FUN_10003930(void);
 void FUN_10001ad0(void);
 void FUN_10001b18(short *);
 int FUN_100f1574(int);
-void FUN_100f262c(int, char *, short *);
+int FUN_100f262c(int, char *, short *);
 void FUN_10002358(int, int);
 void FUN_10002d60(int, int);
 int FUN_100efa80(int);
@@ -124,8 +124,10 @@ void FUN_10115ad0(int, int);
 void FUN_100f5708(int);
 int FUN_10001338(int);
 void FUN_100ef284(int, char *);
+char FUN_100ef9b8(int *);
 int FUN_100ef6e4(char *);
 int FUN_100f0334(int, int, int);
+void FUN_100f27d0(int, char);
 
 /* External globals referenced by decompiled code */
 extern char *pcRam10116d94;
