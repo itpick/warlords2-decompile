@@ -1160,32 +1160,7 @@ void FUN_1003d4dc(void)
     } while (!bVar2);
 }
 
-/*
- * addr=1003dc28 size=140
- * Update toolbar button states for both left and right button bars.
- * Calls FUN_1003d734 for each bar found via FUN_10117884.
- */
-void FUN_1003dc28(void)
-{
-    /* Uses piRam10116200 (toolbar handle).
-       Looks up "lbak" and "sbak" sub-panels via FUN_10117884,
-       then calls FUN_1003d734 to update button enabled/disabled states.
-       In modern build: no-op (UI). */
-}
-
-/*
- * addr=1003fe04 size=88
- * Handle army selection: scroll to selected army position and
- * update toolbar state.
- */
-void FUN_1003fe04(void)
-{
-    if (*gSelectedArmyCoords != 0) {
-        FUN_1000848c(*(short *)gSelectedArmyCoords,
-                     ((short *)gSelectedArmyCoords)[1]);
-        FUN_1003dc28();
-    }
-}
+/* FUN_1003dc28 and FUN_1003fe04 moved to reconstructed_2.c */
 
 /*
  * addr=1005f50c size=364
@@ -1193,16 +1168,7 @@ void FUN_1003fe04(void)
  * param_1 = resource category, param_2 = string index, param_3 = variant.
  * Returns pointer to the formatted string buffer.
  */
-int FUN_1005f50c(short param_1, short param_2, short param_3)
-{
-    /* Loads a string from resource tables, applies formatting,
-       stores result in a circular buffer.
-       In modern build: return 0 (no resources). */
-    (void)param_1;
-    (void)param_2;
-    (void)param_3;
-    return 0;
-}
+/* FUN_1005f50c moved to reconstructed_batch_b.c */
 
 /*
  * addr=10064850 size=varies

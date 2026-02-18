@@ -87,8 +87,10 @@ extern struct PEF_Debug_struct PEF_Debug_0x7_10117864;
  * Forward Declarations for called functions
  * ========================================================================= */
 
-/* MacApp framework / vtable dispatch */
-void FUN_10117884(void);
+/* MacApp framework / vtable dispatch - varargs trampoline.
+ * In the original PPC binary this is an indirect call through r12.
+ * Declared with no prototype so callers can pass any number of args. */
+int FUN_10117884();
 
 /* Object constructors / base class initializers */
 int *FUN_100c604c(int *param_1);
@@ -99,8 +101,27 @@ int *FUN_1010f054(int *param_1);
 /* Memory allocation */
 int  FUN_100f56e4(int size);
 int  FUN_100f56c0(int size);
-void FUN_100f5274(int param_1);
-void FUN_100f4dc8(int *param_1);
+void FUN_100f5274();
+int *FUN_100f4dc8(int *param_1);
+
+/* Forward declarations for functions defined later in this file */
+int *FUN_1010598c(int *param_1);
+int *FUN_100f6b8c(int *param_1);
+int *FUN_100c6b2c(int *param_1);
+int *FUN_100cdbe4(int *param_1);
+int *FUN_100cdc88(int *param_1);
+int *FUN_100d8824(int *param_1);
+int *FUN_100bf518(int *param_1);
+int *FUN_100e1df4(int *param_1);
+int *FUN_100e1ea4(int *param_1);
+int  FUN_100eb910();
+void FUN_100eb918();
+void FUN_100ebc68(int *param_1, int param_2);
+int  FUN_100ed918(void);
+void FUN_100ed954(char *param_1, int param_2);
+void FUN_100d88b4(int param_1, int param_2, short param_3);
+int  FUN_100f5640(int param_1);
+int  FUN_100f56e4(int param_1);
 void FUN_100f5708(int param_1);
 
 /* Object framework helpers */
@@ -131,6 +152,7 @@ void FUN_100f2a54(void);
 int  FUN_100f2214(int param_1);
 void FUN_100f25e0(int param_1, short *param_2);
 void FUN_100f5814(void);
+int  FUN_100f1264(void);
 
 /* Draw/render helpers */
 void FUN_1003206c(int, int, int, int);
@@ -150,11 +172,11 @@ int  FUN_100f5754(int param_1);
 int  FUN_100c5dcc(int param_1);
 void FUN_100c0f10(void);
 void FUN_100c3c94(void);
-void FUN_100c2120(int param_1);
+int  FUN_100c2120(int param_1);
 
 /* App lifecycle */
-void FUN_10000090(char *param_1);
-void FUN_100beb7c(int param_1);
+int  FUN_10000090(char *param_1);
+int  FUN_100beb7c(int param_1);
 void FUN_100becb8(void);
 void FUN_100db158(long long, int);
 void FUN_100db26c(void);
@@ -163,7 +185,7 @@ int  FUN_10001590(void);
 void FUN_100015a8(void);
 int  FUN_10001680(int, int, int, int, int, int, int, int);
 int  FUN_100016b0(void);
-void FUN_100ef580(int);
+int  FUN_100ef580(int);
 
 /* Event dispatch */
 void FUN_100013b0(int);
@@ -181,7 +203,7 @@ int  FUN_100014b8(void);
 void FUN_100014d0(long long, char *);
 void FUN_10000150(void);
 int  FUN_100019f8(void);
-void FUN_10000300(void);
+int  FUN_10000300(void);
 void FUN_10000318(int);
 void FUN_10000390(void);
 void FUN_10000960(void);
@@ -1286,7 +1308,7 @@ void FUN_100ea4b8(int param_1)
  *  FUN_100eb910 - Return 0 (null iterator / empty result)
  *  Address: 0x100eb910, Size: 8 bytes
  * ========================================================================= */
-int FUN_100eb910(void)
+int FUN_100eb910()
 {
     return 0;
 }
@@ -1296,7 +1318,7 @@ int FUN_100eb910(void)
  *  FUN_100eb918 - No-op destructor (empty, 4 bytes)
  *  Address: 0x100eb918, Size: 4 bytes
  * ========================================================================= */
-void FUN_100eb918(void)
+void FUN_100eb918()
 {
     return;
 }
@@ -1692,8 +1714,7 @@ void FUN_100f12a8(void)
     return;
 }
 
-/* Forward declare FUN_100f1264 if not already */
-int FUN_100f1264(void);
+/* FUN_100f1264 is declared via -Wno-implicit-function-declaration */
 
 
 /* =========================================================================
@@ -1808,7 +1829,7 @@ int *FUN_100f4dc8(int *param_1)
  *  FUN_100f5274 - No-op base destructor (4 bytes)
  *  Address: 0x100f5274, Size: 4 bytes
  * ========================================================================= */
-void FUN_100f5274(void)
+void FUN_100f5274()
 {
     return;
 }
@@ -1818,9 +1839,9 @@ void FUN_100f5274(void)
  *  FUN_100f56e4 - Allocate memory (thin wrapper around FUN_100f5640)
  *  Address: 0x100f56e4, Size: 36 bytes
  * ========================================================================= */
-int FUN_100f56e4(void)
+int FUN_100f56e4(int param_1)
 {
-    return (int)FUN_100f5640(0);
+    return FUN_100f5640(param_1);
 }
 
 
@@ -2123,10 +2144,10 @@ int FUN_10116698(int param_1, int param_2)
  *  a varargs pass-through. In practice, the MacApp framework uses this
  *  for all virtual dispatch.
  * ========================================================================= */
-void FUN_10117884(void)
+int FUN_10117884()
 {
     /* In the original PPC binary, this reads from r12 and jumps.
      * For modern builds, this is a no-op stub as all virtual dispatch
      * is handled directly by callers computing the offset. */
-    return;
+    return 0;
 }

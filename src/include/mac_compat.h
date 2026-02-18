@@ -23,6 +23,20 @@ typedef unsigned long   OSType;
 typedef unsigned long   ResType;
 typedef short           ScriptCode;
 
+/* ===== Ghidra decompiler types (not cleaned by extract_functions.py) ===== */
+typedef signed char     int8;
+typedef long long       longlong;
+typedef unsigned long long ulonglong;
+typedef unsigned short  ushort;
+typedef unsigned int    uint;
+typedef unsigned char   byte;
+typedef int             bool;
+typedef int             undefined;
+typedef int             undefined4;
+typedef short           undefined2;
+typedef char            undefined1;
+typedef long long       undefined8;
+
 typedef unsigned char   Str255[256];
 typedef unsigned char   Str63[64];
 typedef unsigned char   Str31[32];

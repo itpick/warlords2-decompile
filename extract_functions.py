@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""
+Extract unimplemented functions from Ghidra decompiled output and generate
+reconstructed C source files with proper type cleanup.
+"""
+
+import re
+import sys
+import os
+
+def read_function_list(path):
+    """Read list of function names from a file."""
+    with open(path) as f:
+        return set(line.strip() for line in f if line.strip())
+
+def parse_decompiled(path):
+    """Parse the decompiled C file into individual functions."""
+    with open(path) as f:
+        content = f.read()
+
+    # Split on function headers
+    pattern = r'// Function: (FUN_[0-9a-f]+) at [0-9a-f]+\n// Size: (\d+) bytes\n\n'
+    parts = re.split(pattern, content)
+
+    functions = {}
+    i = 1  # Skip the preamble
+    while i + 2 < len(parts):
+        name = parts[i]
+        size = int(parts[i + 1])
+        body = parts[i + 2]
+
+        # Body ends at the next function header or EOF
+        # Find where the actual function body ends (double newline before next comment)
+        body = body.rstrip()
+
+        functions[name] = {
+            'size': size,
+            'body': body,
+        }
+        i += 3
+
+    return functions
+
+def clean_types(code):
+    """Apply Ghidra type transformations to make valid C."""
+    # Type replacements - order matters!
+    code = re.sub(r'\bundefined8\b', 'long long', code)
+    code = re.sub(r'\bundefined4\b', 'int', code)
+    code = re.sub(r'\bundefined2\b', 'short', code)
+    code = re.sub(r'\bundefined1\b', 'char', code)
+    code = re.sub(r'\bundefined\b', 'int', code)  # catch-all for remaining 'undefined'
+    code = re.sub(r'\bulonglong\b', 'unsigned long long', code)
+    code = re.sub(r'\blonglong\b', 'long long', code)
+    code = re.sub(r'\bushort\b', 'unsigned short', code)
+    code = re.sub(r'\buint\b', 'unsigned int', code)
+    code = re.sub(r'\bbool\b', 'int', code)
+    code = re.sub(r'\bbyte\b', 'unsigned char', code)
+
+    # Fix function pointer casts: (*(code *)expr)() -> ((void (*)(void))expr)()
+    # Also handle: (*(code *)*puRamXXXX)(args)
+    code = re.sub(r'\(\*\(code \*\)(\*?[a-zA-Z_][a-zA-Z0-9_]*)\)\(([^)]*)\)',
+                  r'((void (*)())\1)(\2)', code)
+
+    # Remove Ghidra artifacts
+    code = re.sub(r'\s*int \*\*ppuStack[0-9a-f]+;\s*\n', '\n', code)
+    code = re.sub(r'\s*ppuStack[0-9a-f]+ = &\.TVect::OCECToRString;\s*\n', '\n', code)
+    code = re.sub(r'\s*/\* WARNING:.*?\*/\s*\n', '\n', code)
+    code = re.sub(r'&\.TVect::OCECToRString', '0 /* TVect base */', code)
+
+    # Fix ppuVar declarations from Ghidra
+    code = re.sub(r'\bint \*\*(ppuVar\d+)\b', r'int *\1', code)
+    # Fix remaining ppuVar usage: &ppuVar[-0xNNN] -> macro
+    code = re.sub(r'(ppuVar\d+)\[-0x([0-9a-f]+)\]', r'(*(int*)((char*)\1 - 0x\2))', code)
+
+    # Clean up stack variable names
+    # &stack0xNNN references need to be replaced with (char*)0 or a local var
+    # The pattern &stack0x00000000 means "address of the stack frame base"
+    code = re.sub(r'&stack0x00000000', '((char*)0)', code)
+    code = re.sub(r'&stack0x([0-9a-f]+)', r'((char*)0 + 0x\1)', code)
+
+    # Fix (*(code *)...) function pointer calls
+    code = re.sub(r'\(\*\(void \*\)', '((void (*)(void))', code)
+
+    # === PPC32 -> 64-bit: fix struct member access on int/long long types ===
+    # Ghidra generates: var->field_0xHH (struct member access via ->)
+    # When var is 'int' (PPC32 pointer), this fails on 64-bit.
+    # Convert to explicit pointer arithmetic: *(int*)((char*)(long)var + 0xHH)
+    # Pattern handles: simple vars, pointer deref, and nested expressions
+    # field_0xHH -> offset 0xHH, assuming int-sized field
+    code = re.sub(
+        r'(\w+)->field_0x([0-9a-f]+)',
+        r'(*(int*)((char*)(long)\1 + 0x\2))',
+        code
+    )
+    # Also handle: (*expr)->field_0xHH patterns
+    code = re.sub(
+        r'\(\*(\w+)\)->field_0x([0-9a-f]+)',
+        r'(*(int*)((char*)(long)(*\1) + 0x\2))',
+        code
+    )
+    # Handle field_N (decimal) patterns: var->field0_0xHH or var->fieldN
+    code = re.sub(
+        r'(\w+)->field(\d+)',
+        r'(*(int*)((char*)(long)\1 + \2))',
+        code
+    )
+
+    return code
+
+def generate_c_file(functions, func_names, output_path, batch_name):
+    """Generate a .c file with the extracted functions."""
+
+    # Collect all referenced external functions and globals
+    extern_funs = set()
+    extern_globals = set()
+
+    for name in sorted(func_names):
+        if name not in functions:
+            continue
+        body = functions[name]['body']
+        # Find FUN_ references
+        for ref in re.findall(r'FUN_[0-9a-f]+', body):
+            if ref != name and ref not in func_names:
+                extern_funs.add(ref)
+        # Find global references
+        for ref in re.findall(r'[piu]Ram[0-9a-f]+', body):
+            extern_globals.add(ref)
+        for ref in re.findall(r'p[isu]Ram[0-9a-f]+', body):
+            extern_globals.add(ref)
+
+    # Read wl2_globals.h to find macro-defined names (must skip extern for these)
+    macro_globals = set()
+    globals_h_path = os.path.join(os.path.dirname(output_path), '..', 'include', 'wl2_globals.h')
+    if os.path.exists(globals_h_path):
+        with open(globals_h_path) as gh:
+            for line in gh:
+                m = re.match(r'#define\s+([a-z][a-zA-Z0-9_]*Ram[0-9a-f]+)', line)
+                if m:
+                    macro_globals.add(m.group(1))
+
+    # Also scan cleaned bodies for globals
+    all_globals = set()
+    for name in sorted(func_names):
+        if name not in functions:
+            continue
+        body = clean_types(functions[name]['body'])
+        # Find all global references: piRam, puRam, psRam, iRam, uRam, pdRam, pcRam
+        for ref in re.findall(r'\b([piu][cisdu]?Ram[0-9a-f]+)\b', body):
+            if ref not in macro_globals:  # Skip macro-defined globals
+                all_globals.add(ref)
+
+    with open(output_path, 'w') as f:
+        f.write(f'/*\n')
+        f.write(f' * {os.path.basename(output_path)} - Reconstructed functions ({batch_name})\n')
+        f.write(f' *\n')
+        f.write(f' * Auto-extracted from Ghidra decompilation with type cleanup.\n')
+        f.write(f' * {len(func_names)} functions in address range {batch_name}\n')
+        f.write(f' */\n\n')
+        f.write(f'#include "warlords2.h"\n\n')
+
+        # Helper macros
+        f.write('/* Helper macros for Ghidra patterns */\n')
+        f.write('#ifndef CONCAT22\n')
+        f.write('#define CONCAT22(hi, lo) ((int)(((unsigned int)(unsigned short)(hi) << 16) | (unsigned short)(lo)))\n')
+        f.write('#endif\n')
+        f.write('#ifndef CONCAT44\n')
+        f.write('#define CONCAT44(hi, lo) ((long long)(((unsigned long long)(unsigned int)(hi) << 32) | (unsigned int)(lo)))\n')
+        f.write('#endif\n')
+        f.write('#ifndef ZEXT48\n')
+        f.write('#define ZEXT48(x) ((unsigned long long)(unsigned int)(x))\n')
+        f.write('#endif\n')
+        f.write('#ifndef SUB41\n')
+        f.write('#define SUB41(x, n) ((char)((x) >> ((n) * 8)))\n')
+        f.write('#endif\n')
+        f.write('#ifndef SUB42\n')
+        f.write('#define SUB42(x, n) ((short)((x) >> ((n) * 8)))\n')
+        f.write('#endif\n\n')
+
+        # Write extern declarations for all referenced globals
+        if all_globals:
+            f.write('/* Extern declarations for Ghidra globals */\n')
+            for g in sorted(all_globals):
+                if g.startswith('piRam'):
+                    f.write(f'extern pint *{g};\n')
+                elif g.startswith('puRam'):
+                    f.write(f'extern unsigned int *{g};\n')
+                elif g.startswith('psRam'):
+                    f.write(f'extern short *{g};\n')
+                elif g.startswith('pdRam'):
+                    f.write(f'extern double {g};\n')
+                elif g.startswith('pcRam'):
+                    f.write(f'extern char *{g};\n')
+                elif g.startswith('iRam'):
+                    f.write(f'extern long {g};\n')
+                elif g.startswith('uRam'):
+                    f.write(f'extern unsigned int {g};\n')
+                else:
+                    f.write(f'extern int {g};\n')
+            f.write('\n')
+
+        # Write function implementations
+        implemented = 0
+        for name in sorted(func_names):
+            if name not in functions:
+                continue
+
+            func = functions[name]
+            body = clean_types(func['body'])
+
+            f.write(f'/* Address: 0x{name[4:]} Size: {func["size"]} bytes */\n')
+            f.write(body)
+            f.write('\n\n')
+            implemented += 1
+
+        return implemented
+
+def main():
+    decompiled_path = '/Users/lucaspick/workspace/itpick/warlords2-decompile/warlords2_decompiled.c'
+    src_dir = '/Users/lucaspick/workspace/itpick/warlords2-decompile/src/stubs'
+
+    print("Parsing decompiled source...")
+    functions = parse_decompiled(decompiled_path)
+    print(f"Found {len(functions)} functions in decompiled source")
+
+    # Read unimplemented function list
+    unimplemented = read_function_list('/tmp/unimplemented_funs.txt')
+    print(f"{len(unimplemented)} functions to implement")
+
+    # Split into batches by address range using integer comparison
+    batches = {
+        'wave2_tvect': [],      # 0x10000000-0x1000FFFF (TVect trampolines)
+        'wave2_game1': [],      # 0x10010000-0x1003FFFF (game logic)
+        'wave2_game2': [],      # 0x10040000-0x1007FFFF (game logic)
+        'wave2_macapp1': [],    # 0x10080000-0x100AFFFF (MacApp)
+        'wave2_macapp2': [],    # 0x100B0000-0x100DFFFF (MacApp)
+        'wave2_macapp3': [],    # 0x100E0000-0x100FFFFF (MacApp)
+        'wave2_macapp4': [],    # 0x10100000+ (MacApp)
+    }
+
+    for name in sorted(unimplemented):
+        addr_int = int(name[4:], 16)  # Parse hex address
+
+        if addr_int < 0x10010000:
+            batches['wave2_tvect'].append(name)
+        elif addr_int < 0x10040000:
+            batches['wave2_game1'].append(name)
+        elif addr_int < 0x10080000:
+            batches['wave2_game2'].append(name)
+        elif addr_int < 0x100B0000:
+            batches['wave2_macapp1'].append(name)
+        elif addr_int < 0x100E0000:
+            batches['wave2_macapp2'].append(name)
+        elif addr_int < 0x10100000:
+            batches['wave2_macapp3'].append(name)
+        else:
+            batches['wave2_macapp4'].append(name)
+
+    total_implemented = 0
+    for batch_name, func_list in sorted(batches.items()):
+        if not func_list:
+            continue
+        output_path = os.path.join(src_dir, f'{batch_name}.c')
+        count = generate_c_file(functions, set(func_list), output_path, batch_name)
+        total_implemented += count
+        print(f"  {batch_name}: {count}/{len(func_list)} functions -> {output_path}")
+
+    print(f"\nTotal: {total_implemented} functions generated")
+
+if __name__ == '__main__':
+    main()
