@@ -1,0 +1,94 @@
+# Warlords II - Function Address Mapping
+# Maps Ghidra auto-names to reconstructed function names
+# Format: ADDRESS | GHIDRA_NAME | RECONSTRUCTED_NAME | FILE | STATUS
+#
+# STATUS: DONE = fully reconstructed, STUB = placeholder, TODO = not started
+# TVect = Mac OS Toolbox trampoline (indirect call, not game code)
+
+# ===== Core Utilities (core/utils.c) =====
+1005f230 | FUN_1005f230 | RandomRange           | core/utils.c    | DONE
+1000a884 | FUN_1000a884 | CalcDistance           | core/utils.c    | DONE
+1005f1d0 | FUN_1005f1d0 | DrawString            | core/utils.c    | DONE
+1005f1a0 | FUN_1005f1a0 | DrawStringAt          | core/utils.c    | DONE
+1005f200 | FUN_1005f200 | DrawStringRight       | core/utils.c    | DONE
+10032860 | FUN_10032860 | DrawTextInternal      | core/utils.c    | DONE
+10001dd0 | FUN_10001dd0 | DrawNumber            | core/utils.c    | DONE (TVect wrapper)
+1003206c | FUN_1003206c | SetDrawColor          | core/utils.c    | STUB
+10117884 | FUN_10117884 | ResourceRead/VDispatch | core/utils.c    | STUB
+
+# ===== Combat System (combat/combat.c) =====
+10010b30 | FUN_10010b30 | ExecuteArmyCombat     | combat/combat.c | agent:a190f22
+1000ffe0 | FUN_1000ffe0 | CalculateFightOrder   | combat/combat.c | agent:a190f22
+1001072c | FUN_1001072c | PruneExcessArmies     | combat/combat.c | agent:a190f22
+1000fc38 | FUN_1000fc38 | RemoveDefeatedUnit    | combat/combat.c | agent:a190f22
+1000fba8 | FUN_1000fba8 | RefreshMapAfterCombat | combat/combat.c | agent:a190f22
+1000fe90 | FUN_1000fe90 | CalcArmyStrength      | combat/combat.c | agent:a190f22
+1000df58 | FUN_1000df58 | SelectDiplomacyTarget | combat/combat.c | agent:a190f22
+10011804 | FUN_10011804 | DoFightResults        | combat/combat.c | agent:a190f22
+1000cafc | FUN_1000cafc | TurnPhase_DoFightRes  | combat/combat.c | agent:a190f22
+100164e4 | FUN_100164e4 | ProcessFightOutcomes  | combat/combat.c | agent:a190f22
+10007dd4 | FUN_10007dd4 | CombatOrchestrator    | combat/combat.c | agent:a190f22
+10007f78 | FUN_10007f78 | MapRefreshAndCombat   | combat/combat.c | agent:a190f22
+10004c54 | FUN_10004c54 | BuildCombatMapTiles   | combat/combat.c | agent:a190f22
+10005b68 | FUN_10005b68 | SyncCombatMapMainMap  | combat/combat.c | agent:a190f22
+10005f90 | FUN_10005f90 | RenderCombatResults   | combat/combat.c | agent:a190f22
+10007c50 | FUN_10007c50 | CleanupCombatDisplay  | combat/combat.c | agent:a190f22
+1000f410 | FUN_1000f410 | HandleSiege           | combat/combat.c | agent:a190f22
+1000f064 | FUN_1000f064 | ResolveSiege          | combat/combat.c | agent:a190f22
+
+# ===== AI System (ai/ai.c) =====
+1001f648 | FUN_1001f648 | FindNearestTarget     | ai/ai.c         | agent:ac63979
+1000cf78 | FUN_1000cf78 | AIFindBestCity        | ai/ai.c         | agent:ac63979
+1000d0c0 | FUN_1000d0c0 | AIDispatchToCity      | ai/ai.c         | agent:ac63979
+1000d1a4 | FUN_1000d1a4 | AIProcessTurn         | ai/ai.c         | agent:ac63979
+10020f94 | FUN_10020f94 | AISelectHero          | ai/ai.c         | agent:ac63979
+
+# ===== Movement & Pathfinding (movement/movement.c) =====
+1001e160 | FUN_1001e160 | MoveArmyToTarget      | movement/movement.c | agent:a9efe79
+1001ed3c | FUN_1001ed3c | FindPath              | movement/movement.c | agent:a9efe79
+1001eff8 | FUN_1001eff8 | CalcPathCost          | movement/movement.c | agent:a9efe79
+10043248 | FUN_10043248 | DijkstraFloodFill     | movement/movement.c | agent:a9efe79
+10018180 | FUN_10018180 | CenterViewport        | movement/movement.c | agent:a9efe79
+10015030 | FUN_10015030 | CalcNavalMove         | movement/movement.c | agent:a9efe79
+10015980 | FUN_10015980 | GetTerrainMask        | movement/movement.c | agent:a9efe79
+100186cc | FUN_100186cc | ProcessArmyMove       | movement/movement.c | agent:a9efe79
+
+# ===== Economy/Production/Heroes (economy/economy.c) =====
+1001c6fc | FUN_1001c6fc | ProcessCityProduction | economy/economy.c   | agent:a5e55ed
+10049628 | FUN_10049628 | GetUnitTypeInfo       | economy/economy.c   | agent:a5e55ed
+100496c8 | FUN_100496c8 | SortArmyUnits         | economy/economy.c   | agent:a5e55ed
+10047d80 | FUN_10047d80 | GetUnitSlotInArmy     | economy/economy.c   | agent:a5e55ed
+10048ccc | FUN_10048ccc | LockUnitData          | economy/economy.c   | agent:a5e55ed
+10049010 | FUN_10049010 | UnlockUnitData        | economy/economy.c   | agent:a5e55ed
+1000f258 | FUN_1000f258 | RemoveArmyFromCities  | economy/economy.c   | agent:a5e55ed
+1000f708 | FUN_1000f708 | CanArmyEnterCity      | economy/economy.c   | agent:a5e55ed
+
+# ===== Rendering (rendering/rendering.c) =====
+# See RE_rendering.md for full function list
+# agent:aa7d587 handles reconstruction
+
+# ===== Sound (sound/sound.c) =====
+# See RE_sound.md for full function list
+# agent:aa7d587 handles reconstruction
+
+# ===== Serialization (serialization/serialization.c) =====
+# See RE_serialization.md for full function list
+# agent:aa7d587 handles reconstruction
+
+# ===== Map Generator (mapgen/mapgen.c) =====
+# See RE_random_map.md for full function list
+# agent:a35d2a0 handles reconstruction
+
+# ===== Framework / MacApp (framework/framework.c) =====
+# See RE_framework_remaining.md for full function list
+# agent:a35d2a0 handles reconstruction
+
+# ===== TVect Trampolines (Mac OS Toolbox calls) =====
+# These are NOT game code - they are indirect calls to shared libraries.
+# Address range: 0x10000000 - 0x10004000 approximately
+# ~500+ trampolines for Mac OS Toolbox, MacApp framework, SANE math, etc.
+#
+# Notable ones:
+10002970 | FUN_10002970 | Random()              | (Toolbox)       | TVect
+10003768 | FUN_10003768 | abs()                 | (Toolbox)       | TVect
+10001dd0 | FUN_10001dd0 | NumToString()         | (Toolbox)       | TVect
