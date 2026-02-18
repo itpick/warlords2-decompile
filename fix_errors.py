@@ -105,16 +105,16 @@ def fix_file(filepath):
                 error_functions.add(func['name'])
                 break
 
-    # Replace error functions with stubs
+    # Replace error functions with stubs, preserving original signature
     replaced = 0
     for func in functions:
         if func['name'] in error_functions:
-            # Generate stub - simplify params to just types for stub
             ret = func['ret_type'] if func['ret_type'] else 'int'
+            params = func['params'] if func['params'] else ''
             if ret == 'void':
-                stub = f'void {func["name"]}() {{ }}'
+                stub = f'void {func["name"]}({params}) {{ }}'
             else:
-                stub = f'{ret} {func["name"]}() {{ return 0; }}'
+                stub = f'{ret} {func["name"]}({params}) {{ return 0; }}'
 
             # Replace in lines array
             lines[func['start_idx']] = f'/* Address: stubbed - had compile errors on 64-bit */'

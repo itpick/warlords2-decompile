@@ -19,26 +19,34 @@ CFLAGS = [
     f'-I{SRC_DIR}/include', '-DMODERN_BUILD=1',
 ]
 
+# Globals that are #define'd in wl2_globals.h - skip extern for these
+MACRO_GLOBALS = {
+    'iRam1011762c', 'iRam10117630',
+    'piRam1011734c', 'piRam10117350', 'piRam10117354', 'piRam10117358',
+    'piRam1011735c', 'piRam10117360', 'piRam10117364', 'piRam10117368',
+    'piRam10117370', 'piRam101176bc', 'piRam101176e0', 'psRam101176fc',
+}
+
 def get_externs(body):
     """Generate extern declarations for all globals referenced in body."""
     lines = []
     seen = set()
     for g in re.findall(r'\b(piRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern int *{g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern int *{g};'); seen.add(g)
     for g in re.findall(r'\b(puRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern unsigned int *{g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern unsigned int *{g};'); seen.add(g)
     for g in re.findall(r'\b(psRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern short *{g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern short *{g};'); seen.add(g)
     for g in re.findall(r'\b(iRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern long {g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern long {g};'); seen.add(g)
     for g in re.findall(r'\b(uRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern unsigned int {g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern unsigned int {g};'); seen.add(g)
     for g in re.findall(r'\b(pbRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern unsigned char *{g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern unsigned char *{g};'); seen.add(g)
     for g in re.findall(r'\b(pcRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern char *{g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern char *{g};'); seen.add(g)
     for g in re.findall(r'\b(pdRam[0-9a-f]+)\b', body):
-        if g not in seen: lines.append(f'extern double {g};'); seen.add(g)
+        if g not in seen and g not in MACRO_GLOBALS: lines.append(f'extern double {g};'); seen.add(g)
     return '\n'.join(lines)
 
 def test_one(args):
@@ -68,6 +76,7 @@ def main():
         'stubs/wave2_tvect.c', 'stubs/wave2_game1.c', 'stubs/wave2_game2.c',
         'stubs/wave2_macapp1.c', 'stubs/wave2_macapp2.c',
         'stubs/wave2_macapp3.c', 'stubs/wave2_macapp4.c',
+        'stubs/recovered_stubs.c',
     ]
 
     # Collect all stubbed functions with their cleaned bodies
@@ -76,7 +85,7 @@ def main():
         filepath = os.path.join(SRC_DIR, wf)
         with open(filepath) as f:
             content = f.read()
-        for m in re.finditer(r'stubbed.*?\n(\w[\w\s\*]*?)\s+(FUN_[0-9a-f]+)\(\)', content):
+        for m in re.finditer(r'stubbed.*?\n(\w[\w\s\*]*?)\s+(FUN_[0-9a-f]+)\([^)]*\)\s*\{', content):
             fname = m.group(2)
             ret_type = m.group(1)
             if fname in functions:
@@ -117,7 +126,7 @@ def main():
         while i < len(lines):
             if 'stubbed - had compile errors' in lines[i]:
                 stub_line = lines[i + 1] if i + 1 < len(lines) else ''
-                m = re.match(r'(\w[\w\s\*]*?)\s+(FUN_[0-9a-f]+)\(\)', stub_line)
+                m = re.match(r'(\w[\w\s\*]*?)\s+(FUN_[0-9a-f]+)\(', stub_line)
                 if m and m.group(2) in compilable:
                     fname = m.group(2)
                     _, _, body = stubbed[fname]

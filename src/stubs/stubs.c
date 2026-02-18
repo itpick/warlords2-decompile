@@ -202,3 +202,42 @@ int FUN_10092c5c() { return 0; }
 
 
 /* Stubs for recovered function dependencies */
+
+/* Missing symbols from duplicate resolution */
+void FUN_10000270() { }
+void FUN_10000288() { }
+void FUN_10000708() { }
+void FUN_10000870() { }
+void FUN_10000888() { }
+void FUN_10000b70() { }
+void FUN_10001290() { }
+void FUN_100019c8() { }
+void FUN_10001a70() { }
+void FUN_10001b18() { }
+void FUN_100023b8() { }
+void FUN_10002ad8() { }
+void FUN_10002b20() { }
+void FUN_10003108() { }
+void FUN_10003468() { }
+void FUN_1001eff8() { }
+void FUN_1002c92c() { }
+void FUN_100448e4() { }
+void FUN_10044950() { }
+void FUN_100449bc() { }
+void FUN_100479f4() { }
+void FUN_10049010() { }
+void FUN_10051f98() { }
+void FUN_100523a8() { }
+void FUN_10052490() { }
+void FUN_10079ee8() { }
+void FUN_1007a018() { }
+void FUN_100836dc() { }
+void FUN_100b1e10() { }
+void FUN_100c5dcc() { }
+void FUN_100da3f0() { }
+void FUN_100eecf8() { }
+void FUN_100ef284() { }
+void FUN_100f0334() { }
+void FUN_100f5108() { }
+void FUN_100f5754() { }
+void FUN_10115a00() { }
