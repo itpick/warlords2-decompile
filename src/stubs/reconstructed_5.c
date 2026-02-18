@@ -191,27 +191,6 @@ void FUN_100bd55c(int *param_1)
  * FUN_100c3d2c - TCommand constructor (MacApp framework object)
  * Original: 100c3d2c, 164 bytes
  * ===================================================================== */
-int * FUN_100c3d2c(int *param_1)
-{
-    if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x30),
-       param_1 != (int *)0x0)) {
-        FUN_100d9034(param_1);
-        param_1[5] = 0;
-        param_1[6] = 0;
-        *(char *)(param_1 + 7) = 0;
-        *(char *)((int)param_1 + 0x1d) = 1;
-        *(char *)((int)param_1 + 0x1e) = 1;
-        *(char *)((int)param_1 + 0x1f) = 0;
-        param_1[8] = 0;
-        param_1[9] = 0;
-        param_1[10] = 0;
-        *(char *)(param_1 + 0xb) = 1;
-        *(char *)((int)param_1 + 0x2e) = 0;
-        *(char *)((int)param_1 + 0x2d) = 1;
-    }
-    return param_1;
-}
 
 
 /* =====================================================================
@@ -1105,16 +1084,6 @@ void FUN_100f0788(short *param_1)
  * FUN_100f15e0 - Allocate small block (NewHandle equivalent)
  * Original: 100f15e0, 96 bytes
  * ===================================================================== */
-int FUN_100f15e0(int param_1)
-{
-    char uVar2;
-    int uVar1;
-
-    uVar2 = FUN_100f1574(1);
-    uVar1 = FUN_10000948(param_1);
-    FUN_100db26c(0);
-    return uVar1;
-}
 
 
 /* =====================================================================

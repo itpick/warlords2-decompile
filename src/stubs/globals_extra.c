@@ -1581,7 +1581,6 @@ unsigned int *puRam1011745c = 0;
 unsigned int uRam1011744c = 0;
 unsigned char *pbRam10116a54 = 0;
 
-/* Additional globals for recovered stubs */
 char *pcRam1011785c = 0;
 int *piRam10117804 = 0;
 short *psRam10115dec = 0;
@@ -1656,3 +1655,6 @@ unsigned int uRam101169c8 = 0;
 unsigned int uRam10116c60 = 0;
 unsigned int uRam10117018 = 0;
 unsigned int uRam101172f8 = 0;
+
+unsigned int uRam101174f0 = 0;
+unsigned int uRam101174d0 = 0;

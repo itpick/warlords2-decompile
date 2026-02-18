@@ -25,478 +25,493 @@
 #endif
 
 /* Forward declarations to avoid conflicting types */
-void FUN_10000018(void);
-void FUN_10000030(void);
-void FUN_10000060(void);
-void FUN_10000078(void);
-void FUN_100000a8(void);
-void FUN_100000c0(void);
-void FUN_100000d8(void);
-void FUN_100000f0(void);
-void FUN_10000108(void);
-void FUN_10000138(void);
-void FUN_10000168(void);
-void FUN_10000180(void);
-void FUN_10000198(void);
-void FUN_100001b0(void);
-void FUN_100001c8(void);
-void FUN_100001e0(void);
-void FUN_100001f8(void);
-void FUN_10000228(void);
-void FUN_10000240(void);
-void FUN_10000258(void);
-void FUN_100002b8(void);
-void FUN_100002d0(void);
-void FUN_100002e8(void);
-void FUN_10000330(void);
-void FUN_10000348(void);
-void FUN_100003a8(void);
-void FUN_100003c0(void);
-void FUN_100003d8(void);
-void FUN_100003f0(void);
-void FUN_10000408(void);
-void FUN_10000420(void);
-void FUN_10000438(void);
-void FUN_10000450(void);
-void FUN_10000480(void);
-void FUN_10000498(void);
-void FUN_100004b0(void);
-void FUN_100004c8(void);
-void FUN_100004f8(void);
-void FUN_10000510(void);
-void FUN_10000528(void);
-void FUN_10000540(void);
-void FUN_10000558(void);
-void FUN_10000570(void);
-void FUN_10000588(void);
-void FUN_100005a0(void);
-void FUN_100005b8(void);
-void FUN_100005d0(void);
-void FUN_100005e8(void);
-void FUN_10000600(void);
-void FUN_10000618(void);
-void FUN_10000630(void);
-void FUN_10000648(void);
-void FUN_10000660(void);
-void FUN_10000690(void);
-void FUN_100006c0(void);
-void FUN_10000720(void);
-void FUN_10000738(void);
-void FUN_10000750(void);
-void FUN_10000768(void);
-void FUN_10000780(void);
-void FUN_10000798(void);
-void FUN_100007b0(void);
-void FUN_100007c8(void);
-void FUN_100007e0(void);
-void FUN_100007f8(void);
-void FUN_10000810(void);
-void FUN_10000828(void);
-void FUN_10000840(void);
-void FUN_10000858(void);
-void FUN_100008a0(void);
-void FUN_10000930(void);
-void FUN_10000978(void);
-void FUN_10000990(void);
-void FUN_100009a8(void);
-void FUN_100009c0(void);
-void FUN_10000a20(void);
-void FUN_10000a38(void);
-void FUN_10000a50(void);
-void FUN_10000a68(void);
-void FUN_10000a80(void);
-void FUN_10000ab0(void);
-void FUN_10000ac8(void);
-void FUN_10000ae0(void);
-void FUN_10000af8(void);
-void FUN_10000b10(void);
-void FUN_10000b28(void);
-void FUN_10000b40(void);
-void FUN_10000b58(void);
-void FUN_10000b88(void);
-void FUN_10000ba0(void);
-void FUN_10000bb8(void);
-void FUN_10000bd0(void);
-void FUN_10000be8(void);
-void FUN_10000c00(void);
-void FUN_10000c18(void);
-void FUN_10000c30(void);
-void FUN_10000c48(void);
-void FUN_10000c78(void);
-void FUN_10000ca8(void);
-void FUN_10000cc0(void);
-void FUN_10000cd8(void);
-void FUN_10000cf0(void);
-void FUN_10000d08(void);
-void FUN_10000d20(void);
-void FUN_10000d38(void);
-void FUN_10000d50(void);
-void FUN_10000d68(void);
-void FUN_10000d80(void);
-void FUN_10000d98(void);
-void FUN_10000db0(void);
-void FUN_10000dc8(void);
-void FUN_10000de0(void);
-void FUN_10000df8(void);
-void FUN_10000e10(void);
-void FUN_10000e28(void);
-void FUN_10000e40(void);
-void FUN_10000e58(void);
-void FUN_10000e70(void);
-void FUN_10000e88(void);
-void FUN_10000ea0(void);
-void FUN_10000eb8(void);
-void FUN_10000ed0(void);
-void FUN_10000ee8(void);
-void FUN_10000f00(void);
-void FUN_10000f18(void);
-void FUN_10000f30(void);
-void FUN_10000f48(void);
-void FUN_10000f60(void);
-void FUN_10000f78(void);
-void FUN_10000f90(void);
-void FUN_10000fc0(void);
-void FUN_10000fd8(void);
-void FUN_10000ff0(void);
-void FUN_10001008(void);
-void FUN_10001020(void);
-void FUN_10001038(void);
-void FUN_10001050(void);
-void FUN_10001068(void);
-void FUN_10001080(void);
-void FUN_10001098(void);
-void FUN_100010b0(void);
-void FUN_100010c8(void);
-void FUN_100010e0(void);
-void FUN_100010f8(void);
-void FUN_10001110(void);
-void FUN_10001128(void);
-void FUN_10001140(void);
-void FUN_10001158(void);
-void FUN_10001188(void);
-void FUN_100011a0(void);
-void FUN_100011b8(void);
-void FUN_100011d0(void);
-void FUN_100011e8(void);
-void FUN_10001200(void);
-void FUN_10001218(void);
-void FUN_10001230(void);
-void FUN_10001248(void);
-void FUN_10001260(void);
-void FUN_10001278(void);
-void FUN_100012a8(void);
-void FUN_10001308(void);
-void FUN_10001320(void);
-void FUN_10001350(void);
-void FUN_10001368(void);
-void FUN_10001380(void);
-void FUN_10001398(void);
-void FUN_100014e8(void);
-void FUN_10001500(void);
-void FUN_10001518(void);
-void FUN_10001530(void);
-void FUN_10001548(void);
-void FUN_10001560(void);
-void FUN_10001578(void);
-void FUN_100015c0(void);
-void FUN_100015d8(void);
-void FUN_100015f0(void);
-void FUN_10001608(void);
-void FUN_10001620(void);
-void FUN_10001650(void);
-void FUN_10001668(void);
-void FUN_100016c8(void);
-void FUN_100016e0(void);
-void FUN_10001710(void);
-void FUN_10001740(void);
-void FUN_10001770(void);
-void FUN_100017a0(void);
-void FUN_100017b8(void);
-void FUN_100017d0(void);
-void FUN_100017e8(void);
-void FUN_10001800(void);
-void FUN_10001830(void);
-void FUN_10001848(void);
-void FUN_10001878(void);
-void FUN_10001890(void);
-void FUN_100018d8(void);
-void FUN_10001938(void);
-void FUN_10001950(void);
-void FUN_10001968(void);
-void FUN_10001980(void);
-void FUN_10001998(void);
-void FUN_100019e0(void);
-void FUN_10001a10(void);
-void FUN_10001a28(void);
-void FUN_10001a40(void);
-void FUN_10001a58(void);
-void FUN_10001aa0(void);
-void FUN_10001ab8(void);
-void FUN_10001ae8(void);
-void FUN_10001b48(void);
-void FUN_10001b78(void);
-void FUN_10001b90(void);
-void FUN_10001ba8(void);
-void FUN_10001bc0(void);
-void FUN_10001bf0(void);
-void FUN_10001c08(void);
-void FUN_10001c38(void);
-void FUN_10001c50(void);
-void FUN_10001c68(void);
-void FUN_10001c80(void);
-void FUN_10001cb0(void);
-void FUN_10001cc8(void);
-void FUN_10001ce0(void);
-void FUN_10001cf8(void);
-void FUN_10001d10(void);
-void FUN_10001d40(void);
-void FUN_10001d88(void);
-void FUN_10001da0(void);
-void FUN_10001db8(void);
-void FUN_10001de8(void);
-void FUN_10001e00(void);
-void FUN_10001e18(void);
-void FUN_10001e30(void);
-void FUN_10001e48(void);
-void FUN_10001e60(void);
-void FUN_10001ea8(void);
-void FUN_10001ec0(void);
-void FUN_10001ed8(void);
-void FUN_10001ef0(void);
-void FUN_10001f08(void);
-void FUN_10001f20(void);
-void FUN_10001f38(void);
-void FUN_10001f68(void);
-void FUN_10001f80(void);
-void FUN_10001fb0(void);
-void FUN_10001fc8(void);
-void FUN_10001fe0(void);
-void FUN_10001ff8(void);
-void FUN_10002010(void);
-void FUN_10002028(void);
-void FUN_10002040(void);
-void FUN_10002058(void);
-void FUN_10002070(void);
-void FUN_10002088(void);
-void FUN_100020a0(void);
-void FUN_100020b8(void);
-void FUN_100020e8(void);
-void FUN_10002118(void);
-void FUN_10002130(void);
-void FUN_10002160(void);
-void FUN_10002190(void);
-void FUN_100021a8(void);
-void FUN_100021d8(void);
-void FUN_10002208(void);
-void FUN_10002220(void);
-void FUN_10002250(void);
-void FUN_10002268(void);
-void FUN_10002280(void);
-void FUN_10002298(void);
-void FUN_100022b0(void);
-void FUN_100022c8(void);
-void FUN_100022e0(void);
-void FUN_100022f8(void);
-void FUN_10002310(void);
-void FUN_10002328(void);
-void FUN_10002370(void);
-void FUN_10002388(void);
-void FUN_100023a0(void);
-void FUN_100023d0(void);
-void FUN_100023e8(void);
-void FUN_10002418(void);
-void FUN_10002430(void);
-void FUN_10002448(void);
-void FUN_10002460(void);
-void FUN_10002478(void);
-void FUN_10002490(void);
-void FUN_100024a8(void);
-void FUN_100024c0(void);
-void FUN_100024d8(void);
-void FUN_100024f0(void);
-void FUN_10002508(void);
-void FUN_10002538(void);
-void FUN_10002550(void);
-void FUN_10002580(void);
-void FUN_100025c8(void);
-void FUN_100025e0(void);
-void FUN_100025f8(void);
-void FUN_10002610(void);
-void FUN_10002628(void);
-void FUN_10002640(void);
-void FUN_10002658(void);
-void FUN_10002670(void);
-void FUN_10002688(void);
-void FUN_100026a0(void);
-void FUN_100026e8(void);
-void FUN_10002700(void);
-void FUN_10002718(void);
-void FUN_10002730(void);
-void FUN_10002748(void);
-void FUN_10002760(void);
-void FUN_10002778(void);
-void FUN_100027a8(void);
-void FUN_100027c0(void);
-void FUN_100027d8(void);
-void FUN_100027f0(void);
-void FUN_10002808(void);
-void FUN_10002820(void);
-void FUN_10002838(void);
-void FUN_10002850(void);
-void FUN_10002868(void);
-void FUN_10002880(void);
-void FUN_10002898(void);
-void FUN_100028b0(void);
-void FUN_100028c8(void);
-void FUN_100028e0(void);
-void FUN_100028f8(void);
-void FUN_10002910(void);
-void FUN_10002928(void);
-void FUN_10002940(void);
-void FUN_10002958(void);
-void FUN_10002988(void);
-void FUN_100029a0(void);
-void FUN_100029b8(void);
-void FUN_100029d0(void);
-void FUN_100029e8(void);
-void FUN_10002a18(void);
-void FUN_10002a30(void);
-void FUN_10002a48(void);
-void FUN_10002a78(void);
-void FUN_10002a90(void);
-void FUN_10002aa8(void);
-void FUN_10002ac0(void);
-void FUN_10002af0(void);
-void FUN_10002b08(void);
-void FUN_10002b38(void);
-void FUN_10002b50(void);
-void FUN_10002b68(void);
-void FUN_10002b80(void);
-void FUN_10002b98(void);
-void FUN_10002bb0(void);
-void FUN_10002bc8(void);
-void FUN_10002be0(void);
-void FUN_10002bf8(void);
-void FUN_10002c10(void);
-void FUN_10002c28(void);
-void FUN_10002c40(void);
-void FUN_10002c70(void);
-void FUN_10002c88(void);
-void FUN_10002ca0(void);
-void FUN_10002cb8(void);
-void FUN_10002cd0(void);
-void FUN_10002d18(void);
-void FUN_10002d30(void);
-void FUN_10002d78(void);
-void FUN_10002d90(void);
-void FUN_10002da8(void);
-void FUN_10002dc0(void);
-void FUN_10002dd8(void);
-void FUN_10002df0(void);
-void FUN_10002e08(void);
-void FUN_10002e20(void);
-void FUN_10002e38(void);
-void FUN_10002e68(void);
-void FUN_10002e80(void);
-void FUN_10002e98(void);
-void FUN_10002ec8(void);
-void FUN_10002ee0(void);
-void FUN_10002ef8(void);
-void FUN_10002f10(void);
-void FUN_10002f28(void);
-void FUN_10002f40(void);
-void FUN_10002f58(void);
-void FUN_10002f70(void);
-void FUN_10002f88(void);
-void FUN_10002fa0(void);
-void FUN_10002fb8(void);
-void FUN_10002fd0(void);
-void FUN_10002fe8(void);
-void FUN_10003000(void);
-void FUN_10003030(void);
-void FUN_10003048(void);
-void FUN_10003060(void);
-void FUN_10003078(void);
-void FUN_10003090(void);
-void FUN_100030a8(void);
-void FUN_100030c0(void);
-void FUN_100030d8(void);
-void FUN_100030f0(void);
-void FUN_10003120(void);
-void FUN_10003138(void);
-void FUN_10003150(void);
-void FUN_10003168(void);
-void FUN_10003180(void);
-void FUN_10003198(void);
-void FUN_100031b0(void);
-void FUN_100031c8(void);
-void FUN_100031e0(void);
-void FUN_100031f8(void);
-void FUN_10003210(void);
-void FUN_10003240(void);
-void FUN_10003258(void);
-void FUN_10003288(void);
-void FUN_100032a0(void);
-void FUN_100032d0(void);
-void FUN_10003300(void);
-void FUN_10003318(void);
-void FUN_10003330(void);
-void FUN_10003348(void);
-void FUN_10003360(void);
-void FUN_10003378(void);
-void FUN_10003390(void);
-void FUN_100033a8(void);
-void FUN_100033c0(void);
-void FUN_100033d8(void);
-void FUN_100033f0(void);
-void FUN_10003408(void);
-void FUN_10003420(void);
-void FUN_10003438(void);
-void FUN_10003450(void);
-void FUN_10003480(void);
-void FUN_10003498(void);
-void FUN_100034b0(void);
-void FUN_100034c8(void);
-void FUN_100034e0(void);
-void FUN_100034f8(void);
-void FUN_10003510(void);
-void FUN_10003528(void);
-void FUN_10003540(void);
-void FUN_10003570(void);
-void FUN_10003588(void);
-void FUN_100035d0(void);
-void FUN_100035e8(void);
-void FUN_10003600(void);
-void FUN_10003618(void);
-void FUN_10003630(void);
-void FUN_10003690(void);
-void FUN_100036a8(void);
-void FUN_100036c0(void);
-void FUN_100036d8(void);
-void FUN_100036f0(void);
-void FUN_10003708(void);
-void FUN_10003738(void);
-void FUN_10003750(void);
-void FUN_10003780(void);
-void FUN_100037b0(void);
-void FUN_100037e0(void);
-void FUN_100037f8(void);
-void FUN_10003810(void);
-void FUN_10003828(void);
-void FUN_10003840(void);
-void FUN_10003858(void);
-void FUN_10003870(void);
-void FUN_10003888(void);
-void FUN_100038a0(void);
-void FUN_100038b8(void);
-void FUN_100038d0(void);
-void FUN_100038e8(void);
-void FUN_10003900(void);
-void FUN_10003918(void);
-void FUN_10003948(void);
+void FUN_10000018();
+void FUN_10000030();
+void FUN_10000060();
+void FUN_10000078();
+void FUN_100000a8();
+void FUN_100000c0();
+void FUN_100000d8();
+void FUN_100000f0();
+void FUN_10000108();
+void FUN_10000138();
+void FUN_10000168();
+void FUN_10000180();
+void FUN_10000198();
+void FUN_100001b0();
+void FUN_100001c8();
+void FUN_100001e0();
+void FUN_100001f8();
+void FUN_10000228();
+void FUN_10000240();
+void FUN_10000258();
+void FUN_10000270();
+void FUN_10000288();
+void FUN_100002b8();
+void FUN_100002d0();
+void FUN_100002e8();
+void FUN_10000330();
+void FUN_10000348();
+void FUN_100003a8();
+void FUN_100003c0();
+void FUN_100003d8();
+void FUN_100003f0();
+void FUN_10000408();
+void FUN_10000420();
+void FUN_10000438();
+void FUN_10000450();
+void FUN_10000480();
+void FUN_10000498();
+void FUN_100004b0();
+void FUN_100004c8();
+void FUN_100004f8();
+void FUN_10000510();
+void FUN_10000528();
+void FUN_10000540();
+void FUN_10000558();
+void FUN_10000570();
+void FUN_10000588();
+void FUN_100005a0();
+void FUN_100005b8();
+void FUN_100005d0();
+void FUN_100005e8();
+void FUN_10000600();
+void FUN_10000618();
+void FUN_10000630();
+void FUN_10000648();
+void FUN_10000660();
+void FUN_10000690();
+void FUN_100006c0();
+void FUN_10000708();
+void FUN_10000720();
+void FUN_10000738();
+void FUN_10000750();
+void FUN_10000768();
+void FUN_10000780();
+void FUN_10000798();
+void FUN_100007b0();
+void FUN_100007c8();
+void FUN_100007e0();
+void FUN_100007f8();
+void FUN_10000810();
+void FUN_10000828();
+void FUN_10000840();
+void FUN_10000858();
+void FUN_10000870();
+void FUN_10000888();
+void FUN_100008a0();
+void FUN_10000930();
+void FUN_10000978();
+void FUN_10000990();
+void FUN_100009a8();
+void FUN_100009c0();
+void FUN_10000a20();
+void FUN_10000a38();
+void FUN_10000a50();
+void FUN_10000a68();
+void FUN_10000a80();
+void FUN_10000ab0();
+void FUN_10000ac8();
+void FUN_10000ae0();
+void FUN_10000af8();
+void FUN_10000b10();
+void FUN_10000b28();
+void FUN_10000b40();
+void FUN_10000b58();
+void FUN_10000b70();
+void FUN_10000b88();
+void FUN_10000ba0();
+void FUN_10000bb8();
+void FUN_10000bd0();
+void FUN_10000be8();
+void FUN_10000c00();
+void FUN_10000c18();
+void FUN_10000c30();
+void FUN_10000c48();
+void FUN_10000c78();
+void FUN_10000ca8();
+void FUN_10000cc0();
+void FUN_10000cd8();
+void FUN_10000cf0();
+void FUN_10000d08();
+void FUN_10000d20();
+void FUN_10000d38();
+void FUN_10000d50();
+void FUN_10000d68();
+void FUN_10000d80();
+void FUN_10000d98();
+void FUN_10000db0();
+void FUN_10000dc8();
+void FUN_10000de0();
+void FUN_10000df8();
+void FUN_10000e10();
+void FUN_10000e28();
+void FUN_10000e40();
+void FUN_10000e58();
+void FUN_10000e70();
+void FUN_10000e88();
+void FUN_10000ea0();
+void FUN_10000eb8();
+void FUN_10000ed0();
+void FUN_10000ee8();
+void FUN_10000f00();
+void FUN_10000f18();
+void FUN_10000f30();
+void FUN_10000f48();
+void FUN_10000f60();
+void FUN_10000f78();
+void FUN_10000f90();
+void FUN_10000fc0();
+void FUN_10000fd8();
+void FUN_10000ff0();
+void FUN_10001008();
+void FUN_10001020();
+void FUN_10001038();
+void FUN_10001050();
+void FUN_10001068();
+void FUN_10001080();
+void FUN_10001098();
+void FUN_100010b0();
+void FUN_100010c8();
+void FUN_100010e0();
+void FUN_100010f8();
+void FUN_10001110();
+void FUN_10001128();
+void FUN_10001140();
+void FUN_10001158();
+void FUN_10001188();
+void FUN_100011a0();
+void FUN_100011b8();
+void FUN_100011d0();
+void FUN_100011e8();
+void FUN_10001200();
+void FUN_10001218();
+void FUN_10001230();
+void FUN_10001248();
+void FUN_10001260();
+void FUN_10001278();
+void FUN_10001290();
+void FUN_100012a8();
+void FUN_10001308();
+void FUN_10001320();
+void FUN_10001350();
+void FUN_10001368();
+void FUN_10001380();
+void FUN_10001398();
+void FUN_100014e8();
+void FUN_10001500();
+void FUN_10001518();
+void FUN_10001530();
+void FUN_10001548();
+void FUN_10001560();
+void FUN_10001578();
+void FUN_100015c0();
+void FUN_100015d8();
+void FUN_100015f0();
+void FUN_10001608();
+void FUN_10001620();
+void FUN_10001650();
+void FUN_10001668();
+void FUN_100016c8();
+void FUN_100016e0();
+void FUN_10001710();
+void FUN_10001740();
+void FUN_10001770();
+void FUN_100017a0();
+void FUN_100017b8();
+void FUN_100017d0();
+void FUN_100017e8();
+void FUN_10001800();
+void FUN_10001830();
+void FUN_10001848();
+void FUN_10001878();
+void FUN_10001890();
+void FUN_100018d8();
+void FUN_10001938();
+void FUN_10001950();
+void FUN_10001968();
+void FUN_10001980();
+void FUN_10001998();
+void FUN_100019c8();
+void FUN_100019e0();
+void FUN_10001a10();
+void FUN_10001a28();
+void FUN_10001a40();
+void FUN_10001a58();
+void FUN_10001a70();
+void FUN_10001aa0();
+void FUN_10001ab8();
+void FUN_10001ae8();
+void FUN_10001b18();
+void FUN_10001b48();
+void FUN_10001b78();
+void FUN_10001b90();
+void FUN_10001ba8();
+void FUN_10001bc0();
+void FUN_10001bf0();
+void FUN_10001c08();
+void FUN_10001c38();
+void FUN_10001c50();
+void FUN_10001c68();
+void FUN_10001c80();
+void FUN_10001cb0();
+void FUN_10001cc8();
+void FUN_10001ce0();
+void FUN_10001cf8();
+void FUN_10001d10();
+void FUN_10001d40();
+void FUN_10001d88();
+void FUN_10001da0();
+void FUN_10001db8();
+void FUN_10001de8();
+void FUN_10001e00();
+void FUN_10001e18();
+void FUN_10001e30();
+void FUN_10001e48();
+void FUN_10001e60();
+void FUN_10001ea8();
+void FUN_10001ec0();
+void FUN_10001ed8();
+void FUN_10001ef0();
+void FUN_10001f08();
+void FUN_10001f20();
+void FUN_10001f38();
+void FUN_10001f68();
+void FUN_10001f80();
+void FUN_10001fb0();
+void FUN_10001fc8();
+void FUN_10001fe0();
+void FUN_10001ff8();
+void FUN_10002010();
+void FUN_10002028();
+void FUN_10002040();
+void FUN_10002058();
+void FUN_10002070();
+void FUN_10002088();
+void FUN_100020a0();
+void FUN_100020b8();
+void FUN_100020e8();
+void FUN_10002118();
+void FUN_10002130();
+void FUN_10002160();
+void FUN_10002190();
+void FUN_100021a8();
+void FUN_100021d8();
+void FUN_10002208();
+void FUN_10002220();
+void FUN_10002250();
+void FUN_10002268();
+void FUN_10002280();
+void FUN_10002298();
+void FUN_100022b0();
+void FUN_100022c8();
+void FUN_100022e0();
+void FUN_100022f8();
+void FUN_10002310();
+void FUN_10002328();
+void FUN_10002370();
+void FUN_10002388();
+void FUN_100023a0();
+void FUN_100023b8();
+void FUN_100023d0();
+void FUN_100023e8();
+void FUN_10002418();
+void FUN_10002430();
+void FUN_10002448();
+void FUN_10002460();
+void FUN_10002478();
+void FUN_10002490();
+void FUN_100024a8();
+void FUN_100024c0();
+void FUN_100024d8();
+void FUN_100024f0();
+void FUN_10002508();
+void FUN_10002538();
+void FUN_10002550();
+void FUN_10002580();
+void FUN_100025c8();
+void FUN_100025e0();
+void FUN_100025f8();
+void FUN_10002610();
+void FUN_10002628();
+void FUN_10002640();
+void FUN_10002658();
+void FUN_10002670();
+void FUN_10002688();
+void FUN_100026a0();
+void FUN_100026e8();
+void FUN_10002700();
+void FUN_10002718();
+void FUN_10002730();
+void FUN_10002748();
+void FUN_10002760();
+void FUN_10002778();
+void FUN_100027a8();
+void FUN_100027c0();
+void FUN_100027d8();
+void FUN_100027f0();
+void FUN_10002808();
+void FUN_10002820();
+void FUN_10002838();
+void FUN_10002850();
+void FUN_10002868();
+void FUN_10002880();
+void FUN_10002898();
+void FUN_100028b0();
+void FUN_100028c8();
+void FUN_100028e0();
+void FUN_100028f8();
+void FUN_10002910();
+void FUN_10002928();
+void FUN_10002940();
+void FUN_10002958();
+void FUN_10002988();
+void FUN_100029a0();
+void FUN_100029b8();
+void FUN_100029d0();
+void FUN_100029e8();
+void FUN_10002a18();
+void FUN_10002a30();
+void FUN_10002a48();
+void FUN_10002a78();
+void FUN_10002a90();
+void FUN_10002aa8();
+void FUN_10002ac0();
+void FUN_10002ad8();
+void FUN_10002af0();
+void FUN_10002b08();
+void FUN_10002b20();
+void FUN_10002b38();
+void FUN_10002b50();
+void FUN_10002b68();
+void FUN_10002b80();
+void FUN_10002b98();
+void FUN_10002bb0();
+void FUN_10002bc8();
+void FUN_10002be0();
+void FUN_10002bf8();
+void FUN_10002c10();
+void FUN_10002c28();
+void FUN_10002c40();
+void FUN_10002c70();
+void FUN_10002c88();
+void FUN_10002ca0();
+void FUN_10002cb8();
+void FUN_10002cd0();
+void FUN_10002d18();
+void FUN_10002d30();
+void FUN_10002d78();
+void FUN_10002d90();
+void FUN_10002da8();
+void FUN_10002dc0();
+void FUN_10002dd8();
+void FUN_10002df0();
+void FUN_10002e08();
+void FUN_10002e20();
+void FUN_10002e38();
+void FUN_10002e68();
+void FUN_10002e80();
+void FUN_10002e98();
+void FUN_10002ec8();
+void FUN_10002ee0();
+void FUN_10002ef8();
+void FUN_10002f10();
+void FUN_10002f28();
+void FUN_10002f40();
+void FUN_10002f58();
+void FUN_10002f70();
+void FUN_10002f88();
+void FUN_10002fa0();
+void FUN_10002fb8();
+void FUN_10002fd0();
+void FUN_10002fe8();
+void FUN_10003000();
+void FUN_10003030();
+void FUN_10003048();
+void FUN_10003060();
+void FUN_10003078();
+void FUN_10003090();
+void FUN_100030a8();
+void FUN_100030c0();
+void FUN_100030d8();
+void FUN_100030f0();
+void FUN_10003108();
+void FUN_10003120();
+void FUN_10003138();
+void FUN_10003150();
+void FUN_10003168();
+void FUN_10003180();
+void FUN_10003198();
+void FUN_100031b0();
+void FUN_100031c8();
+void FUN_100031e0();
+void FUN_100031f8();
+void FUN_10003210();
+void FUN_10003240();
+void FUN_10003258();
+void FUN_10003288();
+void FUN_100032a0();
+void FUN_100032d0();
+void FUN_10003300();
+void FUN_10003318();
+void FUN_10003330();
+void FUN_10003348();
+void FUN_10003360();
+void FUN_10003378();
+void FUN_10003390();
+void FUN_100033a8();
+void FUN_100033c0();
+void FUN_100033d8();
+void FUN_100033f0();
+void FUN_10003408();
+void FUN_10003420();
+void FUN_10003438();
+void FUN_10003450();
+void FUN_10003468();
+void FUN_10003480();
+void FUN_10003498();
+void FUN_100034b0();
+void FUN_100034c8();
+void FUN_100034e0();
+void FUN_100034f8();
+void FUN_10003510();
+void FUN_10003528();
+void FUN_10003540();
+void FUN_10003570();
+void FUN_10003588();
+void FUN_100035d0();
+void FUN_100035e8();
+void FUN_10003600();
+void FUN_10003618();
+void FUN_10003630();
+void FUN_10003690();
+void FUN_100036a8();
+void FUN_100036c0();
+void FUN_100036d8();
+void FUN_100036f0();
+void FUN_10003708();
+void FUN_10003738();
+void FUN_10003750();
+void FUN_10003780();
+void FUN_100037b0();
+void FUN_100037e0();
+void FUN_100037f8();
+void FUN_10003810();
+void FUN_10003828();
+void FUN_10003840();
+void FUN_10003858();
+void FUN_10003870();
+void FUN_10003888();
+void FUN_100038a0();
+void FUN_100038b8();
+void FUN_100038d0();
+void FUN_100038e8();
+void FUN_10003900();
+void FUN_10003918();
+void FUN_10003948();
 void FUN_10003960(int *param_1,int *param_2);
 int * FUN_10003a48(int *param_1,int *param_2);
-void FUN_10003aa4(void);
+void FUN_10003aa4();
 void FUN_10003b7c(int param_1);
 unsigned short FUN_10003d5c(short param_1,short param_2);
 void FUN_10003ec8(short param_1,short param_2);
@@ -505,23 +520,24 @@ void FUN_10004400(int param_1);
 void FUN_100047d0(int param_1);
 void FUN_100049bc(int param_1);
 long long FUN_10004ed8(long long param_1);
-void FUN_10008418(void);
+void FUN_10008418();
 void FUN_100084d0(unsigned short param_1);
 void FUN_1000865c(short param_1,long long param_2,short param_3,short param_4);
 void FUN_1000873c(short param_1,short param_2,long long param_3,short param_4,short param_5,
                  short param_6,short param_7,short param_8);
 void FUN_10008c0c(short param_1,short param_2,long long param_3,short param_4,
                  short param_5);
-void FUN_10008de4(void);
-void FUN_10008e8c(void);
+void FUN_10008de4();
+void FUN_10008e8c();
 long long FUN_1000931c(long long param_1,short param_2,short param_3);
-void FUN_10009520(void);
-void FUN_100095fc(void);
-void FUN_10009700(void);
+void FUN_10009520();
+void FUN_100095fc();
+unsigned short FUN_10009630(short param_1,short param_2,short param_3);
+void FUN_10009700();
 void FUN_10009944(long long param_1);
-void FUN_100099b4(void);
-void FUN_10009a0c(void);
-void FUN_1000a4e8(void);
+void FUN_100099b4();
+void FUN_10009a0c();
+void FUN_1000a4e8();
 void FUN_1000a958(long long param_1,long long param_2,long long param_3,long long param_4,
                  long long param_5,long long param_6,long long param_7);
 void FUN_1000a9e4(short param_1,short param_2,short param_3);
@@ -536,7 +552,7 @@ void FUN_1000ba58(void);
 void FUN_1000be58(void);
 void FUN_1000c3fc(long long param_1,long long param_2);
 void FUN_1000c4c4(short param_1,short param_2,int *param_3);
-void FUN_1000c648(void);
+void FUN_1000c648();
 int FUN_1000db10(short param_1);
 void FUN_1000dc4c(short param_1,short param_2,int param_3,int *param_4);
 unsigned long long FUN_1000df58(short param_1);
@@ -1071,7 +1087,7 @@ extern unsigned int uRam10117450;
 extern unsigned int uRam10117700;
 
 /* Address: 0x10000018 Size: 24 bytes */
-void FUN_10000018(void)
+void FUN_10000018()
 
 {
 
@@ -1080,7 +1096,7 @@ void FUN_10000018(void)
 }
 
 /* Address: 0x10000030 Size: 24 bytes */
-void FUN_10000030(void)
+void FUN_10000030()
 
 {
 
@@ -1089,7 +1105,7 @@ void FUN_10000030(void)
 }
 
 /* Address: 0x10000060 Size: 24 bytes */
-void FUN_10000060(void)
+void FUN_10000060()
 
 {
 
@@ -1098,7 +1114,7 @@ void FUN_10000060(void)
 }
 
 /* Address: 0x10000078 Size: 24 bytes */
-void FUN_10000078(void)
+void FUN_10000078()
 
 {
 
@@ -1107,7 +1123,7 @@ void FUN_10000078(void)
 }
 
 /* Address: 0x100000a8 Size: 24 bytes */
-void FUN_100000a8(void)
+void FUN_100000a8()
 
 {
 
@@ -1116,7 +1132,7 @@ void FUN_100000a8(void)
 }
 
 /* Address: 0x100000c0 Size: 24 bytes */
-void FUN_100000c0(void)
+void FUN_100000c0()
 
 {
 
@@ -1125,7 +1141,7 @@ void FUN_100000c0(void)
 }
 
 /* Address: 0x100000d8 Size: 24 bytes */
-void FUN_100000d8(void)
+void FUN_100000d8()
 
 {
 
@@ -1134,7 +1150,7 @@ void FUN_100000d8(void)
 }
 
 /* Address: 0x100000f0 Size: 24 bytes */
-void FUN_100000f0(void)
+void FUN_100000f0()
 
 {
 
@@ -1143,7 +1159,7 @@ void FUN_100000f0(void)
 }
 
 /* Address: 0x10000108 Size: 24 bytes */
-void FUN_10000108(void)
+void FUN_10000108()
 
 {
 
@@ -1152,7 +1168,7 @@ void FUN_10000108(void)
 }
 
 /* Address: 0x10000138 Size: 24 bytes */
-void FUN_10000138(void)
+void FUN_10000138()
 
 {
 
@@ -1161,7 +1177,7 @@ void FUN_10000138(void)
 }
 
 /* Address: 0x10000168 Size: 24 bytes */
-void FUN_10000168(void)
+void FUN_10000168()
 
 {
 
@@ -1170,7 +1186,7 @@ void FUN_10000168(void)
 }
 
 /* Address: 0x10000180 Size: 24 bytes */
-void FUN_10000180(void)
+void FUN_10000180()
 
 {
 
@@ -1179,7 +1195,7 @@ void FUN_10000180(void)
 }
 
 /* Address: 0x10000198 Size: 24 bytes */
-void FUN_10000198(void)
+void FUN_10000198()
 
 {
 
@@ -1188,7 +1204,7 @@ void FUN_10000198(void)
 }
 
 /* Address: 0x100001b0 Size: 24 bytes */
-void FUN_100001b0(void)
+void FUN_100001b0()
 
 {
 
@@ -1197,7 +1213,7 @@ void FUN_100001b0(void)
 }
 
 /* Address: 0x100001c8 Size: 24 bytes */
-void FUN_100001c8(void)
+void FUN_100001c8()
 
 {
 
@@ -1206,7 +1222,7 @@ void FUN_100001c8(void)
 }
 
 /* Address: 0x100001e0 Size: 24 bytes */
-void FUN_100001e0(void)
+void FUN_100001e0()
 
 {
 
@@ -1215,7 +1231,7 @@ void FUN_100001e0(void)
 }
 
 /* Address: 0x100001f8 Size: 24 bytes */
-void FUN_100001f8(void)
+void FUN_100001f8()
 
 {
 
@@ -1224,7 +1240,7 @@ void FUN_100001f8(void)
 }
 
 /* Address: 0x10000228 Size: 24 bytes */
-void FUN_10000228(void)
+void FUN_10000228()
 
 {
 
@@ -1233,7 +1249,7 @@ void FUN_10000228(void)
 }
 
 /* Address: 0x10000240 Size: 24 bytes */
-void FUN_10000240(void)
+void FUN_10000240()
 
 {
 
@@ -1242,7 +1258,7 @@ void FUN_10000240(void)
 }
 
 /* Address: 0x10000258 Size: 24 bytes */
-void FUN_10000258(void)
+void FUN_10000258()
 
 {
 
@@ -1250,14 +1266,26 @@ void FUN_10000258(void)
   return;
 }
 
-/* FUN_10000270 defined elsewhere */
+/* Address: 0x10000270 Size: 24 bytes */
+void FUN_10000270()
 
+{
 
-/* FUN_10000288 defined elsewhere */
+  ((void (*)())*puRam101156b8)();
+  return;
+}
 
+/* Address: 0x10000288 Size: 24 bytes */
+void FUN_10000288()
+
+{
+
+  ((void (*)())*puRam101156c0)();
+  return;
+}
 
 /* Address: 0x100002b8 Size: 24 bytes */
-void FUN_100002b8(void)
+void FUN_100002b8()
 
 {
 
@@ -1266,7 +1294,7 @@ void FUN_100002b8(void)
 }
 
 /* Address: 0x100002d0 Size: 24 bytes */
-void FUN_100002d0(void)
+void FUN_100002d0()
 
 {
 
@@ -1275,7 +1303,7 @@ void FUN_100002d0(void)
 }
 
 /* Address: 0x100002e8 Size: 24 bytes */
-void FUN_100002e8(void)
+void FUN_100002e8()
 
 {
 
@@ -1284,7 +1312,7 @@ void FUN_100002e8(void)
 }
 
 /* Address: 0x10000330 Size: 24 bytes */
-void FUN_10000330(void)
+void FUN_10000330()
 
 {
 
@@ -1293,7 +1321,7 @@ void FUN_10000330(void)
 }
 
 /* Address: 0x10000348 Size: 24 bytes */
-void FUN_10000348(void)
+void FUN_10000348()
 
 {
 
@@ -1302,7 +1330,7 @@ void FUN_10000348(void)
 }
 
 /* Address: 0x100003a8 Size: 24 bytes */
-void FUN_100003a8(void)
+void FUN_100003a8()
 
 {
 
@@ -1311,7 +1339,7 @@ void FUN_100003a8(void)
 }
 
 /* Address: 0x100003c0 Size: 24 bytes */
-void FUN_100003c0(void)
+void FUN_100003c0()
 
 {
 
@@ -1320,7 +1348,7 @@ void FUN_100003c0(void)
 }
 
 /* Address: 0x100003d8 Size: 24 bytes */
-void FUN_100003d8(void)
+void FUN_100003d8()
 
 {
 
@@ -1329,7 +1357,7 @@ void FUN_100003d8(void)
 }
 
 /* Address: 0x100003f0 Size: 24 bytes */
-void FUN_100003f0(void)
+void FUN_100003f0()
 
 {
 
@@ -1338,7 +1366,7 @@ void FUN_100003f0(void)
 }
 
 /* Address: 0x10000408 Size: 24 bytes */
-void FUN_10000408(void)
+void FUN_10000408()
 
 {
 
@@ -1347,7 +1375,7 @@ void FUN_10000408(void)
 }
 
 /* Address: 0x10000420 Size: 24 bytes */
-void FUN_10000420(void)
+void FUN_10000420()
 
 {
 
@@ -1356,7 +1384,7 @@ void FUN_10000420(void)
 }
 
 /* Address: 0x10000438 Size: 24 bytes */
-void FUN_10000438(void)
+void FUN_10000438()
 
 {
 
@@ -1365,7 +1393,7 @@ void FUN_10000438(void)
 }
 
 /* Address: 0x10000450 Size: 24 bytes */
-void FUN_10000450(void)
+void FUN_10000450()
 
 {
 
@@ -1374,7 +1402,7 @@ void FUN_10000450(void)
 }
 
 /* Address: 0x10000480 Size: 24 bytes */
-void FUN_10000480(void)
+void FUN_10000480()
 
 {
 
@@ -1383,7 +1411,7 @@ void FUN_10000480(void)
 }
 
 /* Address: 0x10000498 Size: 24 bytes */
-void FUN_10000498(void)
+void FUN_10000498()
 
 {
 
@@ -1392,7 +1420,7 @@ void FUN_10000498(void)
 }
 
 /* Address: 0x100004b0 Size: 24 bytes */
-void FUN_100004b0(void)
+void FUN_100004b0()
 
 {
 
@@ -1401,7 +1429,7 @@ void FUN_100004b0(void)
 }
 
 /* Address: 0x100004c8 Size: 24 bytes */
-void FUN_100004c8(void)
+void FUN_100004c8()
 
 {
 
@@ -1410,7 +1438,7 @@ void FUN_100004c8(void)
 }
 
 /* Address: 0x100004f8 Size: 24 bytes */
-void FUN_100004f8(void)
+void FUN_100004f8()
 
 {
 
@@ -1419,7 +1447,7 @@ void FUN_100004f8(void)
 }
 
 /* Address: 0x10000510 Size: 24 bytes */
-void FUN_10000510(void)
+void FUN_10000510()
 
 {
 
@@ -1428,7 +1456,7 @@ void FUN_10000510(void)
 }
 
 /* Address: 0x10000528 Size: 24 bytes */
-void FUN_10000528(void)
+void FUN_10000528()
 
 {
 
@@ -1437,7 +1465,7 @@ void FUN_10000528(void)
 }
 
 /* Address: 0x10000540 Size: 24 bytes */
-void FUN_10000540(void)
+void FUN_10000540()
 
 {
 
@@ -1446,7 +1474,7 @@ void FUN_10000540(void)
 }
 
 /* Address: 0x10000558 Size: 24 bytes */
-void FUN_10000558(void)
+void FUN_10000558()
 
 {
 
@@ -1455,7 +1483,7 @@ void FUN_10000558(void)
 }
 
 /* Address: 0x10000570 Size: 24 bytes */
-void FUN_10000570(void)
+void FUN_10000570()
 
 {
 
@@ -1464,7 +1492,7 @@ void FUN_10000570(void)
 }
 
 /* Address: 0x10000588 Size: 24 bytes */
-void FUN_10000588(void)
+void FUN_10000588()
 
 {
 
@@ -1473,7 +1501,7 @@ void FUN_10000588(void)
 }
 
 /* Address: 0x100005a0 Size: 24 bytes */
-void FUN_100005a0(void)
+void FUN_100005a0()
 
 {
 
@@ -1482,7 +1510,7 @@ void FUN_100005a0(void)
 }
 
 /* Address: 0x100005b8 Size: 24 bytes */
-void FUN_100005b8(void)
+void FUN_100005b8()
 
 {
 
@@ -1491,7 +1519,7 @@ void FUN_100005b8(void)
 }
 
 /* Address: 0x100005d0 Size: 24 bytes */
-void FUN_100005d0(void)
+void FUN_100005d0()
 
 {
 
@@ -1500,7 +1528,7 @@ void FUN_100005d0(void)
 }
 
 /* Address: 0x100005e8 Size: 24 bytes */
-void FUN_100005e8(void)
+void FUN_100005e8()
 
 {
 
@@ -1509,7 +1537,7 @@ void FUN_100005e8(void)
 }
 
 /* Address: 0x10000600 Size: 24 bytes */
-void FUN_10000600(void)
+void FUN_10000600()
 
 {
 
@@ -1518,7 +1546,7 @@ void FUN_10000600(void)
 }
 
 /* Address: 0x10000618 Size: 24 bytes */
-void FUN_10000618(void)
+void FUN_10000618()
 
 {
 
@@ -1527,7 +1555,7 @@ void FUN_10000618(void)
 }
 
 /* Address: 0x10000630 Size: 24 bytes */
-void FUN_10000630(void)
+void FUN_10000630()
 
 {
 
@@ -1536,7 +1564,7 @@ void FUN_10000630(void)
 }
 
 /* Address: 0x10000648 Size: 24 bytes */
-void FUN_10000648(void)
+void FUN_10000648()
 
 {
 
@@ -1545,7 +1573,7 @@ void FUN_10000648(void)
 }
 
 /* Address: 0x10000660 Size: 24 bytes */
-void FUN_10000660(void)
+void FUN_10000660()
 
 {
 
@@ -1554,7 +1582,7 @@ void FUN_10000660(void)
 }
 
 /* Address: 0x10000690 Size: 24 bytes */
-void FUN_10000690(void)
+void FUN_10000690()
 
 {
 
@@ -1563,7 +1591,7 @@ void FUN_10000690(void)
 }
 
 /* Address: 0x100006c0 Size: 24 bytes */
-void FUN_100006c0(void)
+void FUN_100006c0()
 
 {
 
@@ -1571,11 +1599,17 @@ void FUN_100006c0(void)
   return;
 }
 
-/* FUN_10000708 defined elsewhere */
+/* Address: 0x10000708 Size: 24 bytes */
+void FUN_10000708()
 
+{
+
+  ((void (*)())*puRam101156c4)();
+  return;
+}
 
 /* Address: 0x10000720 Size: 24 bytes */
-void FUN_10000720(void)
+void FUN_10000720()
 
 {
 
@@ -1584,7 +1618,7 @@ void FUN_10000720(void)
 }
 
 /* Address: 0x10000738 Size: 24 bytes */
-void FUN_10000738(void)
+void FUN_10000738()
 
 {
 
@@ -1593,7 +1627,7 @@ void FUN_10000738(void)
 }
 
 /* Address: 0x10000750 Size: 24 bytes */
-void FUN_10000750(void)
+void FUN_10000750()
 
 {
 
@@ -1602,7 +1636,7 @@ void FUN_10000750(void)
 }
 
 /* Address: 0x10000768 Size: 24 bytes */
-void FUN_10000768(void)
+void FUN_10000768()
 
 {
 
@@ -1611,7 +1645,7 @@ void FUN_10000768(void)
 }
 
 /* Address: 0x10000780 Size: 24 bytes */
-void FUN_10000780(void)
+void FUN_10000780()
 
 {
 
@@ -1620,7 +1654,7 @@ void FUN_10000780(void)
 }
 
 /* Address: 0x10000798 Size: 24 bytes */
-void FUN_10000798(void)
+void FUN_10000798()
 
 {
 
@@ -1629,7 +1663,7 @@ void FUN_10000798(void)
 }
 
 /* Address: 0x100007b0 Size: 24 bytes */
-void FUN_100007b0(void)
+void FUN_100007b0()
 
 {
 
@@ -1638,7 +1672,7 @@ void FUN_100007b0(void)
 }
 
 /* Address: 0x100007c8 Size: 24 bytes */
-void FUN_100007c8(void)
+void FUN_100007c8()
 
 {
 
@@ -1647,7 +1681,7 @@ void FUN_100007c8(void)
 }
 
 /* Address: 0x100007e0 Size: 24 bytes */
-void FUN_100007e0(void)
+void FUN_100007e0()
 
 {
 
@@ -1656,7 +1690,7 @@ void FUN_100007e0(void)
 }
 
 /* Address: 0x100007f8 Size: 24 bytes */
-void FUN_100007f8(void)
+void FUN_100007f8()
 
 {
 
@@ -1665,7 +1699,7 @@ void FUN_100007f8(void)
 }
 
 /* Address: 0x10000810 Size: 24 bytes */
-void FUN_10000810(void)
+void FUN_10000810()
 
 {
 
@@ -1674,7 +1708,7 @@ void FUN_10000810(void)
 }
 
 /* Address: 0x10000828 Size: 24 bytes */
-void FUN_10000828(void)
+void FUN_10000828()
 
 {
 
@@ -1683,7 +1717,7 @@ void FUN_10000828(void)
 }
 
 /* Address: 0x10000840 Size: 24 bytes */
-void FUN_10000840(void)
+void FUN_10000840()
 
 {
 
@@ -1692,7 +1726,7 @@ void FUN_10000840(void)
 }
 
 /* Address: 0x10000858 Size: 24 bytes */
-void FUN_10000858(void)
+void FUN_10000858()
 
 {
 
@@ -1700,14 +1734,26 @@ void FUN_10000858(void)
   return;
 }
 
-/* FUN_10000870 defined elsewhere */
+/* Address: 0x10000870 Size: 24 bytes */
+void FUN_10000870()
 
+{
 
-/* FUN_10000888 defined elsewhere */
+  ((void (*)())*puRam1011563c)();
+  return;
+}
 
+/* Address: 0x10000888 Size: 24 bytes */
+void FUN_10000888()
+
+{
+
+  ((void (*)())*puRam10115640)();
+  return;
+}
 
 /* Address: 0x100008a0 Size: 24 bytes */
-void FUN_100008a0(void)
+void FUN_100008a0()
 
 {
 
@@ -1716,7 +1762,7 @@ void FUN_100008a0(void)
 }
 
 /* Address: 0x10000930 Size: 24 bytes */
-void FUN_10000930(void)
+void FUN_10000930()
 
 {
 
@@ -1725,7 +1771,7 @@ void FUN_10000930(void)
 }
 
 /* Address: 0x10000978 Size: 24 bytes */
-void FUN_10000978(void)
+void FUN_10000978()
 
 {
 
@@ -1734,7 +1780,7 @@ void FUN_10000978(void)
 }
 
 /* Address: 0x10000990 Size: 24 bytes */
-void FUN_10000990(void)
+void FUN_10000990()
 
 {
 
@@ -1743,7 +1789,7 @@ void FUN_10000990(void)
 }
 
 /* Address: 0x100009a8 Size: 24 bytes */
-void FUN_100009a8(void)
+void FUN_100009a8()
 
 {
 
@@ -1752,7 +1798,7 @@ void FUN_100009a8(void)
 }
 
 /* Address: 0x100009c0 Size: 24 bytes */
-void FUN_100009c0(void)
+void FUN_100009c0()
 
 {
 
@@ -1761,7 +1807,7 @@ void FUN_100009c0(void)
 }
 
 /* Address: 0x10000a20 Size: 24 bytes */
-void FUN_10000a20(void)
+void FUN_10000a20()
 
 {
 
@@ -1770,7 +1816,7 @@ void FUN_10000a20(void)
 }
 
 /* Address: 0x10000a38 Size: 24 bytes */
-void FUN_10000a38(void)
+void FUN_10000a38()
 
 {
 
@@ -1779,7 +1825,7 @@ void FUN_10000a38(void)
 }
 
 /* Address: 0x10000a50 Size: 24 bytes */
-void FUN_10000a50(void)
+void FUN_10000a50()
 
 {
 
@@ -1788,7 +1834,7 @@ void FUN_10000a50(void)
 }
 
 /* Address: 0x10000a68 Size: 24 bytes */
-void FUN_10000a68(void)
+void FUN_10000a68()
 
 {
 
@@ -1797,7 +1843,7 @@ void FUN_10000a68(void)
 }
 
 /* Address: 0x10000a80 Size: 24 bytes */
-void FUN_10000a80(void)
+void FUN_10000a80()
 
 {
 
@@ -1806,7 +1852,7 @@ void FUN_10000a80(void)
 }
 
 /* Address: 0x10000ab0 Size: 24 bytes */
-void FUN_10000ab0(void)
+void FUN_10000ab0()
 
 {
 
@@ -1815,7 +1861,7 @@ void FUN_10000ab0(void)
 }
 
 /* Address: 0x10000ac8 Size: 24 bytes */
-void FUN_10000ac8(void)
+void FUN_10000ac8()
 
 {
 
@@ -1824,7 +1870,7 @@ void FUN_10000ac8(void)
 }
 
 /* Address: 0x10000ae0 Size: 24 bytes */
-void FUN_10000ae0(void)
+void FUN_10000ae0()
 
 {
 
@@ -1833,7 +1879,7 @@ void FUN_10000ae0(void)
 }
 
 /* Address: 0x10000af8 Size: 24 bytes */
-void FUN_10000af8(void)
+void FUN_10000af8()
 
 {
 
@@ -1842,7 +1888,7 @@ void FUN_10000af8(void)
 }
 
 /* Address: 0x10000b10 Size: 24 bytes */
-void FUN_10000b10(void)
+void FUN_10000b10()
 
 {
 
@@ -1851,7 +1897,7 @@ void FUN_10000b10(void)
 }
 
 /* Address: 0x10000b28 Size: 24 bytes */
-void FUN_10000b28(void)
+void FUN_10000b28()
 
 {
 
@@ -1860,7 +1906,7 @@ void FUN_10000b28(void)
 }
 
 /* Address: 0x10000b40 Size: 24 bytes */
-void FUN_10000b40(void)
+void FUN_10000b40()
 
 {
 
@@ -1869,7 +1915,7 @@ void FUN_10000b40(void)
 }
 
 /* Address: 0x10000b58 Size: 24 bytes */
-void FUN_10000b58(void)
+void FUN_10000b58()
 
 {
 
@@ -1877,11 +1923,17 @@ void FUN_10000b58(void)
   return;
 }
 
-/* FUN_10000b70 defined elsewhere */
+/* Address: 0x10000b70 Size: 24 bytes */
+void FUN_10000b70()
 
+{
+
+  ((void (*)())*puRam10115844)();
+  return;
+}
 
 /* Address: 0x10000b88 Size: 24 bytes */
-void FUN_10000b88(void)
+void FUN_10000b88()
 
 {
 
@@ -1890,7 +1942,7 @@ void FUN_10000b88(void)
 }
 
 /* Address: 0x10000ba0 Size: 24 bytes */
-void FUN_10000ba0(void)
+void FUN_10000ba0()
 
 {
 
@@ -1899,7 +1951,7 @@ void FUN_10000ba0(void)
 }
 
 /* Address: 0x10000bb8 Size: 24 bytes */
-void FUN_10000bb8(void)
+void FUN_10000bb8()
 
 {
 
@@ -1908,7 +1960,7 @@ void FUN_10000bb8(void)
 }
 
 /* Address: 0x10000bd0 Size: 24 bytes */
-void FUN_10000bd0(void)
+void FUN_10000bd0()
 
 {
 
@@ -1917,7 +1969,7 @@ void FUN_10000bd0(void)
 }
 
 /* Address: 0x10000be8 Size: 24 bytes */
-void FUN_10000be8(void)
+void FUN_10000be8()
 
 {
 
@@ -1926,7 +1978,7 @@ void FUN_10000be8(void)
 }
 
 /* Address: 0x10000c00 Size: 24 bytes */
-void FUN_10000c00(void)
+void FUN_10000c00()
 
 {
 
@@ -1935,7 +1987,7 @@ void FUN_10000c00(void)
 }
 
 /* Address: 0x10000c18 Size: 24 bytes */
-void FUN_10000c18(void)
+void FUN_10000c18()
 
 {
 
@@ -1944,7 +1996,7 @@ void FUN_10000c18(void)
 }
 
 /* Address: 0x10000c30 Size: 24 bytes */
-void FUN_10000c30(void)
+void FUN_10000c30()
 
 {
 
@@ -1953,7 +2005,7 @@ void FUN_10000c30(void)
 }
 
 /* Address: 0x10000c48 Size: 24 bytes */
-void FUN_10000c48(void)
+void FUN_10000c48()
 
 {
 
@@ -1962,7 +2014,7 @@ void FUN_10000c48(void)
 }
 
 /* Address: 0x10000c78 Size: 24 bytes */
-void FUN_10000c78(void)
+void FUN_10000c78()
 
 {
 
@@ -1971,7 +2023,7 @@ void FUN_10000c78(void)
 }
 
 /* Address: 0x10000ca8 Size: 24 bytes */
-void FUN_10000ca8(void)
+void FUN_10000ca8()
 
 {
 
@@ -1980,7 +2032,7 @@ void FUN_10000ca8(void)
 }
 
 /* Address: 0x10000cc0 Size: 24 bytes */
-void FUN_10000cc0(void)
+void FUN_10000cc0()
 
 {
 
@@ -1989,7 +2041,7 @@ void FUN_10000cc0(void)
 }
 
 /* Address: 0x10000cd8 Size: 24 bytes */
-void FUN_10000cd8(void)
+void FUN_10000cd8()
 
 {
 
@@ -1998,7 +2050,7 @@ void FUN_10000cd8(void)
 }
 
 /* Address: 0x10000cf0 Size: 24 bytes */
-void FUN_10000cf0(void)
+void FUN_10000cf0()
 
 {
 
@@ -2007,7 +2059,7 @@ void FUN_10000cf0(void)
 }
 
 /* Address: 0x10000d08 Size: 24 bytes */
-void FUN_10000d08(void)
+void FUN_10000d08()
 
 {
 
@@ -2016,7 +2068,7 @@ void FUN_10000d08(void)
 }
 
 /* Address: 0x10000d20 Size: 24 bytes */
-void FUN_10000d20(void)
+void FUN_10000d20()
 
 {
 
@@ -2025,7 +2077,7 @@ void FUN_10000d20(void)
 }
 
 /* Address: 0x10000d38 Size: 24 bytes */
-void FUN_10000d38(void)
+void FUN_10000d38()
 
 {
 
@@ -2034,7 +2086,7 @@ void FUN_10000d38(void)
 }
 
 /* Address: 0x10000d50 Size: 24 bytes */
-void FUN_10000d50(void)
+void FUN_10000d50()
 
 {
 
@@ -2043,7 +2095,7 @@ void FUN_10000d50(void)
 }
 
 /* Address: 0x10000d68 Size: 24 bytes */
-void FUN_10000d68(void)
+void FUN_10000d68()
 
 {
 
@@ -2052,7 +2104,7 @@ void FUN_10000d68(void)
 }
 
 /* Address: 0x10000d80 Size: 24 bytes */
-void FUN_10000d80(void)
+void FUN_10000d80()
 
 {
 
@@ -2061,7 +2113,7 @@ void FUN_10000d80(void)
 }
 
 /* Address: 0x10000d98 Size: 24 bytes */
-void FUN_10000d98(void)
+void FUN_10000d98()
 
 {
 
@@ -2070,7 +2122,7 @@ void FUN_10000d98(void)
 }
 
 /* Address: 0x10000db0 Size: 24 bytes */
-void FUN_10000db0(void)
+void FUN_10000db0()
 
 {
 
@@ -2079,7 +2131,7 @@ void FUN_10000db0(void)
 }
 
 /* Address: 0x10000dc8 Size: 24 bytes */
-void FUN_10000dc8(void)
+void FUN_10000dc8()
 
 {
 
@@ -2088,7 +2140,7 @@ void FUN_10000dc8(void)
 }
 
 /* Address: 0x10000de0 Size: 24 bytes */
-void FUN_10000de0(void)
+void FUN_10000de0()
 
 {
 
@@ -2097,7 +2149,7 @@ void FUN_10000de0(void)
 }
 
 /* Address: 0x10000df8 Size: 24 bytes */
-void FUN_10000df8(void)
+void FUN_10000df8()
 
 {
 
@@ -2106,7 +2158,7 @@ void FUN_10000df8(void)
 }
 
 /* Address: 0x10000e10 Size: 24 bytes */
-void FUN_10000e10(void)
+void FUN_10000e10()
 
 {
 
@@ -2115,7 +2167,7 @@ void FUN_10000e10(void)
 }
 
 /* Address: 0x10000e28 Size: 24 bytes */
-void FUN_10000e28(void)
+void FUN_10000e28()
 
 {
 
@@ -2124,7 +2176,7 @@ void FUN_10000e28(void)
 }
 
 /* Address: 0x10000e40 Size: 24 bytes */
-void FUN_10000e40(void)
+void FUN_10000e40()
 
 {
 
@@ -2133,7 +2185,7 @@ void FUN_10000e40(void)
 }
 
 /* Address: 0x10000e58 Size: 24 bytes */
-void FUN_10000e58(void)
+void FUN_10000e58()
 
 {
 
@@ -2142,7 +2194,7 @@ void FUN_10000e58(void)
 }
 
 /* Address: 0x10000e70 Size: 24 bytes */
-void FUN_10000e70(void)
+void FUN_10000e70()
 
 {
 
@@ -2151,7 +2203,7 @@ void FUN_10000e70(void)
 }
 
 /* Address: 0x10000e88 Size: 24 bytes */
-void FUN_10000e88(void)
+void FUN_10000e88()
 
 {
 
@@ -2160,7 +2212,7 @@ void FUN_10000e88(void)
 }
 
 /* Address: 0x10000ea0 Size: 24 bytes */
-void FUN_10000ea0(void)
+void FUN_10000ea0()
 
 {
 
@@ -2169,7 +2221,7 @@ void FUN_10000ea0(void)
 }
 
 /* Address: 0x10000eb8 Size: 24 bytes */
-void FUN_10000eb8(void)
+void FUN_10000eb8()
 
 {
 
@@ -2178,7 +2230,7 @@ void FUN_10000eb8(void)
 }
 
 /* Address: 0x10000ed0 Size: 24 bytes */
-void FUN_10000ed0(void)
+void FUN_10000ed0()
 
 {
 
@@ -2187,7 +2239,7 @@ void FUN_10000ed0(void)
 }
 
 /* Address: 0x10000ee8 Size: 24 bytes */
-void FUN_10000ee8(void)
+void FUN_10000ee8()
 
 {
 
@@ -2196,7 +2248,7 @@ void FUN_10000ee8(void)
 }
 
 /* Address: 0x10000f00 Size: 24 bytes */
-void FUN_10000f00(void)
+void FUN_10000f00()
 
 {
 
@@ -2205,7 +2257,7 @@ void FUN_10000f00(void)
 }
 
 /* Address: 0x10000f18 Size: 24 bytes */
-void FUN_10000f18(void)
+void FUN_10000f18()
 
 {
 
@@ -2214,7 +2266,7 @@ void FUN_10000f18(void)
 }
 
 /* Address: 0x10000f30 Size: 24 bytes */
-void FUN_10000f30(void)
+void FUN_10000f30()
 
 {
 
@@ -2223,7 +2275,7 @@ void FUN_10000f30(void)
 }
 
 /* Address: 0x10000f48 Size: 24 bytes */
-void FUN_10000f48(void)
+void FUN_10000f48()
 
 {
 
@@ -2232,7 +2284,7 @@ void FUN_10000f48(void)
 }
 
 /* Address: 0x10000f60 Size: 24 bytes */
-void FUN_10000f60(void)
+void FUN_10000f60()
 
 {
 
@@ -2241,7 +2293,7 @@ void FUN_10000f60(void)
 }
 
 /* Address: 0x10000f78 Size: 24 bytes */
-void FUN_10000f78(void)
+void FUN_10000f78()
 
 {
 
@@ -2250,7 +2302,7 @@ void FUN_10000f78(void)
 }
 
 /* Address: 0x10000f90 Size: 24 bytes */
-void FUN_10000f90(void)
+void FUN_10000f90()
 
 {
 
@@ -2259,7 +2311,7 @@ void FUN_10000f90(void)
 }
 
 /* Address: 0x10000fc0 Size: 24 bytes */
-void FUN_10000fc0(void)
+void FUN_10000fc0()
 
 {
 
@@ -2268,7 +2320,7 @@ void FUN_10000fc0(void)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_10000fd8(void) { }
+void FUN_10000fd8() { }
 
 
 
@@ -2278,7 +2330,7 @@ void FUN_10000fd8(void) { }
 
 
 /* Address: 0x10000ff0 Size: 24 bytes */
-void FUN_10000ff0(void)
+void FUN_10000ff0()
 
 {
 
@@ -2287,7 +2339,7 @@ void FUN_10000ff0(void)
 }
 
 /* Address: 0x10001008 Size: 24 bytes */
-void FUN_10001008(void)
+void FUN_10001008()
 
 {
 
@@ -2296,7 +2348,7 @@ void FUN_10001008(void)
 }
 
 /* Address: 0x10001020 Size: 24 bytes */
-void FUN_10001020(void)
+void FUN_10001020()
 
 {
 
@@ -2305,7 +2357,7 @@ void FUN_10001020(void)
 }
 
 /* Address: 0x10001038 Size: 24 bytes */
-void FUN_10001038(void)
+void FUN_10001038()
 
 {
 
@@ -2314,7 +2366,7 @@ void FUN_10001038(void)
 }
 
 /* Address: 0x10001050 Size: 24 bytes */
-void FUN_10001050(void)
+void FUN_10001050()
 
 {
 
@@ -2323,7 +2375,7 @@ void FUN_10001050(void)
 }
 
 /* Address: 0x10001068 Size: 24 bytes */
-void FUN_10001068(void)
+void FUN_10001068()
 
 {
 
@@ -2332,7 +2384,7 @@ void FUN_10001068(void)
 }
 
 /* Address: 0x10001080 Size: 24 bytes */
-void FUN_10001080(void)
+void FUN_10001080()
 
 {
 
@@ -2341,7 +2393,7 @@ void FUN_10001080(void)
 }
 
 /* Address: 0x10001098 Size: 24 bytes */
-void FUN_10001098(void)
+void FUN_10001098()
 
 {
 
@@ -2350,7 +2402,7 @@ void FUN_10001098(void)
 }
 
 /* Address: 0x100010b0 Size: 24 bytes */
-void FUN_100010b0(void)
+void FUN_100010b0()
 
 {
 
@@ -2359,7 +2411,7 @@ void FUN_100010b0(void)
 }
 
 /* Address: 0x100010c8 Size: 24 bytes */
-void FUN_100010c8(void)
+void FUN_100010c8()
 
 {
 
@@ -2368,7 +2420,7 @@ void FUN_100010c8(void)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100010e0(void) { }
+void FUN_100010e0() { }
 
 
 
@@ -2378,7 +2430,7 @@ void FUN_100010e0(void) { }
 
 
 /* Address: 0x100010f8 Size: 24 bytes */
-void FUN_100010f8(void)
+void FUN_100010f8()
 
 {
 
@@ -2387,7 +2439,7 @@ void FUN_100010f8(void)
 }
 
 /* Address: 0x10001110 Size: 24 bytes */
-void FUN_10001110(void)
+void FUN_10001110()
 
 {
 
@@ -2396,7 +2448,7 @@ void FUN_10001110(void)
 }
 
 /* Address: 0x10001128 Size: 24 bytes */
-void FUN_10001128(void)
+void FUN_10001128()
 
 {
 
@@ -2405,7 +2457,7 @@ void FUN_10001128(void)
 }
 
 /* Address: 0x10001140 Size: 24 bytes */
-void FUN_10001140(void)
+void FUN_10001140()
 
 {
 
@@ -2414,7 +2466,7 @@ void FUN_10001140(void)
 }
 
 /* Address: 0x10001158 Size: 24 bytes */
-void FUN_10001158(void)
+void FUN_10001158()
 
 {
 
@@ -2423,7 +2475,7 @@ void FUN_10001158(void)
 }
 
 /* Address: 0x10001188 Size: 24 bytes */
-void FUN_10001188(void)
+void FUN_10001188()
 
 {
 
@@ -2432,7 +2484,7 @@ void FUN_10001188(void)
 }
 
 /* Address: 0x100011a0 Size: 24 bytes */
-void FUN_100011a0(void)
+void FUN_100011a0()
 
 {
 
@@ -2441,7 +2493,7 @@ void FUN_100011a0(void)
 }
 
 /* Address: 0x100011b8 Size: 24 bytes */
-void FUN_100011b8(void)
+void FUN_100011b8()
 
 {
 
@@ -2450,7 +2502,7 @@ void FUN_100011b8(void)
 }
 
 /* Address: 0x100011d0 Size: 24 bytes */
-void FUN_100011d0(void)
+void FUN_100011d0()
 
 {
 
@@ -2459,7 +2511,7 @@ void FUN_100011d0(void)
 }
 
 /* Address: 0x100011e8 Size: 24 bytes */
-void FUN_100011e8(void)
+void FUN_100011e8()
 
 {
 
@@ -2468,7 +2520,7 @@ void FUN_100011e8(void)
 }
 
 /* Address: 0x10001200 Size: 24 bytes */
-void FUN_10001200(void)
+void FUN_10001200()
 
 {
 
@@ -2477,7 +2529,7 @@ void FUN_10001200(void)
 }
 
 /* Address: 0x10001218 Size: 24 bytes */
-void FUN_10001218(void)
+void FUN_10001218()
 
 {
 
@@ -2486,7 +2538,7 @@ void FUN_10001218(void)
 }
 
 /* Address: 0x10001230 Size: 24 bytes */
-void FUN_10001230(void)
+void FUN_10001230()
 
 {
 
@@ -2495,7 +2547,7 @@ void FUN_10001230(void)
 }
 
 /* Address: 0x10001248 Size: 24 bytes */
-void FUN_10001248(void)
+void FUN_10001248()
 
 {
 
@@ -2504,7 +2556,7 @@ void FUN_10001248(void)
 }
 
 /* Address: 0x10001260 Size: 24 bytes */
-void FUN_10001260(void)
+void FUN_10001260()
 
 {
 
@@ -2513,7 +2565,7 @@ void FUN_10001260(void)
 }
 
 /* Address: 0x10001278 Size: 24 bytes */
-void FUN_10001278(void)
+void FUN_10001278()
 
 {
 
@@ -2521,11 +2573,17 @@ void FUN_10001278(void)
   return;
 }
 
-/* FUN_10001290 defined elsewhere */
+/* Address: 0x10001290 Size: 24 bytes */
+void FUN_10001290()
 
+{
+
+  ((void (*)())*puRam10115658)();
+  return;
+}
 
 /* Address: 0x100012a8 Size: 24 bytes */
-void FUN_100012a8(void)
+void FUN_100012a8()
 
 {
 
@@ -2534,7 +2592,7 @@ void FUN_100012a8(void)
 }
 
 /* Address: 0x10001308 Size: 24 bytes */
-void FUN_10001308(void)
+void FUN_10001308()
 
 {
 
@@ -2543,7 +2601,7 @@ void FUN_10001308(void)
 }
 
 /* Address: 0x10001320 Size: 24 bytes */
-void FUN_10001320(void)
+void FUN_10001320()
 
 {
 
@@ -2552,7 +2610,7 @@ void FUN_10001320(void)
 }
 
 /* Address: 0x10001350 Size: 24 bytes */
-void FUN_10001350(void)
+void FUN_10001350()
 
 {
 
@@ -2561,7 +2619,7 @@ void FUN_10001350(void)
 }
 
 /* Address: 0x10001368 Size: 24 bytes */
-void FUN_10001368(void)
+void FUN_10001368()
 
 {
 
@@ -2570,7 +2628,7 @@ void FUN_10001368(void)
 }
 
 /* Address: 0x10001380 Size: 24 bytes */
-void FUN_10001380(void)
+void FUN_10001380()
 
 {
 
@@ -2579,7 +2637,7 @@ void FUN_10001380(void)
 }
 
 /* Address: 0x10001398 Size: 24 bytes */
-void FUN_10001398(void)
+void FUN_10001398()
 
 {
 
@@ -2588,7 +2646,7 @@ void FUN_10001398(void)
 }
 
 /* Address: 0x100014e8 Size: 24 bytes */
-void FUN_100014e8(void)
+void FUN_100014e8()
 
 {
 
@@ -2597,7 +2655,7 @@ void FUN_100014e8(void)
 }
 
 /* Address: 0x10001500 Size: 24 bytes */
-void FUN_10001500(void)
+void FUN_10001500()
 
 {
 
@@ -2606,7 +2664,7 @@ void FUN_10001500(void)
 }
 
 /* Address: 0x10001518 Size: 24 bytes */
-void FUN_10001518(void)
+void FUN_10001518()
 
 {
 
@@ -2615,7 +2673,7 @@ void FUN_10001518(void)
 }
 
 /* Address: 0x10001530 Size: 24 bytes */
-void FUN_10001530(void)
+void FUN_10001530()
 
 {
 
@@ -2624,7 +2682,7 @@ void FUN_10001530(void)
 }
 
 /* Address: 0x10001548 Size: 24 bytes */
-void FUN_10001548(void)
+void FUN_10001548()
 
 {
 
@@ -2633,7 +2691,7 @@ void FUN_10001548(void)
 }
 
 /* Address: 0x10001560 Size: 24 bytes */
-void FUN_10001560(void)
+void FUN_10001560()
 
 {
 
@@ -2642,7 +2700,7 @@ void FUN_10001560(void)
 }
 
 /* Address: 0x10001578 Size: 24 bytes */
-void FUN_10001578(void)
+void FUN_10001578()
 
 {
 
@@ -2651,7 +2709,7 @@ void FUN_10001578(void)
 }
 
 /* Address: 0x100015c0 Size: 24 bytes */
-void FUN_100015c0(void)
+void FUN_100015c0()
 
 {
 
@@ -2660,7 +2718,7 @@ void FUN_100015c0(void)
 }
 
 /* Address: 0x100015d8 Size: 24 bytes */
-void FUN_100015d8(void)
+void FUN_100015d8()
 
 {
 
@@ -2669,7 +2727,7 @@ void FUN_100015d8(void)
 }
 
 /* Address: 0x100015f0 Size: 24 bytes */
-void FUN_100015f0(void)
+void FUN_100015f0()
 
 {
 
@@ -2678,7 +2736,7 @@ void FUN_100015f0(void)
 }
 
 /* Address: 0x10001608 Size: 24 bytes */
-void FUN_10001608(void)
+void FUN_10001608()
 
 {
 
@@ -2687,7 +2745,7 @@ void FUN_10001608(void)
 }
 
 /* Address: 0x10001620 Size: 24 bytes */
-void FUN_10001620(void)
+void FUN_10001620()
 
 {
 
@@ -2696,7 +2754,7 @@ void FUN_10001620(void)
 }
 
 /* Address: 0x10001650 Size: 24 bytes */
-void FUN_10001650(void)
+void FUN_10001650()
 
 {
 
@@ -2705,7 +2763,7 @@ void FUN_10001650(void)
 }
 
 /* Address: 0x10001668 Size: 24 bytes */
-void FUN_10001668(void)
+void FUN_10001668()
 
 {
 
@@ -2714,7 +2772,7 @@ void FUN_10001668(void)
 }
 
 /* Address: 0x100016c8 Size: 24 bytes */
-void FUN_100016c8(void)
+void FUN_100016c8()
 
 {
 
@@ -2723,7 +2781,7 @@ void FUN_100016c8(void)
 }
 
 /* Address: 0x100016e0 Size: 24 bytes */
-void FUN_100016e0(void)
+void FUN_100016e0()
 
 {
 
@@ -2732,7 +2790,7 @@ void FUN_100016e0(void)
 }
 
 /* Address: 0x10001710 Size: 24 bytes */
-void FUN_10001710(void)
+void FUN_10001710()
 
 {
 
@@ -2741,7 +2799,7 @@ void FUN_10001710(void)
 }
 
 /* Address: 0x10001740 Size: 24 bytes */
-void FUN_10001740(void)
+void FUN_10001740()
 
 {
 
@@ -2750,7 +2808,7 @@ void FUN_10001740(void)
 }
 
 /* Address: 0x10001770 Size: 24 bytes */
-void FUN_10001770(void)
+void FUN_10001770()
 
 {
 
@@ -2759,7 +2817,7 @@ void FUN_10001770(void)
 }
 
 /* Address: 0x100017a0 Size: 24 bytes */
-void FUN_100017a0(void)
+void FUN_100017a0()
 
 {
 
@@ -2768,7 +2826,7 @@ void FUN_100017a0(void)
 }
 
 /* Address: 0x100017b8 Size: 24 bytes */
-void FUN_100017b8(void)
+void FUN_100017b8()
 
 {
 
@@ -2777,7 +2835,7 @@ void FUN_100017b8(void)
 }
 
 /* Address: 0x100017d0 Size: 24 bytes */
-void FUN_100017d0(void)
+void FUN_100017d0()
 
 {
 
@@ -2786,7 +2844,7 @@ void FUN_100017d0(void)
 }
 
 /* Address: 0x100017e8 Size: 24 bytes */
-void FUN_100017e8(void)
+void FUN_100017e8()
 
 {
 
@@ -2795,7 +2853,7 @@ void FUN_100017e8(void)
 }
 
 /* Address: 0x10001800 Size: 24 bytes */
-void FUN_10001800(void)
+void FUN_10001800()
 
 {
 
@@ -2804,7 +2862,7 @@ void FUN_10001800(void)
 }
 
 /* Address: 0x10001830 Size: 24 bytes */
-void FUN_10001830(void)
+void FUN_10001830()
 
 {
 
@@ -2813,7 +2871,7 @@ void FUN_10001830(void)
 }
 
 /* Address: 0x10001848 Size: 24 bytes */
-void FUN_10001848(void)
+void FUN_10001848()
 
 {
 
@@ -2822,7 +2880,7 @@ void FUN_10001848(void)
 }
 
 /* Address: 0x10001878 Size: 24 bytes */
-void FUN_10001878(void)
+void FUN_10001878()
 
 {
 
@@ -2831,7 +2889,7 @@ void FUN_10001878(void)
 }
 
 /* Address: 0x10001890 Size: 24 bytes */
-void FUN_10001890(void)
+void FUN_10001890()
 
 {
 
@@ -2840,7 +2898,7 @@ void FUN_10001890(void)
 }
 
 /* Address: 0x100018d8 Size: 24 bytes */
-void FUN_100018d8(void)
+void FUN_100018d8()
 
 {
 
@@ -2849,7 +2907,7 @@ void FUN_100018d8(void)
 }
 
 /* Address: 0x10001938 Size: 24 bytes */
-void FUN_10001938(void)
+void FUN_10001938()
 
 {
 
@@ -2858,7 +2916,7 @@ void FUN_10001938(void)
 }
 
 /* Address: 0x10001950 Size: 24 bytes */
-void FUN_10001950(void)
+void FUN_10001950()
 
 {
 
@@ -2867,7 +2925,7 @@ void FUN_10001950(void)
 }
 
 /* Address: 0x10001968 Size: 24 bytes */
-void FUN_10001968(void)
+void FUN_10001968()
 
 {
 
@@ -2876,7 +2934,7 @@ void FUN_10001968(void)
 }
 
 /* Address: 0x10001980 Size: 24 bytes */
-void FUN_10001980(void)
+void FUN_10001980()
 
 {
 
@@ -2885,7 +2943,7 @@ void FUN_10001980(void)
 }
 
 /* Address: 0x10001998 Size: 24 bytes */
-void FUN_10001998(void)
+void FUN_10001998()
 
 {
 
@@ -2893,11 +2951,17 @@ void FUN_10001998(void)
   return;
 }
 
-/* FUN_100019c8 defined elsewhere */
+/* Address: 0x100019c8 Size: 24 bytes */
+void FUN_100019c8()
 
+{
+
+  ((void (*)())*puRam10115768)();
+  return;
+}
 
 /* Address: 0x100019e0 Size: 24 bytes */
-void FUN_100019e0(void)
+void FUN_100019e0()
 
 {
 
@@ -2906,7 +2970,7 @@ void FUN_100019e0(void)
 }
 
 /* Address: 0x10001a10 Size: 24 bytes */
-void FUN_10001a10(void)
+void FUN_10001a10()
 
 {
 
@@ -2915,7 +2979,7 @@ void FUN_10001a10(void)
 }
 
 /* Address: 0x10001a28 Size: 24 bytes */
-void FUN_10001a28(void)
+void FUN_10001a28()
 
 {
 
@@ -2924,7 +2988,7 @@ void FUN_10001a28(void)
 }
 
 /* Address: 0x10001a40 Size: 24 bytes */
-void FUN_10001a40(void)
+void FUN_10001a40()
 
 {
 
@@ -2933,7 +2997,7 @@ void FUN_10001a40(void)
 }
 
 /* Address: 0x10001a58 Size: 24 bytes */
-void FUN_10001a58(void)
+void FUN_10001a58()
 
 {
 
@@ -2941,11 +3005,17 @@ void FUN_10001a58(void)
   return;
 }
 
-/* FUN_10001a70 defined elsewhere */
+/* Address: 0x10001a70 Size: 24 bytes */
+void FUN_10001a70()
 
+{
+
+  ((void (*)())*puRam10115708)();
+  return;
+}
 
 /* Address: 0x10001aa0 Size: 24 bytes */
-void FUN_10001aa0(void)
+void FUN_10001aa0()
 
 {
 
@@ -2954,7 +3024,7 @@ void FUN_10001aa0(void)
 }
 
 /* Address: 0x10001ab8 Size: 24 bytes */
-void FUN_10001ab8(void)
+void FUN_10001ab8()
 
 {
 
@@ -2963,7 +3033,7 @@ void FUN_10001ab8(void)
 }
 
 /* Address: 0x10001ae8 Size: 24 bytes */
-void FUN_10001ae8(void)
+void FUN_10001ae8()
 
 {
 
@@ -2971,11 +3041,17 @@ void FUN_10001ae8(void)
   return;
 }
 
-/* FUN_10001b18 defined elsewhere */
+/* Address: 0x10001b18 Size: 24 bytes */
+void FUN_10001b18()
 
+{
+
+  ((void (*)())*puRam10115808)();
+  return;
+}
 
 /* Address: 0x10001b48 Size: 24 bytes */
-void FUN_10001b48(void)
+void FUN_10001b48()
 
 {
 
@@ -2984,7 +3060,7 @@ void FUN_10001b48(void)
 }
 
 /* Address: 0x10001b78 Size: 24 bytes */
-void FUN_10001b78(void)
+void FUN_10001b78()
 
 {
 
@@ -2993,7 +3069,7 @@ void FUN_10001b78(void)
 }
 
 /* Address: 0x10001b90 Size: 24 bytes */
-void FUN_10001b90(void)
+void FUN_10001b90()
 
 {
 
@@ -3002,7 +3078,7 @@ void FUN_10001b90(void)
 }
 
 /* Address: 0x10001ba8 Size: 24 bytes */
-void FUN_10001ba8(void)
+void FUN_10001ba8()
 
 {
 
@@ -3011,7 +3087,7 @@ void FUN_10001ba8(void)
 }
 
 /* Address: 0x10001bc0 Size: 24 bytes */
-void FUN_10001bc0(void)
+void FUN_10001bc0()
 
 {
 
@@ -3020,7 +3096,7 @@ void FUN_10001bc0(void)
 }
 
 /* Address: 0x10001bf0 Size: 24 bytes */
-void FUN_10001bf0(void)
+void FUN_10001bf0()
 
 {
 
@@ -3029,7 +3105,7 @@ void FUN_10001bf0(void)
 }
 
 /* Address: 0x10001c08 Size: 24 bytes */
-void FUN_10001c08(void)
+void FUN_10001c08()
 
 {
 
@@ -3038,7 +3114,7 @@ void FUN_10001c08(void)
 }
 
 /* Address: 0x10001c38 Size: 24 bytes */
-void FUN_10001c38(void)
+void FUN_10001c38()
 
 {
 
@@ -3047,7 +3123,7 @@ void FUN_10001c38(void)
 }
 
 /* Address: 0x10001c50 Size: 24 bytes */
-void FUN_10001c50(void)
+void FUN_10001c50()
 
 {
 
@@ -3056,7 +3132,7 @@ void FUN_10001c50(void)
 }
 
 /* Address: 0x10001c68 Size: 24 bytes */
-void FUN_10001c68(void)
+void FUN_10001c68()
 
 {
 
@@ -3065,7 +3141,7 @@ void FUN_10001c68(void)
 }
 
 /* Address: 0x10001c80 Size: 24 bytes */
-void FUN_10001c80(void)
+void FUN_10001c80()
 
 {
 
@@ -3074,7 +3150,7 @@ void FUN_10001c80(void)
 }
 
 /* Address: 0x10001cb0 Size: 24 bytes */
-void FUN_10001cb0(void)
+void FUN_10001cb0()
 
 {
 
@@ -3083,7 +3159,7 @@ void FUN_10001cb0(void)
 }
 
 /* Address: 0x10001cc8 Size: 24 bytes */
-void FUN_10001cc8(void)
+void FUN_10001cc8()
 
 {
 
@@ -3092,7 +3168,7 @@ void FUN_10001cc8(void)
 }
 
 /* Address: 0x10001ce0 Size: 24 bytes */
-void FUN_10001ce0(void)
+void FUN_10001ce0()
 
 {
 
@@ -3101,7 +3177,7 @@ void FUN_10001ce0(void)
 }
 
 /* Address: 0x10001cf8 Size: 24 bytes */
-void FUN_10001cf8(void)
+void FUN_10001cf8()
 
 {
 
@@ -3110,7 +3186,7 @@ void FUN_10001cf8(void)
 }
 
 /* Address: 0x10001d10 Size: 24 bytes */
-void FUN_10001d10(void)
+void FUN_10001d10()
 
 {
 
@@ -3119,7 +3195,7 @@ void FUN_10001d10(void)
 }
 
 /* Address: 0x10001d40 Size: 24 bytes */
-void FUN_10001d40(void)
+void FUN_10001d40()
 
 {
 
@@ -3128,7 +3204,7 @@ void FUN_10001d40(void)
 }
 
 /* Address: 0x10001d88 Size: 24 bytes */
-void FUN_10001d88(void)
+void FUN_10001d88()
 
 {
 
@@ -3137,7 +3213,7 @@ void FUN_10001d88(void)
 }
 
 /* Address: 0x10001da0 Size: 24 bytes */
-void FUN_10001da0(void)
+void FUN_10001da0()
 
 {
 
@@ -3146,7 +3222,7 @@ void FUN_10001da0(void)
 }
 
 /* Address: 0x10001db8 Size: 24 bytes */
-void FUN_10001db8(void)
+void FUN_10001db8()
 
 {
 
@@ -3155,7 +3231,7 @@ void FUN_10001db8(void)
 }
 
 /* Address: 0x10001de8 Size: 24 bytes */
-void FUN_10001de8(void)
+void FUN_10001de8()
 
 {
 
@@ -3164,7 +3240,7 @@ void FUN_10001de8(void)
 }
 
 /* Address: 0x10001e00 Size: 24 bytes */
-void FUN_10001e00(void)
+void FUN_10001e00()
 
 {
 
@@ -3173,7 +3249,7 @@ void FUN_10001e00(void)
 }
 
 /* Address: 0x10001e18 Size: 24 bytes */
-void FUN_10001e18(void)
+void FUN_10001e18()
 
 {
 
@@ -3182,7 +3258,7 @@ void FUN_10001e18(void)
 }
 
 /* Address: 0x10001e30 Size: 24 bytes */
-void FUN_10001e30(void)
+void FUN_10001e30()
 
 {
 
@@ -3191,7 +3267,7 @@ void FUN_10001e30(void)
 }
 
 /* Address: 0x10001e48 Size: 24 bytes */
-void FUN_10001e48(void)
+void FUN_10001e48()
 
 {
 
@@ -3200,7 +3276,7 @@ void FUN_10001e48(void)
 }
 
 /* Address: 0x10001e60 Size: 24 bytes */
-void FUN_10001e60(void)
+void FUN_10001e60()
 
 {
 
@@ -3209,7 +3285,7 @@ void FUN_10001e60(void)
 }
 
 /* Address: 0x10001ea8 Size: 24 bytes */
-void FUN_10001ea8(void)
+void FUN_10001ea8()
 
 {
 
@@ -3218,7 +3294,7 @@ void FUN_10001ea8(void)
 }
 
 /* Address: 0x10001ec0 Size: 24 bytes */
-void FUN_10001ec0(void)
+void FUN_10001ec0()
 
 {
 
@@ -3227,7 +3303,7 @@ void FUN_10001ec0(void)
 }
 
 /* Address: 0x10001ed8 Size: 24 bytes */
-void FUN_10001ed8(void)
+void FUN_10001ed8()
 
 {
 
@@ -3236,7 +3312,7 @@ void FUN_10001ed8(void)
 }
 
 /* Address: 0x10001ef0 Size: 24 bytes */
-void FUN_10001ef0(void)
+void FUN_10001ef0()
 
 {
 
@@ -3245,7 +3321,7 @@ void FUN_10001ef0(void)
 }
 
 /* Address: 0x10001f08 Size: 24 bytes */
-void FUN_10001f08(void)
+void FUN_10001f08()
 
 {
 
@@ -3254,7 +3330,7 @@ void FUN_10001f08(void)
 }
 
 /* Address: 0x10001f20 Size: 24 bytes */
-void FUN_10001f20(void)
+void FUN_10001f20()
 
 {
 
@@ -3263,7 +3339,7 @@ void FUN_10001f20(void)
 }
 
 /* Address: 0x10001f38 Size: 24 bytes */
-void FUN_10001f38(void)
+void FUN_10001f38()
 
 {
 
@@ -3272,7 +3348,7 @@ void FUN_10001f38(void)
 }
 
 /* Address: 0x10001f68 Size: 24 bytes */
-void FUN_10001f68(void)
+void FUN_10001f68()
 
 {
 
@@ -3281,7 +3357,7 @@ void FUN_10001f68(void)
 }
 
 /* Address: 0x10001f80 Size: 24 bytes */
-void FUN_10001f80(void)
+void FUN_10001f80()
 
 {
 
@@ -3290,7 +3366,7 @@ void FUN_10001f80(void)
 }
 
 /* Address: 0x10001fb0 Size: 24 bytes */
-void FUN_10001fb0(void)
+void FUN_10001fb0()
 
 {
 
@@ -3299,7 +3375,7 @@ void FUN_10001fb0(void)
 }
 
 /* Address: 0x10001fc8 Size: 24 bytes */
-void FUN_10001fc8(void)
+void FUN_10001fc8()
 
 {
 
@@ -3308,7 +3384,7 @@ void FUN_10001fc8(void)
 }
 
 /* Address: 0x10001fe0 Size: 24 bytes */
-void FUN_10001fe0(void)
+void FUN_10001fe0()
 
 {
 
@@ -3317,7 +3393,7 @@ void FUN_10001fe0(void)
 }
 
 /* Address: 0x10001ff8 Size: 24 bytes */
-void FUN_10001ff8(void)
+void FUN_10001ff8()
 
 {
 
@@ -3326,7 +3402,7 @@ void FUN_10001ff8(void)
 }
 
 /* Address: 0x10002010 Size: 24 bytes */
-void FUN_10002010(void)
+void FUN_10002010()
 
 {
 
@@ -3335,7 +3411,7 @@ void FUN_10002010(void)
 }
 
 /* Address: 0x10002028 Size: 24 bytes */
-void FUN_10002028(void)
+void FUN_10002028()
 
 {
 
@@ -3344,7 +3420,7 @@ void FUN_10002028(void)
 }
 
 /* Address: 0x10002040 Size: 24 bytes */
-void FUN_10002040(void)
+void FUN_10002040()
 
 {
 
@@ -3353,7 +3429,7 @@ void FUN_10002040(void)
 }
 
 /* Address: 0x10002058 Size: 24 bytes */
-void FUN_10002058(void)
+void FUN_10002058()
 
 {
 
@@ -3362,7 +3438,7 @@ void FUN_10002058(void)
 }
 
 /* Address: 0x10002070 Size: 24 bytes */
-void FUN_10002070(void)
+void FUN_10002070()
 
 {
 
@@ -3371,7 +3447,7 @@ void FUN_10002070(void)
 }
 
 /* Address: 0x10002088 Size: 24 bytes */
-void FUN_10002088(void)
+void FUN_10002088()
 
 {
 
@@ -3380,7 +3456,7 @@ void FUN_10002088(void)
 }
 
 /* Address: 0x100020a0 Size: 24 bytes */
-void FUN_100020a0(void)
+void FUN_100020a0()
 
 {
 
@@ -3389,7 +3465,7 @@ void FUN_100020a0(void)
 }
 
 /* Address: 0x100020b8 Size: 24 bytes */
-void FUN_100020b8(void)
+void FUN_100020b8()
 
 {
 
@@ -3398,7 +3474,7 @@ void FUN_100020b8(void)
 }
 
 /* Address: 0x100020e8 Size: 24 bytes */
-void FUN_100020e8(void)
+void FUN_100020e8()
 
 {
 
@@ -3407,7 +3483,7 @@ void FUN_100020e8(void)
 }
 
 /* Address: 0x10002118 Size: 24 bytes */
-void FUN_10002118(void)
+void FUN_10002118()
 
 {
 
@@ -3416,7 +3492,7 @@ void FUN_10002118(void)
 }
 
 /* Address: 0x10002130 Size: 24 bytes */
-void FUN_10002130(void)
+void FUN_10002130()
 
 {
 
@@ -3425,7 +3501,7 @@ void FUN_10002130(void)
 }
 
 /* Address: 0x10002160 Size: 24 bytes */
-void FUN_10002160(void)
+void FUN_10002160()
 
 {
 
@@ -3434,7 +3510,7 @@ void FUN_10002160(void)
 }
 
 /* Address: 0x10002190 Size: 24 bytes */
-void FUN_10002190(void)
+void FUN_10002190()
 
 {
 
@@ -3443,7 +3519,7 @@ void FUN_10002190(void)
 }
 
 /* Address: 0x100021a8 Size: 24 bytes */
-void FUN_100021a8(void)
+void FUN_100021a8()
 
 {
 
@@ -3452,7 +3528,7 @@ void FUN_100021a8(void)
 }
 
 /* Address: 0x100021d8 Size: 24 bytes */
-void FUN_100021d8(void)
+void FUN_100021d8()
 
 {
 
@@ -3461,7 +3537,7 @@ void FUN_100021d8(void)
 }
 
 /* Address: 0x10002208 Size: 24 bytes */
-void FUN_10002208(void)
+void FUN_10002208()
 
 {
 
@@ -3470,7 +3546,7 @@ void FUN_10002208(void)
 }
 
 /* Address: 0x10002220 Size: 24 bytes */
-void FUN_10002220(void)
+void FUN_10002220()
 
 {
 
@@ -3479,7 +3555,7 @@ void FUN_10002220(void)
 }
 
 /* Address: 0x10002250 Size: 24 bytes */
-void FUN_10002250(void)
+void FUN_10002250()
 
 {
 
@@ -3488,7 +3564,7 @@ void FUN_10002250(void)
 }
 
 /* Address: 0x10002268 Size: 24 bytes */
-void FUN_10002268(void)
+void FUN_10002268()
 
 {
 
@@ -3497,7 +3573,7 @@ void FUN_10002268(void)
 }
 
 /* Address: 0x10002280 Size: 24 bytes */
-void FUN_10002280(void)
+void FUN_10002280()
 
 {
 
@@ -3506,7 +3582,7 @@ void FUN_10002280(void)
 }
 
 /* Address: 0x10002298 Size: 24 bytes */
-void FUN_10002298(void)
+void FUN_10002298()
 
 {
 
@@ -3515,7 +3591,7 @@ void FUN_10002298(void)
 }
 
 /* Address: 0x100022b0 Size: 24 bytes */
-void FUN_100022b0(void)
+void FUN_100022b0()
 
 {
 
@@ -3524,7 +3600,7 @@ void FUN_100022b0(void)
 }
 
 /* Address: 0x100022c8 Size: 24 bytes */
-void FUN_100022c8(void)
+void FUN_100022c8()
 
 {
 
@@ -3533,7 +3609,7 @@ void FUN_100022c8(void)
 }
 
 /* Address: 0x100022e0 Size: 24 bytes */
-void FUN_100022e0(void)
+void FUN_100022e0()
 
 {
 
@@ -3542,7 +3618,7 @@ void FUN_100022e0(void)
 }
 
 /* Address: 0x100022f8 Size: 24 bytes */
-void FUN_100022f8(void)
+void FUN_100022f8()
 
 {
 
@@ -3551,7 +3627,7 @@ void FUN_100022f8(void)
 }
 
 /* Address: 0x10002310 Size: 24 bytes */
-void FUN_10002310(void)
+void FUN_10002310()
 
 {
 
@@ -3560,7 +3636,7 @@ void FUN_10002310(void)
 }
 
 /* Address: 0x10002328 Size: 24 bytes */
-void FUN_10002328(void)
+void FUN_10002328()
 
 {
 
@@ -3569,7 +3645,7 @@ void FUN_10002328(void)
 }
 
 /* Address: 0x10002370 Size: 24 bytes */
-void FUN_10002370(void)
+void FUN_10002370()
 
 {
 
@@ -3578,7 +3654,7 @@ void FUN_10002370(void)
 }
 
 /* Address: 0x10002388 Size: 24 bytes */
-void FUN_10002388(void)
+void FUN_10002388()
 
 {
 
@@ -3587,7 +3663,7 @@ void FUN_10002388(void)
 }
 
 /* Address: 0x100023a0 Size: 24 bytes */
-void FUN_100023a0(void)
+void FUN_100023a0()
 
 {
 
@@ -3595,11 +3671,17 @@ void FUN_100023a0(void)
   return;
 }
 
-/* FUN_100023b8 defined elsewhere */
+/* Address: 0x100023b8 Size: 24 bytes */
+void FUN_100023b8()
 
+{
+
+  ((void (*)())*puRam10115b74)();
+  return;
+}
 
 /* Address: 0x100023d0 Size: 24 bytes */
-void FUN_100023d0(void)
+void FUN_100023d0()
 
 {
 
@@ -3608,7 +3690,7 @@ void FUN_100023d0(void)
 }
 
 /* Address: 0x100023e8 Size: 24 bytes */
-void FUN_100023e8(void)
+void FUN_100023e8()
 
 {
 
@@ -3617,7 +3699,7 @@ void FUN_100023e8(void)
 }
 
 /* Address: 0x10002418 Size: 24 bytes */
-void FUN_10002418(void)
+void FUN_10002418()
 
 {
 
@@ -3626,7 +3708,7 @@ void FUN_10002418(void)
 }
 
 /* Address: 0x10002430 Size: 24 bytes */
-void FUN_10002430(void)
+void FUN_10002430()
 
 {
 
@@ -3635,7 +3717,7 @@ void FUN_10002430(void)
 }
 
 /* Address: 0x10002448 Size: 24 bytes */
-void FUN_10002448(void)
+void FUN_10002448()
 
 {
 
@@ -3644,7 +3726,7 @@ void FUN_10002448(void)
 }
 
 /* Address: 0x10002460 Size: 24 bytes */
-void FUN_10002460(void)
+void FUN_10002460()
 
 {
 
@@ -3653,7 +3735,7 @@ void FUN_10002460(void)
 }
 
 /* Address: 0x10002478 Size: 24 bytes */
-void FUN_10002478(void)
+void FUN_10002478()
 
 {
 
@@ -3662,7 +3744,7 @@ void FUN_10002478(void)
 }
 
 /* Address: 0x10002490 Size: 24 bytes */
-void FUN_10002490(void)
+void FUN_10002490()
 
 {
 
@@ -3671,7 +3753,7 @@ void FUN_10002490(void)
 }
 
 /* Address: 0x100024a8 Size: 24 bytes */
-void FUN_100024a8(void)
+void FUN_100024a8()
 
 {
 
@@ -3680,7 +3762,7 @@ void FUN_100024a8(void)
 }
 
 /* Address: 0x100024c0 Size: 24 bytes */
-void FUN_100024c0(void)
+void FUN_100024c0()
 
 {
 
@@ -3689,7 +3771,7 @@ void FUN_100024c0(void)
 }
 
 /* Address: 0x100024d8 Size: 24 bytes */
-void FUN_100024d8(void)
+void FUN_100024d8()
 
 {
 
@@ -3698,7 +3780,7 @@ void FUN_100024d8(void)
 }
 
 /* Address: 0x100024f0 Size: 24 bytes */
-void FUN_100024f0(void)
+void FUN_100024f0()
 
 {
 
@@ -3707,7 +3789,7 @@ void FUN_100024f0(void)
 }
 
 /* Address: 0x10002508 Size: 24 bytes */
-void FUN_10002508(void)
+void FUN_10002508()
 
 {
 
@@ -3716,7 +3798,7 @@ void FUN_10002508(void)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_10002538(void) { }
+void FUN_10002538() { }
 
 
 
@@ -3726,7 +3808,7 @@ void FUN_10002538(void) { }
 
 
 /* Address: 0x10002550 Size: 24 bytes */
-void FUN_10002550(void)
+void FUN_10002550()
 
 {
 
@@ -3735,7 +3817,7 @@ void FUN_10002550(void)
 }
 
 /* Address: 0x10002580 Size: 24 bytes */
-void FUN_10002580(void)
+void FUN_10002580()
 
 {
 
@@ -3744,7 +3826,7 @@ void FUN_10002580(void)
 }
 
 /* Address: 0x100025c8 Size: 24 bytes */
-void FUN_100025c8(void)
+void FUN_100025c8()
 
 {
 
@@ -3753,7 +3835,7 @@ void FUN_100025c8(void)
 }
 
 /* Address: 0x100025e0 Size: 24 bytes */
-void FUN_100025e0(void)
+void FUN_100025e0()
 
 {
 
@@ -3762,7 +3844,7 @@ void FUN_100025e0(void)
 }
 
 /* Address: 0x100025f8 Size: 24 bytes */
-void FUN_100025f8(void)
+void FUN_100025f8()
 
 {
 
@@ -3771,7 +3853,7 @@ void FUN_100025f8(void)
 }
 
 /* Address: 0x10002610 Size: 24 bytes */
-void FUN_10002610(void)
+void FUN_10002610()
 
 {
 
@@ -3780,7 +3862,7 @@ void FUN_10002610(void)
 }
 
 /* Address: 0x10002628 Size: 24 bytes */
-void FUN_10002628(void)
+void FUN_10002628()
 
 {
 
@@ -3789,7 +3871,7 @@ void FUN_10002628(void)
 }
 
 /* Address: 0x10002640 Size: 24 bytes */
-void FUN_10002640(void)
+void FUN_10002640()
 
 {
 
@@ -3798,7 +3880,7 @@ void FUN_10002640(void)
 }
 
 /* Address: 0x10002658 Size: 24 bytes */
-void FUN_10002658(void)
+void FUN_10002658()
 
 {
 
@@ -3807,7 +3889,7 @@ void FUN_10002658(void)
 }
 
 /* Address: 0x10002670 Size: 24 bytes */
-void FUN_10002670(void)
+void FUN_10002670()
 
 {
 
@@ -3816,7 +3898,7 @@ void FUN_10002670(void)
 }
 
 /* Address: 0x10002688 Size: 24 bytes */
-void FUN_10002688(void)
+void FUN_10002688()
 
 {
 
@@ -3825,7 +3907,7 @@ void FUN_10002688(void)
 }
 
 /* Address: 0x100026a0 Size: 24 bytes */
-void FUN_100026a0(void)
+void FUN_100026a0()
 
 {
 
@@ -3834,7 +3916,7 @@ void FUN_100026a0(void)
 }
 
 /* Address: 0x100026e8 Size: 24 bytes */
-void FUN_100026e8(void)
+void FUN_100026e8()
 
 {
 
@@ -3843,7 +3925,7 @@ void FUN_100026e8(void)
 }
 
 /* Address: 0x10002700 Size: 24 bytes */
-void FUN_10002700(void)
+void FUN_10002700()
 
 {
 
@@ -3852,7 +3934,7 @@ void FUN_10002700(void)
 }
 
 /* Address: 0x10002718 Size: 24 bytes */
-void FUN_10002718(void)
+void FUN_10002718()
 
 {
 
@@ -3861,7 +3943,7 @@ void FUN_10002718(void)
 }
 
 /* Address: 0x10002730 Size: 24 bytes */
-void FUN_10002730(void)
+void FUN_10002730()
 
 {
 
@@ -3870,7 +3952,7 @@ void FUN_10002730(void)
 }
 
 /* Address: 0x10002748 Size: 24 bytes */
-void FUN_10002748(void)
+void FUN_10002748()
 
 {
 
@@ -3879,7 +3961,7 @@ void FUN_10002748(void)
 }
 
 /* Address: 0x10002760 Size: 24 bytes */
-void FUN_10002760(void)
+void FUN_10002760()
 
 {
 
@@ -3888,7 +3970,7 @@ void FUN_10002760(void)
 }
 
 /* Address: 0x10002778 Size: 24 bytes */
-void FUN_10002778(void)
+void FUN_10002778()
 
 {
 
@@ -3897,7 +3979,7 @@ void FUN_10002778(void)
 }
 
 /* Address: 0x100027a8 Size: 24 bytes */
-void FUN_100027a8(void)
+void FUN_100027a8()
 
 {
 
@@ -3906,7 +3988,7 @@ void FUN_100027a8(void)
 }
 
 /* Address: 0x100027c0 Size: 24 bytes */
-void FUN_100027c0(void)
+void FUN_100027c0()
 
 {
 
@@ -3915,7 +3997,7 @@ void FUN_100027c0(void)
 }
 
 /* Address: 0x100027d8 Size: 24 bytes */
-void FUN_100027d8(void)
+void FUN_100027d8()
 
 {
 
@@ -3924,7 +4006,7 @@ void FUN_100027d8(void)
 }
 
 /* Address: 0x100027f0 Size: 24 bytes */
-void FUN_100027f0(void)
+void FUN_100027f0()
 
 {
 
@@ -3933,7 +4015,7 @@ void FUN_100027f0(void)
 }
 
 /* Address: 0x10002808 Size: 24 bytes */
-void FUN_10002808(void)
+void FUN_10002808()
 
 {
 
@@ -3942,7 +4024,7 @@ void FUN_10002808(void)
 }
 
 /* Address: 0x10002820 Size: 24 bytes */
-void FUN_10002820(void)
+void FUN_10002820()
 
 {
 
@@ -3951,7 +4033,7 @@ void FUN_10002820(void)
 }
 
 /* Address: 0x10002838 Size: 24 bytes */
-void FUN_10002838(void)
+void FUN_10002838()
 
 {
 
@@ -3960,7 +4042,7 @@ void FUN_10002838(void)
 }
 
 /* Address: 0x10002850 Size: 24 bytes */
-void FUN_10002850(void)
+void FUN_10002850()
 
 {
 
@@ -3969,7 +4051,7 @@ void FUN_10002850(void)
 }
 
 /* Address: 0x10002868 Size: 24 bytes */
-void FUN_10002868(void)
+void FUN_10002868()
 
 {
 
@@ -3978,7 +4060,7 @@ void FUN_10002868(void)
 }
 
 /* Address: 0x10002880 Size: 24 bytes */
-void FUN_10002880(void)
+void FUN_10002880()
 
 {
 
@@ -3987,7 +4069,7 @@ void FUN_10002880(void)
 }
 
 /* Address: 0x10002898 Size: 24 bytes */
-void FUN_10002898(void)
+void FUN_10002898()
 
 {
 
@@ -3996,7 +4078,7 @@ void FUN_10002898(void)
 }
 
 /* Address: 0x100028b0 Size: 24 bytes */
-void FUN_100028b0(void)
+void FUN_100028b0()
 
 {
 
@@ -4005,7 +4087,7 @@ void FUN_100028b0(void)
 }
 
 /* Address: 0x100028c8 Size: 24 bytes */
-void FUN_100028c8(void)
+void FUN_100028c8()
 
 {
 
@@ -4014,7 +4096,7 @@ void FUN_100028c8(void)
 }
 
 /* Address: 0x100028e0 Size: 24 bytes */
-void FUN_100028e0(void)
+void FUN_100028e0()
 
 {
 
@@ -4023,7 +4105,7 @@ void FUN_100028e0(void)
 }
 
 /* Address: 0x100028f8 Size: 24 bytes */
-void FUN_100028f8(void)
+void FUN_100028f8()
 
 {
 
@@ -4032,7 +4114,7 @@ void FUN_100028f8(void)
 }
 
 /* Address: 0x10002910 Size: 24 bytes */
-void FUN_10002910(void)
+void FUN_10002910()
 
 {
 
@@ -4041,7 +4123,7 @@ void FUN_10002910(void)
 }
 
 /* Address: 0x10002928 Size: 24 bytes */
-void FUN_10002928(void)
+void FUN_10002928()
 
 {
 
@@ -4050,7 +4132,7 @@ void FUN_10002928(void)
 }
 
 /* Address: 0x10002940 Size: 24 bytes */
-void FUN_10002940(void)
+void FUN_10002940()
 
 {
 
@@ -4059,7 +4141,7 @@ void FUN_10002940(void)
 }
 
 /* Address: 0x10002958 Size: 24 bytes */
-void FUN_10002958(void)
+void FUN_10002958()
 
 {
 
@@ -4068,7 +4150,7 @@ void FUN_10002958(void)
 }
 
 /* Address: 0x10002988 Size: 24 bytes */
-void FUN_10002988(void)
+void FUN_10002988()
 
 {
 
@@ -4077,7 +4159,7 @@ void FUN_10002988(void)
 }
 
 /* Address: 0x100029a0 Size: 24 bytes */
-void FUN_100029a0(void)
+void FUN_100029a0()
 
 {
 
@@ -4086,7 +4168,7 @@ void FUN_100029a0(void)
 }
 
 /* Address: 0x100029b8 Size: 24 bytes */
-void FUN_100029b8(void)
+void FUN_100029b8()
 
 {
 
@@ -4095,7 +4177,7 @@ void FUN_100029b8(void)
 }
 
 /* Address: 0x100029d0 Size: 24 bytes */
-void FUN_100029d0(void)
+void FUN_100029d0()
 
 {
 
@@ -4104,7 +4186,7 @@ void FUN_100029d0(void)
 }
 
 /* Address: 0x100029e8 Size: 24 bytes */
-void FUN_100029e8(void)
+void FUN_100029e8()
 
 {
 
@@ -4113,7 +4195,7 @@ void FUN_100029e8(void)
 }
 
 /* Address: 0x10002a18 Size: 24 bytes */
-void FUN_10002a18(void)
+void FUN_10002a18()
 
 {
 
@@ -4122,7 +4204,7 @@ void FUN_10002a18(void)
 }
 
 /* Address: 0x10002a30 Size: 24 bytes */
-void FUN_10002a30(void)
+void FUN_10002a30()
 
 {
 
@@ -4131,7 +4213,7 @@ void FUN_10002a30(void)
 }
 
 /* Address: 0x10002a48 Size: 24 bytes */
-void FUN_10002a48(void)
+void FUN_10002a48()
 
 {
 
@@ -4140,7 +4222,7 @@ void FUN_10002a48(void)
 }
 
 /* Address: 0x10002a78 Size: 24 bytes */
-void FUN_10002a78(void)
+void FUN_10002a78()
 
 {
 
@@ -4149,7 +4231,7 @@ void FUN_10002a78(void)
 }
 
 /* Address: 0x10002a90 Size: 24 bytes */
-void FUN_10002a90(void)
+void FUN_10002a90()
 
 {
 
@@ -4158,7 +4240,7 @@ void FUN_10002a90(void)
 }
 
 /* Address: 0x10002aa8 Size: 24 bytes */
-void FUN_10002aa8(void)
+void FUN_10002aa8()
 
 {
 
@@ -4167,7 +4249,7 @@ void FUN_10002aa8(void)
 }
 
 /* Address: 0x10002ac0 Size: 24 bytes */
-void FUN_10002ac0(void)
+void FUN_10002ac0()
 
 {
 
@@ -4175,11 +4257,17 @@ void FUN_10002ac0(void)
   return;
 }
 
-/* FUN_10002ad8 defined elsewhere */
+/* Address: 0x10002ad8 Size: 24 bytes */
+void FUN_10002ad8()
 
+{
+
+  ((void (*)())*puRam1011553c)();
+  return;
+}
 
 /* Address: 0x10002af0 Size: 24 bytes */
-void FUN_10002af0(void)
+void FUN_10002af0()
 
 {
 
@@ -4188,7 +4276,7 @@ void FUN_10002af0(void)
 }
 
 /* Address: 0x10002b08 Size: 24 bytes */
-void FUN_10002b08(void)
+void FUN_10002b08()
 
 {
 
@@ -4196,11 +4284,17 @@ void FUN_10002b08(void)
   return;
 }
 
-/* FUN_10002b20 defined elsewhere */
+/* Address: 0x10002b20 Size: 24 bytes */
+void FUN_10002b20()
 
+{
+
+  ((void (*)())*puRam10115af4)();
+  return;
+}
 
 /* Address: 0x10002b38 Size: 24 bytes */
-void FUN_10002b38(void)
+void FUN_10002b38()
 
 {
 
@@ -4209,7 +4303,7 @@ void FUN_10002b38(void)
 }
 
 /* Address: 0x10002b50 Size: 24 bytes */
-void FUN_10002b50(void)
+void FUN_10002b50()
 
 {
 
@@ -4218,7 +4312,7 @@ void FUN_10002b50(void)
 }
 
 /* Address: 0x10002b68 Size: 24 bytes */
-void FUN_10002b68(void)
+void FUN_10002b68()
 
 {
 
@@ -4227,7 +4321,7 @@ void FUN_10002b68(void)
 }
 
 /* Address: 0x10002b80 Size: 24 bytes */
-void FUN_10002b80(void)
+void FUN_10002b80()
 
 {
 
@@ -4236,7 +4330,7 @@ void FUN_10002b80(void)
 }
 
 /* Address: 0x10002b98 Size: 24 bytes */
-void FUN_10002b98(void)
+void FUN_10002b98()
 
 {
 
@@ -4245,7 +4339,7 @@ void FUN_10002b98(void)
 }
 
 /* Address: 0x10002bb0 Size: 24 bytes */
-void FUN_10002bb0(void)
+void FUN_10002bb0()
 
 {
 
@@ -4254,7 +4348,7 @@ void FUN_10002bb0(void)
 }
 
 /* Address: 0x10002bc8 Size: 24 bytes */
-void FUN_10002bc8(void)
+void FUN_10002bc8()
 
 {
 
@@ -4263,7 +4357,7 @@ void FUN_10002bc8(void)
 }
 
 /* Address: 0x10002be0 Size: 24 bytes */
-void FUN_10002be0(void)
+void FUN_10002be0()
 
 {
 
@@ -4272,7 +4366,7 @@ void FUN_10002be0(void)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_10002bf8(void) { }
+void FUN_10002bf8() { }
 
 
 
@@ -4282,7 +4376,7 @@ void FUN_10002bf8(void) { }
 
 
 /* Address: 0x10002c10 Size: 24 bytes */
-void FUN_10002c10(void)
+void FUN_10002c10()
 
 {
 
@@ -4291,7 +4385,7 @@ void FUN_10002c10(void)
 }
 
 /* Address: 0x10002c28 Size: 24 bytes */
-void FUN_10002c28(void)
+void FUN_10002c28()
 
 {
 
@@ -4300,7 +4394,7 @@ void FUN_10002c28(void)
 }
 
 /* Address: 0x10002c40 Size: 24 bytes */
-void FUN_10002c40(void)
+void FUN_10002c40()
 
 {
 
@@ -4309,7 +4403,7 @@ void FUN_10002c40(void)
 }
 
 /* Address: 0x10002c70 Size: 24 bytes */
-void FUN_10002c70(void)
+void FUN_10002c70()
 
 {
 
@@ -4318,7 +4412,7 @@ void FUN_10002c70(void)
 }
 
 /* Address: 0x10002c88 Size: 24 bytes */
-void FUN_10002c88(void)
+void FUN_10002c88()
 
 {
 
@@ -4327,7 +4421,7 @@ void FUN_10002c88(void)
 }
 
 /* Address: 0x10002ca0 Size: 24 bytes */
-void FUN_10002ca0(void)
+void FUN_10002ca0()
 
 {
 
@@ -4336,7 +4430,7 @@ void FUN_10002ca0(void)
 }
 
 /* Address: 0x10002cb8 Size: 24 bytes */
-void FUN_10002cb8(void)
+void FUN_10002cb8()
 
 {
 
@@ -4345,7 +4439,7 @@ void FUN_10002cb8(void)
 }
 
 /* Address: 0x10002cd0 Size: 24 bytes */
-void FUN_10002cd0(void)
+void FUN_10002cd0()
 
 {
 
@@ -4354,7 +4448,7 @@ void FUN_10002cd0(void)
 }
 
 /* Address: 0x10002d18 Size: 24 bytes */
-void FUN_10002d18(void)
+void FUN_10002d18()
 
 {
 
@@ -4363,7 +4457,7 @@ void FUN_10002d18(void)
 }
 
 /* Address: 0x10002d30 Size: 24 bytes */
-void FUN_10002d30(void)
+void FUN_10002d30()
 
 {
 
@@ -4372,7 +4466,7 @@ void FUN_10002d30(void)
 }
 
 /* Address: 0x10002d78 Size: 24 bytes */
-void FUN_10002d78(void)
+void FUN_10002d78()
 
 {
 
@@ -4381,7 +4475,7 @@ void FUN_10002d78(void)
 }
 
 /* Address: 0x10002d90 Size: 24 bytes */
-void FUN_10002d90(void)
+void FUN_10002d90()
 
 {
 
@@ -4390,7 +4484,7 @@ void FUN_10002d90(void)
 }
 
 /* Address: 0x10002da8 Size: 24 bytes */
-void FUN_10002da8(void)
+void FUN_10002da8()
 
 {
 
@@ -4399,7 +4493,7 @@ void FUN_10002da8(void)
 }
 
 /* Address: 0x10002dc0 Size: 24 bytes */
-void FUN_10002dc0(void)
+void FUN_10002dc0()
 
 {
 
@@ -4408,7 +4502,7 @@ void FUN_10002dc0(void)
 }
 
 /* Address: 0x10002dd8 Size: 24 bytes */
-void FUN_10002dd8(void)
+void FUN_10002dd8()
 
 {
 
@@ -4417,7 +4511,7 @@ void FUN_10002dd8(void)
 }
 
 /* Address: 0x10002df0 Size: 24 bytes */
-void FUN_10002df0(void)
+void FUN_10002df0()
 
 {
 
@@ -4426,7 +4520,7 @@ void FUN_10002df0(void)
 }
 
 /* Address: 0x10002e08 Size: 24 bytes */
-void FUN_10002e08(void)
+void FUN_10002e08()
 
 {
 
@@ -4435,7 +4529,7 @@ void FUN_10002e08(void)
 }
 
 /* Address: 0x10002e20 Size: 24 bytes */
-void FUN_10002e20(void)
+void FUN_10002e20()
 
 {
 
@@ -4444,7 +4538,7 @@ void FUN_10002e20(void)
 }
 
 /* Address: 0x10002e38 Size: 24 bytes */
-void FUN_10002e38(void)
+void FUN_10002e38()
 
 {
 
@@ -4453,7 +4547,7 @@ void FUN_10002e38(void)
 }
 
 /* Address: 0x10002e68 Size: 24 bytes */
-void FUN_10002e68(void)
+void FUN_10002e68()
 
 {
 
@@ -4462,7 +4556,7 @@ void FUN_10002e68(void)
 }
 
 /* Address: 0x10002e80 Size: 24 bytes */
-void FUN_10002e80(void)
+void FUN_10002e80()
 
 {
 
@@ -4471,7 +4565,7 @@ void FUN_10002e80(void)
 }
 
 /* Address: 0x10002e98 Size: 24 bytes */
-void FUN_10002e98(void)
+void FUN_10002e98()
 
 {
 
@@ -4480,7 +4574,7 @@ void FUN_10002e98(void)
 }
 
 /* Address: 0x10002ec8 Size: 24 bytes */
-void FUN_10002ec8(void)
+void FUN_10002ec8()
 
 {
 
@@ -4489,7 +4583,7 @@ void FUN_10002ec8(void)
 }
 
 /* Address: 0x10002ee0 Size: 24 bytes */
-void FUN_10002ee0(void)
+void FUN_10002ee0()
 
 {
 
@@ -4498,7 +4592,7 @@ void FUN_10002ee0(void)
 }
 
 /* Address: 0x10002ef8 Size: 24 bytes */
-void FUN_10002ef8(void)
+void FUN_10002ef8()
 
 {
 
@@ -4507,7 +4601,7 @@ void FUN_10002ef8(void)
 }
 
 /* Address: 0x10002f10 Size: 24 bytes */
-void FUN_10002f10(void)
+void FUN_10002f10()
 
 {
 
@@ -4516,7 +4610,7 @@ void FUN_10002f10(void)
 }
 
 /* Address: 0x10002f28 Size: 24 bytes */
-void FUN_10002f28(void)
+void FUN_10002f28()
 
 {
 
@@ -4525,7 +4619,7 @@ void FUN_10002f28(void)
 }
 
 /* Address: 0x10002f40 Size: 24 bytes */
-void FUN_10002f40(void)
+void FUN_10002f40()
 
 {
 
@@ -4534,7 +4628,7 @@ void FUN_10002f40(void)
 }
 
 /* Address: 0x10002f58 Size: 24 bytes */
-void FUN_10002f58(void)
+void FUN_10002f58()
 
 {
 
@@ -4543,7 +4637,7 @@ void FUN_10002f58(void)
 }
 
 /* Address: 0x10002f70 Size: 24 bytes */
-void FUN_10002f70(void)
+void FUN_10002f70()
 
 {
 
@@ -4552,7 +4646,7 @@ void FUN_10002f70(void)
 }
 
 /* Address: 0x10002f88 Size: 24 bytes */
-void FUN_10002f88(void)
+void FUN_10002f88()
 
 {
 
@@ -4561,7 +4655,7 @@ void FUN_10002f88(void)
 }
 
 /* Address: 0x10002fa0 Size: 24 bytes */
-void FUN_10002fa0(void)
+void FUN_10002fa0()
 
 {
 
@@ -4570,7 +4664,7 @@ void FUN_10002fa0(void)
 }
 
 /* Address: 0x10002fb8 Size: 24 bytes */
-void FUN_10002fb8(void)
+void FUN_10002fb8()
 
 {
 
@@ -4579,7 +4673,7 @@ void FUN_10002fb8(void)
 }
 
 /* Address: 0x10002fd0 Size: 24 bytes */
-void FUN_10002fd0(void)
+void FUN_10002fd0()
 
 {
 
@@ -4588,7 +4682,7 @@ void FUN_10002fd0(void)
 }
 
 /* Address: 0x10002fe8 Size: 24 bytes */
-void FUN_10002fe8(void)
+void FUN_10002fe8()
 
 {
 
@@ -4597,7 +4691,7 @@ void FUN_10002fe8(void)
 }
 
 /* Address: 0x10003000 Size: 24 bytes */
-void FUN_10003000(void)
+void FUN_10003000()
 
 {
 
@@ -4606,7 +4700,7 @@ void FUN_10003000(void)
 }
 
 /* Address: 0x10003030 Size: 24 bytes */
-void FUN_10003030(void)
+void FUN_10003030()
 
 {
 
@@ -4615,7 +4709,7 @@ void FUN_10003030(void)
 }
 
 /* Address: 0x10003048 Size: 24 bytes */
-void FUN_10003048(void)
+void FUN_10003048()
 
 {
 
@@ -4624,7 +4718,7 @@ void FUN_10003048(void)
 }
 
 /* Address: 0x10003060 Size: 24 bytes */
-void FUN_10003060(void)
+void FUN_10003060()
 
 {
 
@@ -4633,7 +4727,7 @@ void FUN_10003060(void)
 }
 
 /* Address: 0x10003078 Size: 24 bytes */
-void FUN_10003078(void)
+void FUN_10003078()
 
 {
 
@@ -4642,7 +4736,7 @@ void FUN_10003078(void)
 }
 
 /* Address: 0x10003090 Size: 24 bytes */
-void FUN_10003090(void)
+void FUN_10003090()
 
 {
 
@@ -4651,7 +4745,7 @@ void FUN_10003090(void)
 }
 
 /* Address: 0x100030a8 Size: 24 bytes */
-void FUN_100030a8(void)
+void FUN_100030a8()
 
 {
 
@@ -4660,7 +4754,7 @@ void FUN_100030a8(void)
 }
 
 /* Address: 0x100030c0 Size: 24 bytes */
-void FUN_100030c0(void)
+void FUN_100030c0()
 
 {
 
@@ -4669,7 +4763,7 @@ void FUN_100030c0(void)
 }
 
 /* Address: 0x100030d8 Size: 24 bytes */
-void FUN_100030d8(void)
+void FUN_100030d8()
 
 {
 
@@ -4678,7 +4772,7 @@ void FUN_100030d8(void)
 }
 
 /* Address: 0x100030f0 Size: 24 bytes */
-void FUN_100030f0(void)
+void FUN_100030f0()
 
 {
 
@@ -4686,11 +4780,17 @@ void FUN_100030f0(void)
   return;
 }
 
-/* FUN_10003108 defined elsewhere */
+/* Address: 0x10003108 Size: 24 bytes */
+void FUN_10003108()
 
+{
+
+  ((void (*)())*puRam10115b2c)();
+  return;
+}
 
 /* Address: 0x10003120 Size: 24 bytes */
-void FUN_10003120(void)
+void FUN_10003120()
 
 {
 
@@ -4699,7 +4799,7 @@ void FUN_10003120(void)
 }
 
 /* Address: 0x10003138 Size: 24 bytes */
-void FUN_10003138(void)
+void FUN_10003138()
 
 {
 
@@ -4708,7 +4808,7 @@ void FUN_10003138(void)
 }
 
 /* Address: 0x10003150 Size: 24 bytes */
-void FUN_10003150(void)
+void FUN_10003150()
 
 {
 
@@ -4717,7 +4817,7 @@ void FUN_10003150(void)
 }
 
 /* Address: 0x10003168 Size: 24 bytes */
-void FUN_10003168(void)
+void FUN_10003168()
 
 {
 
@@ -4726,7 +4826,7 @@ void FUN_10003168(void)
 }
 
 /* Address: 0x10003180 Size: 24 bytes */
-void FUN_10003180(void)
+void FUN_10003180()
 
 {
 
@@ -4735,7 +4835,7 @@ void FUN_10003180(void)
 }
 
 /* Address: 0x10003198 Size: 24 bytes */
-void FUN_10003198(void)
+void FUN_10003198()
 
 {
 
@@ -4744,7 +4844,7 @@ void FUN_10003198(void)
 }
 
 /* Address: 0x100031b0 Size: 24 bytes */
-void FUN_100031b0(void)
+void FUN_100031b0()
 
 {
 
@@ -4753,7 +4853,7 @@ void FUN_100031b0(void)
 }
 
 /* Address: 0x100031c8 Size: 24 bytes */
-void FUN_100031c8(void)
+void FUN_100031c8()
 
 {
 
@@ -4762,7 +4862,7 @@ void FUN_100031c8(void)
 }
 
 /* Address: 0x100031e0 Size: 24 bytes */
-void FUN_100031e0(void)
+void FUN_100031e0()
 
 {
 
@@ -4771,7 +4871,7 @@ void FUN_100031e0(void)
 }
 
 /* Address: 0x100031f8 Size: 24 bytes */
-void FUN_100031f8(void)
+void FUN_100031f8()
 
 {
 
@@ -4780,7 +4880,7 @@ void FUN_100031f8(void)
 }
 
 /* Address: 0x10003210 Size: 24 bytes */
-void FUN_10003210(void)
+void FUN_10003210()
 
 {
 
@@ -4789,7 +4889,7 @@ void FUN_10003210(void)
 }
 
 /* Address: 0x10003240 Size: 24 bytes */
-void FUN_10003240(void)
+void FUN_10003240()
 
 {
 
@@ -4798,7 +4898,7 @@ void FUN_10003240(void)
 }
 
 /* Address: 0x10003258 Size: 24 bytes */
-void FUN_10003258(void)
+void FUN_10003258()
 
 {
 
@@ -4807,7 +4907,7 @@ void FUN_10003258(void)
 }
 
 /* Address: 0x10003288 Size: 24 bytes */
-void FUN_10003288(void)
+void FUN_10003288()
 
 {
 
@@ -4816,7 +4916,7 @@ void FUN_10003288(void)
 }
 
 /* Address: 0x100032a0 Size: 24 bytes */
-void FUN_100032a0(void)
+void FUN_100032a0()
 
 {
 
@@ -4825,7 +4925,7 @@ void FUN_100032a0(void)
 }
 
 /* Address: 0x100032d0 Size: 24 bytes */
-void FUN_100032d0(void)
+void FUN_100032d0()
 
 {
 
@@ -4834,7 +4934,7 @@ void FUN_100032d0(void)
 }
 
 /* Address: 0x10003300 Size: 24 bytes */
-void FUN_10003300(void)
+void FUN_10003300()
 
 {
 
@@ -4843,7 +4943,7 @@ void FUN_10003300(void)
 }
 
 /* Address: 0x10003318 Size: 24 bytes */
-void FUN_10003318(void)
+void FUN_10003318()
 
 {
 
@@ -4852,7 +4952,7 @@ void FUN_10003318(void)
 }
 
 /* Address: 0x10003330 Size: 24 bytes */
-void FUN_10003330(void)
+void FUN_10003330()
 
 {
 
@@ -4861,7 +4961,7 @@ void FUN_10003330(void)
 }
 
 /* Address: 0x10003348 Size: 24 bytes */
-void FUN_10003348(void)
+void FUN_10003348()
 
 {
 
@@ -4870,7 +4970,7 @@ void FUN_10003348(void)
 }
 
 /* Address: 0x10003360 Size: 24 bytes */
-void FUN_10003360(void)
+void FUN_10003360()
 
 {
 
@@ -4879,7 +4979,7 @@ void FUN_10003360(void)
 }
 
 /* Address: 0x10003378 Size: 24 bytes */
-void FUN_10003378(void)
+void FUN_10003378()
 
 {
 
@@ -4888,7 +4988,7 @@ void FUN_10003378(void)
 }
 
 /* Address: 0x10003390 Size: 24 bytes */
-void FUN_10003390(void)
+void FUN_10003390()
 
 {
 
@@ -4897,7 +4997,7 @@ void FUN_10003390(void)
 }
 
 /* Address: 0x100033a8 Size: 24 bytes */
-void FUN_100033a8(void)
+void FUN_100033a8()
 
 {
 
@@ -4906,7 +5006,7 @@ void FUN_100033a8(void)
 }
 
 /* Address: 0x100033c0 Size: 24 bytes */
-void FUN_100033c0(void)
+void FUN_100033c0()
 
 {
 
@@ -4915,7 +5015,7 @@ void FUN_100033c0(void)
 }
 
 /* Address: 0x100033d8 Size: 24 bytes */
-void FUN_100033d8(void)
+void FUN_100033d8()
 
 {
 
@@ -4924,7 +5024,7 @@ void FUN_100033d8(void)
 }
 
 /* Address: 0x100033f0 Size: 24 bytes */
-void FUN_100033f0(void)
+void FUN_100033f0()
 
 {
 
@@ -4933,7 +5033,7 @@ void FUN_100033f0(void)
 }
 
 /* Address: 0x10003408 Size: 24 bytes */
-void FUN_10003408(void)
+void FUN_10003408()
 
 {
 
@@ -4942,7 +5042,7 @@ void FUN_10003408(void)
 }
 
 /* Address: 0x10003420 Size: 24 bytes */
-void FUN_10003420(void)
+void FUN_10003420()
 
 {
 
@@ -4951,7 +5051,7 @@ void FUN_10003420(void)
 }
 
 /* Address: 0x10003438 Size: 24 bytes */
-void FUN_10003438(void)
+void FUN_10003438()
 
 {
 
@@ -4960,7 +5060,7 @@ void FUN_10003438(void)
 }
 
 /* Address: 0x10003450 Size: 24 bytes */
-void FUN_10003450(void)
+void FUN_10003450()
 
 {
 
@@ -4968,11 +5068,17 @@ void FUN_10003450(void)
   return;
 }
 
-/* FUN_10003468 defined elsewhere */
+/* Address: 0x10003468 Size: 24 bytes */
+void FUN_10003468()
 
+{
+
+  ((void (*)())*puRam10115630)();
+  return;
+}
 
 /* Address: 0x10003480 Size: 24 bytes */
-void FUN_10003480(void)
+void FUN_10003480()
 
 {
 
@@ -4981,7 +5087,7 @@ void FUN_10003480(void)
 }
 
 /* Address: 0x10003498 Size: 24 bytes */
-void FUN_10003498(void)
+void FUN_10003498()
 
 {
 
@@ -4990,7 +5096,7 @@ void FUN_10003498(void)
 }
 
 /* Address: 0x100034b0 Size: 24 bytes */
-void FUN_100034b0(void)
+void FUN_100034b0()
 
 {
 
@@ -4999,7 +5105,7 @@ void FUN_100034b0(void)
 }
 
 /* Address: 0x100034c8 Size: 24 bytes */
-void FUN_100034c8(void)
+void FUN_100034c8()
 
 {
 
@@ -5008,7 +5114,7 @@ void FUN_100034c8(void)
 }
 
 /* Address: 0x100034e0 Size: 24 bytes */
-void FUN_100034e0(void)
+void FUN_100034e0()
 
 {
 
@@ -5017,7 +5123,7 @@ void FUN_100034e0(void)
 }
 
 /* Address: 0x100034f8 Size: 24 bytes */
-void FUN_100034f8(void)
+void FUN_100034f8()
 
 {
 
@@ -5026,7 +5132,7 @@ void FUN_100034f8(void)
 }
 
 /* Address: 0x10003510 Size: 24 bytes */
-void FUN_10003510(void)
+void FUN_10003510()
 
 {
 
@@ -5035,7 +5141,7 @@ void FUN_10003510(void)
 }
 
 /* Address: 0x10003528 Size: 24 bytes */
-void FUN_10003528(void)
+void FUN_10003528()
 
 {
 
@@ -5044,7 +5150,7 @@ void FUN_10003528(void)
 }
 
 /* Address: 0x10003540 Size: 24 bytes */
-void FUN_10003540(void)
+void FUN_10003540()
 
 {
 
@@ -5053,7 +5159,7 @@ void FUN_10003540(void)
 }
 
 /* Address: 0x10003570 Size: 24 bytes */
-void FUN_10003570(void)
+void FUN_10003570()
 
 {
 
@@ -5062,7 +5168,7 @@ void FUN_10003570(void)
 }
 
 /* Address: 0x10003588 Size: 24 bytes */
-void FUN_10003588(void)
+void FUN_10003588()
 
 {
 
@@ -5071,7 +5177,7 @@ void FUN_10003588(void)
 }
 
 /* Address: 0x100035d0 Size: 24 bytes */
-void FUN_100035d0(void)
+void FUN_100035d0()
 
 {
 
@@ -5080,7 +5186,7 @@ void FUN_100035d0(void)
 }
 
 /* Address: 0x100035e8 Size: 24 bytes */
-void FUN_100035e8(void)
+void FUN_100035e8()
 
 {
 
@@ -5089,7 +5195,7 @@ void FUN_100035e8(void)
 }
 
 /* Address: 0x10003600 Size: 24 bytes */
-void FUN_10003600(void)
+void FUN_10003600()
 
 {
 
@@ -5098,7 +5204,7 @@ void FUN_10003600(void)
 }
 
 /* Address: 0x10003618 Size: 24 bytes */
-void FUN_10003618(void)
+void FUN_10003618()
 
 {
 
@@ -5107,7 +5213,7 @@ void FUN_10003618(void)
 }
 
 /* Address: 0x10003630 Size: 24 bytes */
-void FUN_10003630(void)
+void FUN_10003630()
 
 {
 
@@ -5116,7 +5222,7 @@ void FUN_10003630(void)
 }
 
 /* Address: 0x10003690 Size: 24 bytes */
-void FUN_10003690(void)
+void FUN_10003690()
 
 {
 
@@ -5125,7 +5231,7 @@ void FUN_10003690(void)
 }
 
 /* Address: 0x100036a8 Size: 24 bytes */
-void FUN_100036a8(void)
+void FUN_100036a8()
 
 {
 
@@ -5134,7 +5240,7 @@ void FUN_100036a8(void)
 }
 
 /* Address: 0x100036c0 Size: 24 bytes */
-void FUN_100036c0(void)
+void FUN_100036c0()
 
 {
 
@@ -5143,7 +5249,7 @@ void FUN_100036c0(void)
 }
 
 /* Address: 0x100036d8 Size: 24 bytes */
-void FUN_100036d8(void)
+void FUN_100036d8()
 
 {
 
@@ -5152,7 +5258,7 @@ void FUN_100036d8(void)
 }
 
 /* Address: 0x100036f0 Size: 24 bytes */
-void FUN_100036f0(void)
+void FUN_100036f0()
 
 {
 
@@ -5161,7 +5267,7 @@ void FUN_100036f0(void)
 }
 
 /* Address: 0x10003708 Size: 24 bytes */
-void FUN_10003708(void)
+void FUN_10003708()
 
 {
 
@@ -5170,7 +5276,7 @@ void FUN_10003708(void)
 }
 
 /* Address: 0x10003738 Size: 24 bytes */
-void FUN_10003738(void)
+void FUN_10003738()
 
 {
 
@@ -5179,7 +5285,7 @@ void FUN_10003738(void)
 }
 
 /* Address: 0x10003750 Size: 24 bytes */
-void FUN_10003750(void)
+void FUN_10003750()
 
 {
 
@@ -5188,7 +5294,7 @@ void FUN_10003750(void)
 }
 
 /* Address: 0x10003780 Size: 24 bytes */
-void FUN_10003780(void)
+void FUN_10003780()
 
 {
 
@@ -5197,7 +5303,7 @@ void FUN_10003780(void)
 }
 
 /* Address: 0x100037b0 Size: 24 bytes */
-void FUN_100037b0(void)
+void FUN_100037b0()
 
 {
 
@@ -5206,7 +5312,7 @@ void FUN_100037b0(void)
 }
 
 /* Address: 0x100037e0 Size: 24 bytes */
-void FUN_100037e0(void)
+void FUN_100037e0()
 
 {
 
@@ -5215,7 +5321,7 @@ void FUN_100037e0(void)
 }
 
 /* Address: 0x100037f8 Size: 24 bytes */
-void FUN_100037f8(void)
+void FUN_100037f8()
 
 {
 
@@ -5224,7 +5330,7 @@ void FUN_100037f8(void)
 }
 
 /* Address: 0x10003810 Size: 24 bytes */
-void FUN_10003810(void)
+void FUN_10003810()
 
 {
 
@@ -5233,7 +5339,7 @@ void FUN_10003810(void)
 }
 
 /* Address: 0x10003828 Size: 24 bytes */
-void FUN_10003828(void)
+void FUN_10003828()
 
 {
 
@@ -5242,7 +5348,7 @@ void FUN_10003828(void)
 }
 
 /* Address: 0x10003840 Size: 24 bytes */
-void FUN_10003840(void)
+void FUN_10003840()
 
 {
 
@@ -5251,7 +5357,7 @@ void FUN_10003840(void)
 }
 
 /* Address: 0x10003858 Size: 24 bytes */
-void FUN_10003858(void)
+void FUN_10003858()
 
 {
 
@@ -5260,7 +5366,7 @@ void FUN_10003858(void)
 }
 
 /* Address: 0x10003870 Size: 24 bytes */
-void FUN_10003870(void)
+void FUN_10003870()
 
 {
 
@@ -5269,7 +5375,7 @@ void FUN_10003870(void)
 }
 
 /* Address: 0x10003888 Size: 24 bytes */
-void FUN_10003888(void)
+void FUN_10003888()
 
 {
 
@@ -5278,7 +5384,7 @@ void FUN_10003888(void)
 }
 
 /* Address: 0x100038a0 Size: 24 bytes */
-void FUN_100038a0(void)
+void FUN_100038a0()
 
 {
 
@@ -5287,7 +5393,7 @@ void FUN_100038a0(void)
 }
 
 /* Address: 0x100038b8 Size: 24 bytes */
-void FUN_100038b8(void)
+void FUN_100038b8()
 
 {
 
@@ -5296,7 +5402,7 @@ void FUN_100038b8(void)
 }
 
 /* Address: 0x100038d0 Size: 24 bytes */
-void FUN_100038d0(void)
+void FUN_100038d0()
 
 {
 
@@ -5305,7 +5411,7 @@ void FUN_100038d0(void)
 }
 
 /* Address: 0x100038e8 Size: 24 bytes */
-void FUN_100038e8(void)
+void FUN_100038e8()
 
 {
 
@@ -5314,7 +5420,7 @@ void FUN_100038e8(void)
 }
 
 /* Address: 0x10003900 Size: 24 bytes */
-void FUN_10003900(void)
+void FUN_10003900()
 
 {
 
@@ -5323,7 +5429,7 @@ void FUN_10003900(void)
 }
 
 /* Address: 0x10003918 Size: 24 bytes */
-void FUN_10003918(void)
+void FUN_10003918()
 
 {
 
@@ -5332,7 +5438,7 @@ void FUN_10003918(void)
 }
 
 /* Address: 0x10003948 Size: 24 bytes */
-void FUN_10003948(void)
+void FUN_10003948()
 
 {
 
@@ -5342,6 +5448,36 @@ void FUN_10003948(void)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_10003960(int *param_1,int *param_2) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5450,7 +5586,40 @@ int * FUN_10003a48(int *param_1,int *param_2)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_10003aa4(void) { }
+void FUN_10003aa4() { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6160,7 +6329,7 @@ long long FUN_10004ed8(long long param_1)
 }
 
 /* Address: 0x10008418 Size: 116 bytes */
-void FUN_10008418(void)
+void FUN_10008418()
 
 {
   short uVar1;
@@ -6438,7 +6607,7 @@ void FUN_10008c0c(short param_1,short param_2,long long param_3,short param_4,
 }
 
 /* Address: 0x10008de4 Size: 168 bytes */
-void FUN_10008de4(void)
+void FUN_10008de4()
 
 {
   int iVar1;
@@ -6477,82 +6646,8 @@ void FUN_10008de4(void)
   return;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Address: 0x10008e8c Size: 228 bytes */
-void FUN_10008e8c(void)
+void FUN_10008e8c()
 
 {
   unsigned char bVar1;
@@ -6600,100 +6695,6 @@ void FUN_10008e8c(void)
   }
   return;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* Address: 0x1000931c Size: 516 bytes */
 long long FUN_1000931c(long long param_1,short param_2,short param_3)
@@ -6787,7 +6788,7 @@ long long FUN_1000931c(long long param_1,short param_2,short param_3)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_10009520(void) { }
+void FUN_10009520() { }
 
 
 
@@ -6831,29 +6832,43 @@ void FUN_10009520(void) { }
 
 
 
-/* Address: stubbed - had compile errors on 64-bit */
-void FUN_100095fc(void) { }
+/* Address: 0x100095fc Size: 52 bytes */
+void FUN_100095fc()
 
+{
+  FUN_10000ff0(*puRam1011742c,0xffffffffffffffff,0x4440);
+  return;
+}
 
+/* Address: 0x10009630 Size: 208 bytes */
+unsigned short FUN_10009630(short param_1,short param_2,short param_3)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* FUN_10009630 defined elsewhere */
-
+{
+  int iVar1;
+  long long lVar2;
+  long long lVar3;
+  
+  if (*(short *)(*piRam1011735c + 0x124) == 0) {
+    return 1;
+  }
+  if (param_1 != 1) {
+    return 0;
+  }
+  iVar1 = *piRam1011735c;
+  if ((((*(short *)(iVar1 + 0x178) <= param_2) && (param_2 <= *(short *)(iVar1 + 0x17c))) &&
+      (*(short *)(iVar1 + 0x176) <= param_3)) && (param_3 <= *(short *)(iVar1 + 0x17a))) {
+    lVar2 = -(long long)
+             *(char *)(*piRam1011742c + ((int)param_2 - (int)*(short *)(iVar1 + 0x178)) * 0x9c +
+                      (int)(short)(param_3 - *(short *)(iVar1 + 0x176)));
+    lVar3 = lVar2 + 0xe;
+    return (short)lVar3 + (-(unsigned short)(lVar3 == 0) - ((short)lVar2 + 0xd));
+  }
+  return (unsigned short)((unsigned int)*(int *)(*piRam10117354 + param_3 * 0x70 + (int)param_2) >> 0x1d) & 1
+  ;
+}
 
 /* Address: 0x10009700 Size: 580 bytes */
-void FUN_10009700(void)
+void FUN_10009700()
 
 {
   int *piVar1;
@@ -6946,188 +6961,6 @@ LAB_10009778:
   return;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Address: 0x10009944 Size: 112 bytes */
 void FUN_10009944(long long param_1)
 
@@ -7145,7 +6978,7 @@ void FUN_10009944(long long param_1)
 }
 
 /* Address: 0x100099b4 Size: 24 bytes */
-void FUN_100099b4(void)
+void FUN_100099b4()
 
 {
   *(unsigned int *)(iRam10117428 + 0x28) = *(unsigned int *)(iRam10117428 + 0x28) & 0x7fffffff;
@@ -7153,7 +6986,7 @@ void FUN_100099b4(void)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_10009a0c(void) { }
+void FUN_10009a0c() { }
 
 
 
@@ -7176,7 +7009,7 @@ void FUN_10009a0c(void) { }
 
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_1000a4e8(void) { }
+void FUN_1000a4e8() { }
 
 
 
@@ -7259,6 +7092,29 @@ void FUN_1000a958(long long param_1,long long param_2,long long param_3,long lon
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_1000a9e4(short param_1,short param_2,short param_3) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7654,8 +7510,141 @@ void FUN_1000b278(short param_1,short param_2) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_1000b3d8(short param_1,short param_2,short param_3,char param_4) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8227,7 +8216,7 @@ void FUN_1000c4c4(short param_1,short param_2,int *param_3)
 }
 
 /* Address: 0x1000c648 Size: 52 bytes */
-void FUN_1000c648(void)
+void FUN_1000c648()
 
 {
   FUN_1007c714(*(int *)(*piRam1011734c + 0x88),0x3fc);
@@ -8790,6 +8779,7 @@ void FUN_1000fde4(int param_1,short param_2)
   FUN_1002b91c();
   return;
 }
+
 
 
 

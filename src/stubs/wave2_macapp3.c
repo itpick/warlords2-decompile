@@ -28,11 +28,11 @@
 void FUN_100e02c4(int *param_1,long long param_2,char param_3,char param_4);
 void FUN_100e053c(int *param_1,long long param_2,long long param_3,char param_4);
 void FUN_100e0c0c(int param_1);
-void FUN_100e0c54(void);
-void FUN_100e0d4c(void);
+void FUN_100e0c54();
+void FUN_100e0d4c();
 void FUN_100e0d80(int param_1);
-void FUN_100e0dc8(void);
-void FUN_100e0f3c(void);
+void FUN_100e0dc8();
+void FUN_100e0f3c();
 void FUN_100e0f78(int *param_1,int *param_2);
 long long FUN_100e1088(long long param_1,char param_2);
 long long FUN_100e109c(long long param_1,char param_2);
@@ -67,13 +67,13 @@ long long FUN_100e1aac(int *param_1,int *param_2);
 long long FUN_100e1af8(int *param_1,int *param_2);
 void FUN_100e1b4c(short *param_1,int *param_2);
 int * FUN_100e1b78(int *param_1);
-void FUN_100e1be0(void);
-void FUN_100e1c08(void);
+void FUN_100e1be0();
+void FUN_100e1c08();
 int FUN_100e1c48(int param_1,char param_2,int *param_3,int *param_4,
                 int *param_5,char param_6);
-void FUN_100e1db0(void);
+void FUN_100e1db0();
 int * FUN_100e2124(int *param_1);
-void FUN_100e21b8(void);
+void FUN_100e21b8();
 void FUN_100e21e0(int *param_1);
 void FUN_100e2298(int param_1);
 void FUN_100e22dc(int *param_1,short param_2,short param_3);
@@ -82,7 +82,7 @@ short FUN_100e2758(int param_1,long long param_2);
 short FUN_100e2874(int *param_1,short param_2);
 void FUN_100e290c(int *param_1,short param_2,short param_3,short param_4);
 long long FUN_100e2b98(int *param_1,short param_2,short param_3);
-void FUN_100e2d2c(void);
+void FUN_100e2d2c();
 int * FUN_100e2d54(int *param_1);
 void FUN_100e2f58(int param_1);
 void FUN_100e2fe8(int *param_1,int *param_2);
@@ -147,7 +147,7 @@ void FUN_100e6cb0(int *param_1,short *param_2,char param_3,char param_4,
                  char param_5);
 void FUN_100e6d74(int *param_1,int param_2,int *param_3);
 void FUN_100e6e30(int *param_1,int param_2,int *param_3);
-void FUN_100e6eec(void);
+void FUN_100e6eec();
 void FUN_100e6f20(int *param_1,int *param_2);
 void FUN_100e7110(int param_1,int *param_2);
 void FUN_100e7184(int *param_1,short param_2,long long param_3);
@@ -155,7 +155,7 @@ int FUN_100e7244(int *param_1);
 void FUN_100e72a4(int *param_1);
 void FUN_100e7360(int param_1);
 void FUN_100e73a0(long long param_1,long long param_2,long long param_3);
-void FUN_100e73ec(void);
+void FUN_100e73ec();
 long long FUN_100e7420(int *param_1,int param_2);
 void FUN_100e74c8(int *param_1,short param_2,short param_3);
 void FUN_100e7508(int *param_1,short param_2);
@@ -179,7 +179,7 @@ void FUN_100e7b08(long long param_1,short param_2,char param_3,char param_4,
                  char param_5);
 void FUN_100e7b78(int *param_1,short param_2,short param_3,short param_4);
 void FUN_100e7bbc(int *param_1,short param_2);
-void FUN_100e7c0c(void);
+void FUN_100e7c0c();
 void FUN_100e7c34(int param_1);
 void FUN_100e7c90(int param_1,int *param_2);
 void FUN_100e7d58(int param_1,int *param_2);
@@ -188,16 +188,16 @@ int * FUN_100e7f84(int *param_1,char param_2,long long param_3,long long param_4
                   int *param_5,char param_6);
 void FUN_100e8108(int param_1);
 int * FUN_100e81c4(int *param_1);
-void FUN_100e822c(void);
+void FUN_100e822c();
 void FUN_100e8254(int param_1,short *param_2);
 int * FUN_100e83cc(int *param_1,char param_2,long long param_3,long long param_4,
                   int *param_5,char param_6);
 int * FUN_100e85b8(int *param_1);
-void FUN_100e8620(void);
+void FUN_100e8620();
 void FUN_100e8648(int param_1);
 void FUN_100e8684(int param_1,int param_2);
 int * FUN_100e86bc(int *param_1);
-void FUN_100e8724(void);
+void FUN_100e8724();
 void FUN_100e874c(int param_1);
 void FUN_100e8788(int param_1,short *param_2);
 short FUN_100e87b8(int *param_1);
@@ -206,22 +206,22 @@ short FUN_100e8900(int *param_1);
 short FUN_100e8944(int *param_1);
 void FUN_100e8a48(int param_1);
 void FUN_100e8a90(int param_1);
-void FUN_100e8b88(void);
-void FUN_100e8db4(void);
+void FUN_100e8b88();
+void FUN_100e8db4();
 void FUN_100e8ddc(int *param_1,int *param_2);
 void FUN_100e8f24(int param_1);
 void FUN_100e8f6c(int param_1,int *param_2);
-void FUN_100e9010(void);
+void FUN_100e9010();
 int * FUN_100e904c(int *param_1);
 void FUN_100e9124(long long param_1);
-void FUN_100e9150(void);
-long long FUN_100e9174(void);
+void FUN_100e9150();
+long long FUN_100e9174();
 long long FUN_100e91b4(int *param_1);
 long long FUN_100e9200(long long param_1,long long param_2);
 void FUN_100e9260(long long param_1,int param_2);
 void FUN_100e92d4(long long param_1,int *param_2);
 void FUN_100e931c(long long param_1,long long param_2,int *param_3);
-void FUN_100e9368(void);
+void FUN_100e9368();
 void FUN_100e93b8(int *param_1,int *param_2,int *param_3);
 int FUN_100e93f8(int *param_1,int param_2,int param_3);
 int FUN_100e947c(int *param_1,int param_2);
@@ -243,7 +243,7 @@ void FUN_100e9bfc(int *param_1);
 void FUN_100e9cb8(int *param_1);
 int FUN_100e9d10(int *param_1,int param_2);
 long long FUN_100e9e20(int *param_1);
-void FUN_100e9e88(void);
+void FUN_100e9e88();
 void FUN_100e9eb0(int *param_1,long long param_2,int param_3);
 long long FUN_100e9f6c(int param_1,long long param_2,long long param_3,int *param_4);
 void FUN_100ea07c(int *param_1,long long param_2);
@@ -256,7 +256,7 @@ void FUN_100ea2b4(int *param_1);
 long long FUN_100ea2ec(int *param_1);
 void FUN_100ea368(long long param_1,int param_2);
 void FUN_100ea3d8(long long param_1,int *param_2);
-void FUN_100ea490(void);
+void FUN_100ea490();
 void FUN_100ea4e4(int *param_1);
 void FUN_100ea5a0(int *param_1);
 int FUN_100ea5f8(int *param_1,long long param_2);
@@ -269,11 +269,11 @@ int FUN_100ea9c0(int *param_1,int param_2);
 void FUN_100eaa4c(int *param_1,int param_2);
 void FUN_100eaab4(int *param_1,int *param_2,int *param_3);
 long long FUN_100eaaf4(int *param_1);
-void FUN_100eabb4(void);
+void FUN_100eabb4();
 void FUN_100eac00(int *param_1,long long param_2);
 void FUN_100eac48(long long param_1,int param_2);
 void FUN_100eacb8(long long param_1,int *param_2);
-void FUN_100ead70(void);
+void FUN_100ead70();
 int FUN_100eadc4(int *param_1,long long param_2);
 void FUN_100eae80(int *param_1,long long param_2);
 void FUN_100eaf2c(int *param_1);
@@ -286,7 +286,7 @@ int FUN_100eb20c(int *param_1,int param_2);
 void FUN_100eb284(int *param_1,int param_2);
 int FUN_100eb2c4(int *param_1,long long param_2,long long param_3);
 int * FUN_100eb328(int *param_1);
-void FUN_100eb390(void);
+void FUN_100eb390();
 long long FUN_100eb3b8(int param_1,long long param_2,long long param_3,int *param_4);
 void FUN_100eb4c8(int *param_1,long long param_2);
 void FUN_100eb510(int *param_1,long long param_2,int param_3);
@@ -295,12 +295,12 @@ void FUN_100eb684(int *param_1,long long param_2);
 void FUN_100eb6c4(int *param_1,long long param_2);
 void FUN_100eb708(int *param_1);
 long long FUN_100eb740(int *param_1);
-void FUN_100eb7bc(void);
+void FUN_100eb7bc();
 void FUN_100eb8b0(int param_1,int param_2);
 int FUN_100eb8d0(int param_1);
 int * FUN_100eba50(int *param_1,long long param_2,long long param_3,long long param_4,
             char param_5);
-void FUN_100ebce8(void);
+void FUN_100ebce8();
 void FUN_100ebd0c(int param_1);
 void FUN_100ebd68(int param_1,int param_2,int param_3);
 void FUN_100ebeb4(int param_1,int param_2,int param_3);
@@ -322,25 +322,25 @@ long long FUN_100eca54(int param_1,short *param_2,short *param_3);
 void FUN_100ecb28(long long param_1,long long param_2,long long param_3);
 long long FUN_100ecb90(long long param_1,long long param_2,long long param_3);
 long long FUN_100ecbf0(long long param_1,long long param_2,long long param_3,long long param_4);
-void FUN_100ecc68(void);
-void FUN_100eccc0(void);
-void FUN_100ecd8c(void);
+void FUN_100ecc68();
+void FUN_100eccc0();
+void FUN_100ecd8c();
 long long FUN_100ecdec(int param_1,char param_2);
 void FUN_100eceb0(long long param_1,long long param_2,short *param_3);
 long long FUN_100ecf28(long long param_1,short param_2);
 int FUN_100ee0a0(int param_1);
-long long FUN_100ee1b4(void);
+long long FUN_100ee1b4();
 void FUN_100ee208(long long param_1,unsigned char *param_2);
 long long FUN_100ee254(unsigned char *param_1,unsigned char *param_2);
 unsigned long long FUN_100ee320(unsigned char *param_1,short *param_2,short *param_3);
 int FUN_100ee448(int param_1);
 long long FUN_100ee588(unsigned char *param_1,unsigned char *param_2,short param_3,short param_4);
-void FUN_100ee624(void);
-void FUN_100ee648(void);
+void FUN_100ee624();
+void FUN_100ee648();
 int FUN_100ee64c(int param_1);
 void FUN_100ee720(int param_1);
 void FUN_100ee77c(unsigned long long param_1,unsigned long long param_2);
-void FUN_100ee7e8(void);
+void FUN_100ee7e8();
 unsigned char * FUN_100ee844(unsigned char *param_1,unsigned char param_2);
 void FUN_100ee8e8(char *param_1,unsigned long long param_2);
 int * FUN_100ee970(int *param_1);
@@ -352,14 +352,16 @@ long long FUN_100eeb0c(long long param_1);
 void FUN_100eeb9c(int param_1);
 long long FUN_100eebf4(long long param_1,int param_2);
 void FUN_100eec88(int param_1);
+unsigned int FUN_100eecf8(unsigned int param_1);
 void FUN_100eed08(long long param_1,int param_2,unsigned char param_3);
 void FUN_100eedb4(short *param_1,char param_2,char param_3,char param_4);
 long long FUN_100eeefc(unsigned short param_1);
 void FUN_100eef6c(short *param_1,short param_2,short param_3,short param_4);
-long long FUN_100eef94(void);
+long long FUN_100eef94();
 int FUN_100eeff4(unsigned short param_1);
 long long FUN_100ef0e4(int param_1);
 void FUN_100ef228(long long param_1,long long param_2);
+void FUN_100ef284(unsigned char *param_1,long long param_2);
 int FUN_100ef2bc(unsigned int *param_1);
 long long FUN_100ef330(int *param_1);
 long long FUN_100ef38c(unsigned int *param_1);
@@ -369,47 +371,48 @@ void FUN_100ef628(short param_1);
 void FUN_100ef658(long long param_1);
 short FUN_100ef6e4(unsigned char *param_1);
 short FUN_100ef96c(short *param_1);
-unsigned long long FUN_100efab0(void);
+unsigned long long FUN_100efab0();
 int FUN_100efb00(short param_1);
-void FUN_100efb60(void);
-void FUN_100efb84(void);
-void FUN_100efba8(void);
-void FUN_100efbcc(void);
-void FUN_100efbf0(void);
+void FUN_100efb60();
+void FUN_100efb84();
+void FUN_100efba8();
+void FUN_100efbcc();
+void FUN_100efbf0();
 int FUN_100efc14(long long param_1);
 int FUN_100efcc0(int param_1,int param_2);
 void FUN_100efcd4(long long param_1,short param_2);
 void FUN_100efdd0(long long param_1,long long param_2,int *param_3,short param_4,
                  char param_5,long long param_6,char param_7,char param_8);
 void FUN_100f01ac(long long param_1,short *param_2,short param_3,char param_4);
+int FUN_100f0334(int param_1,int param_2,int param_3);
 short FUN_100f038c(short param_1);
 void FUN_100f083c(short *param_1,short param_2,char param_3,short param_4,
                  int *param_5);
 void FUN_100f0864(char param_1);
-void FUN_100f08a4(void);
+void FUN_100f08a4();
 int FUN_100f08f4(long long param_1,long long param_2,short param_3);
-void FUN_100f0928(void);
+void FUN_100f0928();
 void FUN_100f0a04(int param_1,long long param_2);
 void FUN_100f0a4c(long long param_1,long long param_2);
 long long FUN_100f0b50(int *param_1);
 void FUN_100f0bd4(int *param_1,long long param_2,long long param_3);
 void FUN_100f0c3c(long long param_1,long long param_2);
 int FUN_100f0cc8(char param_1,int *param_2);
-void FUN_100f0e74(void);
-char FUN_100f0eec(void);
+void FUN_100f0e74();
+char FUN_100f0eec();
 void FUN_100f0f18(unsigned long long param_1);
-void FUN_100f1228(void);
+void FUN_100f1228();
 void FUN_100f12e4(int *param_1,int *param_2);
-int FUN_100f1300(void);
+int FUN_100f1300();
 void FUN_100f16a0(long long param_1);
 void FUN_100f16f8(long long param_1,long long param_2);
 void FUN_100f1758(int *param_1,int *param_2);
 long long FUN_100f1860(long long param_1,int *param_2);
-int * FUN_100f18ec(void);
+int * FUN_100f18ec();
 void FUN_100f1940(long long param_1);
 void FUN_100f199c(int *param_1,short param_2,short param_3);
 short FUN_100f19ec(int *param_1,short param_2);
-int * FUN_100f1a88(void);
+int * FUN_100f1a88();
 void FUN_100f1adc(long long param_1);
 long long FUN_100f1b38(long long param_1,int *param_2);
 void FUN_100f1bbc(int *param_1,int param_2,short *param_3,unsigned short *param_4);
@@ -417,19 +420,19 @@ unsigned long long FUN_100f1d2c(int *param_1,short param_2,short param_3);
 void FUN_100f1e0c(int *param_1,int param_2,short param_3,short param_4);
 void FUN_100f1e6c(int *param_1,int param_2,short param_3,short param_4);
 void FUN_100f1f7c(int *param_1,long long param_2);
-int * FUN_100f210c(void);
-void FUN_100f2160(void);
+int * FUN_100f210c();
+void FUN_100f2160();
 void FUN_100f2184(int *param_1,short param_2);
-void FUN_100f2204(void);
+void FUN_100f2204();
 short FUN_100f2270(short param_1);
 long long FUN_100f2348(short param_1);
 void FUN_100f23ac(long long param_1,short param_2,short param_3);
-void FUN_100f2454(void);
+void FUN_100f2454();
 void FUN_100f24a8(short param_1,char param_2);
-void FUN_100f25a8(void);
-char FUN_100f25b8(void);
-void FUN_100f25c4(void);
-char FUN_100f25d4(void);
+void FUN_100f25a8();
+char FUN_100f25b8();
+void FUN_100f25c4();
+char FUN_100f25d4();
 int FUN_100f2680(long long param_1);
 void FUN_100f2704(short param_1,short param_2);
 void FUN_100f2758(long long param_1,long long param_2);
@@ -441,74 +444,76 @@ long long FUN_100f2da4(int *param_1,char param_2);
 void FUN_100f2e44(int *param_1,char param_2,int param_3);
 void FUN_100f2f30(int *param_1,char param_2,int param_3);
 int * FUN_100f2ff0(int *param_1);
-void FUN_100f3064(void);
-void FUN_100f3088(void);
+void FUN_100f3064();
+void FUN_100f3088();
 void FUN_100f30ac(int *param_1,unsigned long long param_2);
 void FUN_100f3118(long long param_1,long long param_2);
 void FUN_100f3284(long long param_1,long long param_2);
 void FUN_100f32f0(long long param_1,short param_2,short param_3);
 void FUN_100f3348(long long param_1,short param_2,short param_3,short param_4,
                  char param_5);
-void FUN_100f3388(void);
+void FUN_100f3388();
 void FUN_100f33ac(int *param_1);
 int * FUN_100f3444(int *param_1);
-void FUN_100f34ac(void);
+void FUN_100f34ac();
 void FUN_100f34d4(int param_1,short param_2);
 void FUN_100f364c(int param_1);
 void FUN_100f374c(long long param_1,long long param_2,long long param_3);
 void FUN_100f39f8(long long param_1,char *param_2,short param_3,short param_4,
                  long long param_5);
 void FUN_100f3b08(long long param_1,long long param_2);
-void FUN_100f3bb4(void);
+void FUN_100f3bb4();
 long long FUN_100f3c5c(long long param_1);
 int * FUN_100f3c98(int *param_1);
-void FUN_100f3d30(void);
+void FUN_100f3d30();
 void FUN_100f3d60(int *param_1,unsigned short param_2,int *param_3,short *param_4,int param_5);
 void FUN_100f4310(int *param_1);
 void FUN_100f43e0(int *param_1,long long param_2,int *param_3);
 void FUN_100f4478(int *param_1,long long param_2,long long param_3,long long param_4,
                  int param_5);
-void FUN_100f4514(void);
+void FUN_100f4514();
 void FUN_100f455c(long long param_1,short param_2,short param_3);
 int FUN_100f4c40(int *param_1);
 unsigned long long FUN_100f4ce0(int param_1);
 long long FUN_100f4d20(int param_1);
-void FUN_100f4d84(void);
-void FUN_100f4e30(void);
+void FUN_100f4d84();
+void FUN_100f4e30();
 long long FUN_100f4e74(int *param_1,long long param_2);
 void FUN_100f4f0c(int *param_1,long long param_2,long long param_3);
 void FUN_100f4f94(int *param_1,long long param_2);
 void FUN_100f500c(int *param_1);
 void FUN_100f5088(int *param_1);
 void FUN_100f50c0(int *param_1);
-void FUN_100f5100(void);
-void FUN_100f5104(void);
+void FUN_100f5100();
+void FUN_100f5104();
+void FUN_100f5108(int *param_1);
 void FUN_100f5184(int *param_1,long long param_2);
 void FUN_100f51f4(int *param_1);
 void FUN_100f5234(int *param_1);
 void FUN_100f5278(int *param_1,long long param_2);
 long long FUN_100f52cc(long long param_1);
-void FUN_100f5338(void);
-void FUN_100f535c(void);
-void FUN_100f5360(void);
+void FUN_100f5338();
+void FUN_100f535c();
+void FUN_100f5360();
 void FUN_100f53a0(int param_1,short param_2);
 long long FUN_100f53ec(short *param_1,short param_2,long long param_3);
 int FUN_100f5468(int param_1);
 short * FUN_100f54b4(short *param_1);
 void FUN_100f5500(short *param_1);
-void FUN_100f55ec(void);
-char FUN_100f5748(void);
+void FUN_100f55ec();
+char FUN_100f5748();
+char FUN_100f5754(char param_1);
 long long FUN_100f576c(unsigned int param_1);
-int FUN_100f5790(void);
-void FUN_100f5838(void);
-int FUN_100f585c(void);
-void FUN_100f5948(void);
+int FUN_100f5790();
+void FUN_100f5838();
+int FUN_100f585c();
+void FUN_100f5948();
 void FUN_100f5970(int *param_1);
 void FUN_100f5bd8(int *param_1,long long param_2,long long param_3);
 void FUN_100f5ed8(int *param_1,int *param_2);
 void FUN_100f6118(int *param_1,int *param_2);
 int FUN_100f629c(int *param_1);
-void FUN_100f6318(void);
+void FUN_100f6318();
 void FUN_100f633c(int *param_1,long long param_2,long long param_3,int param_4);
 void FUN_100f63c4(int *param_1,int *param_2);
 void FUN_100f655c(int *param_1);
@@ -523,10 +528,10 @@ void FUN_100f690c(int *param_1);
 void FUN_100f6944(int *param_1,short param_2,char param_3);
 void FUN_100f6984(int *param_1,long long param_2,short param_3,char param_4);
 void FUN_100f6a0c(int *param_1,long long param_2);
-void FUN_100f6a48(void);
+void FUN_100f6a48();
 unsigned long long FUN_100f6a84(int param_1,int param_2,int param_3,long long param_4,
                       char param_5);
-void FUN_100f6c74(void);
+void FUN_100f6c74();
 void FUN_100f6c9c(int *param_1,int param_2,long long param_3,long long param_4,char param_5,
                  char param_6,long long param_7,char param_8);
 int FUN_100f6e68(int param_1);
@@ -550,20 +555,20 @@ long long FUN_100f8730(int *param_1,unsigned int param_2,long long param_3);
 int * FUN_100f8850(int *param_1,unsigned int param_2,short param_3);
 void FUN_100f8a58(int *param_1,int *param_2,char param_3);
 void FUN_100f8bcc(int *param_1);
-void FUN_100f8cec(void);
+void FUN_100f8cec();
 int * FUN_100f8d30(int *param_1);
-void FUN_100f8da0(void);
+void FUN_100f8da0();
 void FUN_100f8dc8(int *param_1);
 void FUN_100f8e7c(int param_1);
 int * FUN_100f8ec0(int param_1);
 unsigned long long FUN_100f8fa8(int param_1,unsigned long long param_2,char param_3,char *param_4);
 void FUN_100f90fc(int param_1);
 int * FUN_100f913c(int *param_1);
-void FUN_100f91b8(void);
+void FUN_100f91b8();
 void FUN_100f91e0(int *param_1);
 int FUN_100f9298(int *param_1);
 void FUN_100f930c(int param_1);
-void FUN_100f93c8(void);
+void FUN_100f93c8();
 char FUN_100f93ec(int *param_1);
 char FUN_100f943c(int *param_1);
 void FUN_100f948c(int *param_1,short *param_2);
@@ -582,7 +587,7 @@ int FUN_100f9b18(int *param_1);
 long long FUN_100f9b68(int *param_1,int *param_2);
 void FUN_100f9d78(int *param_1);
 void FUN_100f9de4(int param_1,int param_2,int param_3);
-void FUN_100f9e88(void);
+void FUN_100f9e88();
 void FUN_100f9eac(int *param_1,char param_2);
 void FUN_100f9ef0(int *param_1,char param_2);
 void FUN_100f9f34(int *param_1,short param_2);
@@ -601,9 +606,9 @@ void FUN_100fa668(int *param_1,int param_2);
 void FUN_100fa6ac(int *param_1);
 void FUN_100fa724(int *param_1,unsigned char *param_2);
 void FUN_100fa770(int *param_1,int *param_2);
-int FUN_100fa850(void);
+int FUN_100fa850();
 int * FUN_100fa860(int *param_1);
-void FUN_100fa8d0(void);
+void FUN_100fa8d0();
 void FUN_100fa8f8(int param_1,int param_2);
 int FUN_100fa934(int param_1);
 int FUN_100fa998(int param_1);
@@ -612,7 +617,7 @@ void FUN_100faa60(int param_1,long long param_2);
 void FUN_100faac0(int param_1,long long param_2,int param_3);
 void FUN_100fab28(int param_1,long long param_2,int param_3);
 int * FUN_100fab98(int *param_1);
-void FUN_100fac20(void);
+void FUN_100fac20();
 void FUN_100fac48(int *param_1,long long param_2,int param_3);
 void FUN_100fad64(int *param_1);
 int FUN_100fae08(int param_1,int param_2);
@@ -621,54 +626,54 @@ void FUN_100faeac(int param_1,long long param_2);
 void FUN_100faefc(int param_1,long long param_2,long long param_3);
 void FUN_100faf98(int *param_1,long long param_2,long long param_3);
 int * FUN_100fb0a4(int *param_1);
-void FUN_100fb118(void);
-void FUN_100fb140(void);
+void FUN_100fb118();
+void FUN_100fb140();
 void FUN_100fb16c(int param_1,int param_2);
 void FUN_100fb1fc(int param_1,long long param_2,int param_3);
-void FUN_100fb2d8(void);
+void FUN_100fb2d8();
 void FUN_100fb44c(int param_1,long long param_2);
 void FUN_100fb4a4(int *param_1,long long param_2,long long param_3);
 void FUN_100fb588(int *param_1,long long param_2,unsigned int param_3);
-void FUN_100fb694(void);
+void FUN_100fb694();
 int * FUN_100fb780(int *param_1);
 int * FUN_100fb7f0(int *param_1);
-void FUN_100fb88c(void);
+void FUN_100fb88c();
 void FUN_100fb8b4(int *param_1);
 void FUN_100fb99c(int param_1,int param_2,int param_3,int param_4);
 void FUN_100fba2c(int param_1,int param_2);
 void FUN_100fbac0(int param_1,int *param_2,char param_3);
 void FUN_100fbd5c(int *param_1,int *param_2,char param_3);
-void FUN_100fc344(void);
+void FUN_100fc344();
 void FUN_100fc36c(int param_1);
 void FUN_100fc3c8(int param_1,int *param_2,char param_3);
-void FUN_100fc43c(void);
+void FUN_100fc43c();
 int * FUN_100fc4ac(int *param_1);
-void FUN_100fc530(void);
+void FUN_100fc530();
 void FUN_100fc558(int param_1,char param_2);
 void FUN_100fc59c(int param_1,int *param_2);
 void FUN_100fc5f4(int param_1,int *param_2);
 void FUN_100fc64c(int *param_1,int *param_2);
 void FUN_100fc6dc(int *param_1,char param_2);
 void FUN_100fc7b4(int *param_1,long long param_2,char param_3);
-void FUN_100fc96c(void);
+void FUN_100fc96c();
 int * FUN_100fc998(int *param_1);
-void FUN_100fca00(void);
+void FUN_100fca00();
 void FUN_100fca28(long long param_1,char param_2);
 void FUN_100fca50(int *param_1,char param_2);
 int * FUN_100fcc6c(int *param_1);
-void FUN_100fccd4(void);
+void FUN_100fccd4();
 void FUN_100fccfc(int *param_1,char param_2);
-void FUN_100fcd44(void);
+void FUN_100fcd44();
 int * FUN_100fcdd4(int *param_1);
-void FUN_100fce5c(void);
+void FUN_100fce5c();
 void FUN_100fce84(int param_1,int param_2,int param_3);
 void FUN_100fcee0(int param_1);
 int * FUN_100fcfd4(int *param_1);
-void FUN_100fd03c(void);
-void FUN_100fd064(void);
+void FUN_100fd03c();
+void FUN_100fd064();
 long long FUN_100fd0a0(int *param_1);
 int * FUN_100fd110(int *param_1);
-void FUN_100fd1a4(void);
+void FUN_100fd1a4();
 void FUN_100fd1cc(int *param_1,long long param_2,int param_3);
 void FUN_100fd2cc(int param_1);
 void FUN_100fd310(int param_1);
@@ -676,14 +681,14 @@ void FUN_100fd3cc(int param_1);
 int FUN_100fd434(int param_1,char param_2,long long param_3,int *param_4,int *param_5);
 long long FUN_100fd5ec(int param_1);
 int * FUN_100fd648(int *param_1);
-void FUN_100fd6c0(void);
+void FUN_100fd6c0();
 void FUN_100fd6e8(int param_1);
 void FUN_100fd73c(int param_1);
 void FUN_100fd790(void);
 int FUN_100fda44(int param_1,short *param_2);
-void FUN_100fdbb4(void);
+void FUN_100fdbb4();
 int * FUN_100fdc64(int *param_1);
-void FUN_100fdd08(void);
+void FUN_100fdd08();
 void FUN_100fdd30(int *param_1,int *param_2,long long param_3,char param_4);
 void FUN_100fdf48(int param_1);
 void FUN_100fdfcc(int param_1);
@@ -698,25 +703,25 @@ void FUN_100fe488(int *param_1);
 void FUN_100fe4e4(int *param_1);
 void FUN_100fe5c0(int *param_1);
 int * FUN_100fe660(int *param_1);
-void FUN_100fe6c8(void);
+void FUN_100fe6c8();
 void FUN_100fe6f0(int param_1,long long param_2,long long param_3);
 void FUN_100fe754(int param_1);
 void FUN_100fe78c(int *param_1);
 void FUN_100fe9d8(int param_1);
 int * FUN_100fea14(int *param_1);
-void FUN_100fea7c(void);
+void FUN_100fea7c();
 void FUN_100feaa4(int *param_1,int param_2);
 int * FUN_100fed30(int *param_1);
-void FUN_100fed98(void);
+void FUN_100fed98();
 void FUN_100fedc0(int param_1,int param_2,int *param_3,long long param_4,short param_5);
 void FUN_100fee4c(int param_1,long long param_2);
 void FUN_100fee9c(int param_1,long long param_2);
 void FUN_100fef48(int *param_1);
 void FUN_100fefa8(int *param_1);
 void FUN_100ff048(int *param_1);
-int FUN_100ff0a0(void);
+int FUN_100ff0a0();
 int * FUN_100ff0b0(int *param_1);
-void FUN_100ff118(void);
+void FUN_100ff118();
 void FUN_100ff140(int *param_1,long long param_2,short param_3);
 void FUN_100ff22c(int param_1);
 void FUN_100ff268(int param_1,short param_2);
@@ -727,7 +732,7 @@ void FUN_100ff91c(int *param_1,short param_2);
 void FUN_100ffba0(int *param_1);
 void FUN_100ffbdc(int *param_1);
 void FUN_100ffd90(int *param_1);
-void FUN_100ffe50(void);
+void FUN_100ffe50();
 
 /* Extern declarations for Ghidra globals */
 extern long iRam10117094;
@@ -1035,7 +1040,7 @@ void FUN_100e0c0c(int param_1)
 }
 
 /* Address: 0x100e0c54 Size: 60 bytes */
-void FUN_100e0c54(void)
+void FUN_100e0c54()
 
 {
   FUN_100c1c8c(uRam10116f14,*puRam10116f1c,0x10,uRam10116f20,uRam10116938);
@@ -1043,7 +1048,7 @@ void FUN_100e0c54(void)
 }
 
 /* Address: 0x100e0d4c Size: 40 bytes */
-void FUN_100e0d4c(void)
+void FUN_100e0d4c()
 
 {
   FUN_100e0ca0(0);
@@ -1060,7 +1065,7 @@ void FUN_100e0d80(int param_1)
 }
 
 /* Address: 0x100e0dc8 Size: 224 bytes */
-void FUN_100e0dc8(void)
+void FUN_100e0dc8()
 
 {
   int *piVar1;
@@ -1084,7 +1089,7 @@ void FUN_100e0dc8(void)
 }
 
 /* Address: 0x100e0f3c Size: 60 bytes */
-void FUN_100e0f3c(void)
+void FUN_100e0f3c()
 
 {
   FUN_100c1c8c(uRam10116f28,*puRam10116f38,200,uRam10116f3c,uRam10116f40);
@@ -1727,7 +1732,7 @@ int * FUN_100e1b78(int *param_1)
 }
 
 /* Address: 0x100e1be0 Size: 40 bytes */
-void FUN_100e1be0(void)
+void FUN_100e1be0()
 
 {
   FUN_100e1b78(0);
@@ -1735,7 +1740,7 @@ void FUN_100e1be0(void)
 }
 
 /* Address: 0x100e1c08 Size: 64 bytes */
-void FUN_100e1c08(void)
+void FUN_100e1c08()
 
 {
   FUN_100c4548();
@@ -1790,7 +1795,7 @@ int FUN_100e1c48(int param_1,char param_2,int *param_3,int *param_4,
 }
 
 /* Address: 0x100e1db0 Size: 60 bytes */
-void FUN_100e1db0(void)
+void FUN_100e1db0()
 
 {
   FUN_100c1c8c(uRam10116f44,*puRam10116f4c,0x84,uRam10116f50,uRam10116bbc);
@@ -1822,7 +1827,7 @@ int * FUN_100e2124(int *param_1)
 }
 
 /* Address: 0x100e21b8 Size: 40 bytes */
-void FUN_100e21b8(void)
+void FUN_100e21b8()
 
 {
   FUN_100e2124(0);
@@ -2229,7 +2234,7 @@ long long FUN_100e2b98(int *param_1,short param_2,short param_3)
 }
 
 /* Address: 0x100e2d2c Size: 40 bytes */
-void FUN_100e2d2c(void)
+void FUN_100e2d2c()
 
 {
   FUN_100e1df4(0);
@@ -2238,6 +2243,69 @@ void FUN_100e2d2c(void)
 
 /* Address: stubbed - had compile errors on 64-bit */
 int * FUN_100e2d54(int *param_1) { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2450,6 +2518,79 @@ void FUN_100e2f58(int param_1)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100e2fe8(int *param_1,int *param_2) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4616,7 +4757,7 @@ void FUN_100e6e30(int *param_1,int param_2,int *param_3) { }
 
 
 /* Address: 0x100e6eec Size: 40 bytes */
-void FUN_100e6eec(void)
+void FUN_100e6eec()
 
 {
   FUN_100e1ea4(0);
@@ -4779,7 +4920,7 @@ void FUN_100e73a0(long long param_1,long long param_2,long long param_3)
 }
 
 /* Address: 0x100e73ec Size: 40 bytes */
-void FUN_100e73ec(void)
+void FUN_100e73ec()
 
 {
   FUN_100e1f44(0);
@@ -5043,7 +5184,7 @@ void FUN_100e7bbc(int *param_1,short param_2)
 }
 
 /* Address: 0x100e7c0c Size: 40 bytes */
-void FUN_100e7c0c(void)
+void FUN_100e7c0c()
 
 {
   FUN_100e4930(0);
@@ -5235,7 +5376,7 @@ int * FUN_100e81c4(int *param_1)
 }
 
 /* Address: 0x100e822c Size: 40 bytes */
-void FUN_100e822c(void)
+void FUN_100e822c()
 
 {
   FUN_100e81c4(0);
@@ -5352,7 +5493,7 @@ int * FUN_100e85b8(int *param_1)
 }
 
 /* Address: 0x100e8620 Size: 40 bytes */
-void FUN_100e8620(void)
+void FUN_100e8620()
 
 {
   FUN_100e85b8(0);
@@ -5361,6 +5502,12 @@ void FUN_100e8620(void)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100e8648(int param_1) { }
+
+
+
+
+
+
 
 
 
@@ -5401,6 +5548,12 @@ void FUN_100e8684(int param_1,int param_2) { }
 
 
 
+
+
+
+
+
+
 /* Address: 0x100e86bc Size: 104 bytes */
 int * FUN_100e86bc(int *param_1)
 
@@ -5418,7 +5571,7 @@ int * FUN_100e86bc(int *param_1)
 }
 
 /* Address: 0x100e8724 Size: 40 bytes */
-void FUN_100e8724(void)
+void FUN_100e8724()
 
 {
   FUN_100e86bc(0);
@@ -5446,8 +5599,20 @@ void FUN_100e874c(int param_1) { }
 
 
 
+
+
+
+
+
+
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100e8788(int param_1,short *param_2) { }
+
+
+
+
+
+
 
 
 
@@ -5649,8 +5814,46 @@ void FUN_100e8a90(int param_1) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: 0x100e8b88 Size: 336 bytes */
-void FUN_100e8b88(void)
+void FUN_100e8b88()
 
 {
   int uVar1;
@@ -5677,7 +5880,7 @@ void FUN_100e8b88(void)
 }
 
 /* Address: 0x100e8db4 Size: 40 bytes */
-void FUN_100e8db4(void)
+void FUN_100e8db4()
 
 {
   FUN_100e8cec(0);
@@ -5746,7 +5949,7 @@ void FUN_100e8f6c(int param_1,int *param_2)
 }
 
 /* Address: 0x100e9010 Size: 60 bytes */
-void FUN_100e9010(void)
+void FUN_100e9010()
 
 {
   FUN_100c1c8c(uRam10116ff0,*puRam10116ff8,0x128,uRam10116ffc,uRam10116610);
@@ -5779,7 +5982,12 @@ void FUN_100e9124(long long param_1)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100e9150(void) { }
+void FUN_100e9150() { }
+
+
+
+
+
 
 
 
@@ -5797,7 +6005,7 @@ void FUN_100e9150(void) { }
 
 
 /* Address: 0x100e9174 Size: 64 bytes */
-long long FUN_100e9174(void)
+long long FUN_100e9174()
 
 {
   long long uVar1;
@@ -5864,7 +6072,7 @@ void FUN_100e931c(long long param_1,long long param_2,int *param_3)
 }
 
 /* Address: 0x100e9368 Size: 40 bytes */
-void FUN_100e9368(void)
+void FUN_100e9368()
 
 {
   FUN_100e904c(0);
@@ -6171,7 +6379,7 @@ long long FUN_100e9e20(int *param_1)
 }
 
 /* Address: 0x100e9e88 Size: 40 bytes */
-void FUN_100e9e88(void)
+void FUN_100e9e88()
 
 {
   FUN_100e90bc(0);
@@ -6324,7 +6532,7 @@ void FUN_100ea3d8(long long param_1,int *param_2)
 }
 
 /* Address: 0x100ea490 Size: 40 bytes */
-void FUN_100ea490(void)
+void FUN_100ea490()
 
 {
   FUN_100ea428(0);
@@ -6525,7 +6733,7 @@ long long FUN_100eaaf4(int *param_1)
 }
 
 /* Address: 0x100eabb4 Size: 40 bytes */
-void FUN_100eabb4(void)
+void FUN_100eabb4()
 
 {
   FUN_100eab4c(0);
@@ -6564,7 +6772,7 @@ void FUN_100eacb8(long long param_1,int *param_2)
 }
 
 /* Address: 0x100ead70 Size: 40 bytes */
-void FUN_100ead70(void)
+void FUN_100ead70()
 
 {
   FUN_100ead08(0);
@@ -6753,7 +6961,7 @@ int * FUN_100eb328(int *param_1)
 }
 
 /* Address: 0x100eb390 Size: 40 bytes */
-void FUN_100eb390(void)
+void FUN_100eb390()
 
 {
   FUN_100eb328(0);
@@ -6861,7 +7069,7 @@ long long FUN_100eb740(int *param_1)
 
 /* Address: 0x100eb7bc Size: 244 bytes */
 
-void FUN_100eb7bc(void)
+void FUN_100eb7bc()
 
 {
   int uVar1;
@@ -6943,7 +7151,7 @@ FUN_100eba50(int *param_1,long long param_2,long long param_3,long long param_4,
 }
 
 /* Address: 0x100ebce8 Size: 36 bytes */
-void FUN_100ebce8(void)
+void FUN_100ebce8()
 
 {
   FUN_100ebbe0();
@@ -7426,6 +7634,62 @@ long long FUN_100ec72c(long long param_1,long long param_2,short *param_3) { ret
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: 0x100ec8ec Size: 360 bytes */
 void FUN_100ec8ec(int param_1)
 
@@ -7471,6 +7735,33 @@ void FUN_100ec8ec(int param_1)
 
 /* Address: stubbed - had compile errors on 64-bit */
 long long FUN_100eca54(int param_1,short *param_2,short *param_3) { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7602,7 +7893,7 @@ long long FUN_100ecbf0(long long param_1,long long param_2,long long param_3,lon
 }
 
 /* Address: 0x100ecc68 Size: 88 bytes */
-void FUN_100ecc68(void)
+void FUN_100ecc68()
 
 {
   int *piVar1;
@@ -7618,7 +7909,7 @@ void FUN_100ecc68(void)
 }
 
 /* Address: 0x100eccc0 Size: 188 bytes */
-void FUN_100eccc0(void)
+void FUN_100eccc0()
 
 {
   int *piVar1;
@@ -7654,7 +7945,7 @@ void FUN_100eccc0(void)
 }
 
 /* Address: 0x100ecd8c Size: 96 bytes */
-void FUN_100ecd8c(void)
+void FUN_100ecd8c()
 
 {
   int uVar1;
@@ -7769,7 +8060,21 @@ int FUN_100ee0a0(int param_1)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-long long FUN_100ee1b4(void) { return 0; }
+long long FUN_100ee1b4() { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7955,7 +8260,7 @@ long long FUN_100ee588(unsigned char *param_1,unsigned char *param_2,short param
 }
 
 /* Address: 0x100ee624 Size: 36 bytes */
-void FUN_100ee624(void)
+void FUN_100ee624()
 
 {
   FUN_100f56e4();
@@ -7963,7 +8268,7 @@ void FUN_100ee624(void)
 }
 
 /* Address: 0x100ee648 Size: 4 bytes */
-void FUN_100ee648(void)
+void FUN_100ee648()
 
 {
   return;
@@ -7971,6 +8276,47 @@ void FUN_100ee648(void)
 
 /* Address: stubbed - had compile errors on 64-bit */
 int FUN_100ee64c(int param_1) { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8112,30 +8458,19 @@ void FUN_100ee720(int param_1)
   return;
 }
 
-/* Address: stubbed - had compile errors on 64-bit */
-void FUN_100ee77c(unsigned long long param_1,unsigned long long param_2) { }
+/* Address: 0x100ee77c Size: 108 bytes */
+void FUN_100ee77c(unsigned long long param_1,unsigned long long param_2)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+{
+  if ((param_1 & 0xffffffff) != 0) {
+    FUN_100ee720(param_1);
+    FUN_100db3b8(param_1);
+    if (((param_1 & 0xffffffff) != 0) && ((param_2 & 1) != 0)) {
+      FUN_100ee648(param_1);
+    }
+  }
+  return;
+}
 
 
 
@@ -8149,7 +8484,12 @@ void FUN_100ee77c(unsigned long long param_1,unsigned long long param_2) { }
 
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100ee7e8(void) { }
+void FUN_100ee7e8() { }
+
+
+
+
+
 
 
 
@@ -8316,8 +8656,35 @@ unsigned long long FUN_100eeaac(long long param_1) { return 0; }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: stubbed - had compile errors on 64-bit */
 long long FUN_100eeb0c(long long param_1) { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8435,6 +8802,24 @@ long long FUN_100eebf4(long long param_1,int param_2) { return 0; }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100eec88(int param_1) { }
 
@@ -8486,33 +8871,75 @@ void FUN_100eec88(int param_1) { }
 
 
 
-/* FUN_100eecf8 defined elsewhere */
 
 
-/* Address: 0x100eed08 Size: 172 bytes */
-void FUN_100eed08(long long param_1,int param_2,unsigned char param_3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Address: 0x100eecf8 Size: 16 bytes */
+unsigned int FUN_100eecf8(unsigned int param_1)
 
 {
-  unsigned char *pbVar1;
-  unsigned char *pbVar2;
-  
-  pbVar1 = (unsigned char *)FUN_100eecf8();
-  pbVar2 = pbVar1 + param_2;
-  if (3 < param_2) {
-    for (; ((unsigned int)pbVar1 & 3) != 0; pbVar1 = pbVar1 + 1) {
-      *pbVar1 = param_3;
-    }
-    for (; pbVar1 < (unsigned char *)((unsigned int)pbVar2 & 0xfffffffc); pbVar1 = pbVar1 + 4) {
-      *(unsigned int *)pbVar1 =
-           (unsigned int)param_3 * 0x1000000 + (unsigned int)param_3 * 0x10000 + (unsigned int)param_3 * 0x100 +
-           (unsigned int)param_3;
-    }
-  }
-  for (; pbVar1 < pbVar2; pbVar1 = pbVar1 + 1) {
-    *pbVar1 = param_3;
-  }
-  return;
+  return param_1 & *puRam10117098;
 }
+
+/* Address: stubbed - had compile errors on 64-bit */
+void FUN_100eed08(long long param_1,int param_2,unsigned char param_3) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8629,7 +9056,7 @@ void FUN_100eef6c(short *param_1,short param_2,short param_3,short param_4)
 }
 
 /* Address: 0x100eef94 Size: 96 bytes */
-long long FUN_100eef94(void)
+long long FUN_100eef94()
 
 {
   int iVar2;
@@ -8715,8 +9142,13 @@ void FUN_100ef228(long long param_1,long long param_2) { }
 
 
 
-/* FUN_100ef284 defined elsewhere */
+/* Address: 0x100ef284 Size: 56 bytes */
+void FUN_100ef284(unsigned char *param_1,long long param_2)
 
+{
+  FUN_10002340(param_1,param_2,(unsigned long long)*param_1 + 1);
+  return;
+}
 
 /* Address: 0x100ef2bc Size: 60 bytes */
 int FUN_100ef2bc(unsigned int *param_1)
@@ -8752,6 +9184,49 @@ long long FUN_100ef330(int *param_1)
 
 /* Address: stubbed - had compile errors on 64-bit */
 long long FUN_100ef38c(unsigned int *param_1) { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8997,7 +9472,7 @@ short FUN_100ef96c(short *param_1)
 
 
 /* Address: 0x100efab0 Size: 80 bytes */
-unsigned long long FUN_100efab0(void)
+unsigned long long FUN_100efab0()
 
 {
   unsigned long long uVar1;
@@ -9025,7 +9500,7 @@ int FUN_100efb00(short param_1)
 }
 
 /* Address: 0x100efb60 Size: 36 bytes */
-void FUN_100efb60(void)
+void FUN_100efb60()
 
 {
   FUN_100efb00(0x37);
@@ -9033,7 +9508,7 @@ void FUN_100efb60(void)
 }
 
 /* Address: 0x100efb84 Size: 36 bytes */
-void FUN_100efb84(void)
+void FUN_100efb84()
 
 {
   FUN_100efb00(0x3b);
@@ -9041,7 +9516,7 @@ void FUN_100efb84(void)
 }
 
 /* Address: 0x100efba8 Size: 36 bytes */
-void FUN_100efba8(void)
+void FUN_100efba8()
 
 {
   FUN_100efb00(0x3a);
@@ -9049,7 +9524,7 @@ void FUN_100efba8(void)
 }
 
 /* Address: 0x100efbcc Size: 36 bytes */
-void FUN_100efbcc(void)
+void FUN_100efbcc()
 
 {
   FUN_100efb00(0x38);
@@ -9057,7 +9532,7 @@ void FUN_100efbcc(void)
 }
 
 /* Address: 0x100efbf0 Size: 36 bytes */
-void FUN_100efbf0(void)
+void FUN_100efbf0()
 
 {
   FUN_10003690();
@@ -9363,8 +9838,69 @@ void FUN_100f01ac(long long param_1,short *param_2,short param_3,char param_4) {
 
 
 
-/* FUN_100f0334 defined elsewhere */
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Address: 0x100f0334 Size: 88 bytes */
+int FUN_100f0334(int param_1,int param_2,int param_3)
+
+{
+  int *piVar1;
+  int *piVar2;
+  int local_10;
+  int local_c;
+  int local_8;
+  int local_4;
+  
+  piVar2 = &local_10;
+  piVar1 = &local_8;
+  local_4 = param_2;
+  local_8 = param_1;
+  if (param_1 < param_2) {
+    piVar1 = &local_4;
+  }
+  local_c = *piVar1;
+  local_10 = param_3;
+  if (*piVar1 < param_3) {
+    piVar2 = &local_c;
+  }
+  return *piVar2;
+}
 
 /* Address: 0x100f038c Size: 92 bytes */
 short FUN_100f038c(short param_1)
@@ -9409,7 +9945,7 @@ void FUN_100f0864(char param_1)
 }
 
 /* Address: 0x100f08a4 Size: 80 bytes */
-void FUN_100f08a4(void)
+void FUN_100f08a4()
 
 {
   char local_8 [8];
@@ -9440,7 +9976,7 @@ int FUN_100f08f4(long long param_1,long long param_2,short param_3)
 }
 
 /* Address: 0x100f0928 Size: 220 bytes */
-void FUN_100f0928(void)
+void FUN_100f0928()
 
 {
   short *puVar1;
@@ -9624,7 +10160,7 @@ int FUN_100f0cc8(char param_1,int *param_2)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100f0e74(void) { }
+void FUN_100f0e74() { }
 
 
 
@@ -9646,7 +10182,7 @@ void FUN_100f0e74(void) { }
 
 
 /* Address: stubbed - had compile errors on 64-bit */
-char FUN_100f0eec(void) { return 0; }
+char FUN_100f0eec() { return 0; }
 
 
 
@@ -9675,7 +10211,7 @@ void FUN_100f0f18(unsigned long long param_1)
 }
 
 /* Address: 0x100f1228 Size: 60 bytes */
-void FUN_100f1228(void)
+void FUN_100f1228()
 
 {
   int iVar1;
@@ -9697,7 +10233,7 @@ void FUN_100f12e4(int *param_1,int *param_2) { }
 
 
 /* Address: stubbed - had compile errors on 64-bit */
-int FUN_100f1300(void) { return 0; }
+int FUN_100f1300() { return 0; }
 
 
 
@@ -9751,71 +10287,29 @@ void FUN_100f16f8(long long param_1,long long param_2)
   return;
 }
 
-/* Address: stubbed - had compile errors on 64-bit */
-void FUN_100f1758(int *param_1,int *param_2) { }
+/* Address: 0x100f1758 Size: 232 bytes */
+void FUN_100f1758(int *param_1,int *param_2)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+{
+  int iVar1;
+  int iVar2;
+  
+  if (((param_1 != (int *)0x0) && (*param_1 != 0)) &&
+     (iVar1 = FUN_100022f8(param_1), iVar1 == *(int *)param_2[3])) {
+    iVar1 = FUN_100efab0(param_1);
+    if ((*(char *)*param_2 == '\0') || (iVar1 != 0)) {
+      iVar2 = FUN_10001c20(param_1);
+      *(int *)param_2[2] = *(int *)param_2[2] + iVar2 + 8;
+      if (iVar1 != 0) {
+        return;
+      }
+    }
+    if ((*(int *)param_2[1] == 0) && (iVar1 = FUN_100f0b50(param_1), iVar1 != 0)) {
+      *(int **)param_2[1] = param_1;
+    }
+  }
+  return;
+}
 
 /* Address: 0x100f1860 Size: 132 bytes */
 long long FUN_100f1860(long long param_1,int *param_2)
@@ -9839,7 +10333,7 @@ long long FUN_100f1860(long long param_1,int *param_2)
 }
 
 /* Address: 0x100f18ec Size: 84 bytes */
-int * FUN_100f18ec(void)
+int * FUN_100f18ec()
 
 {
   int *ppuVar1;
@@ -9902,7 +10396,7 @@ short FUN_100f19ec(int *param_1,short param_2)
 }
 
 /* Address: 0x100f1a88 Size: 84 bytes */
-int * FUN_100f1a88(void)
+int * FUN_100f1a88()
 
 {
   int *ppuVar1;
@@ -10116,7 +10610,7 @@ void FUN_100f1f7c(int *param_1,long long param_2)
 }
 
 /* Address: 0x100f210c Size: 84 bytes */
-int * FUN_100f210c(void)
+int * FUN_100f210c()
 
 {
   int *ppuVar1;
@@ -10132,7 +10626,7 @@ int * FUN_100f210c(void)
 }
 
 /* Address: 0x100f2160 Size: 36 bytes */
-void FUN_100f2160(void)
+void FUN_100f2160()
 
 {
   FUN_100ea4b8();
@@ -10153,7 +10647,7 @@ void FUN_100f2184(int *param_1,short param_2)
 }
 
 /* Address: 0x100f2204 Size: 16 bytes */
-void FUN_100f2204(void)
+void FUN_100f2204()
 
 {
   *puRam10117108 = 1;
@@ -10230,7 +10724,7 @@ void FUN_100f23ac(long long param_1,short param_2,short param_3)
 }
 
 /* Address: 0x100f2454 Size: 52 bytes */
-void FUN_100f2454(void)
+void FUN_100f2454()
 
 {
   FUN_100f2204();
@@ -10278,7 +10772,7 @@ void FUN_100f24a8(short param_1,char param_2) { }
 
 
 /* Address: 0x100f25a8 Size: 16 bytes */
-void FUN_100f25a8(void)
+void FUN_100f25a8()
 
 {
   *puRam10117108 = 0;
@@ -10286,14 +10780,14 @@ void FUN_100f25a8(void)
 }
 
 /* Address: 0x100f25b8 Size: 12 bytes */
-char FUN_100f25b8(void)
+char FUN_100f25b8()
 
 {
   return *puRam10117108;
 }
 
 /* Address: 0x100f25c4 Size: 16 bytes */
-void FUN_100f25c4(void)
+void FUN_100f25c4()
 
 {
   *puRam10117110 = 0;
@@ -10301,7 +10795,7 @@ void FUN_100f25c4(void)
 }
 
 /* Address: 0x100f25d4 Size: 12 bytes */
-char FUN_100f25d4(void)
+char FUN_100f25d4()
 
 {
   return *puRam10117110;
@@ -10554,7 +11048,7 @@ int * FUN_100f2ff0(int *param_1)
 }
 
 /* Address: 0x100f3064 Size: 36 bytes */
-void FUN_100f3064(void)
+void FUN_100f3064()
 
 {
   FUN_100ec2c4();
@@ -10562,7 +11056,7 @@ void FUN_100f3064(void)
 }
 
 /* Address: 0x100f3088 Size: 36 bytes */
-void FUN_100f3088(void)
+void FUN_100f3088()
 
 {
   FUN_100ec34c();
@@ -10585,6 +11079,44 @@ void FUN_100f30ac(int *param_1,unsigned long long param_2)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100f3118(long long param_1,long long param_2) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10742,7 +11274,12 @@ void FUN_100f3348(long long param_1,short param_2,short param_3,short param_4,
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100f3388(void) { }
+void FUN_100f3388() { }
+
+
+
+
+
 
 
 
@@ -10810,6 +11347,22 @@ void FUN_100f33ac(int *param_1) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: 0x100f3444 Size: 104 bytes */
 int * FUN_100f3444(int *param_1)
 
@@ -10827,7 +11380,7 @@ int * FUN_100f3444(int *param_1)
 }
 
 /* Address: 0x100f34ac Size: 40 bytes */
-void FUN_100f34ac(void)
+void FUN_100f34ac()
 
 {
   FUN_100f3444(0);
@@ -11041,7 +11594,7 @@ void FUN_100f3b08(long long param_1,long long param_2)
 }
 
 /* Address: 0x100f3bb4 Size: 168 bytes */
-void FUN_100f3bb4(void)
+void FUN_100f3bb4()
 
 {
   int uVar1;
@@ -11091,7 +11644,7 @@ int * FUN_100f3c98(int *param_1)
 }
 
 /* Address: 0x100f3d30 Size: 40 bytes */
-void FUN_100f3d30(void)
+void FUN_100f3d30()
 
 {
   FUN_100f3c98(0);
@@ -11215,7 +11768,7 @@ void FUN_100f4478(int *param_1,long long param_2,long long param_3,long long par
 }
 
 /* Address: 0x100f4514 Size: 36 bytes */
-void FUN_100f4514(void)
+void FUN_100f4514()
 
 {
   FUN_100f535c();
@@ -11299,21 +11852,21 @@ unsigned long long FUN_100f4ce0(int param_1)
   return uVar1;
 }
 
-/* Address: stubbed - had compile errors on 64-bit */
-long long FUN_100f4d20(int param_1) { return 0; }
+/* Address: 0x100f4d20 Size: 92 bytes */
 
+long long FUN_100f4d20(int param_1)
 
-
-
-
-
-
-
-
-
+{
+  int local_2c;
+  
+  FUN_10000198((*(int*)0x1011787c));
+  FUN_10002028(*(short *)(param_1 + 0x56),*(short *)(param_1 + 0x54));
+  FUN_10002040((unsigned long long)*(unsigned int *)(*(int *)(local_2c + -0xb0) + 0xca) + 0x10);
+  return 1;
+}
 
 /* Address: 0x100f4d84 Size: 60 bytes */
-void FUN_100f4d84(void)
+void FUN_100f4d84()
 
 {
   FUN_100c1c8c(uRam1011714c,*puRam10117158,0x98,uRam1011715c,uRam10116c7c);
@@ -11321,7 +11874,7 @@ void FUN_100f4d84(void)
 }
 
 /* Address: 0x100f4e30 Size: 40 bytes */
-void FUN_100f4e30(void)
+void FUN_100f4e30()
 
 {
   FUN_100f4dc8(0);
@@ -11419,22 +11972,39 @@ void FUN_100f50c0(int *param_1) { }
 
 
 
+
+
+
+
+
+
 /* Address: 0x100f5100 Size: 4 bytes */
-void FUN_100f5100(void)
+void FUN_100f5100()
 
 {
   return;
 }
 
 /* Address: 0x100f5104 Size: 4 bytes */
-void FUN_100f5104(void)
+void FUN_100f5104()
 
 {
   return;
 }
 
-/* FUN_100f5108 defined elsewhere */
+/* Address: 0x100f5108 Size: 124 bytes */
+void FUN_100f5108(int *param_1)
 
+{
+  int iVar1;
+  
+  iVar1 = FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x68));
+  if (iVar1 != 0) {
+    FUN_10117884((int)*(short *)(*param_1 + 0x60) + (int)param_1);
+  }
+  FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0xa0));
+  return;
+}
 
 
 
@@ -11525,8 +12095,19 @@ long long FUN_100f52cc(long long param_1) { return 0; }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 /* Address: 0x100f5338 Size: 36 bytes */
-void FUN_100f5338(void)
+void FUN_100f5338()
 
 {
   FUN_100f5708();
@@ -11534,7 +12115,7 @@ void FUN_100f5338(void)
 }
 
 /* Address: 0x100f535c Size: 4 bytes */
-void FUN_100f535c(void)
+void FUN_100f535c()
 
 {
   return;
@@ -11545,7 +12126,7 @@ void FUN_100f535c(void)
 
 
 /* Address: 0x100f5360 Size: 64 bytes */
-void FUN_100f5360(void)
+void FUN_100f5360()
 
 {
   FUN_100c1c8c(uRam10116938,*puRam10117164,4,uRam10117168,uRam10116938);
@@ -11730,8 +12311,44 @@ void FUN_100f5500(short *param_1) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: 0x100f55ec Size: 84 bytes */
-void FUN_100f55ec(void)
+void FUN_100f55ec()
 
 {
   int iVar1;
@@ -11760,14 +12377,22 @@ void FUN_100f55ec(void)
 
 
 /* Address: 0x100f5748 Size: 12 bytes */
-char FUN_100f5748(void)
+char FUN_100f5748()
 
 {
   return *puRam10117170;
 }
 
-/* FUN_100f5754 defined elsewhere */
+/* Address: 0x100f5754 Size: 24 bytes */
+char FUN_100f5754(char param_1)
 
+{
+  char uVar1;
+  
+  uVar1 = *puRam10117170;
+  *puRam10117170 = param_1;
+  return uVar1;
+}
 
 /* Address: 0x100f576c Size: 36 bytes */
 long long FUN_100f576c(unsigned int param_1)
@@ -11780,8 +12405,38 @@ long long FUN_100f576c(unsigned int param_1)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-int FUN_100f5790(void) { return 0; }
+int FUN_100f5790() { return 0; }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Address: stubbed - had compile errors on 64-bit */
+void FUN_100f5838() { }
 
 
 
@@ -11804,7 +12459,7 @@ int FUN_100f5790(void) { return 0; }
 
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100f5838(void) { }
+int FUN_100f585c() { return 0; }
 
 
 
@@ -11812,17 +12467,6 @@ void FUN_100f5838(void) { }
 
 
 
-
-
-
-
-
-
-
-
-
-/* Address: stubbed - had compile errors on 64-bit */
-int FUN_100f585c(void) { return 0; }
 
 
 
@@ -11846,7 +12490,7 @@ int FUN_100f585c(void) { return 0; }
 
 
 /* Address: 0x100f5948 Size: 40 bytes */
-void FUN_100f5948(void)
+void FUN_100f5948()
 
 {
   FUN_100f58a4(0);
@@ -12044,7 +12688,7 @@ int FUN_100f629c(int *param_1)
 }
 
 /* Address: 0x100f6318 Size: 36 bytes */
-void FUN_100f6318(void)
+void FUN_100f6318()
 
 {
   FUN_100c87e0();
@@ -12115,6 +12759,12 @@ void FUN_100f63c4(int *param_1,int *param_2)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100f655c(int *param_1) { }
+
+
+
+
+
+
 
 
 
@@ -12281,7 +12931,7 @@ void FUN_100f6a0c(int *param_1,long long param_2)
 }
 
 /* Address: 0x100f6a48 Size: 60 bytes */
-void FUN_100f6a48(void)
+void FUN_100f6a48()
 
 {
   FUN_100c1c8c(uRam10117174,*puRam1011717c,0xd8,uRam10117180,uRam10116c40);
@@ -12328,7 +12978,7 @@ unsigned long long FUN_100f6a84(int param_1,int param_2,int param_3,long long pa
 }
 
 /* Address: 0x100f6c74 Size: 40 bytes */
-void FUN_100f6c74(void)
+void FUN_100f6c74()
 
 {
   FUN_100f6b8c(0);
@@ -13302,7 +13952,7 @@ void FUN_100f8bcc(int *param_1)
 }
 
 /* Address: 0x100f8cec Size: 60 bytes */
-void FUN_100f8cec(void)
+void FUN_100f8cec()
 
 {
   FUN_100c1c8c(uRam10117184,*puRam1011718c,0xc0,uRam10117190,uRam10116c7c);
@@ -13327,7 +13977,7 @@ int * FUN_100f8d30(int *param_1)
 }
 
 /* Address: 0x100f8da0 Size: 40 bytes */
-void FUN_100f8da0(void)
+void FUN_100f8da0()
 
 {
   FUN_100f8d30(0);
@@ -13382,6 +14032,40 @@ void FUN_100f8e7c(int param_1)
 
 /* Address: stubbed - had compile errors on 64-bit */
 int * FUN_100f8ec0(int param_1) { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13557,7 +14241,7 @@ int * FUN_100f913c(int *param_1)
 }
 
 /* Address: 0x100f91b8 Size: 40 bytes */
-void FUN_100f91b8(void)
+void FUN_100f91b8()
 
 {
   FUN_100f913c(0);
@@ -13625,7 +14309,7 @@ void FUN_100f930c(int param_1)
 }
 
 /* Address: 0x100f93c8 Size: 36 bytes */
-void FUN_100f93c8(void)
+void FUN_100f93c8()
 
 {
   FUN_100f535c();
@@ -13741,6 +14425,27 @@ int * FUN_100f960c(int *param_1)
 
 /* Address: stubbed - had compile errors on 64-bit */
 int FUN_100f9734(int *param_1,int *param_2) { return 0; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14001,7 +14706,7 @@ void FUN_100f9de4(int param_1,int param_2,int param_3)
 }
 
 /* Address: 0x100f9e88 Size: 36 bytes */
-void FUN_100f9e88(void)
+void FUN_100f9e88()
 
 {
   FUN_100f535c();
@@ -14233,8 +14938,79 @@ void FUN_100fa1b4(int *param_1,int *param_2,int *param_3) { }
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100fa340(int *param_1,long long param_2,int *param_3) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14445,7 +15221,7 @@ void FUN_100fa770(int *param_1,int *param_2)
 }
 
 /* Address: 0x100fa850 Size: 8 bytes */
-int FUN_100fa850(void)
+int FUN_100fa850()
 
 {
   return uRam10116744;
@@ -14469,7 +15245,7 @@ int * FUN_100fa860(int *param_1)
 }
 
 /* Address: 0x100fa8d0 Size: 40 bytes */
-void FUN_100fa8d0(void)
+void FUN_100fa8d0()
 
 {
   FUN_100fa860(0);
@@ -14583,7 +15359,7 @@ int * FUN_100fab98(int *param_1)
 }
 
 /* Address: 0x100fac20 Size: 40 bytes */
-void FUN_100fac20(void)
+void FUN_100fac20()
 
 {
   FUN_100fab98(0);
@@ -14788,7 +15564,7 @@ int * FUN_100fb0a4(int *param_1)
 }
 
 /* Address: 0x100fb118 Size: 40 bytes */
-void FUN_100fb118(void)
+void FUN_100fb118()
 
 {
   FUN_100fb0a4(0);
@@ -14796,7 +15572,12 @@ void FUN_100fb118(void)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100fb140(void) { }
+void FUN_100fb140() { }
+
+
+
+
+
 
 
 
@@ -14850,7 +15631,7 @@ void FUN_100fb1fc(int param_1,long long param_2,int param_3)
 }
 
 /* Address: 0x100fb2d8 Size: 40 bytes */
-void FUN_100fb2d8(void)
+void FUN_100fb2d8()
 
 {
   FUN_100fb260(0);
@@ -14926,7 +15707,7 @@ void FUN_100fb588(int *param_1,long long param_2,unsigned int param_3)
 }
 
 /* Address: 0x100fb694 Size: 236 bytes */
-void FUN_100fb694(void)
+void FUN_100fb694()
 
 {
   int uVar1;
@@ -14982,7 +15763,7 @@ int * FUN_100fb7f0(int *param_1)
 }
 
 /* Address: 0x100fb88c Size: 40 bytes */
-void FUN_100fb88c(void)
+void FUN_100fb88c()
 
 {
   FUN_100fb780(0);
@@ -15289,7 +16070,7 @@ LAB_100fc1e8:
 }
 
 /* Address: 0x100fc344 Size: 40 bytes */
-void FUN_100fc344(void)
+void FUN_100fc344()
 
 {
   FUN_100fb7f0(0);
@@ -15327,7 +16108,7 @@ void FUN_100fc3c8(int param_1,int *param_2,char param_3)
 }
 
 /* Address: stubbed - had compile errors on 64-bit */
-void FUN_100fc43c(void) { }
+void FUN_100fc43c() { }
 
 
 
@@ -15362,7 +16143,7 @@ int * FUN_100fc4ac(int *param_1)
 }
 
 /* Address: 0x100fc530 Size: 40 bytes */
-void FUN_100fc530(void)
+void FUN_100fc530()
 
 {
   FUN_100fc4ac(0);
@@ -15486,7 +16267,7 @@ void FUN_100fc7b4(int *param_1,long long param_2,char param_3)
 }
 
 /* Address: 0x100fc96c Size: 36 bytes */
-void FUN_100fc96c(void)
+void FUN_100fc96c()
 
 {
   FUN_100f535c();
@@ -15510,7 +16291,7 @@ int * FUN_100fc998(int *param_1)
 }
 
 /* Address: 0x100fca00 Size: 40 bytes */
-void FUN_100fca00(void)
+void FUN_100fca00()
 
 {
   FUN_100fc998(0);
@@ -15584,7 +16365,7 @@ int * FUN_100fcc6c(int *param_1)
 }
 
 /* Address: 0x100fccd4 Size: 40 bytes */
-void FUN_100fccd4(void)
+void FUN_100fccd4()
 
 {
   FUN_100fcc6c(0);
@@ -15600,7 +16381,7 @@ void FUN_100fccfc(int *param_1,char param_2)
 }
 
 /* Address: 0x100fcd44 Size: 136 bytes */
-void FUN_100fcd44(void)
+void FUN_100fcd44()
 
 {
   int uVar1;
@@ -15634,7 +16415,7 @@ int * FUN_100fcdd4(int *param_1)
 }
 
 /* Address: 0x100fce5c Size: 40 bytes */
-void FUN_100fce5c(void)
+void FUN_100fce5c()
 
 {
   FUN_100fcdd4(0);
@@ -15695,7 +16476,7 @@ int * FUN_100fcfd4(int *param_1)
 }
 
 /* Address: 0x100fd03c Size: 40 bytes */
-void FUN_100fd03c(void)
+void FUN_100fd03c()
 
 {
   FUN_100fcfd4(0);
@@ -15703,7 +16484,7 @@ void FUN_100fd03c(void)
 }
 
 /* Address: 0x100fd064 Size: 60 bytes */
-void FUN_100fd064(void)
+void FUN_100fd064()
 
 {
   FUN_100c4548();
@@ -15745,117 +16526,49 @@ int * FUN_100fd110(int *param_1)
 }
 
 /* Address: 0x100fd1a4 Size: 40 bytes */
-void FUN_100fd1a4(void)
+void FUN_100fd1a4()
 
 {
   FUN_100fd110(0);
   return;
 }
 
-/* Address: stubbed - had compile errors on 64-bit */
-void FUN_100fd1cc(int *param_1,long long param_2,int param_3) { }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* Address: 0x100fd1cc Size: 256 bytes */
+
+void FUN_100fd1cc(int *param_1,long long param_2,int param_3)
+
+{
+  int *puVar1;
+  int iVar2;
+  char auStack_12c [256];
+  short local_2c;
+  int local_28;
+  int local_24;
+  int local_20;
+  int local_1c;
+  
+  puVar1 = puRam10117370;
+  FUN_100fd064(param_1,0,0,0,0,0,0,0);
+  *(char *)(param_1 + 0xb) = 0;
+  param_1[0x21] = param_3;
+  local_2c = 0;
+  local_28 = 0;
+  local_20 = 0;
+  local_1c = 0;
+  local_24 = *puVar1;
+  *puVar1 = auStack_12c;
+  iVar2 = FUN_10000090(auStack_12c);
+  if (iVar2 == 0) {
+    iVar2 = FUN_100ed918();
+    param_1[0x22] = iVar2;
+    *puVar1 = local_24;
+  }
+  else {
+    FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x90));
+    FUN_100db158(local_2c,local_28);
+  }
+  return;
+}
 
 /* Address: 0x100fd2cc Size: 68 bytes */
 void FUN_100fd2cc(int param_1)
@@ -15987,7 +16700,7 @@ int * FUN_100fd648(int *param_1)
 }
 
 /* Address: 0x100fd6c0 Size: 40 bytes */
-void FUN_100fd6c0(void)
+void FUN_100fd6c0()
 
 {
   FUN_100fd648(0);
@@ -16024,6 +16737,92 @@ void FUN_100fd73c(int param_1)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100fd790(void) { }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16336,7 +17135,7 @@ int FUN_100fda44(int param_1,short *param_2)
 }
 
 /* Address: 0x100fdbb4 Size: 168 bytes */
-void FUN_100fdbb4(void)
+void FUN_100fdbb4()
 
 {
   int uVar1;
@@ -16381,7 +17180,7 @@ int * FUN_100fdc64(int *param_1)
 }
 
 /* Address: 0x100fdd08 Size: 40 bytes */
-void FUN_100fdd08(void)
+void FUN_100fdd08()
 
 {
   FUN_100fdc64(0);
@@ -16700,7 +17499,7 @@ int * FUN_100fe660(int *param_1)
 }
 
 /* Address: 0x100fe6c8 Size: 40 bytes */
-void FUN_100fe6c8(void)
+void FUN_100fe6c8()
 
 {
   FUN_100fe660(0);
@@ -16723,6 +17522,14 @@ void FUN_100fe6f0(int param_1,long long param_2,long long param_3)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100fe754(int param_1) { }
+
+
+
+
+
+
+
+
 
 
 
@@ -16849,6 +17656,13 @@ void FUN_100fe9d8(int param_1) { }
 
 
 
+
+
+
+
+
+
+
 /* Address: 0x100fea14 Size: 104 bytes */
 int * FUN_100fea14(int *param_1)
 
@@ -16866,7 +17680,7 @@ int * FUN_100fea14(int *param_1)
 }
 
 /* Address: 0x100fea7c Size: 40 bytes */
-void FUN_100fea7c(void)
+void FUN_100fea7c()
 
 {
   FUN_100fea14(0);
@@ -16978,7 +17792,7 @@ int * FUN_100fed30(int *param_1)
 }
 
 /* Address: 0x100fed98 Size: 40 bytes */
-void FUN_100fed98(void)
+void FUN_100fed98()
 
 {
   FUN_100fed30(0);
@@ -17080,7 +17894,7 @@ void FUN_100ff048(int *param_1)
 }
 
 /* Address: 0x100ff0a0 Size: 8 bytes */
-int FUN_100ff0a0(void)
+int FUN_100ff0a0()
 
 {
   return uRam101172a8;
@@ -17103,7 +17917,7 @@ int * FUN_100ff0b0(int *param_1)
 }
 
 /* Address: 0x100ff118 Size: 40 bytes */
-void FUN_100ff118(void)
+void FUN_100ff118()
 
 {
   FUN_100ff0b0(0);
@@ -17153,6 +17967,14 @@ void FUN_100ff140(int *param_1,long long param_2,short param_3)
 
 /* Address: stubbed - had compile errors on 64-bit */
 void FUN_100ff22c(int param_1) { }
+
+
+
+
+
+
+
+
 
 
 
@@ -17538,7 +18360,7 @@ void FUN_100ffd90(int *param_1)
 }
 
 /* Address: 0x100ffe50 Size: 200 bytes */
-void FUN_100ffe50(void)
+void FUN_100ffe50()
 
 {
   int uVar1;
@@ -17553,6 +18375,7 @@ void FUN_100ffe50(void)
   FUN_100c1c8c((*(int*)((char*)ppuVar2 - 0x17e)),*(int *)(*(int*)((char*)ppuVar2 - 0x174)),0x60,(*(int*)((char*)ppuVar2 - 0x173)),uVar1);
   return;
 }
+
 
 
 

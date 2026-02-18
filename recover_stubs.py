@@ -11,8 +11,11 @@ import re, subprocess, tempfile, os, sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 SRC_DIR = '/Users/lucaspick/workspace/itpick/warlords2-decompile/src'
+PPC32_SYSROOT = '/tmp/ppc32-sysroot'
 CFLAGS = [
-    'cc', '-fsyntax-only', '-ferror-limit=1',
+    'clang', '-target', 'powerpc-unknown-linux',
+    '-nostdinc', f'-isystem{PPC32_SYSROOT}/include',
+    '-fsyntax-only', '-ferror-limit=1',
     '-Wno-int-to-pointer-cast', '-Wno-pointer-to-int-cast',
     '-Wno-incompatible-pointer-types', '-Wno-int-conversion',
     '-Wno-implicit-function-declaration',

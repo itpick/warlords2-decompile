@@ -135,6 +135,25 @@ def clean_types(code):
         code
     )
 
+    # Fix (void) params -> () for Ghidra functions
+    # Ghidra often decompiles functions with (void) but other code calls them with args
+    # In C, () means unspecified params (accepts any), (void) means exactly zero
+    code = re.sub(r'(FUN_[0-9a-f]+)\(void\)', r'\1()', code)
+
+    # Fix _local_XX Ghidra pseudo-variables (similar to _uStack)
+    local_vars = set(re.findall(r'\b(_local_[0-9a-f]+)\b', code))
+    if local_vars:
+        brace_pos = code.find('{')
+        if brace_pos != -1:
+            decls = '\n'.join(f'  int {v};' for v in sorted(local_vars))
+            code = code[:brace_pos+1] + '\n' + decls + code[brace_pos+1:]
+
+    # Fix ram0xXXXX references (raw RAM addresses from Ghidra)
+    code = re.sub(r'\bram(0x[0-9a-f]+)\b', r'(*(int*)\1)', code)
+
+    # Fix ___start reference
+    code = re.sub(r'\b___start\b', '0 /* __start */', code)
+
     return code
 
 def generate_c_file(functions, func_names, output_path, batch_name):
