@@ -29,6 +29,7 @@ STUB_SRCS    = stubs/stubs.c stubs/globals_extra.c \
                stubs/reconstructed_4.c stubs/reconstructed_5.c \
                stubs/reconstructed_named.c stubs/reconstructed_batch_a.c \
                stubs/reconstructed_batch_b.c stubs/reconstructed_batch_c.c \
+               stubs/recovered_stubs.c \
                stubs/wave2_tvect.c stubs/wave2_game1.c \
                stubs/wave2_game2.c stubs/wave2_macapp1.c \
                stubs/wave2_macapp2.c stubs/wave2_macapp3.c \

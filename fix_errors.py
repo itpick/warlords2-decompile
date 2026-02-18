@@ -139,6 +139,7 @@ def main():
         'stubs/wave2_macapp2.c',
         'stubs/wave2_macapp3.c',
         'stubs/wave2_macapp4.c',
+        'stubs/recovered_stubs.c',
     ]
 
     total_stubbed = 0

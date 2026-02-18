@@ -55,6 +55,36 @@ def clean_types(code):
     code = re.sub(r'\buint\b', 'unsigned int', code)
     code = re.sub(r'\bbool\b', 'int', code)
     code = re.sub(r'\bbyte\b', 'unsigned char', code)
+    code = re.sub(r'\bdword\b', 'unsigned int', code)
+
+    # Fix _uStackXXXX / _sStackXXXX Ghidra pseudo-variables (stack slot references)
+    # Convert to local int variables by declaring them
+    stack_vars = set(re.findall(r'\b(_[us]Stack[0-9a-f]+)\b', code))
+    if stack_vars:
+        # Find the opening brace of the function and add declarations after it
+        brace_pos = code.find('{')
+        if brace_pos != -1:
+            decls = '\n'.join(f'  int {v};' for v in sorted(stack_vars))
+            code = code[:brace_pos+1] + '\n' + decls + code[brace_pos+1:]
+
+    # Fix _FUN_XXXXX references (function addresses used as values, not calls)
+    # These are global function pointers. Replace _FUN_ with FUN_ since they refer to the same thing
+    code = re.sub(r'\b_FUN_(1[0-9a-f]+)\b', r'FUN_\1', code)
+
+    # Remove register0xXXXX references (Ghidra register pseudo-vars)
+    # Replace with a dummy local var
+    reg_vars = set(re.findall(r'\b(register0x[0-9a-f]+)\b', code))
+    if reg_vars:
+        brace_pos = code.find('{')
+        if brace_pos != -1:
+            decls = '\n'.join(f'  int {v};' for v in sorted(reg_vars))
+            code = code[:brace_pos+1] + '\n' + decls + code[brace_pos+1:]
+
+    # Fix PEF_Debug references (debug symbols)
+    code = re.sub(r'\bPEF_Debug_0x[0-9a-f_]+\b', '0', code)
+
+    # Fix _DAT_ references (data labels)
+    code = re.sub(r'\b_DAT_([0-9a-f]+)\b', r'(*(int*)0x\1)', code)
 
     # Fix function pointer casts: (*(code *)expr)() -> ((void (*)(void))expr)()
     # Also handle: (*(code *)*puRamXXXX)(args)
@@ -144,8 +174,8 @@ def generate_c_file(functions, func_names, output_path, batch_name):
         if name not in functions:
             continue
         body = clean_types(functions[name]['body'])
-        # Find all global references: piRam, puRam, psRam, iRam, uRam, pdRam, pcRam
-        for ref in re.findall(r'\b([piu][cisdu]?Ram[0-9a-f]+)\b', body):
+        # Find all global references: piRam, puRam, psRam, iRam, uRam, pdRam, pcRam, pbRam
+        for ref in re.findall(r'\b([piu][cisdub]?Ram[0-9a-f]+)\b', body):
             if ref not in macro_globals:  # Skip macro-defined globals
                 all_globals.add(ref)
 
@@ -188,6 +218,8 @@ def generate_c_file(functions, func_names, output_path, batch_name):
                     f.write(f'extern short *{g};\n')
                 elif g.startswith('pdRam'):
                     f.write(f'extern double {g};\n')
+                elif g.startswith('pbRam'):
+                    f.write(f'extern unsigned char *{g};\n')
                 elif g.startswith('pcRam'):
                     f.write(f'extern char *{g};\n')
                 elif g.startswith('iRam'):

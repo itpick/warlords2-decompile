@@ -33,6 +33,8 @@ def get_externs(body):
         if g not in seen: lines.append(f'extern long {g};'); seen.add(g)
     for g in re.findall(r'\b(uRam[0-9a-f]+)\b', body):
         if g not in seen: lines.append(f'extern unsigned int {g};'); seen.add(g)
+    for g in re.findall(r'\b(pbRam[0-9a-f]+)\b', body):
+        if g not in seen: lines.append(f'extern unsigned char *{g};'); seen.add(g)
     for g in re.findall(r'\b(pcRam[0-9a-f]+)\b', body):
         if g not in seen: lines.append(f'extern char *{g};'); seen.add(g)
     for g in re.findall(r'\b(pdRam[0-9a-f]+)\b', body):
