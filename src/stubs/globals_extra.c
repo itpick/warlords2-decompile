@@ -10,6 +10,12 @@
 /* Special globals */
 int _FUN_10115e4c = 0;
 int _FUN_10116e14 = 0;
+/* FUN_101159dc defined in wave2_macapp4.c */
+/* FUN_101159ec defined in wave2_macapp4.c */
+/* FUN_10115a00 defined in wave2_macapp4.c */
+/* FUN_10115a68 defined in wave2_macapp4.c */
+/* FUN_10115cc4 defined in wave2_macapp4.c */
+/* FUN_10116698 defined in reconstructed_batch_c.c */
 int _FUN_101174e8 = 0;
 int _DAT_10117898 = 0;
 struct { int field0; int field4; } PEF_Debug_0x7_10117864 = {0, 0};
@@ -1080,6 +1086,28 @@ long iRam10115cc0 = 0;
 long iRam10117428 = 0;
 unsigned int uRam10117450 = 0;
 
+long iRam10117700 = 0;
+long iRam10115dc8 = 0;
+long iRam10115dd4 = 0;
+long iRam10115e58 = 0;
+long iRam10115e5c = 0;
+long iRam10115e60 = 0;
+long iRam10115e64 = 0;
+int *piRam10116bc0 = NULL;
+short *psRam10115f00 = NULL;
+unsigned int *puRam10115edc = NULL;
+unsigned int *puRam10115ee0 = NULL;
+unsigned int *puRam10115efc = NULL;
+unsigned int *puRam101175f0 = NULL;
+
+/* TVect function pointer imports */
+/* FUN_10115d6c defined elsewhere */
+/* FUN_101175c4 defined in wave2_macapp4.c */
+/* FUN_101175bc defined in wave2_macapp4.c */
+/* FUN_1011662c defined elsewhere */
+/* FUN_1011600c defined elsewhere */
+/* FUN_10116248 defined elsewhere */
+
 /* TVect import table globals (Mac OS shared library function pointers) */
 long iRam10115ce8 = 0;
 long iRam10115cec = 0;
@@ -1658,3 +1686,11 @@ unsigned int uRam101172f8 = 0;
 
 unsigned int uRam101174f0 = 0;
 unsigned int uRam101174d0 = 0;
+
+/* Missing globals found during link */
+long iRam10117684 = 0;
+long iRam10117738 = 0;
+char *pbRam101161f4 = 0;
+char *pbRam101161f8 = 0;
+int *piRam101165f4 = 0;
+int *piRam101165f8 = 0;

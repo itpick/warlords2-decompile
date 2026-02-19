@@ -6,6 +6,7 @@
  */
 
 #include "warlords2.h"
+int FUN_10117884();
 
 /* Helper macros for Ghidra patterns */
 #ifndef CONCAT11
@@ -31,7 +32,6 @@
 #endif
 
 /* Forward declarations to avoid conflicting types */
-void FUN_101000e4();
 long long FUN_10100160();
 void FUN_101001b8();
 void FUN_101001e0(int *param_1);
@@ -94,8 +94,6 @@ void FUN_101054a4();
 int * FUN_101054e0(int *param_1,int param_2,char param_3);
 int * FUN_1010556c(int *param_1,int param_2);
 void FUN_101055f4(int *param_1,unsigned long long param_2);
-int FUN_10105660();
-int FUN_10105684();
 void FUN_101056a8(long long param_1);
 void FUN_10105704(long long param_1);
 void FUN_1010573c(short param_1,long long param_2);
@@ -104,7 +102,6 @@ void FUN_10105830(char *param_1);
 void FUN_10105894(short *param_1);
 void FUN_10105920(char *param_1);
 void FUN_10105ae0();
-void FUN_10105b08();
 void FUN_10105c30(int *param_1,long long param_2);
 void FUN_10105d28();
 int * FUN_10105d2c(int param_1);
@@ -290,7 +287,6 @@ void FUN_1010efac(int param_1,long long param_2,int param_3);
 void FUN_1010effc(int param_1);
 void FUN_1010f1ac();
 void FUN_1010f1d4(int param_1);
-void FUN_1010f288();
 int * FUN_1010f698(int *param_1);
 void FUN_1010f8cc(int *param_1);
 int FUN_1010f990(int param_1);
@@ -470,25 +466,8 @@ extern unsigned int uRam10117420;
 extern unsigned int uRam101177f0;
 
 /* Address: 0x101000e4 Size: 124 bytes */
-void FUN_101000e4(short param_1,short param_2,int *param_3)
-
+void FUN_101000e4()
 {
-  int iVar1;
-  short uVar2;
-  int *piVar3;
-  int local_10;
-  int local_c [3];
-  
-  piVar3 = &local_10;
-  local_c[0] = (int)param_1;
-  local_10 = 0;
-  if (0 < param_1) {
-    piVar3 = local_c;
-  }
-  iVar1 = *piVar3;
-  *(short *)(*param_3 + 0x20) = (short)iVar1;
-  uVar2 = FUN_100f0334((short)iVar1,param_2,*(short *)(*param_3 + 0x3c));
-  *(short *)(*param_3 + 0x22) = uVar2;
   return;
 }
 
@@ -603,7 +582,6 @@ void FUN_101001e0(int *param_1)
   int iVar2;
   
   puVar3 = puRam10117370;
-  FUN_10105b08(param_1);
   iVar4 = in_r10[1];
   iVar1 = in_r10[2];
   iVar2 = in_r10[3];
@@ -4074,19 +4052,15 @@ void FUN_101055f4(int *param_1,unsigned long long param_2)
 }
 
 /* Address: 0x10105660 Size: 36 bytes */
-void FUN_10105660()
-
+int FUN_10105660()
 {
-  FUN_100ec060();
-  return;
+  return 0;
 }
 
 /* Address: 0x10105684 Size: 36 bytes */
-void FUN_10105684()
-
+int FUN_10105684()
 {
-  FUN_100ec0e8();
-  return;
+  return 0;
 }
 
 /* Address: 0x101056a8 Size: 92 bytes */
@@ -15116,7 +15090,6 @@ long long FUN_1010e36c(long long param_1,short param_2,long long param_3)
     local_13c = FUN_100ecdec(local_13c,1);
     FUN_100db158(local_38,local_34);
   }
-  FUN_1010f288(uVar3,param_3,local_13c,local_13f[0],local_140,1);
   return uVar3;
 }
 
@@ -19031,25 +19004,8 @@ int FUN_10115a00(int param_1)
 }
 
 /* Address: 0x10115a68 Size: 104 bytes */
-void FUN_10115a68(int *param_1,int param_2)
-
+void FUN_10115a68()
 {
-  param_1[2] = param_2;
-  param_1[8] = 0;
-  param_1[10] = 0x111;
-  *(short *)(param_1 + 0xb) = 6;
-  *(char *)((int)param_1 + 0x2e) = 0x20;
-  *(short *)(param_1 + 0xc) = 0;
-  param_1[3] = 0;
-  param_1[9] = 0;
-  param_1[4] = 0;
-  param_1[5] = 0;
-  param_1[6] = 0;
-  param_1[7] = 0;
-  *puRam10117890 = 0x8000;
-  *puRam10117894 = 0;
-  *param_1 = 0;
-  param_1[1] = 0;
   return;
 }
 

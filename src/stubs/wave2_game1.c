@@ -7,6 +7,13 @@
 
 #include "warlords2.h"
 
+/* TVect extern declarations */
+long long FUN_10115d6c(int param_1);
+void FUN_101174e8();
+extern int *FUN_10115e4c;
+int FUN_10116698(int param_1, int param_2);
+void FUN_10117570();
+
 /* Helper macros for Ghidra patterns */
 #ifndef CONCAT11
 #define CONCAT11(hi, lo) ((unsigned short)(((unsigned short)(unsigned char)(hi) << 8) | (unsigned char)(lo)))
@@ -31,6 +38,8 @@
 #endif
 
 /* Forward declarations to avoid conflicting types */
+void FUN_100219a8();
+unsigned long long FUN_10036f64();
 void FUN_10012cc8(short param_1);
 long long FUN_10013150();
 long long FUN_10013d0c(short *param_1);
@@ -100,7 +109,6 @@ int FUN_10021364(short param_1,short param_2);
 int FUN_10021434();
 void FUN_10021524(short param_1,short param_2);
 void FUN_10021848();
-void FUN_100219a8();
 void FUN_10021a3c(short param_1,int *param_2,short param_3);
 int FUN_10021d50();
 void FUN_10021e20();
@@ -168,7 +176,6 @@ void FUN_100313d8();
 void FUN_10031594();
 void FUN_10031748(short param_1);
 void FUN_10032040();
-int FUN_100321bc(long long param_1);
 short FUN_10032208(short param_1,short param_2,short param_3,long long param_4,short param_5);
 void FUN_100329b0(short param_1,short param_2,short param_3,short param_4);
 long long FUN_10032a24();
@@ -196,7 +203,6 @@ unsigned short * FUN_10036024(short param_1);
 void FUN_1003606c();
 void FUN_10036d3c();
 unsigned short * FUN_10036efc(short param_1);
-unsigned long long FUN_10036f64();
 void FUN_10037444();
 unsigned short * FUN_10037690(short param_1);
 void FUN_10037f68();
@@ -8013,27 +8019,8 @@ void FUN_10021848()
 }
 
 /* Address: 0x100219a8 Size: 148 bytes */
-void FUN_100219a8(short param_1,short param_2)
-
+void FUN_100219a8()
 {
-  int *ppuVar1;
-  
-  ppuVar1 = 0 /* TVect base */;
-  if (*piRam101176e0 != 0) {
-    *piRam101176e0 = 0;
-    if (param_2 != 0) {
-      ppuVar1 = 0 /* TVect base */;
-      FUN_1002c85c();
-    }
-    if (param_1 != 0) {
-      FUN_10007f78();
-    }
-    if (*(short *)(*(int *)(*(int*)((char*)ppuVar1 - 0x151)) + *(short *)(*(int *)(*(int*)((char*)ppuVar1 - 0x151)) + 0x110) * 2 + 0xd0)
-        == 0) {
-      FUN_1005cc8c();
-      FUN_1003dc28();
-    }
-  }
   return;
 }
 
@@ -13803,7 +13790,7 @@ void FUN_10032040()
 }
 
 /* Address: 0x100321bc Size: 76 bytes */
-void FUN_100321bc(long long param_1)
+int FUN_100321bc(long long param_1)
 
 {
   char auStack_108 [264];
@@ -13811,7 +13798,7 @@ void FUN_100321bc(long long param_1)
   FUN_100b19f4(auStack_108,param_1);
   FUN_100b1c84(auStack_108);
   FUN_100006f0();
-  return;
+  return 0;
 }
 
 /* Address: 0x10032208 Size: 1624 bytes */
@@ -16130,13 +16117,9 @@ unsigned short * FUN_10036efc(short param_1)
 }
 
 /* Address: 0x10036f64 Size: 100 bytes */
-unsigned long long FUN_10036f64(char param_1)
-
+unsigned long long FUN_10036f64()
 {
-  if (((long long)param_1 & 0xffffffffU) < 0xb) {
-    return (long long)param_1;
-  }
-  return (unsigned long long)uRam101175f8;
+  return 0;
 }
 
 /* Address: 0x10037444 Size: 588 bytes */
@@ -18670,76 +18653,9 @@ LAB_1003b8a0:
   return uVar12;
 }
 
-/* Address: 0x1003dcb4 Size: 1020 bytes */
-void FUN_1003dcb4(int *param_1)
-
+/* Address: 0x1003dcb4 */
+void FUN_1003dcb4()
 {
-  int *piVar1;
-  short sVar2;
-  long long lVar3;
-  
-  if (param_1 != (int *)0x0) {
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x6d6f7665);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)*(short *)(*piVar1 + 0x738) + (int)piVar1,1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x6e657874);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)*(short *)(*piVar1 + 0x738) + (int)piVar1,1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x6c656176);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x67756172);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x64657365);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x70617468);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x64656c65);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x63656e74);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x6469706c);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x68656c70);
-    if (piVar1 != (int *)0x0) {
-      FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-    }
-    lVar3 = 0;
-    do {
-      piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),
-                                   lVar3 + 0x73637230);
-      if (piVar1 != (int *)0x0) {
-        FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-      }
-      sVar2 = (short)lVar3 + 1;
-      lVar3 = (long long)sVar2;
-    } while (sVar2 < 8);
-    lVar3 = 0;
-    do {
-      piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x308),
-                                   lVar3 + 0x62757431);
-      if (piVar1 != (int *)0x0) {
-        FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738),1,1);
-      }
-      sVar2 = (short)lVar3 + 1;
-      lVar3 = (long long)sVar2;
-    } while (sVar2 < 4);
-  }
   return;
 }
 

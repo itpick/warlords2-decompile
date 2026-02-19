@@ -15,7 +15,7 @@
 /* =========================================================================
  * Forward declarations for internal calls
  * ========================================================================= */
-int FUN_10117884(int method_ptr, ...);
+int FUN_10117884();
 void FUN_10000150(void);
 int FUN_10000090(void *exception_buf);
 void FUN_10000378(int);

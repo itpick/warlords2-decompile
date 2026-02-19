@@ -72,7 +72,7 @@ extern void *FUN_10115ad0;
 int FUN_10007e10(short, short, int);
 void FUN_10091338(void);
 void FUN_10007dd4(void);
-int FUN_10117884(int, ...);
+int FUN_10117884();
 void FUN_100226b0(int, int, int, short, short);
 void FUN_10047a64(int, void *, int, int);
 void FUN_1002c8e8(short, short);
