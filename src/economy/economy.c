@@ -26,7 +26,14 @@ void UnlockUnitData(void);
 long ShowQuestReward(short rewardType, short param_2, short param_3);
 
 /* External functions from other modules */
-extern int  CalcPathCost(short armyIdx, short destX, short destY);
+extern int  CalcPathCost(short x, short y);
+extern long AllocInfluenceMap(void);
+extern void FreeInfluenceMap(void);
+extern short CreateProducedUnit(short cityIdx, long param_2, short ownerPlayer,
+                                short neutralFlag, long influenceMap);
+extern short AssignProducedToArmy(short cityIdx, long param_2, short armyIdx);
+extern short FUN_10020d88(short armyIdx, short *outX, short *outY,
+                          long influenceMap, short mode);
 
 /* ======================================================================
  * UNIT TYPE DATA ACCESS
@@ -593,8 +600,8 @@ void ModifyHeroStrength(int heroPtr, char modifier)
  *   param_3: owner player index
  *   param_4: neutral flag (0x0F for neutral)
  */
-void ProcessCityProduction(short cityIdx, long param_2, short ownerPlayer,
-                           short neutralFlag)
+short ProcessCityProduction(short cityIdx, long param_2, short ownerPlayer,
+                            short neutralFlag)
 {
     int gs = (int)gGameState;
     short armyCount;
@@ -603,52 +610,52 @@ void ProcessCityProduction(short cityIdx, long param_2, short ownerPlayer,
     short i;
     int armyBase;
     short dist;
-    long prodResult;
-    char statBuf[62];
+    short prodResult;
+    short outX, outY;
+    long influenceMap;
 
-    /* AllocInfluenceMap - prepare production context */
-    /* prodResult = PrepareProductionContext(); -- omitted external call */
+    /* Allocate pathfinding/influence map for distance lookups */
+    influenceMap = AllocInfluenceMap();
 
     armyCount = *(short *)(gs + 0x1602);
     bestArmy = -1;
     bestDist = 1000;
 
-    /* Search all armies for nearest one owned by this player */
-    while (armyCount != 0) {
-        armyCount--;
-        if ((int)*(char *)(gs + armyCount * 0x42 + 0x1619) == (int)ownerPlayer) {
-            /* FindBestTarget - calculate distance/priority for army */
-            dist = CalcDistance(
-                *(short *)(gs + armyCount * 0x42 + 0x1604),
-                *(short *)(gs + armyCount * 0x42 + 0x1606),
-                0, 0);  /* Simplified - actual uses production coordinates */
+    /* Search all armies (high to low) for nearest owned by this player */
+    if (armyCount != 0) {
+        i = armyCount - 1;
+        do {
+            if ((int)*(char *)(gs + i * 0x42 + 0x1619) == (int)ownerPlayer) {
+                /* Look up distance on influence map for this army's position */
+                dist = FUN_10020d88(i, &outX, &outY, influenceMap, 0);
 
-            /* Check thresholds: dist < 50 (0x32), dist < AI threshold,
-             * path cost > 75 (0x4B), and dist < bestDist */
-            if (dist < 50 && dist < gAIPathThreshold) {
-                armyBase = gs + armyCount * 0x42;
-                int pathCost = CalcPathCost(
-                    *(short *)(armyBase + 0x1604),
-                    *(short *)(armyBase + 0x1606),
-                    0);
-                if (pathCost > 75 && dist < bestDist) {
-                    bestArmy = armyCount;
-                    bestDist = dist;
+                if (dist < 50 && dist < gAIPathThreshold) {
+                    armyBase = gs + i * 0x42;
+                    int pathCost = CalcPathCost(
+                        *(short *)(armyBase + 0x1604),
+                        *(short *)(armyBase + 0x1606));
+                    if (pathCost > 75 && dist < bestDist) {
+                        bestArmy = i;
+                        bestDist = dist;
+                    }
                 }
             }
-        }
+        } while (i-- != 0);
     }
 
-    /* FUN_1001b584 - attempt to create the produced unit */
-    /* prodResult = CreateProducedUnit(cityIdx, param_2, ownerPlayer, neutralFlag, prodResult); */
+    /* Create the produced unit */
+    prodResult = CreateProducedUnit(cityIdx, param_2, ownerPlayer,
+                                    neutralFlag, influenceMap);
 
     /* If production succeeded and we found a nearby army, assign to it */
-    /* if (prodResult != 0 && bestArmy != -1) {
-     *     FUN_1001c2dc(cityIdx, param_2, bestArmy);
-     * }
-     */
+    if (prodResult != 0 && bestArmy != -1) {
+        prodResult = AssignProducedToArmy(cityIdx, param_2, (short)bestArmy);
+    }
 
-    /* FreeInfluenceMap - cleanup production context */
+    /* Free pathfinding buffers */
+    FreeInfluenceMap();
+
+    return prodResult;
 }
 
 /* ======================================================================

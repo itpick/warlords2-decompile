@@ -14,20 +14,25 @@
  * RandomRange - The dice function used throughout the game.
  * RandomRange(numDice, dieSize, bonus)
  *   Rolls numDice dice, each with dieSize sides (1..dieSize), adds bonus.
- *   Returns total.
+ *   Result is clamped to [bonus + numDice, numDice * dieSize + bonus].
  *
- * Uses Mac OS Toolbox Random() internally (FUN_10002970).
- * The Ghidra decompilation shows floating-point conversion to map
- * the unsigned Random() output to [1..dieSize] range.
+ * Uses Mac OS Toolbox Random() internally (via TVect 0x10002970).
+ * Maps Random()'s signed 16-bit output to [1..dieSize] via FP:
+ *   roll = (short)(abs((float)r) / 32768.0 * (float)dieSize + 1.0)
+ *
+ * Original: RandomRange at 0x1005f230, 252 bytes
  * ===================================================================== */
 
-/* Original: RandomRange at 0x1005f230, 252 bytes */
+#define MAX_RANDOM_F  32768.0f   /* abs range of Mac Random() */
+
 short RandomRange(short numDice, short dieSize, short bonus)
 {
     short total;
     short i;
     short roll;
-    unsigned long rawRandom;
+    short result;
+    short r;
+    float fRand, fDie;
 
     if (dieSize == 0) {
         return bonus;
@@ -38,39 +43,45 @@ short RandomRange(short numDice, short dieSize, short bonus)
 
     if (numDice > 0) {
         do {
-            /* Call Mac OS Random() - returns unsigned 32-bit value */
-            rawRandom = Random();
+            r = Random();   /* Mac Random(): -32768..32767 */
 
-            /*
-             * Map the raw random value to [1..dieSize] range.
-             * Original uses floating-point conversion:
-             *   roll = (short)(abs((float)random_normalized) / max_range * dieSize + 1.0)
-             *
-             * Simplified equivalent:
-             */
-            roll = (short)((rawRandom % (unsigned long)dieSize) + 1);
+            /* FP mapping: abs(random) / 32768.0 * dieSize + 1.0 */
+            fRand = (float)r;
+            if (fRand < 0.0f) fRand = -fRand;   /* fabs */
+            fDie  = (float)dieSize;
+            roll  = (short)(fRand / MAX_RANDOM_F * fDie + 1.0f);
 
             total = total + roll;
             i = i + 1;
         } while (i < numDice);
     }
 
-    return total + bonus;
+    result = total + bonus;
+
+    /* Clamp to valid range */
+    if (result < bonus + numDice) {
+        return bonus + numDice;
+    }
+    if (result > numDice * dieSize + bonus) {
+        return numDice * dieSize + bonus;
+    }
+    return result;
 }
 
 
 /* =====================================================================
  * Distance Calculation
  *
- * CalcDistance - Calculates distance between two map points.
- * Uses Euclidean distance (sqrt via FPU), returns as short.
- * Returns 10000 if within some threshold (used for "adjacent" check).
+ * CalcDistance - Euclidean distance between two map points.
+ *
+ * Computes sqrt(dx*dx + dy*dy) using the FPU.
+ * Returns 10000 sentinel if dist_sq < threshold (same tile / adjacent).
+ * Threshold is a small FP constant from the CodeWarrior FP data table.
+ *
+ * Original: CalcDistance at 0x1000a884, 212 bytes
+ * Calls: abs() x2 (via TVect 0x10003768), __sqrt (0x10001380)
  * ===================================================================== */
 
-/* AbsShort = abs() - Mac OS Toolbox trampoline */
-/* Using standard abs() instead */
-
-/* Original: CalcDistance at 0x1000a884, 212 bytes */
 short CalcDistance(short x1, short y1, short x2, short y2)
 {
     long dx, dy;
@@ -81,17 +92,13 @@ short CalcDistance(short x1, short y1, short x2, short y2)
 
     dist_sq = (double)(dx * dx) + (double)(dy * dy);
 
-    /*
-     * Original checks against a threshold stored in a global lookup table.
-     * If distance squared exceeds the threshold, compute actual distance.
-     * Otherwise return 10000 (sentinel for "very close / adjacent").
-     */
-    if (dist_sq >= 1.0) {
-        return (short)sqrt(dist_sq);
-    }
-    else {
+    /* Original: fcmpo f1, f2 where f2 is a small FP threshold from data table.
+     * If dist_sq < threshold, return 10000 sentinel (points are the same tile).
+     * Otherwise compute actual Euclidean distance. */
+    if (dist_sq < 1.0) {
         return 10000;
     }
+    return (short)sqrt(dist_sq);
 }
 
 
