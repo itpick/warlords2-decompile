@@ -72,7 +72,7 @@ extern int *puRam10117808;
 extern int *puRam10117838;
 
 /* iRam globals */
-extern int iRam1011788c;
+extern int gSoundPrefs;
 
 /* PEF_Debug_0x7_10117864 - Ghidra PEF debug section struct at addr 0x10117864 */
 /* .name._0_4_ = first 4 bytes (used as int* pointer to a heap allocator handle)
@@ -1383,7 +1383,7 @@ void FUN_100ed524(void)
     int *puVar3;
     short uVar4;
 
-    iVar1 = iRam1011788c;
+    iVar1 = gSoundPrefs;
     *puRam10117098 = (int)0xffffffff;
     FUN_100ecf88(iVar1);
     if (*(char *)(iVar1 + 0x28) == '\0') {
@@ -1634,7 +1634,7 @@ int FUN_100ef088(void)
 {
     int uVar1;
 
-    if (*(char *)(iRam1011788c + 0x20) == '\0') {
+    if (*(char *)(gSoundPrefs + 0x20) == '\0') {
         uVar1 = 0;
     }
     else {

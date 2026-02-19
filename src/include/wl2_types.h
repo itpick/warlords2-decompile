@@ -23,9 +23,9 @@ typedef struct ArmyRecord {
     char        owner;                  /* +0x15: player index (0-7, 0x0F=neutral) */
     char        unit_types[4];          /* +0x16: unit type IDs per slot (-1=empty) */
     char        unit_moves[4];          /* +0x1A: movement points remaining per unit */
-    char        unit_hits[4];           /* +0x1E: hit points per unit */
-    char        unit_bonus[4];          /* +0x22: combat bonus per unit */
-    char        unit_experience[4];     /* +0x26: experience level per unit */
+    char        unit_hits[4];           /* +0x1E: hit points per unit (alt: unit_strength) */
+    char        unit_bonus[4];          /* +0x22: combat bonus per unit (alt: unit_hits) */
+    char        unit_experience[4];     /* +0x26: experience level per unit (alt: unit_upkeep) */
     short       strength_display;       /* +0x2A: displayed army strength */
     char        active_unit_type;       /* +0x2C: leading unit type (0xFF=none) */
     char        turns_fortified;        /* +0x2D: fortification counter */
@@ -174,6 +174,69 @@ typedef struct HeroData {
 typedef unsigned long MapTile;
 
 /*
+ * Quest Record - 0x0C (12) bytes per player
+ * Tracks active hero quests (capture city / kill army)
+ * Base: quest array at known offset, one per player
+ */
+typedef struct QuestRecord {
+    short       quest_active;           /* +0x00: nonzero = quest is active */
+    short       quest_type;             /* +0x02: 4=capture city, 5=kill army */
+    short       quest_target_army;      /* +0x04: army stack index */
+    short       quest_target_city;      /* +0x06: city index */
+    short       _unknown_08;            /* +0x08 */
+    short       _unknown_0a;            /* +0x0A */
+} QuestRecord;                         /* total: 0x0C bytes */
+
+/*
+ * Sprite Table Entry - 0x14 (20) bytes
+ * One per sprite in the sprite cache table
+ * Manages loaded/unloaded sprite images and masks
+ */
+typedef struct SpriteTableEntry {
+    unsigned long flags;                /* +0x00: bit 29=loaded, bit 28=has mask */
+    int         *image_gworld;          /* +0x04: GWorld for image data */
+    char        resource_group;         /* +0x08: group ID for LRU eviction */
+    char        _pad_09[3];             /* +0x09: padding */
+    int         *mask_gworld;           /* +0x0C: GWorld for mask data */
+    short       mask_resource_id;       /* +0x10: resource ID for mask */
+    short       _pad_12;                /* +0x12: padding */
+} SpriteTableEntry;                    /* total: 0x14 bytes */
+
+/*
+ * GWorld Descriptor - 0x14 (20) bytes
+ * Wrapper around a Mac OS GWorldPtr with cached geometry info
+ * Used by sprite/rendering subsystem
+ */
+typedef struct GWorldDescriptor {
+    short       origin_x;               /* +0x00 */
+    short       origin_y;               /* +0x02 */
+    short       width;                  /* +0x04 */
+    short       height;                 /* +0x06 */
+    short       half_width;             /* +0x08: (width+1)>>1 */
+    char        flags;                  /* +0x0A */
+    char        pixel_depth;            /* +0x0B: 0=device, 1=mono, 8=8-bit */
+    unsigned short extra_flags;         /* +0x0C */
+    short       _pad_0e;                /* +0x0E */
+    int         *gworld_ptr;            /* +0x10: actual GWorldPtr */
+} GWorldDescriptor;                    /* total: 0x14 bytes */
+
+/*
+ * Path Cache Entry - 0xD6 (214) bytes
+ * One of PATH_CACHE_ENTRIES (20) slots in the pathfinding cache
+ * Base: *gPathCacheHandle + entry_index * 0xD6
+ */
+typedef struct PathCacheEntry {
+    short       status;                 /* +0x00: 0=empty, 2=used */
+    short       move_mode;              /* +0x02: 0=ground, 1=flying, 2=naval */
+    short       flags;                  /* +0x04: road/bridge bonus flags */
+    short       src_x;                  /* +0x06 */
+    short       src_y;                  /* +0x08 */
+    short       dst_x;                  /* +0x0A */
+    short       dst_y;                  /* +0x0C */
+    char        waypoints[200];         /* +0x0E: direction bytes (0-7), 0xFF=end */
+} PathCacheEntry;                      /* total: 0xD6 bytes */
+
+/*
  * Main Game State Structure
  * Pointed to by gGameState (piRam1011735c)
  * Size: ~0x1604 header + army_count * 0x42
@@ -186,10 +249,12 @@ typedef struct GameState {
     short           player_color_secondary[MAX_PLAYERS];    /* +0x0B0 */
     short           player_faction[MAX_PLAYERS];            /* +0x0C0 */
     short           player_type[MAX_PLAYERS];               /* +0x0D0: 0=human, 1=AI */
-    char            _padE0[0x30];                           /* +0x0E0 */
+    short           player_strength[MAX_PLAYERS];            /* +0x0E0: AI strength rating */
+    short           player_city_count[MAX_PLAYERS];          /* +0x0F0: cities owned per player */
+    char            _pad100[0x10];                           /* +0x100 */
     short           current_player;                         /* +0x110 */
     short           _pad112;                                /* +0x112 */
-    short           combat_bonus;                           /* +0x114: difficulty level */
+    short           combat_bonus;                           /* +0x114: difficulty level (alt: difficulty) */
     short           fog_of_war_enabled;                     /* +0x116 */
     short           resource_offset_1;                      /* +0x118 */
     short           hero_questing_enabled;                  /* +0x11A */
@@ -259,8 +324,11 @@ typedef struct GameState {
 typedef struct ExtState {
     char            _header[0x0C];                  /* +0x00 */
     short           unknown_0c;                     /* +0x0C */
-    short           unknown_0e;                     /* +0x0E */
-    char            _pad10[0x10];                   /* +0x10 */
+    short           hero_hiring_enabled;             /* +0x0E: hero hiring flag */
+    short           last_hero_type;                  /* +0x10: last hero type created */
+    char            _pad12[4];                       /* +0x12 */
+    short           units_created_counter;           /* +0x16: total units created */
+    char            _pad18[8];                       /* +0x18 */
     short           search_depth;                   /* +0x20: pathfinding depth */
     short           unknown_22;                     /* +0x22 */
     char            _pad24[0x0C];                   /* +0x24 */
@@ -275,27 +343,32 @@ typedef struct ExtState {
     char            _pad44[2];                      /* +0x44 */
     short           selected_city_index;            /* +0x46: -1 = none */
     short           ai_mode_flag;                   /* +0x48: 0=normal, nonzero=AI */
-    short           unknown_4a;                     /* +0x4A */
+    short           completed_quest_count;           /* +0x4A: quests completed */
     char            _pad4c[0x0A];                   /* +0x4C */
-    unsigned char   army_state[MAX_ARMIES];         /* +0x56: per-army state */
-    char            _pad_flags[0x00];               /* gap to 0x11E */
-    /* Note: actual gap size depends on MAX_ARMIES */
-    unsigned char   army_flags[MAX_ARMIES];         /* +0x11E: per-army flags */
-    unsigned char   army_move_count[MAX_ARMIES];    /* +0x182: moves taken this turn */
-    unsigned char   army_extra[MAX_ARMIES];         /* +0x1E6: unknown per-army data */
+    unsigned char   army_state[100];                 /* +0x56: per-army state (0x64 bytes) */
+    unsigned char   army_priority[100];             /* +0xBA: per-army AI priority (0x64 bytes) */
+    unsigned char   army_flags[100];                /* +0x11E: per-army flags (0x64 bytes) */
+    unsigned char   army_move_count[100];            /* +0x182: moves taken this turn (0x64 bytes) */
+    unsigned char   army_extra[100];                /* +0x1E6: unknown per-army data (0x64 bytes) */
     short           city_count;                     /* +0x24A */
     CityRecord      cities[1];                      /* +0x24C: variable length */
 } ExtState;
 
 /*
- * Note: ExtState per-army arrays have gaps between them.
+ * Note: ExtState per-army arrays are 100 bytes each (indices 0-99).
  * In practice, access them as:
- *   army_state:  (char*)ext + 0x56  + army_index
- *   army_flags:  (char*)ext + 0x11E + army_index
- *   army_moves:  (char*)ext + 0x182 + army_index
- *   army_extra:  (char*)ext + 0x1E6 + army_index
- *   city_count:  *(short*)((char*)ext + 0x24A)
- *   city[i]:     (CityRecord*)((char*)ext + 0x24C + i * 0x5C)
+ *   army_state:     (char*)ext + 0x56  + army_index
+ *   army_priority:  (char*)ext + 0xBA  + army_index
+ *   army_flags:     (char*)ext + 0x11E + army_index
+ *   army_moves:     (char*)ext + 0x182 + army_index
+ *   army_extra:     (char*)ext + 0x1E6 + army_index
+ *   city_count:     *(short*)((char*)ext + 0x24A)
+ *   city[i]:        (CityRecord*)((char*)ext + 0x24C + i * 0x5C)
+ *
+ * After cities (variable-length region), at known offsets:
+ *   threat_score_border[8]:   *(short*)((char*)ext + 0x3BC + player * 2)
+ *   threat_score_base[8]:     *(short*)((char*)ext + 0x3EC + player * 2)
+ *   threat_score_critical[8]: *(short*)((char*)ext + 0x40C + player * 2)
  */
 
 #endif /* WL2_TYPES_H */

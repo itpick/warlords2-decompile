@@ -21,18 +21,18 @@
 
 /* Per-player combat statistics arrays (base addresses) */
 /* These are stored as parallel short arrays at known addresses */
-extern int   iRam10117490;   /* enemyStrengthNear[8] - short array base */
-extern int   iRam1011748c;   /* enemyArmyCount[8] - short array base */
-extern int   iRam10117488;   /* aliveEnemyCount[8] - short array base */
-extern short *psRam10117484; /* diplomacyTargetPtr - pointer to current target */
-extern int   iRam10117474;   /* siegeTreatyCount[8] - short array base */
+extern int   gPlayerTerritoryCounts;   /* enemyStrengthNear[8] - short array base */
+extern int   gPlayerTotalArmyCounts;   /* enemyArmyCount[8] - short array base */
+extern int   gPlayerIdleArmyCounts;   /* aliveEnemyCount[8] - short array base */
+extern short *gPrimaryThreatPlayer; /* diplomacyTargetPtr - pointer to current target */
+extern int   gDiploThreatData;   /* siegeTreatyCount[8] - short array base */
 /* iRam1011762c/iRam10117630 now aliased via #define in wl2_globals.h */
 
 /* Front line size lookup table - maps numPieces to front line count */
-extern int   iRam10115d28;   /* frontLineLookup[] - byte array base */
+extern int   gFrontLineLookup;   /* frontLineLookup[] - byte array base */
 
 /* Combat display bookkeeping */
-extern int   iRam101176e8;   /* combatDisplayPieces[8] - int array base */
+extern int   gCombatDisplayPieces;   /* combatDisplayPieces[8] - int array base */
 
 /* ===== Forward declarations for functions defined elsewhere ===== */
 
@@ -151,7 +151,7 @@ void CleanupCombatUnits(short refreshFlag)
     short i;
     short foundIdx;
 
-    displayBase = iRam101176e8;
+    displayBase = gCombatDisplayPieces;
     pieceTableBase = *(int *)gUnitTypeTable; /* *puRam10117360 */
     lastX = -1;
     lastY = -1;
@@ -362,7 +362,7 @@ int CalculateFightOrder(short armyIndex, short numPieces, int combatOrder, int f
 
     /* Determine front line size from lookup table */
     if (numPieces < 13) {
-        frontLineTarget = (short)*(char *)(numPieces + iRam10115d28);
+        frontLineTarget = (short)*(char *)(numPieces + gFrontLineLookup);
     } else {
         frontLineTarget = 8;
     }
@@ -1847,11 +1847,11 @@ void DoFightResults(void)
     short allyStatus[8];
     short multiAlly[38]; /* oversized for safety, original has asStack_4c[38] */
 
-    enemyStrengthBase = iRam10117490;
-    enemyArmyBase = iRam1011748c;
-    aliveEnemyBase = iRam10117488;
-    diplomacyTargetPtr = psRam10117484;
-    siegeTreatyBase = iRam10117474;
+    enemyStrengthBase = gPlayerTerritoryCounts;
+    enemyArmyBase = gPlayerTotalArmyCounts;
+    aliveEnemyBase = gPlayerIdleArmyCounts;
+    diplomacyTargetPtr = gPrimaryThreatPlayer;
+    siegeTreatyBase = gDiploThreatData;
     extState = gExtState;
     gameState = gGameState;
     mapBase = gMapTiles;
@@ -2244,7 +2244,7 @@ int CheckThirdPartyTreaty(short playerIdx)
         if (*(short *)(gs + 0x138) != 0 &&
             *(short *)(gs + 0xD0) == 0 &&
             ((*(unsigned int *)(*gGameState + playerIdx * 0x10 + pBase + 0x1582) >> 0x1A) & 3) == 2 &&
-            *(short *)(pBase + iRam10117474) != 0) {
+            *(short *)(pBase + gDiploThreatData) != 0) {
             result = 1;
         }
         if (i == 0) break;

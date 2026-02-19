@@ -243,16 +243,16 @@ extern long iRam10115e00;
 extern long iRam10115e04;
 extern long iRam10115e08;
 extern long iRam10115e30;
-extern long iRam10115e84;
+extern long gStdMoveCostTable;
 extern long iRam101174d4;
 extern long iRam101174e0;
 extern long iRam101174e4;
-extern long iRam101174f0;
+extern long gSelectionArray;
 extern long iRam1011750c;
 extern long iRam10117510;
 extern long iRam10117578;
-extern long iRam1011757c;
-extern long iRam101176e8;
+extern long gPerPlayerArmyCount;
+extern long gCombatDisplayPieces;
 extern long iRam1011773c;
 extern long iRam10117784;
 extern long iRam10117788;
@@ -265,12 +265,12 @@ extern char *pcRam101161f4;
 extern char *pcRam101161f8;
 extern char *pcRam10116398;
 extern char *pcRam10117378;
-extern char *pcRam101174d0;
+extern char *gSelectionCount;
 extern char *pcRam101174d8;
 extern char *pcRam101174dc;
 extern char *pcRam1011776c;
 extern char *pcRam10117770;
-extern pint *piRam10115cf0;
+extern pint *gCityOwnership;
 extern pint *piRam10115dc4;
 extern pint *piRam10115df0;
 extern pint *piRam10115df8;
@@ -278,8 +278,8 @@ extern pint *piRam10115dfc;
 extern pint *piRam10115e14;
 extern pint *piRam10115e34;
 extern pint *piRam10115e78;
-extern pint *piRam10116200;
-extern pint *piRam10116208;
+extern pint *gInfoWindow;
+extern pint *gMainGameWindow;
 extern pint *piRam10116478;
 extern pint *piRam10117468;
 extern pint *piRam101174a4;
@@ -293,12 +293,12 @@ extern short *psRam10115d4c;
 extern short *psRam10115d90;
 extern short *psRam10115d94;
 extern short *psRam10115e28;
-extern short *psRam10115e2c;
+extern short *gAutoModeFlag;
 extern short *psRam10115e3c;
 extern short *psRam10115e50;
 extern short *psRam10115e80;
 extern short *psRam10115e9c;
-extern short *psRam10115ff8;
+extern short *gForceRedrawFlag;
 extern short *psRam10116354;
 extern short *psRam1011677c;
 extern short *psRam10117494;
@@ -314,7 +314,7 @@ extern short *psRam10117558;
 extern short *psRam1011755c;
 extern short *psRam10117564;
 extern short *psRam1011760c;
-extern short *psRam101176e4;
+extern short *gHeroCount;
 extern short *psRam10117710;
 extern unsigned int *puRam10115d80;
 extern unsigned int *puRam10115d90;
@@ -324,7 +324,7 @@ extern unsigned int *puRam10115db4;
 extern unsigned int *puRam10115dec;
 extern unsigned int *puRam10115e28;
 extern unsigned int *puRam10115e90;
-extern unsigned int *puRam10115f7c;
+extern unsigned int *gProgressBar;
 extern unsigned int *puRam10115fe8;
 extern unsigned int *puRam10116354;
 extern unsigned int *puRam101163ac;
@@ -347,12 +347,12 @@ extern unsigned int *puRam10117550;
 extern unsigned int *puRam10117554;
 extern unsigned int *puRam10117560;
 extern unsigned int *puRam10117568;
-extern unsigned int *puRam101175b4;
+extern unsigned int *gCurrentPathFlags;
 extern unsigned int *puRam101175f8;
 extern unsigned int *puRam101176e0;
 extern unsigned int *puRam10117700;
-extern unsigned int *puRam10117710;
-extern unsigned int *puRam10117738;
+extern unsigned int *gCurrentMoveMode;
+extern unsigned int *gCombatSoundIDs;
 extern unsigned int *puRam10117754;
 extern unsigned int uRam10115d7c;
 extern unsigned int uRam10115dbc;
@@ -523,7 +523,7 @@ long long FUN_10013150()
   unsigned char abStack_40 [8];
   short local_38;
   
-  iVar10 = iRam101176e8;
+  iVar10 = gCombatDisplayPieces;
   piVar9 = piRam10117468;
   puVar8 = puRam10117360;
   piVar7 = piRam1011735c;
@@ -1748,7 +1748,7 @@ void FUN_100171d4(short *param_1,short param_2)
   short local_48;
   short local_46 [35];
   
-  iVar5 = iRam101176e8;
+  iVar5 = gCombatDisplayPieces;
   piVar12 = piRam101176e0;
   puVar11 = puRam10117494;
   piVar3 = piRam10117364;
@@ -2118,7 +2118,7 @@ void FUN_10017c28()
   int iVar4;
   int iVar5;
   
-  iVar4 = iRam101176e8;
+  iVar4 = gCombatDisplayPieces;
   psVar3 = psRam10117494;
   iVar5 = 7;
   do {
@@ -2430,7 +2430,7 @@ FUN_10017ddc(short param_1,short param_2,short param_3,short *param_4,
   int iVar9;
   unsigned long long uVar10;
   
-  iVar4 = iRam101176e8;
+  iVar4 = gCombatDisplayPieces;
   piVar7 = piRam101176e0;
   piVar6 = piRam10117468;
   piVar5 = piRam1011735c;
@@ -2519,7 +2519,7 @@ long long FUN_100180d0(short param_1,short param_2)
   int iVar3;
   long long lVar4;
   
-  iVar2 = iRam101176e8;
+  iVar2 = gCombatDisplayPieces;
   lVar4 = 0;
   if (*(short *)(*piRam1011735c + 0x15a) != 0) {
     FUN_10008418();
@@ -4532,8 +4532,8 @@ unsigned long long FUN_1001c854(short param_1)
   int iVar12;
   char auStack_48 [72];
   
-  puVar7 = puRam10117710;
-  puVar6 = puRam101175b4;
+  puVar7 = gCurrentMoveMode;
+  puVar6 = gCurrentPathFlags;
   piVar5 = piRam10117468;
   piVar4 = piRam10117360;
   iVar12 = 3;
@@ -5014,7 +5014,7 @@ void FUN_1001db60()
   
   piVar4 = piRam101174a4;
   piVar3 = piRam1011735c;
-  psVar2 = psRam10115e2c;
+  psVar2 = gAutoModeFlag;
   iVar7 = *(int *)(*piRam1011734c + 0x88);
   ResourceRead_Dispatch((int)*(int **)(iVar7 + 0x148) + (int)*(short *)(**(int **)(iVar7 + 0x148) + 0x2b8));
   local_60 = FUN_10003558(0x41492020,10000);
@@ -5312,7 +5312,7 @@ void FUN_1001ec20(short *param_1)
   
   psVar7 = psRam101176fc;
   piVar6 = piRam101176e8;
-  psVar5 = psRam101176e4;
+  psVar5 = gHeroCount;
   piVar4 = piRam101176e0;
   piVar3 = piRam10117360;
   puVar2 = puRam10116354;
@@ -7970,7 +7970,7 @@ void FUN_10021848()
   short sVar11;
   unsigned long long uVar12;
   
-  iVar8 = iRam101176e8;
+  iVar8 = gCombatDisplayPieces;
   puVar7 = puRam101176e0;
   piVar6 = piRam10117360;
   piVar5 = piRam1011735c;
@@ -8180,11 +8180,11 @@ void FUN_10021a3c(short param_1,int *param_2,short param_3)
     do {
       local_28[iVar8] = 0;
       iVar10 = 0;
-      if ((0 < *psRam101176e4) && (*psRam10116354 != 0)) {
-        while (param_2[iVar8] != *(int *)(iVar10 * 4 + iRam101176e8)) {
+      if ((0 < *gHeroCount) && (*psRam10116354 != 0)) {
+        while (param_2[iVar8] != *(int *)(iVar10 * 4 + gCombatDisplayPieces)) {
           sVar11 = (short)iVar10 + 1;
           iVar10 = (int)sVar11;
-          if ((*psRam101176e4 <= sVar11) || (*psRam10116354 == 0)) goto LAB_10021ae0;
+          if ((*gHeroCount <= sVar11) || (*psRam10116354 == 0)) goto LAB_10021ae0;
         }
         local_28[iVar8] = 1;
       }
@@ -8971,7 +8971,7 @@ unsigned short FUN_10021f6c(short param_1,short param_2)
   int local_58 [22];
   
   uVar9 = uRam1011772c;
-  iVar8 = iRam101176e8;
+  iVar8 = gCombatDisplayPieces;
   piVar7 = piRam10117364;
   piVar6 = piRam10117360;
   piVar5 = piRam1011735c;
@@ -9780,7 +9780,7 @@ void FUN_10027150()
   
   uVar10 = uRam1011772c;
   puVar9 = puRam1011735c;
-  psVar8 = psRam10115e2c;
+  psVar8 = gAutoModeFlag;
   sVar1 = *(short *)(*puRam1011735c + 0x110);
   uVar16 = (unsigned long long)sVar1;
   uVar17 = 0;
@@ -10234,8 +10234,8 @@ void FUN_100283f8(int param_1,short param_2,long long param_3)
   int local_28 [10];
   
   piVar6 = piRam1011735c;
-  puVar5 = puRam10115f7c;
-  piVar4 = piRam10115cf0;
+  puVar5 = gProgressBar;
+  piVar4 = gCityOwnership;
   ppuVar7 = 0 /* TVect base */;
   StreamRead(param_3,uRam10117604,0x54);
   StreamRead(param_3,*piVar6,0x2fcc);
@@ -10679,7 +10679,7 @@ void FUN_1002cfbc(short param_1,short param_2,short param_3)
       return;
     }
   }
-  if (((*(short *)(*piRam1011735c + 0x124) != 0) && (*psRam10115ff8 != 0)) &&
+  if (((*(short *)(*piRam1011735c + 0x124) != 0) && (*gForceRedrawFlag != 0)) &&
      (-1 < *(int *)(*piRam10117354 + (int)(((uVar14 & 0x1fffffff) * 8 - uVar14 & 0xffffffff) << 4) +
                    (int)param_1))) {
     return;
@@ -10790,7 +10790,7 @@ int FUN_1002d654()
   pcVar9 = pcRam101174dc;
   pcVar8 = pcRam101174d8;
   iVar7 = iRam101174d4;
-  pcVar6 = pcRam101174d0;
+  pcVar6 = gSelectionCount;
   puVar5 = puRam101174cc;
   piVar4 = piRam1011735c;
   uVar13 = ZEXT48(0 /* TVect base */);
@@ -10942,7 +10942,7 @@ void FUN_1002da54(short param_1,short param_2)
   piVar9 = piRam101176e0;
   piVar8 = piRam1011735c;
   piVar7 = piRam10117358;
-  iVar6 = iRam10115e84;
+  iVar6 = gStdMoveCostTable;
   uVar17 = (unsigned long long)param_2;
   uVar18 = (unsigned long long)param_1;
   *psRam101174f4 = param_1;
@@ -11053,12 +11053,12 @@ void FUN_1002dd8c()
   pcVar13 = pcRam1011776c;
   iVar12 = iRam1011773c;
   psVar11 = psRam1011760c;
-  iVar3 = iRam101174f0;
+  iVar3 = gSelectionArray;
   iVar4 = FUN_101174e8;
   iVar19 = iRam101174e4;
   iVar25 = iRam101174e0;
   pcVar10 = pcRam101174d8;
-  pcVar9 = pcRam101174d0;
+  pcVar9 = gSelectionCount;
   piVar8 = piRam10117364;
   piVar7 = piRam1011735c;
   lVar21 = -(long long)*pcRam1011776c + 0xf;
@@ -11073,7 +11073,7 @@ void FUN_1002dd8c()
   }
   iVar24 = 0;
   bVar6 = bVar5;
-  if ('\0' < *pcRam101174d0) {
+  if ('\0' < *gSelectionCount) {
     do {
       if (*(char *)(iVar24 + iVar25) == '\0') {
         if (*(char *)(iVar24 + iVar2) != '\0') {
@@ -12557,7 +12557,7 @@ void FUN_100300e8()
   psVar10 = psRam101174f8;
   psVar9 = psRam101174f4;
   puVar8 = puRam1011735c;
-  psVar7 = psRam10115e2c;
+  psVar7 = gAutoModeFlag;
   ppuVar12 = 0 /* TVect base */;
   uVar5 = (unsigned short)((unsigned int)*(int *)
                           (*piRam10117358 + *psRam101174f8 * 0xe0 + *psRam101174f4 * 2) >> 0x10) &
@@ -13135,7 +13135,7 @@ void FUN_100313d8()
   char auStack_38 [8];
   unsigned short local_30 [24];
   
-  puVar5 = puRam10117738;
+  puVar5 = gCombatSoundIDs;
   iVar4 = iRam10117510;
   iVar3 = iRam1011750c;
   pcVar2 = pcRam101174dc;
@@ -14045,7 +14045,7 @@ long long FUN_10032a24()
   int iVar16;
   int bVar17;
   
-  iVar16 = iRam1011757c;
+  iVar16 = gPerPlayerArmyCount;
   psVar5 = psRam10117530;
   puVar4 = puRam1011752c;
   piVar3 = piRam10117360;
@@ -14684,7 +14684,7 @@ void FUN_10033d54(short *param_1,short param_2)
         '\x02') {
       *(char *)
        (*piRam1011735c + (int)(((uVar3 & 0xfffffff) * 0x10 - uVar3 & 0xffffffff) << 1) + 0xd28) = 0;
-      if ((*psRam10115e2c == 0) &&
+      if ((*gAutoModeFlag == 0) &&
          (*(short *)(*piVar2 + *(short *)(*piVar2 + 0x110) * 2 + 0xd0) != 1)) {
         bVar4 = false;
       }
@@ -18693,9 +18693,9 @@ void FUN_1003e0b0()
 {
   int *piVar1;
   
-  piVar1 = piRam10116200;
-  if (*piRam10116200 != 0) {
-    ResourceRead_Dispatch(*piRam10116200 + (int)*(short *)(*(int *)*piRam10116200 + 0x308),0x6c62616b);
+  piVar1 = gInfoWindow;
+  if (*gInfoWindow != 0) {
+    ResourceRead_Dispatch(*gInfoWindow + (int)*(short *)(*(int *)*gInfoWindow + 0x308),0x6c62616b);
     FUN_1003dcb4();
     ResourceRead_Dispatch(*piVar1 + (int)*(short *)(*(int *)*piVar1 + 0x308),0x7362616b);
     FUN_1003dcb4();
@@ -18797,7 +18797,7 @@ void FUN_1003f6e8()
   int bVar23;
   
   piVar8 = piRam101176e0;
-  iVar7 = iRam1011757c;
+  iVar7 = gPerPlayerArmyCount;
   piVar6 = piRam10117360;
   piVar5 = piRam1011735c;
   piVar4 = piRam10117358;
@@ -19030,7 +19030,7 @@ void FUN_1003ffa8()
   int iVar3;
   short sVar4;
   
-  iVar2 = iRam101176e8;
+  iVar2 = gCombatDisplayPieces;
   iVar3 = *piRam101176e0;
   if (((iVar3 != 0) && (-1 < *(short *)(iVar3 + 0x12))) && (-1 < *(short *)(iVar3 + 0x14))) {
     iVar3 = 0;

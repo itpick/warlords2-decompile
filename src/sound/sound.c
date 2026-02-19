@@ -103,22 +103,22 @@ void SelectMusic(short musicStateID);
 extern void        *gResourcePtr;           /* piRam1011734c */
 
 /* Sound globals */
-extern int         *gSndHandle;             /* piRam101165e8 - current snd resource handle */
-extern int         *gSndChannel;            /* piRam101165ec - global sound channel ptr */
-extern int         *gTunePlayer;            /* piRam101165f0 - QT TunePlayer instance */
-extern void       **gTuneHeaderH;           /* puRam101165f4 - Tune header handle */
-extern void       **gTuneDataH;             /* puRam101165f8 - Tune data handle */
-extern short       *gCurrentMusicID;        /* psRam10116600 */
-extern short       *gCombatSoundIDs;        /* puRam10117738 - combat sound ID table */
-extern int          gSoundActive;           /* uRam10116604 */
-extern int          gSoundPrefs;            /* iRam1011788c - sound prefs struct */
+extern int         *gSndHandle;             /* gSndHandle - current snd resource handle */
+extern int         *gSndChannel;            /* gSndChannel - global sound channel ptr */
+extern int         *gTunePlayer;            /* gTunePlayer - QT TunePlayer instance */
+extern void       **gTuneHeaderH;           /* gTuneHeaderH - Tune header handle */
+extern void       **gTuneDataH;             /* gTuneDataH - Tune data handle */
+extern short       *gCurrentMusicID;        /* gCurrentMusicID */
+extern short       *gCombatSoundIDs;        /* gCombatSoundIDs - combat sound ID table */
+extern int          gSoundActive;           /* gSoundActive */
+extern int          gSoundPrefs;            /* gSoundPrefs - sound prefs struct */
 extern void       **gErrorHandler;          /* puRam10117370 */
 
 /* Collection management (MacApp) */
-extern int          gProgressView;          /* piRam10116a48 */
-extern int          gActiveDocView;         /* piRam101163ac */
-extern int          gMainDocView;           /* piRam10116204 */
-extern int          gProgressCounterBase;   /* uRam101177f0 */
+extern int          gProgressView;          /* gProgressView */
+extern int          gActiveDocView;         /* gActiveDocView */
+extern int          gMainDocView;           /* gMainDocView */
+extern int          gProgressCounterBase;   /* gProgressCounterBase */
 
 /* =========================================================================
  * Volume / Preference Accessors
@@ -1287,7 +1287,7 @@ void PlayFanfareSound(void)                                    /* PlayFanfareSou
  * Loads 4 combat sound names from STR# 64 (0x40) and resolves
  * them to snd resource IDs stored in gCombatSoundIDs table.
  *
- * Table layout at puRam10117738:
+ * Table layout at gCombatSoundIDs:
  *   [0] = Primary attack sound    (STR# 64, index 0)
  *   [1] = Attack miss / defense   (STR# 64, index 1)
  *   [2] = Attack hit sound        (STR# 64, index 2)
@@ -1322,5 +1322,5 @@ void InitCombatSounds(void)                                    /* InitCombatSoun
  */
 int GetSoundActiveFlag(void)                                   /* GetSoundActiveFlag */
 {
-    return gSoundActive;                                       /* uRam10116604 */
+    return gSoundActive;                                       /* gSoundActive */
 }

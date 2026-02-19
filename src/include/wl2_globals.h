@@ -187,4 +187,73 @@ extern void         *gDialogPanel;
 #define psRam101176fc   gAIPathThreshold
 
 
+
+/* ===== Renamed Global Aliases (old raw name -> new human name) ===== */
+/* These #define aliases allow code still using the raw Ghidra names
+ * to compile after the rename. The actual variable definitions in
+ * globals_extra.c keep their original names. */
+
+#define iRam10115ba4    gGroupFuncTable
+#define iRam10115d28    gFrontLineLookup
+#define iRam10115e84    gStdMoveCostTable
+#define iRam10115ea8    gTileWalkOffsets
+#define iRam10115eac    gZoCNeighborDYOffsets
+#define iRam10115eb0    gZoCNeighborDXOffsets
+#define iRam10115ebc    gNeighborDYOffsets
+#define iRam10115ec0    gNeighborDXOffsets
+#define iRam10115ec4    gNeighborPatternTable
+#define iRam10115ed4    gFlyingMoveCostTable
+#define iRam10115fe4    gPlayerColorTable
+#define iRam10116004    gArrowDirTable
+#define iRam10116008    gArmyIconTable
+#define iRam1011681c    gRenderingMiscData
+#define iRam10117374    gFrameworkData
+#define iRam10117474    gDiploThreatData
+#define iRam10117488    gPlayerIdleArmyCounts
+#define iRam1011748c    gPlayerTotalArmyCounts
+#define iRam10117490    gPlayerTerritoryCounts
+#define iRam101174f0    gSelectionArray
+#define iRam101176e8    gCombatDisplayPieces
+#define iRam101176f0    gDisplayState
+#define pcRam101174d0    gSelectionCount
+#define pdRam10116790    gDoubleAccumulator
+#define piRam10115f0c    gUnitDataHandle
+#define piRam10115fa4    gOverviewWindow
+#define piRam10116200    gInfoWindow
+#define piRam10116204    gMainDocView
+#define piRam10116208    gMainGameWindow
+#define piRam1011639c    gSidePanelWindow
+#define piRam101163ac    gActiveDocView
+#define piRam101169c4    gAppObject
+#define piRam10117588    gPathCacheHandle
+#define piRam1011758c    gPathCachePtr
+#define piRam10117590    gCostMapHandle
+#define piRam10117594    gDistGridHandle
+#define piRam101175a0    gCostMapPtr
+#define piRam101175f0    gMapGenData
+#define piRam101175f4    gMapGenConfig
+#define psRam10115d34    gValidArmyStateList
+#define psRam10115e2c    gAutoModeFlag
+#define psRam10115ea4    gPathfindingInitialized
+#define psRam10115eb4    gAIModeFlag
+#define psRam10115eb8    gZoCMarkingFlag
+#define psRam10115fec    gScrollLockFlag
+#define psRam10115ff8    gForceRedrawFlag
+#define psRam10116360    gUIShortGlobal
+#define psRam1011736c    gShortCounter
+#define psRam10117484    gPrimaryThreatPlayer
+#define psRam101175a4    gZoCPenalty
+#define psRam101175a8    gSearchRadius
+#define psRam101175ac    gMaxSearchRange
+#define psRam101175b0    gLastArmyTypeForCostMap
+#define psRam101176e4    gHeroCount
+#define puRam10117598    gDistGridDeref
+#define puRam1011759c    gDistGridHandlePtr
+#define puRam101175b4    gCurrentPathFlags
+#define puRam101176dc    gMonoColorTable
+#define puRam10117710    gCurrentMoveMode
+#define uRam101175d4    gItemNameBuffer
+#define uRam101177f0    gProgressCounterBase
+
+
 #endif /* WL2_GLOBALS_H */

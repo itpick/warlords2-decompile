@@ -33,9 +33,9 @@ extern char *TVect_OCECToRString;
 /* ===== Extern globals NOT already in wl2_globals.h ===== */
 
 extern pint *piRam10115e34;
-extern pint *piRam101163ac;
-extern pint *piRam10116200;
-extern pint *piRam10116208;
+extern pint *gActiveDocView;
+extern pint *gInfoWindow;
+extern pint *gMainGameWindow;
 extern pint *piRam101176b4;
 extern pint *piRam101176b0;
 extern pint *piRam101176ac;
@@ -48,11 +48,11 @@ extern int *piRam10115f64;
 extern int *piRam10115fc8;
 extern int *piRam10116018;
 
-extern short *psRam10115e2c;
+extern short *gAutoModeFlag;
 extern short *psRam10115fd4;
 extern short *psRam10115fe0;
-extern short *psRam10115ff8;
-extern short *psRam10116360;
+extern short *gForceRedrawFlag;
+extern short *gUIShortGlobal;
 extern short *psRam10117558;
 extern short *psRam10117600;
 extern short *psRam101175fc;
@@ -87,8 +87,8 @@ extern int *puRam101176c4;
 extern int *puRam10117618;
 extern int *puRam10117730;
 
-extern long iRam10115ee4;
-extern long iRam101176e8;
+extern long gSpriteTable;
+extern long gCombatDisplayPieces;
 extern long iRam10117654;
 extern long iRam10115fdc;
 extern long iRam10117634;
@@ -96,7 +96,7 @@ extern long iRam10117638;
 extern long iRam1011763c;
 extern long iRam10117640;
 extern long iRam101176ec;
-extern long iRam101176f0;
+extern long gDisplayState;
 extern long iRam101176f4;
 extern long iRam101176f8;
 
@@ -105,7 +105,7 @@ extern int uRam10115ee0;
 extern int uRam10115f28;
 extern int uRam1011626c;
 extern int uRam101175f8;
-extern int uRam101176cc;
+extern int gColorPalette;
 extern int uRam10116098;
 
 extern char *pcRam101161c8;
@@ -138,7 +138,7 @@ void FUN_10040fb8(void)
   short sVar6;
   short sVar7;
 
-  iVar5 = iRam101176e8;
+  iVar5 = gCombatDisplayPieces;
   piVar1 = piRam1011735c;
   ppuVar2 = DOT_TVECT;
   if (*(short *)(*piRam1011735c + 0x15c) == 0) {
@@ -195,7 +195,7 @@ void FUN_100410ec(void)
 
   piVar5 = piRam1011735c;
   puVar4 = puRam1011734c;
-  piVar3 = piRam101163ac;
+  piVar3 = gActiveDocView;
   puVar2 = puRam10115e98;
   if ((*(short *)(*piRam1011735c + 0x15c) == 0) || (*(short *)(*piRam1011735c + 0x158) == 0)) {
     iVar6 = 0;
@@ -292,7 +292,7 @@ void FUN_10044d8c(short param_1)
   char auStack_5c[92];
 
   piVar1 = puRam1011734c;
-  iVar6 = iRam10115ee4;
+  iVar6 = gSpriteTable;
   uVar5 = uRam10115ee0;
   uVar4 = uRam10115edc;
   uVar13 = (unsigned long long)param_1;
@@ -380,8 +380,8 @@ void FUN_100450f4(short param_1)
 
   ppuVar2 = DOT_TVECT;
   iVar3 = param_1 * 0x14;
-  iVar1 = iVar3 + iRam10115ee4;
-  *(unsigned int *)(iVar3 + iRam10115ee4) = *(unsigned int *)(iVar3 + iRam10115ee4) & 0xddffffff;
+  iVar1 = iVar3 + gSpriteTable;
+  *(unsigned int *)(iVar3 + gSpriteTable) = *(unsigned int *)(iVar3 + gSpriteTable) & 0xddffffff;
   FUN_1000a094(*(int *)(iVar1 + 4));
   if ((*(unsigned int *)((pint)ppuVar2[-0x66f] + iVar3) >> 0x1a & 1) != 0) {
     FUN_1000a094(*(int *)(iVar1 + 0xc));
@@ -403,9 +403,9 @@ void FUN_10045f0c(short param_1)
   unsigned int uVar5;
   unsigned long long uVar6;
 
-  iVar2 = iRam10115ee4;
+  iVar2 = gSpriteTable;
   uVar6 = (unsigned long long)param_1;
-  iVar4 = *(int *)((int)(((uVar6 & 0x3fffffff) * 4 + uVar6 & 0xffffffff) << 2) + iRam10115ee4 + 4);
+  iVar4 = *(int *)((int)(((uVar6 & 0x3fffffff) * 4 + uVar6 & 0xffffffff) << 2) + gSpriteTable + 4);
   bVar1 = 1;
   if ((iVar4 != 0) && (iVar4 = *(int *)(iVar4 + 0x10), iVar4 != 0)) {
     uVar3 = HLock_Thunk_Sound(iVar4);
@@ -777,7 +777,7 @@ void ScanDefenseGrid(void)
   piVar7 = piRam1011735c;
   piVar6 = piRam10117358;
   piVar3 = puRam1011734c;
-  psVar5 = psRam10115e2c;
+  psVar5 = gAutoModeFlag;
   if ((*piRam101176e0 != 0) && ('\0' < *(char *)(*piRam101176e0 + 7))) {
     psVar2 = (short *)*piRam101176e0;
     sVar1 = *psVar2;
@@ -1110,7 +1110,7 @@ void FUN_1005e858(void)
 
   iVar12 = iRam101176f8;
   iVar11 = iRam101176f4;
-  iVar10 = iRam101176f0;
+  iVar10 = gDisplayState;
   iVar9 = iRam101176ec;
   iVar8 = iRam10117640;
   iVar7 = iRam1011763c;
@@ -1120,7 +1120,7 @@ void FUN_1005e858(void)
   psVar4 = psRam10115fd4;
   piVar3 = piRam10115fc8;
   if (*piRam101176e0 != 0) {
-    sVar15 = *psRam10116360;
+    sVar15 = *gUIShortGlobal;
     *psRam10115fd4 = sVar15;
     uVar14 = 0;
     if (0 < sVar15) {
@@ -1479,9 +1479,9 @@ void FUN_10065500(short param_1)
   int local_94;
   char auStack_70[112];
 
-  iVar7 = iRam101176e8;
+  iVar7 = gCombatDisplayPieces;
   puVar6 = puRam1011735c;
-  psVar5 = psRam10115ff8;
+  psVar5 = gForceRedrawFlag;
   ppuVar8 = DOT_TVECT;
   uVar12 = (unsigned long long)param_1;
   *(unsigned short *)(*puRam1011735c + 0x15a) =
@@ -1677,14 +1677,14 @@ void FUN_10065d24(short param_1)
   int local_3c;
 
   piVar5 = piRam1011735c;
-  piVar2 = piRam10116208;
+  piVar2 = gMainGameWindow;
   piVar4 = piRam10116018;
   sVar7 = *(short *)(*piRam1011735c + 0x136);
   if (sVar7 < 2) {
     sVar7 = 1;
   }
   if (param_1 == -1) {
-    iVar6 = ResourceRead_Dispatch(*piRam101163ac + (int)*(short *)(*(int *)*piRam101163ac + 0x5f0), 1);
+    iVar6 = ResourceRead_Dispatch(*gActiveDocView + (int)*(short *)(*(int *)*gActiveDocView + 0x5f0), 1);
     if (iVar6 != 0) {
       ResourceRead_Dispatch((int)*(int **)(iVar6 + 0x90) + (int)*(short *)(**(int **)(iVar6 + 0x90) + 0x738),
                    0, 1);
@@ -1953,7 +1953,7 @@ void FUN_10075570(int param_1, long long param_2, char param_3)
   short sVar4;
   int iVar5;
 
-  piVar2 = piRam10116200;
+  piVar2 = gInfoWindow;
   FUN_100f27d0(param_2, param_3);
   if (*piVar2 != 0) {
     piVar1 = (int *)ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x308), 0x6c62616b);
@@ -2034,7 +2034,7 @@ void FUN_1007a748(void)
   puVar3 = puRam101176d0;
   puVar2 = puRam101176c8;
   puVar1 = puRam101176c4;
-  uVar7 = (unsigned long long)uRam101176cc;
+  uVar7 = (unsigned long long)gColorPalette;
   uVar5 = FUN_10001218(1000);
   *puVar3 = uVar5;
   uVar4 = FUN_10001230(1000);

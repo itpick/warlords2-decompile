@@ -16,7 +16,7 @@
 /* ===== Extern declarations for raw Ghidra globals ===== */
 
 /* Pointer globals (pint *) */
-extern pint *piRam101163ac;
+extern pint *gActiveDocView;
 extern pint *piRam10117468;  /* gExtState */
 extern pint *piRam10117470;
 extern pint *piRam1011747c;
@@ -29,24 +29,24 @@ extern short *psRam10115cdc;
 extern short *psRam10115d18;
 extern short *psRam10115d20;
 extern short *psRam10115d24;
-extern short *psRam10115e2c;
+extern short *gAutoModeFlag;
 extern short *psRam10115e80;
 extern short *psRam10115ce0;
-extern short *psRam10115ff8;
+extern short *gForceRedrawFlag;
 
 /* Int globals */
 extern long iRam10115b90;
 extern long iRam101174e4;
-extern long iRam101176e8;
+extern long gCombatDisplayPieces;
 extern long iRam1011746c;
 
 /* Char pointer globals */
 extern char *pcRam101174d8;
 
 /* Pointer globals used by the decompiled functions */
-extern int *piRam10115cfc;
+extern int *gGWorldListPtr;
 extern void *puRam101163ac;
-extern void *puRam101176dc;
+extern void *gMonoColorTable;
 
 /* Undefined pointer globals referenced by TVect trampolines */
 extern void *puRam101156a0;
@@ -553,7 +553,7 @@ void FUN_1000d808(void)
     int uVar5;
     int iVar6;
 
-    iVar2 = (int)iRam101176e8;
+    iVar2 = (int)gCombatDisplayPieces;
     piVar3 = piRam1011735c;
     UpdateProgressBar(100);
     /* Reset turn-started flag */

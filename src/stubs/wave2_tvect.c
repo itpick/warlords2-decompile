@@ -581,9 +581,9 @@ extern long iRam10117584;
 extern long iRam101176c0;
 extern char *pcRam10116398;
 extern char *pcRam101174d8;
-extern pint *piRam10115cf0;
+extern pint *gCityOwnership;
 extern pint *piRam10115cf4;
-extern pint *piRam10115cfc;
+extern pint *gGWorldListPtr;
 extern pint *piRam1011742c;
 extern pint *piRam10117468;
 extern short *psRam10115ce0;
@@ -593,7 +593,7 @@ extern short *psRam10115e80;
 extern short *psRam10115e90;
 extern short *psRam10115e9c;
 extern short *psRam10115ea0;
-extern short *psRam10115ff8;
+extern short *gForceRedrawFlag;
 extern short *psRam10117430;
 extern short *psRam1011745c;
 extern short *psRam10117460;
@@ -1089,7 +1089,7 @@ extern unsigned int *puRam101163ac;
 extern unsigned int *puRam1011735c;
 extern unsigned int *puRam1011742c;
 extern unsigned int *puRam1011745c;
-extern unsigned int *puRam101176dc;
+extern unsigned int *gMonoColorTable;
 extern unsigned int uRam1011744c;
 extern unsigned int uRam10117450;
 extern unsigned int uRam10117700;
@@ -6086,7 +6086,7 @@ unsigned short FUN_10003d5c()
   short sVar5;
   
   uVar2 = 0;
-  if (*psRam10115ff8 == 0) {
+  if (*gForceRedrawFlag == 0) {
     uVar3 = 0;
     do {
       sVar4 = param_1 + *(short *)(uVar3 * 2 + iRam10115cc0);
@@ -6168,7 +6168,7 @@ void FUN_10003ec8(short param_1,short param_2)
     if (param_2 < 0) {
       param_2 = *(short *)(*piVar7 + 0x17a);
     }
-    if (*psRam10115ff8 == 0) {
+    if (*gForceRedrawFlag == 0) {
       for (; sStack0000001e = sVar1, sStack0000001a < (short)(param_1 + 1);
           sStack0000001a = sStack0000001a + 1) {
         for (; sStack0000001e < (short)(param_2 + 1); sStack0000001e = sStack0000001e + 1) {
@@ -7329,7 +7329,7 @@ void FUN_10008de4()
   short sVar7;
   int **local_2c;
   
-  piVar2 = piRam10115cf0;
+  piVar2 = gCityOwnership;
   ppuVar3 = 0 /* TVect base */;
   puVar4 = (int *)FUN_100f15e0(0x4440);
   *piVar2 = (int)puVar4;
@@ -7374,8 +7374,8 @@ void FUN_10008e8c()
   int **local_34;
   
   piVar6 = piRam10117354;
-  piVar5 = piRam10115cf0;
-  puVar3 = (int *)*piRam10115cf0;
+  piVar5 = gCityOwnership;
+  puVar3 = (int *)*gCityOwnership;
   ppuVar7 = 0 /* TVect base */;
   if (puVar3 != (int *)0x0) {
     DetachResource(puVar3);
@@ -7811,7 +7811,7 @@ void FUN_10009700()
   piVar8 = piRam1011735c;
   piVar7 = piRam10117358;
   piVar6 = piRam10115cf4;
-  piVar5 = piRam10115cf0;
+  piVar5 = gCityOwnership;
   if (*(short *)(*piRam1011735c + 0x124) != 0) {
     bVar4 = true;
     sVar16 = 0;
@@ -7835,7 +7835,7 @@ LAB_10009778:
       sVar12 = (short)uVar13 + 1;
       uVar13 = (unsigned long long)sVar12;
     } while (sVar12 < 8);
-    piVar1 = (int *)*piRam10115cf0;
+    piVar1 = (int *)*gCityOwnership;
     if (piVar1 != (int *)0x0) {
       DetachResource(piVar1);
     }
@@ -7914,7 +7914,7 @@ void FUN_10009a0c()
   int iVar2;
   
   iVar2 = FUN_10116698;
-  piVar1 = piRam10115cfc;
+  piVar1 = gGWorldListPtr;
   SetRect4(FUN_10116698,0,0,100,100);
   *(short *)(iVar2 + 8) = 0xf0;
   *(char *)(iVar2 + 10) = 0;
@@ -8049,9 +8049,9 @@ void FUN_1000a4e8()
   char auStack_164 [356];
   
   dVar4 = 0;
-  puVar3 = puRam101176dc;
-  piVar2 = piRam10115cfc;
-  if (*piRam10115cfc != 0) {
+  puVar3 = gMonoColorTable;
+  piVar2 = gGWorldListPtr;
+  if (*gGWorldListPtr != 0) {
     piVar6 = (int *)FUN_10001170();
     sVar1 = *(short *)(**(int **)(*piVar6 + 0x16) + 0x20);
     if (sVar1 == 8) {

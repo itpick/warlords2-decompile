@@ -260,21 +260,21 @@ extern void  FUN_100910a0(int param);
  * ========================================================================= */
 
 /* These map to Ghidra global pointers referenced in the decompiled code */
-extern int *piRam101169c4;     /* Application object (TApplicationWarlords) */
+extern int *gAppObject;     /* Application object (TApplicationWarlords) */
 /* piRam1011735c, piRam10117358, piRam10117354, piRam10117360,
    piRam10117364, piRam10117368, piRam10117370
    now aliased via #define in wl2_globals.h */
-extern int  iRam10117374;      /* Framework data */
-extern short *psRam1011736c;   /* Short global counter */
+extern int  gFrameworkData;      /* Framework data */
+extern short *gShortCounter;   /* Short global counter */
 /* piRam10117350 now aliased via #define in wl2_globals.h */
 extern void *puRam1011734c;    /* View/window state */
-extern int *piRam10116208;     /* Main game window handle */
-extern int *piRam1011639c;     /* Side panel window handle */
-extern int *piRam10116200;     /* Info window handle */
-extern int *piRam10115fa4;     /* Overview window handle */
+extern int *gMainGameWindow;     /* Main game window handle */
+extern int *gSidePanelWindow;     /* Side panel window handle */
+extern int *gInfoWindow;     /* Info window handle */
+extern int *gOverviewWindow;     /* Overview window handle */
 /* piRam101176bc, piRam101176e0 now aliased via #define in wl2_globals.h */
-extern int  iRam101176f0;      /* Display state */
-extern short *psRam10116360;   /* Short global */
+extern int  gDisplayState;      /* Display state */
+extern short *gUIShortGlobal;   /* Short global */
 
 /* TVect table -- used for vtable references in PEF binary */
 extern void *TVect_OCECToRString;  /* .TVect::OCECToRString base address */
@@ -308,11 +308,11 @@ extern void *TVect_OCECToRString;  /* .TVect::OCECToRString base address */
 void DoMenuCommand(int *self, int cmdNumber)
 {
     /* Cache global pointers for window handles */
-    int *appObj          = piRam101169c4;    /* TApplicationWarlords */
-    int *sidePanelWin    = piRam1011639c;    /* Side panel window */
-    int *infoWin         = piRam10116208;    /* Main game window */
-    int *infoWin2        = piRam10116200;    /* Info window */
-    int *overviewWin     = piRam10115fa4;    /* Overview window */
+    int *appObj          = gAppObject;    /* TApplicationWarlords */
+    int *sidePanelWin    = gSidePanelWindow;    /* Side panel window */
+    int *infoWin         = gMainGameWindow;    /* Main game window */
+    int *infoWin2        = gInfoWindow;    /* Info window */
+    int *overviewWin     = gOverviewWindow;    /* Overview window */
     int *viewServer      = piRam101176bc;    /* View server */
     void **tvect         = &TVect_OCECToRString;  /* PEF import table */
 
@@ -428,7 +428,7 @@ void DoMenuCommand(int *self, int cmdNumber)
     /* ---- Refresh All Views (cmd 0x3FA) ---- */
     case 0x3FA:
         /* ForceRedraw on all four main windows (vtable +0x4C8) */
-        ResourceRead_Dispatch(*piRam10116208 + (int)*(short *)(*(int *)*piRam10116208 + 0x4c8));
+        ResourceRead_Dispatch(*gMainGameWindow + (int)*(short *)(*(int *)*gMainGameWindow + 0x4c8));
         ResourceRead_Dispatch(*sidePanelWin  + (int)*(short *)(*(int *)*sidePanelWin  + 0x4c8));
         ResourceRead_Dispatch(*overviewWin   + (int)*(short *)(*(int *)*overviewWin   + 0x4c8));
         ResourceRead_Dispatch(*infoWin2      + (int)*(short *)(*(int *)*infoWin2      + 0x4c8));
@@ -667,7 +667,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Side Panel Toggle (cmd 0x76F) ---- */
     case 0x76F: {
-        int *winObj = (int *)*piRam1011639c;
+        int *winObj = (int *)*gSidePanelWindow;
         if (winObj == NULL) return;
         /* IsActive via vtable +0x668 */
         int isActive = ResourceRead_Dispatch(
@@ -691,7 +691,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Info Panel Toggle (cmd 0x770) ---- */
     case 0x770: {
-        int *winObj = (int *)*piRam10116200;
+        int *winObj = (int *)*gInfoWindow;
         if (winObj == NULL) return;
         int isActive = ResourceRead_Dispatch(
             (int)*(short *)(*winObj + 0x668) + (int)winObj);
@@ -710,7 +710,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Main Panel Toggle (cmd 0x771) ---- */
     case 0x771: {
-        int *winObj = (int *)*piRam10115fa4;
+        int *winObj = (int *)*gOverviewWindow;
         if (winObj == NULL) return;
         int isActive = ResourceRead_Dispatch(
             (int)*(short *)(*winObj + 0x668) + (int)winObj);
@@ -968,9 +968,9 @@ void DoSetupMenus(int docSelf)
 {
     int *piVar7 = piRam101176e0;
     int *piVar6 = (int *)puRam1011734c;
-    int *piVar1 = piRam1011639c;
-    int *piVar2 = piRam10116200;
-    int *piVar3 = piRam10115fa4;
+    int *piVar1 = gSidePanelWindow;
+    int *piVar2 = gInfoWindow;
+    int *piVar3 = gOverviewWindow;
 
     /* Call superclass DoSetupMenus */
     FUN_100d6dd0(docSelf);
@@ -1003,7 +1003,7 @@ void DoSetupMenus(int docSelf)
 
         /* Stub — overview and info panel visibility checks omitted */
         /* FUN_1007e314 continues with similar IsActive checks for */
-        /* overview window (piRam10115fa4) and info window (piRam10116200) */
+        /* overview window (gOverviewWindow) and info window (gInfoWindow) */
         /* Then enables/disables menus 0x76F, 0x770, 0x771 accordingly */
     }
 }
@@ -1038,7 +1038,7 @@ void DoMakeWindows(int docSelf, short param_2)
      *
      * This function is extremely large and complex. Key operations:
      *
-     * 1. Read application global data (piRam101169c4 + 0x32)
+     * 1. Read application global data (gAppObject + 0x32)
      * 2. Check available memory (EndFocus)
      *    - If < 3MB, limit screen to 640x480
      * 3. Get screen bounds (FUN_100b08d4)
@@ -1107,8 +1107,8 @@ void DoPostCreate(void)
     int *piVar6  = piRam10117364;
     int *piVar7  = piRam10117368;
     void *puVar9 = piRam10117370;
-    short *psVar8 = psRam1011736c;
-    int iVar13   = iRam10117374;
+    short *psVar8 = gShortCounter;
+    int iVar13   = gFrameworkData;
     void *puVar1 = puRam1011734c;
     void *failFlag;  /* *(local_54 - 0x528) points to failure indicator */
 

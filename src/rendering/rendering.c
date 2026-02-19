@@ -31,22 +31,22 @@
 extern void        *gRoadData;             /* piRam10117354 */
 extern void        *gResourcePtr;          /* piRam1011734c */
 
-extern int          gSpriteTable;          /* iRam10115ee4 - sprite table base */
-extern short       *gSpriteCount;          /* psRam10115ee8 - sprite entry count */
-extern unsigned int gColorPalette;         /* uRam101176cc - color palette base */
-extern int          gMinimapGWorld;        /* iRam10117688 */
-extern int          gBackBuffer;           /* iRam10115ff0 */
-extern int         *gScreenGWorld;         /* piRam10115fe8 */
-extern int          gArrowDirTable;        /* iRam10116004 */
-extern int          gArmyIconTable;        /* iRam10116008 */
-extern int          gPlayerColorTable;     /* iRam10115fe4 */
-extern short       *gScrollLockFlag;       /* psRam10115fec */
-extern short       *gViewportRect;         /* psRam10115ff4 */
-extern short       *gForceRedrawFlag;      /* psRam10115ff8 */
-extern unsigned char *gPatternDrawFlag;    /* puRam10115f04 */
-extern int         *gActiveView;           /* piRam101163b0 */
-extern unsigned short *gViewportOffset;    /* puRam10117660 */
-extern int         *gGWorldListPtr;        /* piRam10115cfc */
+extern int          gSpriteTable;          /* gSpriteTable - sprite table base */
+extern short       *gSpriteCount;          /* gSpriteCount - sprite entry count */
+extern unsigned int gColorPalette;         /* gColorPalette - color palette base */
+extern int          gMinimapGWorld;        /* gMinimapGWorld */
+extern int          gBackBuffer;           /* gBackBuffer */
+extern int         *gScreenGWorld;         /* gScreenGWorld */
+extern int          gArrowDirTable;        /* gArrowDirTable */
+extern int          gArmyIconTable;        /* gArmyIconTable */
+extern int          gPlayerColorTable;     /* gPlayerColorTable */
+extern short       *gScrollLockFlag;       /* gScrollLockFlag */
+extern short       *gViewportRect;         /* gViewportRect */
+extern short       *gForceRedrawFlag;      /* gForceRedrawFlag */
+extern unsigned char *gPatternDrawFlag;    /* gPatternDrawFlag */
+extern int         *gActiveView;           /* gActiveView */
+extern unsigned short *gViewportOffset;    /* gViewportOffset */
+extern int         *gGWorldListPtr;        /* gGWorldListPtr */
 
 /* Sentinel value for "draw to screen" GWorld */
 extern int          gScreenSentinel;       /* _FUN_10116698 */
@@ -174,7 +174,7 @@ void SetupDrawingEnvironment(void)                              /* SetupDrawingE
  *
  * Sets the current foreground drawing color from the game's color table.
  *
- * The color table at gColorPalette (uRam101176cc) contains 8-byte entries.
+ * The color table at gColorPalette (gColorPalette) contains 8-byte entries.
  * Index formula: ((index * 5 - index) & 0x7FFFFFFF) * 2 + base
  * which simplifies to: index * 8 + base  (8 bytes per RGB entry).
  *
@@ -184,7 +184,7 @@ int SetDrawingColor(short colorIndex)                           /* SetDrawingCol
 {
     if (colorIndex == -1) {
         /* Signal "use pattern" mode */
-        *gPatternDrawFlag = 1;                                  /* puRam10115f04 */
+        *gPatternDrawFlag = 1;                                  /* gPatternDrawFlag */
     }
     else {
         /* Compute color table address:
@@ -236,7 +236,7 @@ int CreateOrResizeGWorld(int gwDesc, short width, short height,
     int     result;
     Rect    boundsRect;
 
-    gwListPtr = gGWorldListPtr;                                 /* piRam10115cfc */
+    gwListPtr = gGWorldListPtr;                                 /* gGWorldListPtr */
 
     /* Compute half-width (rounded up for odd widths) */
     halfWidth = (short)(((int)width + 1) >> 1);
@@ -296,7 +296,7 @@ int CreateOrResizeGWorld(int gwDesc, short width, short height,
 
     char depthMode2 = '\x01';
     if ((int)depth == 1) {
-        /* 1-bit depth -- use color table from puRam101176dc */
+        /* 1-bit depth -- use color table from gMonoColorTable */
     }
 
     result = FUN_10001d58(&gworldPtr, depth, &boundsRect, 0, 0,
@@ -848,10 +848,10 @@ void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* DrawArmyOverla
 {
     int   *gs = gGameState;                                     /* piRam1011735c */
     int   *roadData = (int *)gRoadData;                         /* piRam10117354 */
-    int   *screenGW = gScreenGWorld;                            /* piRam10115fe8 */
-    int   *activeView = gActiveView;                            /* piRam101163b0 */
-    int    playerColorBase = gPlayerColorTable;                 /* iRam10115fe4 */
-    unsigned short *vpOffset = gViewportOffset;                 /* puRam10117660 */
+    int   *screenGW = gScreenGWorld;                            /* gScreenGWorld */
+    int   *activeView = gActiveView;                            /* gActiveView */
+    int    playerColorBase = gPlayerColorTable;                 /* gPlayerColorTable */
+    unsigned short *vpOffset = gViewportOffset;                 /* gViewportOffset */
 
     int    gameStatePtr;
     Boolean smallViewport = false;

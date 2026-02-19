@@ -56,7 +56,7 @@
 #define TERRAIN_CITY        10      /* city tile */
 #define TERRAIN_RUINS       11      /* ruins tile */
 
-/* Template data offsets within *gMapGenConfig (piRam101175f4) */
+/* Template data offsets within *gMapGenConfig (gMapGenConfig) */
 #define CFG_TOTAL_CITIES    0x2A    /* total number of cities to generate */
 #define CFG_DIFFICULTY_BASE 0x2C    /* player difficulty settings (4 entries) */
 #define CFG_PLAYER_CITIES   0x34    /* number of player-controlled cities */
@@ -82,7 +82,7 @@
 #define CFG_LAND_TARGET     0x1F54  /* target land tile count */
 #define CFG_RUINS_NAMES_OFF 0x1066  /* ruins name buffer offset */
 
-/* City record within the mapgen data buffer (piRam101175f0) */
+/* City record within the mapgen data buffer (gMapGenData) */
 /* Each city: 14 bytes (0x0E) at cityIndex * 0x0E from buffer start */
 #define CITY_REC_SIZE       0x0E
 #define CITY_REC_X          0x00
@@ -110,18 +110,18 @@ extern void *OpenDATResource(long resType, long resID, short flags); /* FUN_1005
 extern short CheckLandConnectivity(void);                         /* CheckLandConnectivity */
 
 /* Map generation global pointers (from wl2_globals.h) */
-/* piRam101175f4 -> gMapGenConfig: scenario config/template data */
-/* piRam101175f0 -> gMapGenData: map tile data buffer */
+/* gMapGenConfig -> gMapGenConfig: scenario config/template data */
+/* gMapGenData -> gMapGenData: map tile data buffer */
 /* piRam10117358 -> gTileGraphicsBuffer */
 /* piRam10117354 -> gOverlayBuffer */
 /* piRam1011735c -> gGameState */
-/* puRam10115f7c -> gProgressDialog */
+/* gProgressBar -> gProgressDialog */
 
-extern int  *piRam101175f4;  /* gMapGenConfig - scenario config pointer */
-extern int  *piRam101175f0;  /* gMapGenData - map data pointer */
+extern int  *gMapGenConfig;  /* gMapGenConfig - scenario config pointer */
+extern int  *gMapGenData;  /* gMapGenData - map data pointer */
 /* piRam10117358, piRam10117354, piRam1011735c, piRam1011734c
    now aliased via #define in wl2_globals.h */
-extern void *puRam10115f7c;  /* gProgressDialog */
+extern void *gProgressBar;  /* gProgressDialog */
 
 /* ============================================================
  * UTILITY FUNCTIONS
@@ -133,7 +133,7 @@ extern void *puRam10115f7c;  /* gProgressDialog */
  */
 static char GetTerrainAt(int x, int y)
 {
-    return *(char *)(*piRam101175f0 + y * MAP_TILE_STRIDE + x + MAP_TILE_OFFSET);
+    return *(char *)(*gMapGenData + y * MAP_TILE_STRIDE + x + MAP_TILE_OFFSET);
 }
 
 /*
@@ -141,7 +141,7 @@ static char GetTerrainAt(int x, int y)
  */
 static void SetTerrainAt(int x, int y, char terrain)
 {
-    *(char *)(*piRam101175f0 + y * MAP_TILE_STRIDE + x + MAP_TILE_OFFSET) = terrain;
+    *(char *)(*gMapGenData + y * MAP_TILE_STRIDE + x + MAP_TILE_OFFSET) = terrain;
 }
 
 /*
@@ -150,7 +150,7 @@ static void SetTerrainAt(int x, int y, char terrain)
  */
 static short GetDirectionDX(int dirIndex)
 {
-    return *(short *)(*piRam101175f4 + dirIndex * 4 + CFG_DIR_TABLE);
+    return *(short *)(*gMapGenConfig + dirIndex * 4 + CFG_DIR_TABLE);
 }
 
 /*
@@ -158,7 +158,7 @@ static short GetDirectionDX(int dirIndex)
  */
 static short GetDirectionDY(int dirIndex)
 {
-    return *(short *)(*piRam101175f4 + dirIndex * 4 + CFG_DIR_TABLE + 2);
+    return *(short *)(*gMapGenConfig + dirIndex * 4 + CFG_DIR_TABLE + 2);
 }
 
 /*
@@ -166,7 +166,7 @@ static short GetDirectionDY(int dirIndex)
  */
 static short GetConfigShort(int offset)
 {
-    return *(short *)(*piRam101175f4 + offset);
+    return *(short *)(*gMapGenConfig + offset);
 }
 
 /*
@@ -174,7 +174,7 @@ static short GetConfigShort(int offset)
  */
 static void SetConfigShort(int offset, short value)
 {
-    *(short *)(*piRam101175f4 + offset) = value;
+    *(short *)(*gMapGenConfig + offset) = value;
 }
 
 /* ----------------------------------------------------------------
@@ -283,7 +283,7 @@ void CalculateDirectionVector(long packedFrom, long packedTo, short *outDx, shor
 {
     short x1, y1, x2, y2;
     double ratio;
-    extern double *pdRam10116790; /* precomputed angle thresholds */
+    extern double *gDoubleAccumulator; /* precomputed angle thresholds */
 
     x1 = (short)(packedFrom >> 16);
     y1 = (short)(packedFrom & 0xFFFF);
@@ -308,10 +308,10 @@ void CalculateDirectionVector(long packedFrom, long packedTo, short *outDx, shor
 
     if (x2 < x1) {
         /* Moving left (west) */
-        if (ratio < pdRam10116790[1]) {
-            if (ratio < pdRam10116790[2]) {
-                if (ratio < pdRam10116790[3]) {
-                    if (ratio < pdRam10116790[4]) {
+        if (ratio < gDoubleAccumulator[1]) {
+            if (ratio < gDoubleAccumulator[2]) {
+                if (ratio < gDoubleAccumulator[3]) {
+                    if (ratio < gDoubleAccumulator[4]) {
                         StoreCoords((void*)outDx, 0, 1);    /* South */
                     } else {
                         StoreCoords((void*)outDx, -1, 1);   /* SW */
@@ -327,10 +327,10 @@ void CalculateDirectionVector(long packedFrom, long packedTo, short *outDx, shor
         }
     } else {
         /* Moving right (east) */
-        if (ratio < pdRam10116790[1]) {
-            if (ratio < pdRam10116790[2]) {
-                if (ratio < pdRam10116790[3]) {
-                    if (ratio < pdRam10116790[4]) {
+        if (ratio < gDoubleAccumulator[1]) {
+            if (ratio < gDoubleAccumulator[2]) {
+                if (ratio < gDoubleAccumulator[3]) {
+                    if (ratio < gDoubleAccumulator[4]) {
                         StoreCoords((void*)outDx, 0, -1);   /* North */
                     } else {
                         StoreCoords((void*)outDx, 1, -1);   /* NE */
@@ -489,7 +489,7 @@ static void InitializeMapToOcean(void) /* InitializeMapToOcean */
  * ---------------------------------------------------------------- */
 static void PlacePlayerSeedPoint(short playerIndex) /* PlacePlayerSeedPoint */
 {
-    int config = *piRam101175f4;
+    int config = *gMapGenConfig;
     int pIdx = (int)playerIndex;
     int nextIdx = (pIdx + 1) % 4;
     short seedX, seedY;
@@ -557,7 +557,7 @@ static void SortStartPointsByAngle(void) /* SortStartPointsByAngle */
     long temp;
 
     for (i = 0; i < 4; i++) {
-        config = *piRam101175f4;
+        config = *gMapGenConfig;
         nextIdx = (i + 1) % 4;
 
         /* Calculate angle ratios from map center (0x38, 0x4E) */
@@ -592,7 +592,7 @@ static void SortStartPointsByAngle(void) /* SortStartPointsByAngle */
  * ---------------------------------------------------------------- */
 static void ExpandPlayerZone(short playerIndex) /* ExpandPlayerZone */
 {
-    int config = *piRam101175f4;
+    int config = *gMapGenConfig;
     int pIdx = (int)playerIndex;
     int pIdx4 = pIdx * 4;
     int pIdx16 = pIdx * 16; /* ((pIdx * 4 + pIdx) & 0xFFFFFFF) << 4 approximation */
@@ -866,7 +866,7 @@ static void ConnectAdjacentZones(void) /* ConnectAdjacentZones */
     short x1, y1;
 
     for (i = 0; i <= 3; i++) {
-        config = *piRam101175f4;
+        config = *gMapGenConfig;
         waypointCount = *(short *)(config + i * 2 + CFG_WAYPOINT_COUNT);
 
         /* Connect consecutive waypoints within each player zone */
@@ -984,7 +984,7 @@ static void PlacePlayerCities(void) /* PlacePlayerCities */
         SetTerrainAt(x, y, TERRAIN_MOUNTAIN);
 
         /* Record city in city array */
-        mapData = *piRam101175f0;
+        mapData = *gMapGenData;
         cityIdx = *(short *)(mapData + CFG_CITY_COUNTER);
 
         *(short *)(mapData + cityIdx * CITY_REC_SIZE + CITY_REC_X) = (short)x;
@@ -1025,7 +1025,7 @@ static void PlaceNeutralCities(void) /* PlaceNeutralCities */
 
         SetTerrainAt(x, y, TERRAIN_FOREST);
 
-        mapData = *piRam101175f0;
+        mapData = *gMapGenData;
         cityIdx = *(short *)(mapData + CFG_CITY_COUNTER);
 
         *(short *)(mapData + cityIdx * CITY_REC_SIZE + CITY_REC_X) = (short)x;
@@ -1050,7 +1050,7 @@ static void PlaceNeutralCities(void) /* PlaceNeutralCities */
  * ---------------------------------------------------------------- */
 static void AssignCityAlliances(void) /* AssignCityAlliances */
 {
-    int mapData = *piRam101175f0;
+    int mapData = *gMapGenData;
     short totalCities = *(short *)(mapData + CFG_CITY_COUNTER);
     int i, j, k;
     short numAllies;
@@ -1123,7 +1123,7 @@ extern void DrawStandaloneRoad(long packedCityPos);              /* DrawStandalo
  * ---------------------------------------------------------------- */
 static void GenerateRoadsBetweenCities(void) /* GenerateRoadsBetweenCities */
 {
-    int mapData = *piRam101175f0;
+    int mapData = *gMapGenData;
     short totalCities = *(short *)(mapData + CFG_CITY_COUNTER);
     int i, j;
     short allies, allyType;
@@ -1181,7 +1181,7 @@ extern void EnsureCityCoastalAccess(void);     /* EnsureCityCoastalAccess */
 static void PlaceCitiesAndRoads(void) /* PlaceCitiesAndRoads */
 {
     /* Reset city counter */
-    *(short *)(*piRam101175f0 + CFG_CITY_COUNTER) = 0;
+    *(short *)(*gMapGenData + CFG_CITY_COUNTER) = 0;
 
     PlacePlayerCities();
     PlaceNeutralCities();
@@ -1650,8 +1650,8 @@ static void ScanForExistingCities(void) /* ScanForExistingCities */
  * Places a 2x2 city footprint on valid land (no water/city/mountain
  * neighbors), with preference for shore access.
  * ---------------------------------------------------------------- */
-extern int  iRam1011681c; /* city quadrant X offsets */
-extern int  iRam101176e8; /* city quadrant Y offsets - reused as FUN_10116820 */
+extern int  gRenderingMiscData; /* city quadrant X offsets */
+extern int  gCombatDisplayPieces; /* city quadrant Y offsets - reused as FUN_10116820 */
 
 static void PlaceNeutralCityOnLand(void) /* PlaceNeutralCityOnLand */
 {
@@ -1661,7 +1661,7 @@ static void PlaceNeutralCityOnLand(void) /* PlaceNeutralCityOnLand */
     int quad;
     char t;
     int gameState = *piRam1011735c;
-    int mapData = *piRam101175f0;
+    int mapData = *gMapGenData;
 
     do {
         x = DiceRoll(1, 0x66, 5);   /* 5-107 */
@@ -1671,8 +1671,8 @@ static void PlaceNeutralCityOnLand(void) /* PlaceNeutralCityOnLand */
 
         /* Check all 4 quadrants of the 2x2 city footprint */
         for (quad = 0; quad < 4; quad++) {
-            int qx = x + *(short *)((int)&iRam1011681c + quad * 2);
-            int qy = y + *(short *)((int)&iRam101176e8 + quad * 2);
+            int qx = x + *(short *)((int)&gRenderingMiscData + quad * 2);
+            int qy = y + *(short *)((int)&gCombatDisplayPieces + quad * 2);
 
             t = GetTerrainAt(qx, qy);
             if (t == TERRAIN_SHORE || t == TERRAIN_OCEAN ||
@@ -1710,8 +1710,8 @@ static void PlaceNeutralCityOnLand(void) /* PlaceNeutralCityOnLand */
 
             /* Place 2x2 city footprint */
             for (quad = 0; quad < 4; quad++) {
-                int qx = x + *(short *)((int)&iRam1011681c + quad * 2);
-                int qy = y + *(short *)((int)&iRam101176e8 + quad * 2);
+                int qx = x + *(short *)((int)&gRenderingMiscData + quad * 2);
+                int qy = y + *(short *)((int)&gCombatDisplayPieces + quad * 2);
                 SetTerrainAt(qx, qy, TERRAIN_CITY);
                 NotifyTileChanged(qx, qy);
             }
@@ -1850,8 +1850,8 @@ extern short StringLength(char *str);          /* StringLength */
 static void PlaceRuins(void) /* PlaceRuins */
 {
     int gameState = *piRam1011735c;
-    int config = *piRam101175f4;
-    int progressDialog = *(int *)puRam10115f7c;
+    int config = *gMapGenConfig;
+    int progressDialog = *(int *)gProgressBar;
     short i;
     short prevProgress = 0;
     short ruinX, ruinY;
@@ -1944,7 +1944,7 @@ static void GenerateRoadNetwork(void) /* GenerateRoadNetwork */
     void *pathBuf;
     int progressStep;
     int segment;
-    int progressDialog = *(int *)puRam10115f7c;
+    int progressDialog = *(int *)gProgressBar;
     int x, y;
 
     /* Allocate pathfinding buffer */
@@ -2040,7 +2040,7 @@ void RollPlayerGold(void) /* RollPlayerGold */
 void AssignPlayerColors(void) /* AssignPlayerColors */
 {
     int player;
-    int config = *piRam101175f4;
+    int config = *gMapGenConfig;
 
     for (player = 0; player < 8; player++) {
         short colorIdx = DiceRoll(1, 5, -1);
@@ -2056,7 +2056,7 @@ void AssignPlayerColors(void) /* AssignPlayerColors */
  * ---------------------------------------------------------------- */
 static void FinalizeAndSave(void) /* FinalizeAndSave */
 {
-    int progressDialog = *(int *)puRam10115f7c;
+    int progressDialog = *(int *)gProgressBar;
 
     AssignTerrainGraphics();
     UpdateProgressBar(progressDialog, 92);
@@ -2088,7 +2088,7 @@ static void FinalizeAndSave(void) /* FinalizeAndSave */
  * ---------------------------------------------------------------- */
 void GenerateRandomMap(void) /* GenerateRandomMap */
 {
-    int progressDialog = *(int *)puRam10115f7c;
+    int progressDialog = *(int *)gProgressBar;
 
     /* Phase 1: Initialize map to all ocean */
     UpdateProgressBar(progressDialog, 0);
@@ -2166,7 +2166,7 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
 
     /* Show progress dialog (202 x 60 pixels) */
     extern void ShowProgressDialog(int dialog, void *dims, int resID);
-    /* ProgressCreate(*puRam10115f7c, &dims, 0x3F3) */
+    /* ProgressCreate(*gProgressBar, &dims, 0x3F3) */
 
     /* Allocate scenario data buffer (24,022 bytes) */
     scenHandle = AllocateHandle(SCENARIO_DATA_SIZE);
@@ -2175,7 +2175,7 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
         extern void SetupHandle(void *handle);
         SetupHandle(scenHandle);
     }
-    *piRam101175f4 = *(int *)scenHandle;
+    *gMapGenConfig = *(int *)scenHandle;
 
     /* Allocate map tile buffer (18,314 bytes) */
     mapHandle = AllocateHandle(MAP_DATA_SIZE);
@@ -2183,7 +2183,7 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
         extern void SetupHandle(void *handle);
         SetupHandle(mapHandle);
     }
-    *piRam101175f0 = *(int *)mapHandle;
+    *gMapGenData = *(int *)mapHandle;
 
     /* Load template data from 'DAT ' resource */
     stream = (int *)OpenDATResource(0x44415420, 0, 1);
@@ -2195,7 +2195,7 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
         return;
     }
 
-    config = *piRam101175f4;
+    config = *gMapGenConfig;
 
     /* Read terrain lookup tables into data structures */
     /* 0x132 (306) shorts at offset 0x000 */
@@ -2274,7 +2274,7 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
 
     /* Read map tile data: 0x1A5 (421) shorts */
     {
-        short *dest = (short *)*piRam101175f0;
+        short *dest = (short *)*gMapGenData;
         for (i = 0; i < 0x1A5; i++) {
             VTableDispatch((int)stream + (int)*(short *)(*stream + 0x100));
             *dest++ = ReadShortFromStream();
@@ -2283,13 +2283,13 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
 
     /* Copy 0x4440 (17,472) bytes at tile data offset 0x34A */
     VTableDispatch((int)stream + (int)*(short *)(*stream + 0xE0),
-                   (unsigned long)*piRam101175f0 + MAP_TILE_OFFSET, OVERLAY_BUFFER_SIZE);
+                   (unsigned long)*gMapGenData + MAP_TILE_OFFSET, OVERLAY_BUFFER_SIZE);
 
     /* Close the DAT resource stream */
     CloseStream(stream, 1);
 
     /* Apply user parameter adjustments to base template values */
-    config = *piRam101175f4;
+    config = *gMapGenConfig;
 
     /* Total cities += terrainStyle lookup */
     *(short *)(config + CFG_TOTAL_CITIES) +=

@@ -91,9 +91,9 @@ extern void  ProgressDelay(int param);                       /* ProgressDelay */
 /* gGameState, gExtState, gMapTiles, gUnitTypeTable, gResourcePtr
  * are already declared via warlords2.h -> wl2_globals.h */
 extern void        *gRoadData;             /* piRam10117354 */
-extern void        *gCityOwnership;        /* piRam10115cf0 */
-extern void        *gProgressBar;          /* puRam10115f7c */
-extern char         gSCENInfo[];           /* iRam10117604 - 0x54 bytes */
+extern void        *gCityOwnership;        /* gCityOwnership */
+extern void        *gProgressBar;          /* gProgressBar */
+extern char         gSCENInfo[];           /* gSCENInfo - 0x54 bytes */
 
 
 /* =========================================================================
@@ -1378,7 +1378,7 @@ void ReadCityRecords(int *stream)                            /* ReadCityRecords 
 void WriteGameState(int *docHandle)                          /* WriteGameState */
 {
     int    *gsPtr    = (int *)gGameState;                    /* piRam1011735c */
-    int    *cityOwn  = (int *)gCityOwnership;                /* piRam10115cf0 */
+    int    *cityOwn  = (int *)gCityOwnership;                /* gCityOwnership */
     int     resBase;
     int    *saveStream;
     int    *subStream;

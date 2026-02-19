@@ -107,19 +107,19 @@ extern void  PlaceUnitInArmy(short armyIdx, long slot, long tmpl); /* PlaceUnitI
 
 /* Global variables used in AI (some from other modules) */
 /* iRam1011762c/iRam10117630 now aliased via #define in wl2_globals.h */
-extern int   iRam10117474;     /* per-player threat data */
-extern int   iRam10117488;     /* per-player idle army counts */
-extern int   iRam1011748c;     /* per-player total army counts */
-extern int   iRam10117490;     /* per-player territory counts */
-extern short *psRam10117484;   /* primary threat player pointer */
-extern int   iRam101176e8;     /* hero unit pointer array */
-extern short *psRam101176e4;   /* hero count pointer */
+extern int   gDiploThreatData;     /* per-player threat data */
+extern int   gPlayerIdleArmyCounts;     /* per-player idle army counts */
+extern int   gPlayerTotalArmyCounts;     /* per-player total army counts */
+extern int   gPlayerTerritoryCounts;     /* per-player territory counts */
+extern short *gPrimaryThreatPlayer;   /* primary threat player pointer */
+extern int   gCombatDisplayPieces;     /* hero unit pointer array */
+extern short *gHeroCount;   /* hero count pointer */
 extern int  *puRam101176e0;    /* selected unit pointer (piRam101176e0) */
 /* psRam101176fc now aliased via #define in wl2_globals.h */
-extern short *psRam10115d34;   /* valid army state list */
-extern int   iRam10115ba4;     /* group function table base */
-extern char  *pcRam101174d0;   /* quest unit list count */
-extern int   iRam101174f0;     /* quest unit list base */
+extern short *gValidArmyStateList;   /* valid army state list */
+extern int   gGroupFuncTable;     /* group function table base */
+extern char  *gSelectionCount;   /* quest unit list count */
+extern int   gSelectionArray;     /* quest unit list base */
 /* piRam10117354 now aliased via #define in wl2_globals.h */
 
 
@@ -824,7 +824,7 @@ int AI_CheckAllianceThreats(short playerIdx)
         if ((*(unsigned int *)(*gameState + playerIdx * 0x10 + p * 2 + 0x1582) >> 0x1A & 3) != 2)
             continue;
         /* Must have active threat data */
-        if (*(short *)(p * 2 + iRam10117474) == 0)
+        if (*(short *)(p * 2 + gDiploThreatData) == 0)
             continue;
 
         result = 1;
@@ -859,11 +859,11 @@ void AI_StrategicAssessment(void)
     int *gameState = gGameState;
     int *extState = gExtState;
     int *mapTiles = gMapTiles;
-    short *primaryThreatPtr = psRam10117484;
-    int  territoryCount = iRam10117490;  /* per-player territory army counts */
-    int  totalArmyCount = iRam1011748c;  /* per-player total army counts */
-    int  idleArmyCount = iRam10117488;   /* per-player idle army counts */
-    int  threatData = iRam10117474;
+    short *primaryThreatPtr = gPrimaryThreatPlayer;
+    int  territoryCount = gPlayerTerritoryCounts;  /* per-player territory army counts */
+    int  totalArmyCount = gPlayerTotalArmyCounts;  /* per-player total army counts */
+    int  idleArmyCount = gPlayerIdleArmyCounts;   /* per-player idle army counts */
+    int  threatData = gDiploThreatData;
     short p, i;
     short armyCount;
     int  totalOnMap = 0;
@@ -1860,7 +1860,7 @@ void AI_Finalize(void)
 {
     int *extState = gExtState;
     int *gameState = gGameState;
-    short *validStates = psRam10115d34;
+    short *validStates = gValidArmyStateList;
     short armyCount;
     short i;
     Boolean stateValid;

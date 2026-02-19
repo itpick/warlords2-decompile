@@ -574,7 +574,7 @@ void FUN_1007ff2c(int *param_1,short param_2);
 /* Extern declarations for Ghidra globals */
 extern long iRam10115d68;
 extern long iRam10115ed8;
-extern long iRam10115ee4;
+extern long gSpriteTable;
 extern long iRam10115eec;
 extern long iRam10115ef0;
 extern long iRam10115f1c;
@@ -588,9 +588,9 @@ extern long iRam10115f88;
 extern long iRam10115f8c;
 extern long iRam10115fcc;
 extern long iRam10115fd0;
-extern long iRam10115fe4;
+extern long gPlayerColorTable;
 extern long iRam10116000;
-extern long iRam10116008;
+extern long gArmyIconTable;
 extern long iRam10116010;
 extern long iRam10116460;
 extern long iRam10117450;
@@ -602,45 +602,45 @@ extern long iRam10117634;
 extern long iRam10117638;
 extern long iRam1011763c;
 extern long iRam10117640;
-extern long iRam10117688;
+extern long gMinimapGWorld;
 extern long iRam101176c0;
 extern long iRam101176cc;
-extern long iRam101176e8;
+extern long gCombatDisplayPieces;
 extern long iRam101176ec;
-extern long iRam101176f0;
+extern long gDisplayState;
 extern long iRam101176f4;
 extern long iRam101176f8;
 extern long iRam10117728;
 extern long iRam1011773c;
 extern long iRam10117758;
 extern long iRam101177f0;
-extern long iRam1011788c;
+extern long gSoundPrefs;
 extern unsigned char *pbRam10116a54;
 extern char *pcRam1011648c;
 extern pint *piRam10115d88;
-extern pint *piRam10115f0c;
+extern pint *gUnitDataHandle;
 extern pint *piRam10115f14;
 extern pint *piRam10115f18;
 extern pint *piRam10115f50;
 extern pint *piRam10115f64;
 extern pint *piRam10115f7c;
 extern pint *piRam10115f94;
-extern pint *piRam10115fa4;
+extern pint *gOverviewWindow;
 extern pint *piRam10115fc8;
-extern pint *piRam10115fe8;
+extern pint *gScreenGWorld;
 extern pint *piRam101161d0;
-extern pint *piRam10116200;
-extern pint *piRam10116204;
-extern pint *piRam10116208;
-extern pint *piRam1011639c;
-extern pint *piRam101163ac;
-extern pint *piRam101163b0;
+extern pint *gInfoWindow;
+extern pint *gMainDocView;
+extern pint *gMainGameWindow;
+extern pint *gSidePanelWindow;
+extern pint *gActiveDocView;
+extern pint *gActiveView;
 extern pint *piRam10116478;
 extern pint *piRam10116484;
 extern pint *piRam10116488;
-extern pint *piRam101169c4;
+extern pint *gAppObject;
 extern pint *piRam101174b0;
-extern pint *piRam10117594;
+extern pint *gDistGridHandle;
 extern pint *piRam101175d0;
 extern pint *piRam10117698;
 extern pint *piRam1011769c;
@@ -654,12 +654,12 @@ extern short *psRam10115d80;
 extern short *psRam10115d84;
 extern short *psRam10115d8c;
 extern short *psRam10115d98;
-extern short *psRam10115e2c;
+extern short *gAutoModeFlag;
 extern short *psRam10115e88;
 extern short *psRam10115e94;
 extern short *psRam10115ea0;
-extern short *psRam10115ea4;
-extern short *psRam10115ee8;
+extern short *gPathfindingInitialized;
+extern short *gSpriteCount;
 extern short *psRam10115ef8;
 extern short *psRam10115efc;
 extern short *psRam10115f10;
@@ -670,17 +670,17 @@ extern short *psRam10115f74;
 extern short *psRam10115f88;
 extern short *psRam10115fa8;
 extern short *psRam10115fd4;
-extern short *psRam10115ff4;
-extern short *psRam10115ff8;
+extern short *gViewportRect;
+extern short *gForceRedrawFlag;
 extern short *psRam101161fc;
 extern short *psRam10116354;
-extern short *psRam10116360;
+extern short *gUIShortGlobal;
 extern short *psRam101164c8;
 extern short *psRam1011677c;
 extern short *psRam10117580;
 extern short *psRam101175b8;
 extern short *psRam1011760c;
-extern short *psRam101176e4;
+extern short *gHeroCount;
 extern unsigned int *puRam10115d8c;
 extern unsigned int *puRam10115d98;
 extern unsigned int *puRam10115db0;
@@ -689,7 +689,7 @@ extern unsigned int *puRam10115e90;
 extern unsigned int *puRam10115e94;
 extern unsigned int *puRam10115e9c;
 extern unsigned int *puRam10115ef8;
-extern unsigned int *puRam10115f04;
+extern unsigned int *gPatternDrawFlag;
 extern unsigned int *puRam10115f08;
 extern unsigned int *puRam10115f10;
 extern unsigned int *puRam10115f3c;
@@ -698,7 +698,7 @@ extern unsigned int *puRam10115f48;
 extern unsigned int *puRam10115f64;
 extern unsigned int *puRam10115f70;
 extern unsigned int *puRam10115f74;
-extern unsigned int *puRam10115f7c;
+extern unsigned int *gProgressBar;
 extern unsigned int *puRam10115f88;
 extern unsigned int *puRam10115f8c;
 extern unsigned int *puRam10115fa4;
@@ -739,7 +739,7 @@ extern unsigned int *puRam1011735c;
 extern unsigned int *puRam10117360;
 extern unsigned int *puRam10117370;
 extern unsigned int *puRam101174b0;
-extern unsigned int *puRam10117598;
+extern unsigned int *gDistGridDeref;
 extern unsigned int *puRam101175ac;
 extern unsigned int *puRam101175cc;
 extern unsigned int *puRam101175e0;
@@ -832,9 +832,9 @@ extern unsigned int uRam10117610;
 extern unsigned int uRam10117664;
 extern unsigned int uRam10117668;
 extern unsigned int uRam10117684;
-extern unsigned int uRam101176cc;
+extern unsigned int gColorPalette;
 extern unsigned int uRam1011772c;
-extern unsigned int uRam101177f0;
+extern unsigned int gProgressCounterBase;
 
 /* Address: 0x100402bc Size: 36 bytes */
 void FUN_100402bc()
@@ -865,7 +865,7 @@ void FUN_10040334()
   long long uVar1;
   int local_24;
   
-  uVar1 = ResourceRead_Dispatch(*piRam10115fa4 + (int)*(short *)(*(int *)*piRam10115fa4 + 0x308),0x696e666f);
+  uVar1 = ResourceRead_Dispatch(*gOverviewWindow + (int)*(short *)(*(int *)*gOverviewWindow + 0x308),0x696e666f);
   if ((int)uVar1 != 0) {
     FUN_10080cf0(uVar1,*(short *)(**(int **)(local_24 + -0x544) + 0x110));
   }
@@ -944,7 +944,7 @@ void FUN_10040930()
 void FUN_1004099c(short param_1)
 
 {
-  ProgressUpdate(*puRam10115f7c,param_1);
+  ProgressUpdate(*gProgressBar,param_1);
   return;
 }
 
@@ -982,7 +982,7 @@ void FUN_10040a38()
   int local_14;
   
   puVar1 = puRam10117370;
-  ResourceRead_Dispatch(*piRam10116208 + (int)*(short *)(*(int *)*piRam10116208 + 0x4c8));
+  ResourceRead_Dispatch(*gMainGameWindow + (int)*(short *)(*(int *)*gMainGameWindow + 0x4c8));
   ResourceRead_Dispatch(**(int **)(local_14c + -0x1504) +
                (int)*(short *)(*(int *)**(int **)(local_14c + -0x1504) + 0x4c8));
   ResourceRead_Dispatch(**(int **)(local_14c + -0x18fc) +
@@ -1103,7 +1103,7 @@ void FUN_10040da4()
   int local_1c;
   
   puVar1 = puRam10117370;
-  ResourceRead_Dispatch(*piRam10116208 + (int)*(short *)(*(int *)*piRam10116208 + 0x4c8));
+  ResourceRead_Dispatch(*gMainGameWindow + (int)*(short *)(*(int *)*gMainGameWindow + 0x4c8));
   ResourceRead_Dispatch(**(int **)(local_154 + -0x1504) +
                (int)*(short *)(*(int *)**(int **)(local_154 + -0x1504) + 0x4c8));
   ResourceRead_Dispatch(**(int **)(local_154 + -0x18fc) +
@@ -1451,7 +1451,7 @@ void FUN_100416f4(short param_1,short param_2,long long param_3,short param_4)
   char auStack_98 [16];
   char auStack_88 [136];
   
-  iVar5 = iRam101176e8;
+  iVar5 = gCombatDisplayPieces;
   piVar2 = piRam101176e0;
   ppuVar3 = 0 /* TVect base */;
   if (*piRam101176e0 != 0) {
@@ -2517,9 +2517,9 @@ int * FUN_10044950()
   int *ppuVar3;
   int **local_2c;
   
-  puVar2 = puRam10117598;
+  puVar2 = gDistGridDeref;
   ppuVar3 = 0 /* TVect base */;
-  if (*psRam10115ea4 == 0) {
+  if (*gPathfindingInitialized == 0) {
     ppuVar3 = 0 /* TVect base */;
     FUN_100424e4();
   }
@@ -2540,8 +2540,8 @@ void FUN_100449bc()
   int *piVar1;
   int local_2c;
   
-  piVar1 = piRam10117594;
-  if (*piRam10117594 != 0) {
+  piVar1 = gDistGridHandle;
+  if (*gDistGridHandle != 0) {
     DisposeHandle_Thunk();
   }
   FUN_10001f50(*piVar1);
@@ -2575,7 +2575,7 @@ long long FUN_10044a10(int param_1,int *param_2)
     uVar3 = 0;
   }
   else {
-    uVar9 = (unsigned long long)uRam101176cc;
+    uVar9 = (unsigned long long)gColorPalette;
     HLock_Thunk_Sound(param_2);
     if (*param_2 == 0) {
       uVar3 = 0;
@@ -2711,7 +2711,7 @@ void FUN_100453f0()
   puVar8 = puRam101175f8;
   iVar7 = iRam10115ef0;
   iVar6 = iRam10115eec;
-  iVar5 = iRam10115ee4;
+  iVar5 = gSpriteTable;
   ppuVar9 = 0 /* TVect base */;
   local_4c[0] = 0;
   uVar1 = *(int *)(iRam10115ed8 + 0x114);
@@ -3708,22 +3708,22 @@ void FUN_1004602c()
   short uStack00000024;
   short uStack00000026;
   
-  iVar1 = iRam10115ee4;
+  iVar1 = gSpriteTable;
   ppuVar2 = 0 /* TVect base */;
   ppuVar3 = 0 /* TVect base */;
   uVar6 = (unsigned long long)param_1;
   _uStack0000001c = param_2;
   _uStack00000020 = param_3;
   _uStack00000024 = param_4;
-  if ((*(unsigned int *)((int)(((uVar6 & 0x3fffffff) * 4 + uVar6 & 0xffffffff) << 2) + iRam10115ee4) >> 0x1d
+  if ((*(unsigned int *)((int)(((uVar6 & 0x3fffffff) * 4 + uVar6 & 0xffffffff) << 2) + gSpriteTable) >> 0x1d
       & 1) == 0) {
     iVar5 = 0;
     ppuVar3 = 0 /* TVect base */;
-    if (0 < *psRam10115ee8) {
+    if (0 < *gSpriteCount) {
       do {
-        if ((*(unsigned int *)(iVar5 * 0x14 + iRam10115ee4) >> 0x1d & 1) != 0) {
-          if (*(char *)(iVar5 * 0x14 + iRam10115ee4 + 8) ==
-              *(char *)((int)(((uVar6 & 0x3fffffff) * 4 + uVar6 & 0xffffffff) << 2) + iRam10115ee4 +
+        if ((*(unsigned int *)(iVar5 * 0x14 + gSpriteTable) >> 0x1d & 1) != 0) {
+          if (*(char *)(iVar5 * 0x14 + gSpriteTable + 8) ==
+              *(char *)((int)(((uVar6 & 0x3fffffff) * 4 + uVar6 & 0xffffffff) << 2) + gSpriteTable +
                        8)) {
             FUN_100450f4(iVar5);
             ppuVar3 = ppuVar2;
@@ -3732,7 +3732,7 @@ void FUN_1004602c()
         }
         sVar4 = (short)iVar5 + 1;
         iVar5 = (int)sVar4;
-      } while (sVar4 < *psRam10115ee8);
+      } while (sVar4 < *gSpriteCount);
     }
     FUN_10044d8c(uVar6);
   }
@@ -3769,7 +3769,7 @@ void FUN_1004615c(short param_1,int param_2,int param_3,int param_4)
   short uStack00000024;
   short uStack00000026;
   
-  iVar1 = iRam10115ee4;
+  iVar1 = gSpriteTable;
   uVar2 = uStack00000024;
   ppuVar3 = 0 /* TVect base */;
   ppuVar4 = 0 /* TVect base */;
@@ -3777,15 +3777,15 @@ void FUN_1004615c(short param_1,int param_2,int param_3,int param_4)
   _uStack0000001c = param_2;
   _uStack00000020 = param_3;
   _uStack00000024 = param_4;
-  if ((*(unsigned int *)((int)(((uVar7 & 0x3fffffff) * 4 + uVar7 & 0xffffffff) << 2) + iRam10115ee4) >> 0x1d
+  if ((*(unsigned int *)((int)(((uVar7 & 0x3fffffff) * 4 + uVar7 & 0xffffffff) << 2) + gSpriteTable) >> 0x1d
       & 1) == 0) {
     iVar6 = 0;
     ppuVar4 = 0 /* TVect base */;
-    if (0 < *psRam10115ee8) {
+    if (0 < *gSpriteCount) {
       do {
-        if ((*(unsigned int *)(iVar6 * 0x14 + iRam10115ee4) >> 0x1d & 1) != 0) {
-          if (*(char *)(iVar6 * 0x14 + iRam10115ee4 + 8) ==
-              *(char *)((int)(((uVar7 & 0x3fffffff) * 4 + uVar7 & 0xffffffff) << 2) + iRam10115ee4 +
+        if ((*(unsigned int *)(iVar6 * 0x14 + gSpriteTable) >> 0x1d & 1) != 0) {
+          if (*(char *)(iVar6 * 0x14 + gSpriteTable + 8) ==
+              *(char *)((int)(((uVar7 & 0x3fffffff) * 4 + uVar7 & 0xffffffff) << 2) + gSpriteTable +
                        8)) {
             FUN_100450f4(iVar6);
             ppuVar4 = ppuVar3;
@@ -3794,7 +3794,7 @@ void FUN_1004615c(short param_1,int param_2,int param_3,int param_4)
         }
         sVar5 = (short)iVar6 + 1;
         iVar6 = (int)sVar5;
-      } while (sVar5 < *psRam10115ee8);
+      } while (sVar5 < *gSpriteCount);
     }
     FUN_10044d8c(uVar7);
   }
@@ -4897,13 +4897,13 @@ long long FUN_100479f4(short param_1)
 {
   char *puVar1;
   
-  puVar1 = puRam10115f04;
+  puVar1 = gPatternDrawFlag;
   if (param_1 == -1) {
-    *puRam10115f04 = 1;
+    *gPatternDrawFlag = 1;
   }
   else {
     RGBForeColor_Thunk((((long long)param_1 & 0x3fffffffU) * 4 - (long long)param_1 & 0x7fffffff) * 2 +
-                 (unsigned long long)uRam101176cc);
+                 (unsigned long long)gColorPalette);
     SetForeColor_Thunk();
     *puVar1 = 0;
   }
@@ -5469,9 +5469,9 @@ void FUN_10048ccc()
   piVar9 = piRam101175d0;
   puVar8 = puRam101175cc;
   piVar13 = piRam1011734c;
-  piVar5 = piRam10115f0c;
+  piVar5 = gUnitDataHandle;
   puVar7 = puRam10115f08;
-  if (*piRam10115f0c == 0) {
+  if (*gUnitDataHandle == 0) {
     *puRam101175cc = *puRam10115f08;
     piVar14 = *(int **)(*(int *)(*piVar13 + 0x88) + 0x148);
     ResourceRead_Dispatch((int)piVar14 + (int)*(short *)(*piVar14 + 0x2b8));
@@ -5560,7 +5560,7 @@ void FUN_10048ccc()
 void FUN_10049010()
 
 {
-  if (*piRam10115f0c != 0) {
+  if (*gUnitDataHandle != 0) {
     DisposeHandle_Thunk();
   }
   return;
@@ -9439,7 +9439,7 @@ void FUN_10052900()
   int iVar17;
   int local_5c;
   
-  iVar5 = iRam101176e8;
+  iVar5 = gCombatDisplayPieces;
   piVar4 = piRam101176e0;
   uVar3 = uRam101175f8;
   piVar1 = piRam1011735c;
@@ -11884,11 +11884,11 @@ long long FUN_10055ba0(short param_1)
   short sVar7;
   int iVar6;
   
-  iVar2 = iRam101176e8;
+  iVar2 = gCombatDisplayPieces;
   piVar5 = piRam101176e0;
   piVar4 = piRam101174b0;
   sVar7 = param_1;
-  if (*(int *)(iRam101176e8 + 4) == 0) {
+  if (*(int *)(gCombatDisplayPieces + 4) == 0) {
     sVar7 = 0;
   }
   *psRam10116354 = sVar7;
@@ -12575,7 +12575,7 @@ long long FUN_100562e0()
   long long uVar4;
   int iVar5;
   
-  iVar3 = iRam101176e8;
+  iVar3 = gCombatDisplayPieces;
   if (*piRam101176e0 == 0) {
     uVar4 = 0;
   }
@@ -14313,7 +14313,7 @@ void FUN_1005af24(int *param_1)
   
   piVar3 = piRam1011735c;
   psVar1 = psRam101164c8;
-  uVar8 = (unsigned long long)uRam101176cc;
+  uVar8 = (unsigned long long)gColorPalette;
   if (*(short *)(*piRam1011735c + *psRam101164c8 * 2 + 0xd0) == 1) {
     iVar4 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x308),0x64657331);
     FocusObject();
@@ -14731,16 +14731,16 @@ void FUN_1005c2d4()
   
   iVar13 = iRam101176f8;
   puVar9 = puRam101176f4;
-  iVar8 = iRam101176f0;
+  iVar8 = gDisplayState;
   iVar7 = iRam101176ec;
   puVar6 = puRam10117628;
-  psVar5 = psRam10116360;
+  psVar5 = gUIShortGlobal;
   iVar15 = (int)*(short *)(*piRam1011735c + 0x110);
   if (*(short *)(*piRam1011735c + 0x110) == 0xf) {
     iVar15 = 8;
   }
   iVar15 = *piRam1011735c + iVar15 * 0x1d + 0x60c;
-  if ((param_1 != 0) && (uVar12 = 1, 1 < *psRam10116360)) {
+  if ((param_1 != 0) && (uVar12 = 1, 1 < *gUIShortGlobal)) {
     do {
       iVar3 = (int)((uVar12 & 0xffffffff) << 1);
       sVar11 = *(short *)(iVar3 + iVar7 + -2);
@@ -14867,16 +14867,16 @@ void FUN_1005c5d4()
   
   iVar12 = iRam101176f8;
   iVar11 = iRam101176f4;
-  iVar10 = iRam101176f0;
+  iVar10 = gDisplayState;
   iVar9 = iRam101176ec;
   puVar8 = puRam101176e8;
-  psVar7 = psRam101176e4;
+  psVar7 = gHeroCount;
   puVar6 = puRam101176e0;
   iVar3 = iRam101174ac;
   ppuVar13 = 0 /* TVect base */;
   sVar17 = -1;
   if (*psRam10116354 == 0) {
-    *psRam101176e4 = 1;
+    *gHeroCount = 1;
     *puVar8 = *puVar6;
   }
   puVar2 = (short *)*puVar6;
@@ -14979,12 +14979,12 @@ void FUN_1005c7d0(short param_1)
   unsigned short local_50 [40];
   
   iVar10 = iRam101176f8;
-  iVar23 = iRam101176f0;
+  iVar23 = gDisplayState;
   iVar16 = iRam101176ec;
-  iVar24 = iRam101176e8;
-  psVar9 = psRam101176e4;
+  iVar24 = gCombatDisplayPieces;
+  psVar9 = gHeroCount;
   piVar8 = piRam101176e0;
-  psVar7 = psRam10116360;
+  psVar7 = gUIShortGlobal;
   psVar6 = psRam10115ea0;
   uVar11 = ZEXT48(0 /* TVect base */);
   ppuVar12 = 0 /* TVect base */;
@@ -15176,16 +15176,16 @@ long long FUN_1005cd18()
   if (*piRam101176e0 == 0) {
     return 0;
   }
-  if (*psRam10116360 != 1) {
+  if (*gUIShortGlobal != 1) {
     iVar2 = 0;
-    if (0 < *psRam10116360) {
+    if (0 < *gUIShortGlobal) {
       do {
-        if (*(short *)(iVar2 * 2 + iRam101176f0) == 0) {
+        if (*(short *)(iVar2 * 2 + gDisplayState) == 0) {
           return 0;
         }
         sVar1 = (short)iVar2 + 1;
         iVar2 = (int)sVar1;
-      } while (sVar1 < *psRam10116360);
+      } while (sVar1 < *gUIShortGlobal);
     }
     return 1;
   }
@@ -15210,7 +15210,7 @@ void FUN_1005cd90()
   
   piVar5 = piRam1011735c;
   puVar4 = puRam10115fac;
-  piVar3 = piRam10115fa4;
+  piVar3 = gOverviewWindow;
   ppuVar6 = 0 /* TVect base */;
   *puRam10115fa8 = 1;
   iVar7 = *piVar3;
@@ -15578,9 +15578,9 @@ void FUN_1005cffc(short param_1)
   unsigned long long uVar5;
   short sVar6;
   
-  iVar4 = iRam101176f0;
+  iVar4 = gDisplayState;
   iVar3 = iRam101176ec;
-  psVar2 = psRam10116360;
+  psVar2 = gUIShortGlobal;
   ResourceRead_Dispatch((int)*(int **)(*piRam1011734c + 0x88) +
                (int)*(short *)(**(int **)(*piRam1011734c + 0x88) + 0x228));
   sVar1 = *(short *)(param_1 * 2 + iVar3);
@@ -15612,21 +15612,21 @@ void FUN_1005d0cc(short param_1)
   short sVar6;
   short local_10 [8];
   
-  iVar2 = iRam101176f0;
+  iVar2 = gDisplayState;
   iVar4 = iRam101176ec;
-  psVar1 = psRam10116360;
+  psVar1 = gUIShortGlobal;
   iVar3 = (int)param_1;
-  if (*(short *)(iVar3 * 2 + iRam101176f0) == 0) {
+  if (*(short *)(iVar3 * 2 + gDisplayState) == 0) {
     iVar4 = 0;
-    if (0 < *psRam10116360) {
+    if (0 < *gUIShortGlobal) {
       do {
-        if (*(short *)(iVar4 * 2 + iRam101176f0) != 0) {
+        if (*(short *)(iVar4 * 2 + gDisplayState) != 0) {
           iVar4 = (int)*(short *)(iVar4 * 2 + iRam101176ec);
           break;
         }
         sVar6 = (short)iVar4 + 1;
         iVar4 = (int)sVar6;
-      } while (sVar6 < *psRam10116360);
+      } while (sVar6 < *gUIShortGlobal);
     }
     iVar3 = iVar3 * 2;
     *(short *)(iVar3 + iRam101176ec) = (short)iVar4;
@@ -15677,12 +15677,12 @@ void FUN_1005d240()
   short sVar4;
   int iVar5;
   
-  iVar3 = iRam101176f0;
+  iVar3 = gDisplayState;
   iVar2 = iRam101176ec;
-  psVar1 = psRam10116360;
+  psVar1 = gUIShortGlobal;
   if (*piRam101176e0 != 0) {
     iVar5 = 0;
-    if (0 < *psRam10116360) {
+    if (0 < *gUIShortGlobal) {
       do {
         *(short *)(iVar5 * 2 + iVar2) = 0;
         *(short *)(iVar5 * 2 + iVar3) = 1;
@@ -15710,9 +15710,9 @@ void FUN_1005d2dc()
   
   puVar3 = puRam101176f0;
   iVar2 = iRam101176ec;
-  psVar1 = psRam10116360;
+  psVar1 = gUIShortGlobal;
   iVar4 = 0;
-  if (0 < *psRam10116360) {
+  if (0 < *gUIShortGlobal) {
     do {
       *(short *)(iVar4 * 2 + iVar2) = (short)iVar4;
       puVar3[iVar4] = 0;
@@ -15873,7 +15873,7 @@ void FUN_1005d364(short param_1,short param_2,short param_3)
   ppuVar2 = 0 /* TVect base */;
   if (*psRam10115fa8 == 0) {
     if (param_3 < 8) {
-      if (param_3 < *psRam10116360) {
+      if (param_3 < *gUIShortGlobal) {
         iVar1 = *(int *)(param_3 * 4 + iRam101176f8);
         FUN_1000be58(*(char *)(iVar1 + 4),*(char *)(iVar1 + 6),
                      *(char *)(iVar1 + 8),*(char *)(iVar1 + 0xb),
@@ -15935,9 +15935,9 @@ void FUN_1005d598(int param_1)
   int local_4c;
   
   iVar5 = iRam101176f8;
-  iVar4 = iRam101176f0;
+  iVar4 = gDisplayState;
   iVar2 = FUN_1011662c;
-  psVar3 = psRam10116360;
+  psVar3 = gUIShortGlobal;
   uVar6 = ZEXT48(0 /* TVect base */);
   iVar7 = FUN_100abd8c(*(short *)*puRam101176e0,((short *)*puRam101176e0)[1]);
   iVar18 = (int)uVar6;
@@ -17024,12 +17024,12 @@ void FUN_1005dd84(short param_1,short param_2,short param_3)
   uVar12 = uRam1011772c;
   iVar11 = iRam101176f8;
   iVar17 = iRam101176f4;
-  iVar10 = iRam101176f0;
+  iVar10 = gDisplayState;
   iVar9 = iRam101176ec;
   piVar8 = piRam10117364;
   puVar7 = puRam1011735c;
   puVar6 = puRam10116578;
-  psVar5 = psRam10116360;
+  psVar5 = gUIShortGlobal;
   iVar4 = iRam10115fd0;
   iVar3 = iRam10115fcc;
   piVar2 = piRam10115fc8;
@@ -18465,7 +18465,7 @@ void FUN_1005e698()
   int *piVar3;
   unsigned long long uVar4;
   
-  psVar1 = psRam10116360;
+  psVar1 = gUIShortGlobal;
   piVar3 = piRam10115fc8;
   piVar2 = (int *)ResourceRead_Dispatch(*piRam10115fc8 + (int)*(short *)(*(int *)*piRam10115fc8 + 0x308),
                                0x67726f75);
@@ -18511,15 +18511,15 @@ void FUN_1005e7c4()
   
   iVar10 = iRam101176f8;
   iVar9 = iRam101176f4;
-  iVar8 = iRam101176f0;
+  iVar8 = gDisplayState;
   iVar7 = iRam101176ec;
   iVar6 = iRam10117640;
   iVar5 = iRam1011763c;
   iVar4 = iRam10117638;
   iVar3 = iRam10117634;
-  psVar2 = psRam10116360;
+  psVar2 = gUIShortGlobal;
   sVar12 = *psRam10115fd4;
-  *psRam10116360 = sVar12;
+  *gUIShortGlobal = sVar12;
   uVar11 = 0;
   if (0 < sVar12) {
     do {
@@ -18551,22 +18551,22 @@ void FUN_1005ea7c(short param_1)
   short sVar8;
   short local_10 [8];
   
-  iVar2 = iRam101176f0;
+  iVar2 = gDisplayState;
   iVar6 = iRam101176ec;
-  psVar1 = psRam10116360;
+  psVar1 = gUIShortGlobal;
   ppuVar3 = 0 /* TVect base */;
   iVar4 = (int)param_1;
-  if (*(short *)(iVar4 * 2 + iRam101176f0) == 0) {
+  if (*(short *)(iVar4 * 2 + gDisplayState) == 0) {
     iVar6 = 0;
-    if (0 < *psRam10116360) {
+    if (0 < *gUIShortGlobal) {
       do {
-        if (*(short *)(iVar6 * 2 + iRam101176f0) != 0) {
+        if (*(short *)(iVar6 * 2 + gDisplayState) != 0) {
           iVar6 = (int)*(short *)(iVar6 * 2 + iRam101176ec);
           break;
         }
         sVar8 = (short)iVar6 + 1;
         iVar6 = (int)sVar8;
-      } while (sVar8 < *psRam10116360);
+      } while (sVar8 < *gUIShortGlobal);
     }
     iVar4 = iVar4 * 2;
     *(short *)(iVar4 + iRam101176ec) = (short)iVar6;
@@ -18624,13 +18624,13 @@ void FUN_1005ec38(short param_1)
   unsigned long long uVar7;
   short sVar8;
   
-  iVar4 = iRam101176f0;
+  iVar4 = gDisplayState;
   iVar3 = iRam101176ec;
-  psVar2 = psRam10116360;
+  psVar2 = gUIShortGlobal;
   ppuVar5 = 0 /* TVect base */;
   sVar1 = *(short *)(param_1 * 2 + iRam101176ec);
   uVar7 = 0;
-  if (0 < *psRam10116360) {
+  if (0 < *gUIShortGlobal) {
     do {
       *(unsigned short *)((int)((uVar7 & 0xffffffff) << 1) + iVar4) =
            (unsigned short)(*(short *)((int)((uVar7 & 0xffffffff) << 1) + iVar3) == sVar1);
@@ -18661,12 +18661,12 @@ void FUN_1005ed24()
   int iVar6;
   short sVar7;
   
-  iVar3 = iRam101176f0;
+  iVar3 = gDisplayState;
   iVar2 = iRam101176ec;
-  psVar1 = psRam10116360;
+  psVar1 = gUIShortGlobal;
   ppuVar4 = 0 /* TVect base */;
   iVar6 = 0;
-  if (0 < *psRam10116360) {
+  if (0 < *gUIShortGlobal) {
     do {
       *(short *)(iVar6 * 2 + iVar2) = 0;
       *(short *)(iVar6 * 2 + iVar3) = 1;
@@ -18699,10 +18699,10 @@ void FUN_1005edf4()
   
   puVar3 = puRam101176f0;
   iVar2 = iRam101176ec;
-  psVar1 = psRam10116360;
+  psVar1 = gUIShortGlobal;
   ppuVar4 = 0 /* TVect base */;
   iVar6 = 0;
-  if (0 < *psRam10116360) {
+  if (0 < *gUIShortGlobal) {
     do {
       *(short *)(iVar6 * 2 + iVar2) = (short)iVar6;
       puVar3[iVar6] = 0;
@@ -18730,7 +18730,7 @@ void FUN_1005eec8(short param_1,short param_2,short param_3)
   int *ppuVar2;
   
   ppuVar2 = 0 /* TVect base */;
-  if (param_1 < *psRam10116360) {
+  if (param_1 < *gUIShortGlobal) {
     iVar1 = *(int *)(param_1 * 4 + iRam101176f8);
     FUN_1000be58(*(char *)(iVar1 + 4),*(char *)(iVar1 + 6),*(char *)(iVar1 + 8),
                  *(char *)(iVar1 + 0xb),*(char *)(iVar1 + 7),*(char *)(iVar1 + 10)
@@ -18962,11 +18962,11 @@ void FUN_10061354(short *param_1)
   int local_1c;
   
   uVar4 = FUN_10116698;
-  piVar3 = piRam101163b0;
-  piVar2 = piRam10115fe8;
+  piVar3 = gActiveView;
+  piVar2 = gScreenGWorld;
   ppuVar5 = 0 /* TVect base */;
-  if (*piRam101163b0 != 0) {
-    *piRam10115fe8 = *piRam101163b0 + 0x80;
+  if (*gActiveView != 0) {
+    *gScreenGWorld = *gActiveView + 0x80;
   }
   piVar1 = (int *)*piVar3;
   if (piVar1 == (int *)0x0) {
@@ -19285,13 +19285,13 @@ void FUN_100614ac(short *param_1,short param_2)
   piVar9 = piRam1011735c;
   piVar8 = piRam10117358;
   piVar7 = piRam10117354;
-  piVar2 = piRam101163b0;
+  piVar2 = gActiveView;
   iVar6 = iRam10116000;
-  psVar5 = psRam10115ff4;
-  piVar4 = piRam10115fe8;
+  psVar5 = gViewportRect;
+  piVar4 = gScreenGWorld;
   ppuVar12 = 0 /* TVect base */;
-  if (*piRam101163b0 != 0) {
-    *piRam10115fe8 = *piRam101163b0 + 0x80;
+  if (*gActiveView != 0) {
+    *gScreenGWorld = *gActiveView + 0x80;
   }
   piVar2 = (int *)*piVar2;
   if (piVar2 == (int *)0x0) {
@@ -19452,15 +19452,15 @@ void FUN_10061a98(short *param_1,short param_2,short param_3)
   uVar7 = uRam10117684;
   uVar6 = uRam10117668;
   piVar5 = piRam1011735c;
-  piVar1 = piRam101163b0;
-  iVar10 = iRam10116008;
-  piVar4 = piRam10115fe8;
+  piVar1 = gActiveView;
+  iVar10 = gArmyIconTable;
+  piVar4 = gScreenGWorld;
   ppuVar8 = 0 /* TVect base */;
   uStack_20 = (int)unaff_r24;
   uStack_1c = (int)unaff_r25;
   local_54 = 0;
-  if (*piRam101163b0 != 0) {
-    *piRam10115fe8 = *piRam101163b0 + 0x80;
+  if (*gActiveView != 0) {
+    *gScreenGWorld = *gActiveView + 0x80;
   }
   piVar1 = (int *)*piVar1;
   if (piVar1 == (int *)0x0) {
@@ -20827,15 +20827,15 @@ void FUN_10062228(long long param_1,int param_2)
   uVar8 = uRam10117668;
   piVar7 = piRam1011735c;
   piVar6 = piRam10117354;
-  piVar1 = piRam101163b0;
-  piVar5 = piRam10115fe8;
-  iVar4 = iRam10115fe4;
+  piVar1 = gActiveView;
+  piVar5 = gScreenGWorld;
+  iVar4 = gPlayerColorTable;
   iVar15 = *piRam1011735c;
   if (((*(short *)(iVar15 + 0x124) == 0) ||
       (*(short *)(*(short *)(iVar15 + 0x110) * 2 + iVar15 + 0xd0) == 0)) ||
      (*(short *)(iVar15 + 0x15a) != 0)) {
-    if (*piRam101163b0 != 0) {
-      *piRam10115fe8 = *piRam101163b0 + 0x80;
+    if (*gActiveView != 0) {
+      *gScreenGWorld = *gActiveView + 0x80;
     }
     piVar1 = (int *)*piVar1;
     if (piVar1 == (int *)0x0) {
@@ -20936,16 +20936,16 @@ void FUN_100625a8(long long param_1,short param_2,short param_3,short param_4,sh
   piVar9 = piRam1011735c;
   piVar8 = piRam10117358;
   piVar7 = piRam10117354;
-  piVar2 = piRam101163b0;
+  piVar2 = gActiveView;
   iVar6 = iRam10116010;
   iVar5 = FUN_1011600c;
-  piVar4 = piRam10115fe8;
+  piVar4 = gScreenGWorld;
   iVar18 = *piRam1011735c;
   if (((*(short *)(iVar18 + 0x124) == 0) ||
       (*(short *)(*(short *)(iVar18 + 0x110) * 2 + iVar18 + 0xd0) == 0)) ||
      (*(short *)(iVar18 + 0x15a) != 0)) {
-    if (*piRam101163b0 != 0) {
-      *piRam10115fe8 = *piRam101163b0 + 0x80;
+    if (*gActiveView != 0) {
+      *gScreenGWorld = *gActiveView + 0x80;
     }
     piVar2 = (int *)*piVar2;
     if (piVar2 == (int *)0x0) {
@@ -21652,13 +21652,13 @@ void FUN_10062968(short *param_1,short param_2)
   uVar6 = uRam10117668;
   uVar5 = uRam10117664;
   piVar4 = piRam1011735c;
-  piVar1 = piRam101163b0;
-  iVar10 = iRam10116008;
-  piVar3 = piRam10115fe8;
+  piVar1 = gActiveView;
+  iVar10 = gArmyIconTable;
+  piVar3 = gScreenGWorld;
   ppuVar8 = 0 /* TVect base */;
   local_58 = 0;
-  if (*piRam101163b0 != 0) {
-    *piRam10115fe8 = *piRam101163b0 + 0x80;
+  if (*gActiveView != 0) {
+    *gScreenGWorld = *gActiveView + 0x80;
   }
   piVar1 = (int *)*piVar1;
   sStack0000001e = param_2;
@@ -23203,10 +23203,10 @@ void CenterMapOnArmy()
   short local_24;
   short local_22;
   
-  iVar2 = iRam10117688;
+  iVar2 = gMinimapGWorld;
   piVar1 = piRam10117354;
   if (*(short *)(*piRam1011735c + 0x124) != 0) {
-    uVar4 = (unsigned long long)uRam101176cc;
+    uVar4 = (unsigned long long)gColorPalette;
     GetGWorld_Wrapper(&local_34,&local_38);
     SetGWorld_Wrapper(*(int *)(iVar2 + 0x10),0);
     RGBForeColor_Thunk(uVar4);
@@ -23848,7 +23848,7 @@ void FUN_100641d0()
   piVar14 = piRam1011734c;
   piVar4 = piRam10115f7c;
   ppuVar5 = 0 /* TVect base */;
-  uVar15 = (unsigned long long)uRam101176cc;
+  uVar15 = (unsigned long long)gColorPalette;
   iVar2 = *piRam10115f7c;
   ppuVar6 = 0 /* TVect base */;
   if (iVar2 == 0) {
@@ -24044,7 +24044,7 @@ void FUN_100651cc(short param_1)
   char auStack_68 [104];
   
   puVar5 = puRam1011735c;
-  psVar4 = psRam10115ff8;
+  psVar4 = gForceRedrawFlag;
   ppuVar6 = 0 /* TVect base */;
   uVar11 = (unsigned long long)param_1;
   *(short *)(*puRam1011735c + 0x15a) =
@@ -24645,7 +24645,7 @@ int FUN_10066e64(int param_1,short *param_2)
   int local_2c;
   
   iVar1 = iRam101177f0;
-  if (*(char *)(iRam1011788c + 9) == '\0') {
+  if (*(char *)(gSoundPrefs + 9) == '\0') {
     *param_2 = 1;
     bVar7 = *(char *)(param_1 + 0x2c) == '\0';
     *(int *)(param_1 + 0x2c) = bVar7;
@@ -24816,7 +24816,7 @@ void FUN_100672bc()
   puVar13 = ((char*)0) + -0x254;
   puVar14 = ((char*)0) + -0x224;
   psVar15 = (short *)(((char*)0) + -0x21c);
-  uVar16 = (unsigned long long)uRam101176cc;
+  uVar16 = (unsigned long long)gColorPalette;
   puVar17 = (short *)(((char*)0) + -0x218);
   puVar18 = (short *)(((char*)0) + -0x210);
   puVar19 = (short *)(((char*)0) + -0x208);
@@ -25139,7 +25139,7 @@ void FUN_10067dc8(long long param_1,int *param_2,long long param_3)
   
   uVar2 = uRam10116c68;
   uVar1 = uRam101160b8;
-  uVar4 = (unsigned long long)uRam101177f0;
+  uVar4 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_b0);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x288),param_3,auStack_70);
@@ -25204,7 +25204,7 @@ void FUN_10067ff0(long long param_1,int *param_2,long long param_3)
   
   uVar2 = uRam10116c68;
   uVar1 = uRam101160b8;
-  uVar4 = (unsigned long long)uRam101177f0;
+  uVar4 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_b0);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x288),param_3,auStack_70);
@@ -25268,7 +25268,7 @@ void FUN_10068228(long long param_1,int *param_2,long long param_3)
   
   uVar2 = uRam10116c68;
   uVar1 = uRam101160b8;
-  uVar4 = (unsigned long long)uRam101177f0;
+  uVar4 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_b0);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x288),param_3,auStack_70);
@@ -25332,7 +25332,7 @@ void FUN_10068450(long long param_1,int *param_2,long long param_3)
   
   uVar2 = uRam10116c68;
   uVar1 = uRam101160b8;
-  uVar4 = (unsigned long long)uRam101177f0;
+  uVar4 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_b0);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x288),param_3,auStack_70);
@@ -25395,8 +25395,8 @@ void FUN_10068688(long long param_1,int *param_2,long long param_3)
   short local_30;
   short local_2e;
   
-  uVar3 = (unsigned long long)uRam101177f0;
-  uVar4 = (unsigned long long)uRam101176cc;
+  uVar3 = (unsigned long long)gProgressCounterBase;
+  uVar4 = (unsigned long long)gColorPalette;
   SaveDrawingState(auStack_b0);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x288),param_3,auStack_70);
@@ -26247,7 +26247,7 @@ void FUN_10069358(int *param_1)
   short local_28 [2];
   char auStack_24 [36];
   
-  uVar3 = (unsigned long long)uRam101177f0;
+  uVar3 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_98);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_38);
@@ -26292,7 +26292,7 @@ void FUN_100694c8(int *param_1)
   
   uVar2 = uRam101160bc;
   uVar1 = uRam10116070;
-  uVar5 = (unsigned long long)uRam101176cc;
+  uVar5 = (unsigned long long)gColorPalette;
   SaveDrawingState(auStack_90);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),param_1 + 0x31,&local_2c);
@@ -27285,7 +27285,7 @@ void FUN_1006a394(int *param_1)
   short local_28 [2];
   char auStack_24 [36];
   
-  uVar3 = (unsigned long long)uRam101177f0;
+  uVar3 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_98);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_38);
@@ -27376,7 +27376,7 @@ void FUN_1006a634(int *param_1)
   uVar3 = uRam101160b8;
   uVar2 = uRam10116070;
   uVar1 = uRam1011606c;
-  uVar9 = (unsigned long long)uRam101177f0;
+  uVar9 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_d0);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),param_1 + 0x31,&local_3c);
@@ -28033,7 +28033,7 @@ void FUN_1006bdfc(int *param_1)
   short local_28 [2];
   char auStack_24 [36];
   
-  uVar3 = (unsigned long long)uRam101177f0;
+  uVar3 = (unsigned long long)gProgressCounterBase;
   SaveDrawingState(auStack_98);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_68);
@@ -28436,7 +28436,7 @@ void FUN_1006d29c(long long param_1,int *param_2)
   uVar3 = uRam101160bc;
   uVar2 = uRam10116070;
   puVar1 = puRam1011606c;
-  uVar8 = (unsigned long long)uRam101176cc;
+  uVar8 = (unsigned long long)gColorPalette;
   SaveDrawingState(auStack_b8);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x730),auStack_88);
@@ -28931,7 +28931,7 @@ void FUN_1006e450(long long param_1,int *param_2)
   short local_2c;
   short local_2a;
   
-  uVar5 = (unsigned long long)uRam101176cc;
+  uVar5 = (unsigned long long)gColorPalette;
   SaveDrawingState(auStack_70);
   SetupDrawingEnvironment();
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x730),auStack_40);
@@ -29364,7 +29364,7 @@ void FUN_1006f91c(int *param_1,int *param_2,char param_3)
   int local_20;
   int uStack_1c;
   
-  uVar2 = (unsigned long long)uRam101177f0;
+  uVar2 = (unsigned long long)gProgressCounterBase;
   SetupDrawingEnvironment();
   local_28 = *param_2;
   uStack_24 = param_2[1];
@@ -30383,7 +30383,7 @@ void FUN_10071a14(int *param_1,long long param_2)
   short local_4e;
   char auStack_4c [76];
   
-  uVar3 = (unsigned long long)uRam101176cc;
+  uVar3 = (unsigned long long)gColorPalette;
   FUN_100b02d0(&local_5c);
   if (param_1[0x2b] != 0) {
     FUN_10000030();
@@ -30812,7 +30812,7 @@ void FUN_100720d8(int *param_1)
   char auStack_80 [48];
   char auStack_50 [80];
   
-  uVar8 = (unsigned long long)uRam101176cc;
+  uVar8 = (unsigned long long)gColorPalette;
   puVar9 = (short *)(((char*)0) + -0x224);
   puVar10 = (short *)(((char*)0) + -0x21c);
   puVar11 = ((char*)0) + -0x214;
@@ -33790,7 +33790,7 @@ void FUN_10074f40(int param_1)
   int local_2c;
   int local_28;
   
-  iVar6 = iRam1011788c;
+  iVar6 = gSoundPrefs;
   puVar2 = puRam10117370;
   local_38 = 0;
   local_34 = 0;
@@ -34135,9 +34135,9 @@ void FUN_100759d8(int *param_1,char param_2)
   unsigned int uVar7;
   long long uVar8;
   
-  piVar3 = piRam101163ac;
-  piVar2 = piRam10116208;
-  piVar1 = piRam10116204;
+  piVar3 = gActiveDocView;
+  piVar2 = gMainGameWindow;
+  piVar1 = gMainDocView;
   iVar4 = FUN_10002f40();
   iVar5 = FUN_100efb84();
   iVar6 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2e8));
@@ -34635,9 +34635,9 @@ void FUN_10076c90(long long param_1,int param_2)
   int *piVar1;
   int uStack0000001c;
   
-  piVar1 = piRam10116204;
-  if (*piRam101163ac != 0) {
-    *(short *)(*piRam101163ac + 0xbc) = 0xffff;
+  piVar1 = gMainDocView;
+  if (*gActiveDocView != 0) {
+    *(short *)(*gActiveDocView + 0xbc) = 0xffff;
   }
   if (*piVar1 != 0) {
     *(short *)(*piVar1 + 0xa0) = 0xffff;
@@ -34724,7 +34724,7 @@ void FUN_10076f30(int *param_1,long long param_2,long long param_3,long long par
   long long uVar2;
   long long uVar3;
   
-  piVar1 = piRam10116208;
+  piVar1 = gMainGameWindow;
   if ((int)param_2 == 0x2b) {
     iVar4 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x318));
     if (iVar4 != 0) {
@@ -37103,7 +37103,7 @@ void FUN_1007a678()
 void FUN_1007a858()
 
 {
-  FUN_101175c4(uRam101176cc,0x100,6,uRam101162cc);
+  FUN_101175c4(gColorPalette,0x100,6,uRam101162cc);
   return;
 }
 
@@ -37285,7 +37285,7 @@ void FUN_1007aa98(int param_1)
 {
   long long uVar1;
   
-  uVar1 = ResourceRead_Dispatch(*piRam101169c4 + (int)*(short *)(*(int *)*piRam101169c4 + 0x340));
+  uVar1 = ResourceRead_Dispatch(*gAppObject + (int)*(short *)(*(int *)*gAppObject + 0x340));
   FUN_100da1d0(uVar1,*(int *)(param_1 + 0x30));
   return;
 }
@@ -38135,9 +38135,9 @@ void FUN_1007b52c()
   
   puVar9 = puRam10117370;
   puVar8 = puRam10116c3c;
-  piVar4 = piRam1011639c;
-  piVar6 = piRam10116200;
-  piVar5 = piRam10115fa4;
+  piVar4 = gSidePanelWindow;
+  piVar6 = gInfoWindow;
+  piVar5 = gOverviewWindow;
   puVar14 = local_1a8;
   uVar13 = FUN_100f1574(1);
   puVar10 = (unsigned int *)FUN_10001fc8(0x54);
@@ -38266,10 +38266,10 @@ void FUN_1007b8a4(int param_1)
   int **local_3c;
   
   piVar6 = piRam1011734c;
-  piVar5 = piRam1011639c;
-  piVar4 = piRam10116208;
-  piVar3 = piRam10116200;
-  piVar2 = piRam10115fa4;
+  piVar5 = gSidePanelWindow;
+  piVar4 = gMainGameWindow;
+  piVar3 = gInfoWindow;
+  piVar2 = gOverviewWindow;
   ppuVar7 = 0 /* TVect base */;
   FUN_1007b52c(param_1);
   piVar1 = (int *)*piVar3;

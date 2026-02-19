@@ -250,7 +250,7 @@ unsigned short FUN_10007e10(short param_1, short param_2, short param_3)
 {
     /* Map bounds: 0x70 = 112 wide, 0x9c = 156 tall */
     /* This function accesses piRam10117354 (fog/visibility map), direction
-       offset tables at iRam10115cd0/iRam10115ccc, and psRam10115ff8 flag.
+       offset tables at iRam10115cd0/iRam10115ccc, and gForceRedrawFlag flag.
        In the modern build, return 0 (fully visible). */
     (void)param_1;
     (void)param_2;
@@ -267,7 +267,7 @@ unsigned short FUN_10007e10(short param_1, short param_2, short param_3)
 void FUN_10008f70(void)
 {
     /* This function accesses piRam10117354 (visibility data),
-       piRam10115cf0 (handle), piRam1011735c (game state).
+       gCityOwnership (handle), piRam1011735c (game state).
        It iterates 0x9c rows x 0x70 columns, setting visibility bits.
        Complex bit manipulation on tile data.
        In the modern build: no-op (fog of war not critical for compilation). */
@@ -342,7 +342,7 @@ void FUN_1000c844(void)
     iVar3 = *gGameState;
 
     /* Store allied victory state for current player */
-    /* *(undefined2 *)(current_player * 2 + iRam10117474) = ext->allied_victory_check */
+    /* *(undefined2 *)(current_player * 2 + gDiploThreatData) = ext->allied_victory_check */
 
     sVar2 = *(short *)(iVar3 + 0x1602);  /* army_count */
     while (sVar2 != 0) {
@@ -674,7 +674,7 @@ void FUN_10011804(void)
 void FUN_10013040(void)
 {
     /* Checks if AI mode is off (ext->ai_mode_flag == 0),
-       iterates armies, checks state against psRam10115d34 table,
+       iterates armies, checks state against gValidArmyStateList table,
        calls FUN_10012cc8 for qualifying armies.
        In modern build: no-op (AI combat logic). */
 }
@@ -1097,7 +1097,7 @@ void FUN_1002bcd8(void)
  */
 void FUN_1002c85c(void)
 {
-    /* Accesses piRam101163ac (game panel),
+    /* Accesses gActiveDocView (game panel),
        checks fog-of-war via FUN_10007e10,
        then calls FUN_10008284 to scroll.
        In modern build: no-op (UI). */

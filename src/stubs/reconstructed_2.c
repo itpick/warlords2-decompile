@@ -33,9 +33,9 @@ extern char *TVect_OCECToRString;
 /* ===== Extern globals NOT already in wl2_globals.h ===== */
 
 /* piRam globals not already mapped */
-extern pint *piRam10115cf0;
+extern pint *gCityOwnership;
 extern pint *piRam10115dc4;
-extern pint *piRam101163ac;
+extern pint *gActiveDocView;
 extern pint *piRam10115e34;
 
 /* piRam101174b0 -> gTargetCoords (short[2]) -- cast used as pint* for raw arithmetic */
@@ -50,11 +50,11 @@ extern pint *piRam10115e34;
 /* piRam10115d88 -> gResourceHandle */
 #define piRam10115d88 ((pint *)gResourceHandle)
 
-/* piRam1011639c - global data pointer (in globals_extra.c) */
-extern pint *piRam1011639c;
+/* gSidePanelWindow - global data pointer (in globals_extra.c) */
+extern pint *gSidePanelWindow;
 
-/* piRam10116200 - global data pointer (in globals_extra.c) */
-extern pint *piRam10116200;
+/* gInfoWindow - global data pointer (in globals_extra.c) */
+extern pint *gInfoWindow;
 
 /* psRam globals (short pointers) */
 extern short *psRam1011760c;
@@ -65,7 +65,7 @@ extern short *psRam10116304;
 extern short *psRam101174cc;
 extern short *psRam10117544;
 extern short *psRam10117558;
-extern short *psRam101176e4;
+extern short *gHeroCount;
 
 /* puRam globals (unsigned pointers) */
 extern unsigned short *puRam10115db4;
@@ -77,12 +77,12 @@ extern unsigned short *puRam101174f8;
 extern pint *puRam101175f8;
 
 /* iRam globals (integers used as addresses) */
-extern long iRam10117474;
+extern long gDiploThreatData;
 extern long iRam1011773c;
-extern long iRam1011757c;
-extern long iRam10115ba4;
-extern long iRam10117604;
-extern long iRam101176e8;
+extern long gPerPlayerArmyCount;
+extern long gGroupFuncTable;
+extern long gSCENInfo;
+extern long gCombatDisplayPieces;
 
 /* uRam globals (unsigned int data) */
 extern int uRam1011772c;
@@ -181,7 +181,7 @@ long long FUN_10011734(short param_1)
       iVar4 = *piRam1011735c + iVar2;
       if ((((*(short *)(iVar4 + 0x138) != 0) && (*(short *)(iVar4 + 0xd0) == 0)) &&
           ((*(unsigned int *)(*piRam1011735c + param_1 * 0x10 + iVar2 + 0x1582) >> 0x1a & 3) == 2)) &&
-         (*(short *)(iVar2 + iRam10117474) != 0)) {
+         (*(short *)(iVar2 + gDiploThreatData) != 0)) {
         uVar3 = 1;
       }
       bVar1 = iVar5 != 0;
@@ -679,7 +679,7 @@ int FUN_1001fcc0(void)
   piVar9 = piRam10117468;
   piVar8 = piRam10117364;
   piVar7 = piRam1011735c;
-  iVar6 = iRam10115ba4;
+  iVar6 = gGroupFuncTable;
   piVar18 = local_48;
   sVar16 = *(short *)(*piRam10117468 + 0x24a);
   sVar15 = 0;
@@ -953,8 +953,8 @@ void FUN_1002171c(void)
   int uStack_44;
   unsigned int uStack_40;
 
-  iVar1 = iRam101176e8;
-  psVar4 = psRam101176e4;
+  iVar1 = gCombatDisplayPieces;
+  psVar4 = gHeroCount;
   piVar3 = piRam101176e0;
   if (*piRam101176e0 != 0) {
     bVar2 = 0;
@@ -1233,7 +1233,7 @@ void FUN_10029ac0(long long param_1,short param_2,char param_3,char param_4)
 
   piVar8 = piRam1011735c;
   piVar7 = (pint *)piRam1011734c;
-  piVar2 = piRam1011639c;
+  piVar2 = gSidePanelWindow;
   psVar6 = psRam10116304;
   puVar5 = puRam10115dd0;
   puVar4 = puRam10115dcc;
@@ -1338,7 +1338,7 @@ void FUN_10029e84(int *param_1)
   char auStack_98 [152];
 
   piVar5 = piRam1011735c;
-  piVar10 = (int *)piRam10115cf0;
+  piVar10 = (int *)gCityOwnership;
   ppuVar6 = DOT_TVECT;
   iVar1 = *(int *)(*piRam1011734c + 0x88);
   *(short *)(*piRam1011735c + 0x120) = 0;
@@ -1520,7 +1520,7 @@ void FUN_1002b4e0(void)
   int local_1c;
 
   puVar1 = (int *)piRam10117370;
-  if (*(short *)(*(short *)(*piRam1011735c + 0x110) * 2 + iRam1011757c) != 0) {
+  if (*(short *)(*(short *)(*piRam1011735c + 0x110) * 2 + gPerPlayerArmyCount) != 0) {
     local_2c = 0;
     local_28 = 0;
     local_20 = 0;
@@ -1765,7 +1765,7 @@ void FUN_1002f97c(short param_1,short param_2,short param_3,short param_4)
   piVar1 = piRam101174b0;
   puVar4 = (unsigned int *)piRam1011735c;
   piVar3 = (pint *)piRam1011734c;
-  piVar2 = piRam101163ac;
+  piVar2 = gActiveDocView;
   ppuVar5 = (char **)DOT_TVECT;
   iVar12 = (int)param_4;
   iVar11 = (int)param_3;
@@ -2249,9 +2249,9 @@ void FUN_1003dc28(void)
 {
   pint *piVar1;
 
-  piVar1 = piRam10116200;
-  if (*piRam10116200 != 0) {
-    ResourceRead_Dispatch(*piRam10116200 + (int)*(short *)(*(int *)*piRam10116200 + 0x308),0x6c62616b);
+  piVar1 = gInfoWindow;
+  if (*gInfoWindow != 0) {
+    ResourceRead_Dispatch(*gInfoWindow + (int)*(short *)(*(int *)*gInfoWindow + 0x308),0x6c62616b);
     FUN_1003d734();
     ResourceRead_Dispatch(*piVar1 + (int)*(short *)(*(int *)*piVar1 + 0x308),0x7362616b);
     FUN_1003d734();
@@ -2305,10 +2305,10 @@ void FUN_1002a864(long long param_1)
   char auStack_44 [16];
   short local_34;
 
-  iVar17 = iRam10117604;
+  iVar17 = gSCENInfo;
   piVar5 = piRam10117360;
   piVar4 = piRam1011735c;
-  piVar9 = (int *)piRam10115cf0;
+  piVar9 = (int *)gCityOwnership;
   *(short *)(*piRam1011735c + 0x120) = 0;
   piVar8 = (int *)FUN_100522dc(param_1,6,0);
   if (piVar8 != (int *)0x0) {

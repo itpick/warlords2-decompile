@@ -38,7 +38,7 @@ extern int uRam1011657c;
 extern int uRam10116580;
 extern int uRam101165ac;
 extern int uRam101165bc;
-extern int uRam10116604;
+extern int gSoundActive;
 extern int uRam1011660c;
 extern int uRam10116638;
 extern int uRam10116640;
@@ -57,8 +57,8 @@ extern int uRam10116780;
 extern int uRam10116800;
 
 /* piRam globals - pointer-to-int globals */
-extern int *piRam101163b0;
-extern int *piRam10115fe8;
+extern int *gActiveView;
+extern int *gScreenGWorld;
 extern int *piRam1011684c;
 
 /* These are already declared via wl2_globals.h macros */
@@ -288,7 +288,7 @@ int FUN_10091090(void)
 // MacApp class descriptor accessor
 int FUN_10093b00(void)
 {
-    return uRam10116604;
+    return gSoundActive;
 }
 
 // Function: FUN_10093f1c at 10093f1c
@@ -787,7 +787,7 @@ void FUN_1008455c(void)
     int iVar1;
     int iVar2;
 
-    iVar1 = *piRam101163b0;
+    iVar1 = *gActiveView;
     if (iVar1 != 0) {
         iVar2 = *(int *)(iVar1 + 0xa4);
         while (iVar2 != 0) {
@@ -795,7 +795,7 @@ void FUN_1008455c(void)
             iVar2 = *(int *)(iVar1 + 0xa4);
         }
         if (iVar1 != 0) {
-            *piRam10115fe8 = iVar1 + 0x80;
+            *gScreenGWorld = iVar1 + 0x80;
         }
     }
     return;

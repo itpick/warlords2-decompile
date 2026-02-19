@@ -108,7 +108,7 @@ int GetItemStats(short itemID, short *cost, short *strength,
  */
 char *GetItemName(short itemTypeID)
 {
-    static char nameBuffer[HERO_NAME_LEN + 1];  /* uRam101175d4 */
+    static char nameBuffer[HERO_NAME_LEN + 1];  /* gItemNameBuffer */
     int i;
     int base;
 
@@ -371,7 +371,7 @@ void LockUnitData(void)
 {
     /* If resource handle not yet loaded, load from resource fork */
     /* Full implementation involves:
-     *   1. Check piRam10115f0c == 0 (first load)
+     *   1. Check gUnitDataHandle == 0 (first load)
      *   2. Open DATA resource from current resource file
      *   3. Parse header to get resource name
      *   4. Load 0x1D (29) entries, each 0x3E bytes
@@ -379,7 +379,7 @@ void LockUnitData(void)
      *   6. Store pointer to loaded data in gUnitInstanceTable
      * Simplified: just HLock the handle if already loaded */
 
-    extern void *gUnitDataHandle;  /* piRam10115f0c */
+    extern void *gUnitDataHandle;  /* gUnitDataHandle */
 
     if (gUnitDataHandle != NULL) {
         HLock((Handle)gUnitDataHandle);
@@ -394,7 +394,7 @@ void LockUnitData(void)
  */
 void UnlockUnitData(void)
 {
-    extern void *gUnitDataHandle;  /* piRam10115f0c */
+    extern void *gUnitDataHandle;  /* gUnitDataHandle */
 
     if (gUnitDataHandle != NULL) {
         HUnlock((Handle)gUnitDataHandle);
@@ -1068,7 +1068,7 @@ long CheckQuestCompletion(short cityOrArmyIndex, short param_2)
     }
 
     /* Check if any hero in our selection matches the quest target army */
-    /* pcRam101174d0 = selection count, iRam101174f0 = selection array */
+    /* gSelectionCount = selection count, gSelectionArray = selection array */
     /* The decompilation iterates through selected units checking if any
      * match the quest target army stack (offset 0x1146) */
     /* Simplified: */
@@ -1157,7 +1157,7 @@ long ShowQuestReward(short rewardType, short param_2, short param_3)
     } else {
         /* Quest target not ours - display completion/failure messages */
         /* Determine if running in auto mode (AI turn) */
-        /* isAutoMode = (*psRam10115e2c == 0) && (player_type != 1) ? false : true; */
+        /* isAutoMode = (*gAutoModeFlag == 0) && (player_type != 1) ? false : true; */
         isAutoMode = false;  /* Simplified */
 
         if (!isAutoMode) {
@@ -1547,7 +1547,7 @@ void CheckVictoryConditions(void)
         if (*(short *)(gs + 0x15C) == 0) {
             /* Condition 3: Solo victory - 1 human, 0 AI, armies > total/2 */
             if (humanPlayers == 1 && computerPlayers == 0) {
-                extern int gPerPlayerArmyCount[];  /* iRam1011757c */
+                extern int gPerPlayerArmyCount[];  /* gPerPlayerArmyCount */
                 int playerArmies = gPerPlayerArmyCount[lastHumanPlayer];
                 int halfTotal = (int)totalArmies / 2;
                 if (halfTotal < playerArmies) {
@@ -1796,7 +1796,7 @@ void StartOfTurnProcessing(void)
     /* Clear per-player special event flags */
     for (i = 7; i >= 0; i--) {
         /* specialEvents[i] = 0; */
-        /* (at iRam101176e8 + i*4) */
+        /* (at gCombatDisplayPieces + i*4) */
     }
 
     /* Reset selection state */

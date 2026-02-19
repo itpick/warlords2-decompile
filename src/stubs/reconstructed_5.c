@@ -136,7 +136,7 @@ extern char *pcRam10116f34;
 extern char *pcRam1011709c;
 extern int *piRam101169f4;
 extern int iRam101177f0;
-extern int iRam1011788c;
+extern int gSoundPrefs;
 extern int *piRam10117834;
 
 /* =====================================================================
@@ -944,7 +944,7 @@ char FUN_100ef9b8(int *param_1)
         uVar1 = 0;
     }
     else {
-        if (*(char *)(iRam1011788c + 0x14) == '\0') {
+        if (*(char *)(gSoundPrefs + 0x14) == '\0') {
             uVar1 = (char)(*param_1 >> 3);
         }
         else {

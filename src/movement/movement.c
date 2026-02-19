@@ -125,80 +125,80 @@ typedef struct PathRequest {
 
 /* piRam1011735c, piRam10117358, piRam10117354 now aliased via #define in wl2_globals.h */
 
-/* puRam1011759c - handle to distance grid handle */
-extern unsigned int *puRam1011759c; /* -> Handle -> distance grid */
+/* gDistGridHandlePtr - handle to distance grid handle */
+extern unsigned int *gDistGridHandlePtr; /* -> Handle -> distance grid */
 
-/* piRam101175a0 - pointer to cost map data */
-extern int      *piRam101175a0;     /* -> cost map (112x156 bytes) */
+/* gCostMapPtr - pointer to cost map data */
+extern int      *gCostMapPtr;     /* -> cost map (112x156 bytes) */
 
-/* psRam101175a4 - Zone of Control penalty value */
-extern short    *psRam101175a4;     /* -> ZoC penalty */
+/* gZoCPenalty - Zone of Control penalty value */
+extern short    *gZoCPenalty;     /* -> ZoC penalty */
 
-/* psRam101175a8 - current search radius counter */
-extern short    *psRam101175a8;     /* -> search radius */
+/* gSearchRadius - current search radius counter */
+extern short    *gSearchRadius;     /* -> search radius */
 
-/* psRam101175ac - max range for limited-range search */
-extern unsigned short *psRam101175ac;
+/* gMaxSearchRange - max range for limited-range search */
+extern unsigned short *gMaxSearchRange;
 
-/* psRam101175b0 - last army type used for cost map */
-extern short    *psRam101175b0;
+/* gLastArmyTypeForCostMap - last army type used for cost map */
+extern short    *gLastArmyTypeForCostMap;
 
-/* puRam101175b4 - current path flags */
-extern unsigned short *puRam101175b4;
+/* gCurrentPathFlags - current path flags */
+extern unsigned short *gCurrentPathFlags;
 
-/* puRam10117710 - current movement mode */
-extern unsigned short *puRam10117710;
+/* gCurrentMoveMode - current movement mode */
+extern unsigned short *gCurrentMoveMode;
 
-/* psRam10115eb4 - AI mode flag (0=not AI, nonzero=AI pathfinding) */
-extern short    *psRam10115eb4;
+/* gAIModeFlag - AI mode flag (0=not AI, nonzero=AI pathfinding) */
+extern short    *gAIModeFlag;
 
-/* psRam10115eb8 - ZoC marking flag */
-extern short    *psRam10115eb8;
+/* gZoCMarkingFlag - ZoC marking flag */
+extern short    *gZoCMarkingFlag;
 
-/* psRam10115ea4 - pathfinding system initialized flag */
-extern short    *psRam10115ea4;
+/* gPathfindingInitialized - pathfinding system initialized flag */
+extern short    *gPathfindingInitialized;
 
-/* psRam10115e2c - debug/override flag */
-extern short    *psRam10115e2c;
+/* gAutoModeFlag - debug/override flag */
+extern short    *gAutoModeFlag;
 
-/* iRam10115e84 - standard movement cost table (short[]) */
-extern int      iRam10115e84;
+/* gStdMoveCostTable - standard movement cost table (short[]) */
+extern int      gStdMoveCostTable;
 
-/* iRam10115ed4 - flying movement cost table (short[]) */
-extern int      iRam10115ed4;
+/* gFlyingMoveCostTable - flying movement cost table (short[]) */
+extern int      gFlyingMoveCostTable;
 
-/* iRam10115ebc - neighbor DY offset table */
-extern int      iRam10115ebc;
+/* gNeighborDYOffsets - neighbor DY offset table */
+extern int      gNeighborDYOffsets;
 
-/* iRam10115ec0 - neighbor DX offset table */
-extern int      iRam10115ec0;
+/* gNeighborDXOffsets - neighbor DX offset table */
+extern int      gNeighborDXOffsets;
 
-/* iRam10115ec4 - neighbor pattern selection table */
-extern int      iRam10115ec4;
+/* gNeighborPatternTable - neighbor pattern selection table */
+extern int      gNeighborPatternTable;
 
-/* iRam10115ea8 - tile accessibility walk offsets */
-extern int      iRam10115ea8;
+/* gTileWalkOffsets - tile accessibility walk offsets */
+extern int      gTileWalkOffsets;
 
-/* iRam10115eac - ZoC neighbor DY offsets */
-extern int      iRam10115eac;
+/* gZoCNeighborDYOffsets - ZoC neighbor DY offsets */
+extern int      gZoCNeighborDYOffsets;
 
-/* iRam10115eb0 - ZoC neighbor DX offsets */
-extern int      iRam10115eb0;
+/* gZoCNeighborDXOffsets - ZoC neighbor DX offsets */
+extern int      gZoCNeighborDXOffsets;
 
-/* piRam10117594 - handle to distance grid memory */
-extern int      *piRam10117594;
+/* gDistGridHandle - handle to distance grid memory */
+extern int      *gDistGridHandle;
 
-/* piRam10117590 - handle to cost map memory */
-extern int      *piRam10117590;
+/* gCostMapHandle - handle to cost map memory */
+extern int      *gCostMapHandle;
 
-/* puRam10117598 - dereferenced distance grid pointer storage */
-extern unsigned int *puRam10117598;
+/* gDistGridDeref - dereferenced distance grid pointer storage */
+extern unsigned int *gDistGridDeref;
 
-/* piRam10117588 - handle to path cache memory */
-extern int      *piRam10117588;
+/* gPathCacheHandle - handle to path cache memory */
+extern int      *gPathCacheHandle;
 
-/* piRam1011758c - dereferenced path cache pointer */
-extern int      *piRam1011758c;
+/* gPathCachePtr - dereferenced path cache pointer */
+extern int      *gPathCachePtr;
 
 /* piRam101176e0 - selected army info pointer */
 /* piRam101176e0 now aliased via #define in wl2_globals.h */
@@ -259,15 +259,15 @@ static void     FloodFillLimitedRange(short maxRange, short x, short y, short mo
  * ====================================================================== */
 static void ClearPathCacheEntry(short entryIndex)
 {
-    int *cacheHandle;   /* piRam10117588 */
-    int *cachePtr;      /* piRam1011758c */
+    int *cacheHandle;   /* gPathCacheHandle */
+    int *cachePtr;      /* gPathCachePtr */
     int  *handleData;
     int  i;
     int  entryOffset;
 
-    cachePtr = piRam1011758c;
-    cacheHandle = piRam10117588;
-    handleData = (int *)*piRam10117588;
+    cachePtr = gPathCachePtr;
+    cacheHandle = gPathCacheHandle;
+    handleData = (int *)*gPathCacheHandle;
 
     /* Lock the handle if non-null */
     if (handleData != (int *)0) {
@@ -307,7 +307,7 @@ static void ClearAllPathCache(void)
 {
     int i;
 
-    if (*psRam10115ea4 != 0) {
+    if (*gPathfindingInitialized != 0) {
         /* Clear entries 19 down to 0 */
         i = PATH_CACHE_ENTRIES - 1;  /* 19 = 0x13 */
         do {
@@ -332,9 +332,9 @@ static void AllocatePathfindingBuffers(void)
     int *cacheHandle;
     int  handle;
 
-    distHandle  = piRam10117594;
-    costHandle  = piRam10117590;
-    cacheHandle = piRam10117588;
+    distHandle  = gDistGridHandle;
+    costHandle  = gCostMapHandle;
+    cacheHandle = gPathCacheHandle;
 
     /* Allocate or resize distance grid (0x8880 bytes) */
     if (*distHandle == 0) {
@@ -361,7 +361,7 @@ static void AllocatePathfindingBuffers(void)
     }
 
     /* Mark pathfinding system as initialized */
-    *psRam10115ea4 = 1;
+    *gPathfindingInitialized = 1;
 
     /* Clear all cached paths */
     ClearAllPathCache();
@@ -379,7 +379,7 @@ static void AllocatePathfindingBuffers(void)
  * ====================================================================== */
 static int FindCachedPathStep(short targetX, short targetY, short cacheEntry)
 {
-    int *cachePtr = piRam1011758c;
+    int *cachePtr = gPathCachePtr;
     int  entryBase;
     short startX, startY;
     int  step;
@@ -429,7 +429,7 @@ static int FindCachedPathStep(short targetX, short targetY, short cacheEntry)
  * ====================================================================== */
 static int LookupCachedPath(PathRequest *req, short cacheEntry)
 {
-    int *cachePtr = piRam1011758c;
+    int *cachePtr = gPathCachePtr;
     short *p = (short *)req;
     int  entryBase;
     int  startStep;
@@ -491,25 +491,25 @@ static int TryCachedPaths(PathRequest *req, short searchAll)
     int  result = 0;
     short entry;
 
-    distHandlePtr  = piRam10117594;
-    cacheHandlePtr = piRam10117588;
+    distHandlePtr  = gDistGridHandle;
+    cacheHandlePtr = gPathCacheHandle;
 
     /* Lock cache handle */
     handleData = (void *)*cacheHandlePtr;
     if (handleData != (void *)0) {
         DetachResource(handleData);
     }
-    /* Dereference: *piRam1011758c = **piRam10117588 */
-    *piRam1011758c = *(int *)handleData;
+    /* Dereference: *gPathCachePtr = **gPathCacheHandle */
+    *gPathCachePtr = *(int *)handleData;
 
     /* Lock distance grid handle */
     handleData = (void *)*distHandlePtr;
     if (handleData != (void *)0) {
         DetachResource(handleData);
     }
-    *puRam10117598 = *(unsigned int *)handleData;
+    *gDistGridDeref = *(unsigned int *)handleData;
     /* Set up dereferenced pointer chain */
-    *puRam1011759c = (unsigned int)puRam10117598;
+    *gDistGridHandlePtr = (unsigned int)gDistGridDeref;
 
     if (searchAll == 0) {
         /* Check only primary cache entry (index 0) */
@@ -575,7 +575,7 @@ static int TryDirectPath(PathRequest *req)
         if (!srcOnRough && dstOnRough) return 0;
 
         /* If destination terrain has zero movement cost in standard table, impassable */
-        if (*(short *)(dstTerrain * 2 + iRam10115e84) == 0) {
+        if (*(short *)(dstTerrain * 2 + gStdMoveCostTable) == 0) {
             return 0;
         }
     }
@@ -595,7 +595,7 @@ static int TryDirectPath(PathRequest *req)
  * FUN_10042a24 at 10042a24 (Size: 400 bytes)
  *
  * Starting from the tile at (param_1, param_2), walks in predefined
- * directions (from iRam10115ea8 table) looking for an adjacent land tile
+ * directions (from gTileWalkOffsets table) looking for an adjacent land tile
  * (terrain category 1, 2, or 3 = plains, forest, or hills).
  *
  * This is used to determine if an army near water can actually reach a
@@ -612,7 +612,7 @@ static int CheckTileAccessibility(short x, short y)
     short curX, curY;
     int   result;
 
-    walkTable = iRam10115ea8;
+    walkTable = gTileWalkOffsets;
     found = 0;
 
     curX = x;
@@ -681,12 +681,12 @@ static int CheckTileAccessibility(short x, short y)
  * ====================================================================== */
 static void MarkArmyZoC(short armyIndex, short markMode)
 {
-    int  *costMapPtr = piRam101175a0;
+    int  *costMapPtr = gCostMapPtr;
     int  *gameStatePtr = piRam1011735c;
     int  *mapDataPtr = piRam10117358;
-    int   zocDY = iRam10115eac;
-    int   zocDX = iRam10115eb0;
-    int   stdCostTable = iRam10115e84;
+    int   zocDY = gZoCNeighborDYOffsets;
+    int   zocDX = gZoCNeighborDXOffsets;
+    int   stdCostTable = gStdMoveCostTable;
     int   dir;
     int   armyBase;
     short adjX, adjY;
@@ -747,8 +747,8 @@ static void MarkArmyZoC(short armyIndex, short markMode)
 static void ApplyZoneOfControl(int reqAddr, short markMode)
 {
     int  *gameStatePtr = piRam1011735c;
-    short *zocFlagPtr = psRam10115eb8;
-    short *debugPtr = psRam10115e2c;
+    short *zocFlagPtr = gZoCMarkingFlag;
+    short *debugPtr = gAutoModeFlag;
     char  dstTerrain;
     short armyCount;
     short i;
@@ -758,7 +758,7 @@ static void ApplyZoneOfControl(int reqAddr, short markMode)
     int   isAIorHuman;
 
     /* Only apply ZoC in non-AI mode and if ZoC is active or markMode is set */
-    if (*psRam10115eb4 != 0) return;
+    if (*gAIModeFlag != 0) return;
     if (*zocFlagPtr == 0 && markMode == 0) return;
 
     dstX = *(short *)(reqAddr + 4);
@@ -824,9 +824,9 @@ static void InitDistanceGrid(int reqAddr, short distance)
 {
     int  *gameStatePtr = piRam1011735c;
     int  *visLayerPtr = piRam10117354;
-    int  *costMapPtr = piRam101175a0;
-    unsigned int *distGridPtr = puRam1011759c;
-    short *zocPenalty = (short *)psRam101175a4;
+    int  *costMapPtr = gCostMapPtr;
+    unsigned int *distGridPtr = gDistGridHandlePtr;
+    short *zocPenalty = (short *)gZoCPenalty;
     short  srcX, srcY;
     int    gameState;
     int    enforceFog;
@@ -846,7 +846,7 @@ static void InitDistanceGrid(int reqAddr, short distance)
     if (*(short *)(gameState + 0x124) != 0) {
         /* Vectoring is enabled: check if player can override */
         int canSee;
-        if (*psRam10115e2c == 0 &&
+        if (*gAutoModeFlag == 0 &&
             *(short *)(*(short *)(gameState + 0x110) * 2 + gameState + 0xD0) != 1) {
             canSee = 0;
         } else {
@@ -990,18 +990,18 @@ static short DijkstraFloodFill(PathRequest *req, short pass)
     int    newDist;
 
     /* Cache global pointers locally */
-    zocPenalty     = psRam101175a4;
-    costMapBase    = piRam101175a0;
-    distGridHandlePtr = puRam1011759c;
-    neighborDXBase = iRam10115ec0;
-    neighborDYBase = iRam10115ebc;
+    zocPenalty     = gZoCPenalty;
+    costMapBase    = gCostMapPtr;
+    distGridHandlePtr = gDistGridHandlePtr;
+    neighborDXBase = gNeighborDXOffsets;
+    neighborDYBase = gNeighborDYOffsets;
 
     result = 1;
     convergenceCounter = 3;
     pathFound = 0;  /* false */
 
     /* If AI mode is active AND this is a retry pass, abort immediately */
-    if (*psRam10115eb4 != 0 && pass != 0) {
+    if (*gAIModeFlag != 0 && pass != 0) {
         result = 0;
         return result;
     }
@@ -1009,21 +1009,21 @@ static short DijkstraFloodFill(PathRequest *req, short pass)
     /* --- Determine search radius --- */
     if ((p[4] & PATH_FLAG_LIMITED_RANGE) != 0) {
         /* Limited-range mode: use configured max range */
-        *psRam101175a8 = 0;
-        searchRadius = *psRam101175ac;
+        *gSearchRadius = 0;
+        searchRadius = *gMaxSearchRange;
     } else {
         /* Normal mode */
         short initRadius;
         if (pass == 0) {
             initRadius = 0;
         } else {
-            initRadius = *psRam101175a8;
+            initRadius = *gSearchRadius;
         }
-        *psRam101175a8 = initRadius;
+        *gSearchRadius = initRadius;
 
         if (pass == 0) {
             searchRadius = 6;
-        } else if (*psRam10115eb4 == 0) {
+        } else if (*gAIModeFlag == 0) {
             searchRadius = 50;  /* 0x32: human player gets larger search */
         } else {
             searchRadius = 20;  /* 0x14: AI gets smaller search */
@@ -1063,15 +1063,15 @@ static short DijkstraFloodFill(PathRequest *req, short pass)
         anyExpanded = 0;  /* false */
 
         /* In limited-range mode, check if we've reached the maximum radius */
-        if ((p[4] & PATH_FLAG_LIMITED_RANGE) != 0 && *psRam101175a8 == searchRadius) {
+        if ((p[4] & PATH_FLAG_LIMITED_RANGE) != 0 && *gSearchRadius == searchRadius) {
             return result;
         }
 
         /* Compute effective scan bounds, expanding from destination by current radius */
-        scanMaxX = p[2] + *psRam101175a8;
+        scanMaxX = p[2] + *gSearchRadius;
         if (scanMaxX > MAP_MAX_X) scanMaxX = MAP_MAX_X;
         {
-            short tempMaxY = p[3] + *psRam101175a8;
+            short tempMaxY = p[3] + *gSearchRadius;
             if (tempMaxY > MAP_MAX_Y) tempMaxY = MAP_MAX_Y;
             if (searchMaxX <= scanMaxX) scanMaxX = searchMaxX;
             scanMaxY = searchMaxY;
@@ -1085,7 +1085,7 @@ static short DijkstraFloodFill(PathRequest *req, short pass)
             short scanMinX;
             long  lx;
 
-            lx = (long)(short)(p[2] - *psRam101175a8);
+            lx = (long)(short)(p[2] - *gSearchRadius);
             if (lx < 0) lx = 0;
             if ((int)lx <= (int)searchMinX) lx = (long)searchMinX;
 
@@ -1095,7 +1095,7 @@ static short DijkstraFloodFill(PathRequest *req, short pass)
                     distRowBase = *(int *)*distGridHandlePtr + xCoord * DIST_ROW_STRIDE;
 
                     {
-                        short yStart = p[3] - *psRam101175a8;
+                        short yStart = p[3] - *gSearchRadius;
                         if (yStart < scanMinY) yStart = scanMinY;
 
                         for (; yStart <= scanMaxY; yStart++) {
@@ -1115,7 +1115,7 @@ static short DijkstraFloodFill(PathRequest *req, short pass)
                             /* --- Select neighbor pattern based on position --- */
                             /* Determines which neighbor offsets to use based on
                                whether we're at a corner, edge, or interior tile */
-                            if (*psRam10115eb4 == 0) {
+                            if (*gAIModeFlag == 0) {
                                 neighborPattern = 0;
                             } else {
                                 neighborPattern = 9;
@@ -1144,7 +1144,7 @@ static short DijkstraFloodFill(PathRequest *req, short pass)
                             }
 
                             /* Look up the starting index into the neighbor offset tables */
-                            neighborIdx = (int)*(short *)(neighborPattern * 2 + iRam10115ec4);
+                            neighborIdx = (int)*(short *)(neighborPattern * 2 + gNeighborPatternTable);
 
                             /* --- Iterate over all neighbors --- */
                             neighborX = *(short *)(neighborIdx * 2 + neighborDXBase);
@@ -1273,7 +1273,7 @@ skip_update:
         }
 
         /* Increment search radius for next ring */
-        *psRam101175a8 = *psRam101175a8 + 1;
+        *gSearchRadius = *gSearchRadius + 1;
 
         /* If nothing was expanded and we haven't found a path, give up */
         if (!anyExpanded) {
@@ -1305,7 +1305,7 @@ skip_update:
  *     terrain types (ZoC boundary) unless on a road
  *   - Skips neighbors that are out of bounds, at sentinel distance (30000),
  *     or marked impassable (0x7531)
- *   - AI pathfinding (psRam10115eb4 != 0) has a tie-breaking rule: when
+ *   - AI pathfinding (gAIModeFlag != 0) has a tie-breaking rule: when
  *     two neighbors have the same distance, prefer the first one found
  *   - Path is truncated at 198 (0xC6) waypoints; if exceeded, the
  *     destination is moved to the current position
@@ -1332,9 +1332,9 @@ static void ReconstructPath(PathRequest *req)
     int    directionOffset;
     short  nx, ny;
 
-    costMapBase       = piRam101175a0;
-    distGridHandlePtr = puRam1011759c;
-    aiModePtr         = psRam10115eb4;
+    costMapBase       = gCostMapPtr;
+    distGridHandlePtr = gDistGridHandlePtr;
+    aiModePtr         = gAIModeFlag;
 
     /* Get the distance value at the source (starting point for reconstruction) */
     bestDist = AbsShort(
@@ -1493,8 +1493,8 @@ next_neighbor:
 static void StorePathInCache(short distance, PathRequest *req, short searchAll)
 {
     short *p = (short *)req;
-    int  *cacheHandlePtr = piRam10117588;
-    int  *cachePtr = piRam1011758c;
+    int  *cacheHandlePtr = gPathCacheHandle;
+    int  *cachePtr = gPathCachePtr;
     int  *handleData;
     int   bestEntry;
     short bestDist;
@@ -1606,11 +1606,11 @@ static int PathFind_Execute(PathRequest *req)
     int    tryResult;
 
     /* Cache global pointers */
-    int  *costMapBase       = piRam101175a0;
-    unsigned int *distGridHandlePtr = puRam1011759c;
-    unsigned int *distGridStorage   = puRam10117598;
-    int  *distHandle        = piRam10117594;
-    int  *costHandle        = piRam10117590;
+    int  *costMapBase       = gCostMapPtr;
+    unsigned int *distGridHandlePtr = gDistGridHandlePtr;
+    unsigned int *distGridStorage   = gDistGridDeref;
+    int  *distHandle        = gDistGridHandle;
+    int  *costHandle        = gCostMapHandle;
 
     /* Compute estimated distance between source and destination */
     distance = (int)(short)CalcDistance(p[2], p[3], p[0], p[1]);
@@ -1621,7 +1621,7 @@ static int PathFind_Execute(PathRequest *req)
     }
 
     /* Ensure pathfinding buffers are allocated */
-    if (*psRam10115ea4 == 0) {
+    if (*gPathfindingInitialized == 0) {
         AllocatePathfindingBuffers();
     }
 
@@ -1737,16 +1737,16 @@ static int PathFind_Execute(PathRequest *req)
  * ====================================================================== */
 static void BuildMovementCostMap(short armyType, short forceRebuild)
 {
-    short *lastArmyType     = psRam101175b0;
-    int   *costMapBase      = piRam101175a0;
-    unsigned int *distGridStorage = puRam10117598;
-    int   *distHandle       = piRam10117594;
-    int   *costHandle       = piRam10117590;
+    short *lastArmyType     = gLastArmyTypeForCostMap;
+    int   *costMapBase      = gCostMapPtr;
+    unsigned int *distGridStorage = gDistGridDeref;
+    int   *distHandle       = gDistGridHandle;
+    int   *costHandle       = gCostMapHandle;
     int   *gameStatePtr     = piRam1011735c;
     int   *mapDataPtr       = piRam10117358;
     int   *visLayerPtr      = piRam10117354;
-    int    flyingCostTable  = iRam10115ed4;
-    int    stdCostTable     = iRam10115e84;
+    int    flyingCostTable  = gFlyingMoveCostTable;
+    int    stdCostTable     = gStdMoveCostTable;
 
     int    x, y;
     int    terrainCat;
@@ -1760,7 +1760,7 @@ static void BuildMovementCostMap(short armyType, short forceRebuild)
     int    costAddr;
 
     /* Ensure pathfinding buffers are allocated */
-    if (*psRam10115ea4 == 0) {
+    if (*gPathfindingInitialized == 0) {
         AllocatePathfindingBuffers();
     }
 
@@ -1781,7 +1781,7 @@ static void BuildMovementCostMap(short armyType, short forceRebuild)
             DetachResource(hData);
         }
         *distGridStorage = *(unsigned int *)hData;
-        *puRam1011759c = (unsigned int)distGridStorage;
+        *gDistGridHandlePtr = (unsigned int)distGridStorage;
     }
 
     /* --- Lock cost map handle --- */
@@ -1918,8 +1918,8 @@ static void FillPathRequest(PathRequest *req, int waypointBuffer)
     p[2] = *(short *)(*armyInfo + 0x12);    /* dstX = target X */
     p[3] = *(short *)(*armyInfo + 0x14);    /* dstY = target Y */
     *(int *)(p + 6) = waypointBuffer;       /* waypoint buffer pointer */
-    p[5] = *puRam10117710;                  /* movement mode */
-    p[4] = *puRam101175b4;                  /* flags */
+    p[5] = *gCurrentMoveMode;                  /* movement mode */
+    p[4] = *gCurrentPathFlags;                  /* flags */
 }
 
 
@@ -1950,7 +1950,7 @@ static unsigned char CalcMoveCost(int reqAddr, short tileX, short tileY,
     short moveMode;
     unsigned short flags;
 
-    costByte = *(unsigned char *)(*piRam101175a0 +
+    costByte = *(unsigned char *)(*gCostMapPtr +
                 tileX * COST_ROW_STRIDE + (int)tileY);
     baseCost = costByte & COST_BASE_MASK;
 
@@ -2056,19 +2056,19 @@ static short CalcPathCost(PathRequest *req, short movePoints, int costBuffer)
 
     /* --- Lock handles --- */
     {
-        void *hData = (void *)*piRam10117594;
+        void *hData = (void *)*gDistGridHandle;
         if (hData != (void *)0) {
             DetachResource(hData);
         }
-        *puRam10117598 = *(unsigned int *)hData;
-        *puRam1011759c = (unsigned int)puRam10117598;
+        *gDistGridDeref = *(unsigned int *)hData;
+        *gDistGridHandlePtr = (unsigned int)gDistGridDeref;
     }
     {
-        void *hData = (void *)*piRam10117590;
+        void *hData = (void *)*gCostMapHandle;
         if (hData != (void *)0) {
             DetachResource(hData);
         }
-        *piRam101175a0 = *(int *)hData;
+        *gCostMapPtr = *(int *)hData;
     }
 
     /* === Walk the path === */
@@ -2104,11 +2104,11 @@ static short CalcPathCost(PathRequest *req, short movePoints, int costBuffer)
     } while ((short)step < PATH_CALC_MAX);
 
     /* --- Unlock handles --- */
-    if (*piRam10117594 != 0) {
-        DisposeHandle_Thunk(*piRam10117594);
+    if (*gDistGridHandle != 0) {
+        DisposeHandle_Thunk(*gDistGridHandle);
     }
-    if (*piRam10117590 != 0) {
-        DisposeHandle_Thunk(*piRam10117590);
+    if (*gCostMapHandle != 0) {
+        DisposeHandle_Thunk(*gCostMapHandle);
     }
 
     return reachableSteps;
@@ -2136,7 +2136,7 @@ static void FloodFillLimitedRange(short maxRange, short centerX, short centerY,
     unsigned char waypointBuf[PATH_MAX_WAYPOINTS];
 
     /* Store max range for the flood fill to reference */
-    *psRam101175ac = maxRange;
+    *gMaxSearchRange = maxRange;
 
     localReq.srcX     = centerX;
     localReq.srcY     = centerY;
@@ -2161,19 +2161,19 @@ static void FloodFillLimitedRange(short maxRange, short centerX, short centerY,
  * ====================================================================== */
 static unsigned int *GetDistanceGridPtr(void)
 {
-    unsigned int *distGridStorage = puRam10117598;
+    unsigned int *distGridStorage = gDistGridDeref;
 
-    if (*psRam10115ea4 == 0) {
+    if (*gPathfindingInitialized == 0) {
         AllocatePathfindingBuffers();
     }
 
     {
-        void *hData = (void *)*piRam10117594;
+        void *hData = (void *)*gDistGridHandle;
         if (hData != (void *)0) {
             DetachResource(hData);
         }
         *distGridStorage = *(unsigned int *)hData;
-        *puRam1011759c = (unsigned int)distGridStorage;
+        *gDistGridHandlePtr = (unsigned int)distGridStorage;
     }
 
     return distGridStorage;
@@ -2188,13 +2188,13 @@ static unsigned int *GetDistanceGridPtr(void)
  * ====================================================================== */
 static void FreePathfindingBuffers(void)
 {
-    if (*piRam10117594 != 0) {
-        DisposeHandle_Thunk(*piRam10117594);
+    if (*gDistGridHandle != 0) {
+        DisposeHandle_Thunk(*gDistGridHandle);
     }
-    FUN_10001f50(*piRam10117594);
+    FUN_10001f50(*gDistGridHandle);
 
     /* Reset initialized flag */
-    *psRam10115ea4 = 0;
+    *gPathfindingInitialized = 0;
 }
 
 

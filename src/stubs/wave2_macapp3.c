@@ -726,11 +726,11 @@ extern long iRam10117094;
 extern long iRam101170c0;
 extern long iRam101177f0;
 extern long iRam10117838;
-extern long iRam1011788c;
+extern long gSoundPrefs;
 extern unsigned char *pbRam10116a54;
 extern pint *piRam10115e14;
 extern pint *piRam10115e1c;
-extern pint *piRam101169c4;
+extern pint *gAppObject;
 extern pint *piRam101169f4;
 extern pint *piRam10116c3c;
 extern pint *piRam101170b4;
@@ -1059,7 +1059,7 @@ void FUN_100e0dc8()
   int *piVar2;
   int iVar3;
   
-  piVar1 = piRam101169c4;
+  piVar1 = gAppObject;
   FUN_10110c38();
   piVar2 = (int *)*piVar1;
   piVar2 = (int *)ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x330),0);
@@ -8665,7 +8665,7 @@ void FUN_100ecb28(long long param_1,long long param_2,long long param_3)
 {
   int *piVar1;
   
-  piVar1 = (int *)*piRam101169c4;
+  piVar1 = (int *)*gAppObject;
   if (piVar1 == (int *)0x0) {
     FUN_100eca54(param_1,param_2,param_3);
   }
@@ -8681,11 +8681,11 @@ long long FUN_100ecb90(long long param_1,long long param_2,long long param_3)
 {
   long long uVar1;
   
-  if (*piRam101169c4 == 0) {
+  if (*gAppObject == 0) {
     uVar1 = 0;
   }
   else {
-    uVar1 = ResourceRead_Dispatch(*piRam101169c4 + (int)*(short *)(*(int *)*piRam101169c4 + 0x518),param_1,
+    uVar1 = ResourceRead_Dispatch(*gAppObject + (int)*(short *)(*(int *)*gAppObject + 0x518),param_1,
                          param_2,param_3);
   }
   return uVar1;
@@ -8697,11 +8697,11 @@ long long FUN_100ecbf0(long long param_1,long long param_2,long long param_3,lon
 {
   long long uVar1;
   
-  if (*piRam101169c4 == 0) {
+  if (*gAppObject == 0) {
     uVar1 = 0;
   }
   else {
-    uVar1 = ResourceRead_Dispatch(*piRam101169c4 + (int)*(short *)(*(int *)*piRam101169c4 + 0x520),param_1,
+    uVar1 = ResourceRead_Dispatch(*gAppObject + (int)*(short *)(*(int *)*gAppObject + 0x520),param_1,
                          param_2,param_3,param_4);
   }
   return uVar1;
@@ -8713,7 +8713,7 @@ void FUN_100ecc68()
 {
   int *piVar1;
   
-  piVar1 = (int *)*piRam101169c4;
+  piVar1 = (int *)*gAppObject;
   if (piVar1 == (int *)0x0) {
     FUN_10001b00(2);
   }
@@ -8737,7 +8737,7 @@ void FUN_100eccc0()
   
   piVar4 = piRam10117370;
   puVar3 = puRam10116a48;
-  piVar2 = piRam101169c4;
+  piVar2 = gAppObject;
   FUN_10000438(1);
   iVar6 = local_34;
   FUN_100f5500(*(int *)(local_34 + -0x80c));
@@ -8975,7 +8975,7 @@ int FUN_100ee208()
   else {
     FUN_100c21d0(param_2);
   }
-  return;
+  return 0;
 
 }
 
@@ -9113,7 +9113,7 @@ long long FUN_100ee588(unsigned char *param_1,unsigned char *param_2,short param
 int FUN_100ee624()
 {
   NewPtr_Thunk();
-  return;
+  return 0;
 }
 
 /* Address: 0x100ee648 Size: 4 bytes */
@@ -9524,7 +9524,7 @@ void FUN_100ee8e8(char *param_1,unsigned long long param_2)
 
 {
   if (param_1 != (char *)0x0) {
-    if ((*(char *)(iRam1011788c + 0x27) != '\0') && (param_1[1] != '\0')) {
+    if ((*(char *)(gSoundPrefs + 0x27) != '\0') && (param_1[1] != '\0')) {
       FUN_10001b48(*param_1 == '\0');
     }
     if ((param_1 != (char *)0x0) && ((param_2 & 1) != 0)) {
@@ -9644,11 +9644,11 @@ int FUN_100eea74()
     do {
       iVar1 = *(int *)(iVar1 + 0x90);
       if (iVar1 == 0) {
-        return;
+        return 0;
       }
     } while (iVar1 == *piRam10117808);
   }
-  return;
+  return 0;
 
 }
 
@@ -10772,7 +10772,7 @@ int FUN_100ef628()
   if (param_1 == 0) {
     FUN_10002220();
   }
-  return;
+  return 0;
 
 }
 
@@ -10905,7 +10905,7 @@ int FUN_100efb00(short param_1)
 int FUN_100efb60()
 {
   FUN_100efb00(0x37);
-  return;
+  return 0;
 }
 
 /* Address: 0x100efb84 Size: 36 bytes */
@@ -10920,7 +10920,7 @@ void FUN_100efb84()
 int FUN_100efba8()
 {
   FUN_100efb00(0x3a);
-  return;
+  return 0;
 }
 
 /* Address: 0x100efbcc Size: 36 bytes */
@@ -12788,7 +12788,7 @@ int FUN_100f2f30()
       FUN_100036f0(param_1);
     }
   }
-  return;
+  return 0;
 
 }
 
@@ -12814,14 +12814,14 @@ int FUN_100f2ff0()
 int FUN_100f3064()
 {
   FUN_100ec2c4();
-  return;
+  return 0;
 }
 
 /* Address: 0x100f3088 Size: 36 bytes */
 int FUN_100f3088()
 {
   FUN_100ec34c();
-  return;
+  return 0;
 }
 
 /* Address: 0x100f30ac Size: 108 bytes */
@@ -12837,7 +12837,7 @@ int FUN_100f30ac()
       FUN_100eb918(param_1);
     }
   }
-  return;
+  return 0;
 
 }
 
@@ -13829,7 +13829,7 @@ int FUN_100f5088()
   int * param_1 = 0;
 
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x98));
-  return;
+  return 0;
 
 }
 
@@ -13975,7 +13975,7 @@ int FUN_100f51f4()
 
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 8));
   FUN_100c1950();
-  return;
+  return 0;
 
 }
 
@@ -13986,7 +13986,7 @@ int FUN_100f5234()
 
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 8));
   FUN_100c1d48();
-  return;
+  return 0;
 
 }
 
@@ -14554,7 +14554,7 @@ int FUN_100f5790()
 int FUN_100f5838()
 {
   FUN_100f576c();
-  return;
+  return 0;
 }
 
 
@@ -18794,8 +18794,8 @@ void FUN_100fca50(int *param_1,char param_2)
   int iVar5;
   int local_30 [12];
   
-  piVar1 = piRam101169c4;
-  piVar3 = (int *)*piRam101169c4;
+  piVar1 = gAppObject;
+  piVar3 = (int *)*gAppObject;
   iVar4 = *piVar3;
   uVar2 = FUN_10001050();
   piVar3 = (int *)ResourceRead_Dispatch((int)piVar3 + (int)*(short *)(iVar4 + 0x3e0),uVar2);
@@ -18974,8 +18974,8 @@ long long FUN_100fd0a0(int *param_1)
 {
   int *piVar1;
   
-  piVar1 = piRam101169c4;
-  *(short *)(*piRam101169c4 + 0x70) = *(short *)(*piRam101169c4 + 0x70) + 1;
+  piVar1 = gAppObject;
+  *(short *)(*gAppObject + 0x70) = *(short *)(*gAppObject + 0x70) + 1;
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xd0));
   *(short *)(*piVar1 + 0x70) = *(short *)(*piVar1 + 0x70) + -1;
   return 0;
@@ -20113,7 +20113,7 @@ void FUN_100fe488(int *param_1)
 void FUN_100fe4e4(int *param_1)
 
 {
-  ResourceRead_Dispatch(*piRam101169c4 + (int)*(short *)(*(int *)*piRam101169c4 + 0x338),param_1[0xc]);
+  ResourceRead_Dispatch(*gAppObject + (int)*(short *)(*(int *)*gAppObject + 0x338),param_1[0xc]);
   ResourceRead_Dispatch(param_1[0xc] + (int)*(short *)(*(int *)param_1[0xc] + 0x3a8));
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x178));
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x180));
@@ -20128,7 +20128,7 @@ void FUN_100fe4e4(int *param_1)
 void FUN_100fe5c0(int *param_1)
 
 {
-  ResourceRead_Dispatch(*piRam101169c4 + (int)*(short *)(*(int *)*piRam101169c4 + 0x338),param_1[0xc]);
+  ResourceRead_Dispatch(*gAppObject + (int)*(short *)(*(int *)*gAppObject + 0x338),param_1[0xc]);
   ResourceRead_Dispatch(param_1[0xc] + (int)*(short *)(*(int *)param_1[0xc] + 0x3a8));
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x158));
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x170));

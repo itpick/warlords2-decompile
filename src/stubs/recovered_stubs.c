@@ -24,23 +24,23 @@
 /* Extern declarations */
 extern long iRam10117700;
 extern long iRam10117424;
-extern long iRam101176e8;
-extern long iRam10115d28;
-extern long iRam101174f0;
+extern long gCombatDisplayPieces;
+extern long gFrontLineLookup;
+extern long gSelectionArray;
 extern long iRam101174ac;
 extern char *pcRam10116398;
-extern char *pcRam101174d0;
+extern char *gSelectionCount;
 extern int *piRam10115cf4;
-extern int *piRam10115cf0;
+extern int *gCityOwnership;
 extern int *piRam10117470;
-extern short *psRam101176e4;
+extern short *gHeroCount;
 extern short *psRam1011677c;
 extern short *psRam10115d84;
 extern short *psRam10115d80;
 extern unsigned int *puRam101176e0;
 extern unsigned int *puRam10117360;
 extern long iRam10115dc8;
-extern long iRam10117604;
+extern long gSCENInfo;
 extern unsigned int uRam10117604;
 extern short *psRam10115ce0;
 extern short *psRam10116304;
@@ -49,26 +49,26 @@ extern long iRam10115e58;
 extern long iRam10115e5c;
 extern long iRam10115e60;
 extern long iRam10115e64;
-extern long iRam10115e84;
-extern long iRam10115ea8;
-extern long iRam10115eac;
-extern long iRam10115eb0;
-extern long iRam10115ed4;
-extern long iRam10115fe4;
-extern long iRam1011757c;
-extern long iRam10117688;
-extern long iRam101176f0;
+extern long gStdMoveCostTable;
+extern long gTileWalkOffsets;
+extern long gZoCNeighborDYOffsets;
+extern long gZoCNeighborDXOffsets;
+extern long gFlyingMoveCostTable;
+extern long gPlayerColorTable;
+extern long gPerPlayerArmyCount;
+extern long gMinimapGWorld;
+extern long gDisplayState;
 extern long iRam1011773c;
 extern int *piRam10115e34;
-extern int *piRam10116208;
-extern int *piRam101169c4;
+extern int *gMainGameWindow;
+extern int *gAppObject;
 extern int *piRam10116bc0;
 extern int *piRam101174b0;
 extern short *psRam10115ef8;
 extern short *psRam10115f00;
-extern short *psRam10115fec;
-extern short *psRam10116360;
-extern short *psRam101175b0;
+extern short *gScrollLockFlag;
+extern short *gUIShortGlobal;
+extern short *gLastArmyTypeForCostMap;
 extern short *psRam1011760c;
 extern unsigned int *puRam10115edc;
 extern unsigned int *puRam10115ee0;
@@ -77,14 +77,14 @@ extern unsigned int *puRam101174b0;
 extern unsigned int *puRam10117544;
 extern unsigned int *puRam101175f0;
 extern unsigned int *puRam101175f8;
-extern unsigned int *puRam10117660;
+extern unsigned int *gViewportOffset;
 extern unsigned int uRam101175f8;
 extern long iRam10115e30;
-extern long iRam10115ebc;
-extern long iRam10115ec0;
-extern long iRam10115ec4;
-extern long iRam10115ee4;
-extern long iRam10116004;
+extern long gNeighborDYOffsets;
+extern long gNeighborDXOffsets;
+extern long gNeighborPatternTable;
+extern long gSpriteTable;
+extern long gArrowDirTable;
 extern long iRam101173cc;
 extern long iRam101173d0;
 extern long iRam101173d4;
@@ -92,57 +92,57 @@ extern long iRam1011746c;
 extern long iRam101175ec;
 extern long iRam10117684;
 extern long iRam10117738;
-extern long iRam1011788c;
+extern long gSoundPrefs;
 extern char *pcRam10117378;
 extern char *pcRam1011785c;
 extern int *piRam10115d88;
 extern int *piRam10115dc4;
 extern int *piRam10115df0;
-extern int *piRam10115f0c;
+extern int *gUnitDataHandle;
 extern int *piRam10115f64;
 extern int *piRam10115f7c;
-extern int *piRam10115fa4;
-extern int *piRam10115fe8;
-extern int *piRam10116200;
-extern int *piRam10116204;
-extern int *piRam1011639c;
-extern int *piRam101163ac;
-extern int *piRam101163b0;
-extern int *piRam101165e8;
-extern int *piRam101165ec;
-extern int *piRam101165f0;
+extern int *gOverviewWindow;
+extern int *gScreenGWorld;
+extern int *gInfoWindow;
+extern int *gMainDocView;
+extern int *gSidePanelWindow;
+extern int *gActiveDocView;
+extern int *gActiveView;
+extern int *gSndHandle;
+extern int *gSndChannel;
+extern int *gTunePlayer;
 extern int *piRam101165f4;
 extern int *piRam101165f8;
-extern int *piRam10116a48;
+extern int *gProgressView;
 extern int *piRam10117114;
 extern int *piRam101173e0;
 extern int *piRam10117468;
 extern int *piRam101174a8;
-extern int *piRam10117588;
-extern int *piRam1011758c;
-extern int *piRam10117590;
-extern int *piRam10117594;
-extern int *piRam101175a0;
+extern int *gPathCacheHandle;
+extern int *gPathCachePtr;
+extern int *gCostMapHandle;
+extern int *gDistGridHandle;
+extern int *gCostMapPtr;
 extern int *piRam101175d0;
-extern int *piRam101175f0;
-extern int *piRam101175f4;
+extern int *gMapGenData;
+extern int *gMapGenConfig;
 extern int *piRam101176b8;
 extern int *piRam10117804;
 extern short *psRam10115d18;
 extern short *psRam10115dec;
 extern short *psRam10115df4;
-extern short *psRam10115ea4;
-extern short *psRam10115eb4;
-extern short *psRam10115ee8;
+extern short *gPathfindingInitialized;
+extern short *gAIModeFlag;
+extern short *gSpriteCount;
 extern short *psRam10115f68;
 extern short *psRam101165d8;
 extern short *psRam101165dc;
-extern short *psRam10116600;
+extern short *gCurrentMusicID;
 extern short *psRam10117424;
 extern short *psRam10117428;
-extern short *psRam101175a4;
-extern short *psRam101175a8;
-extern short *psRam101175ac;
+extern short *gZoCPenalty;
+extern short *gSearchRadius;
+extern short *gMaxSearchRange;
 extern unsigned int *puRam1011529c;
 extern unsigned int *puRam101152c4;
 extern unsigned int *puRam101152c8;
@@ -215,15 +215,15 @@ extern unsigned int *puRam10115b70;
 extern unsigned int *puRam10115b74;
 extern unsigned int *puRam10115b78;
 extern unsigned int *puRam10115d80;
-extern unsigned int *puRam10115f04;
+extern unsigned int *gPatternDrawFlag;
 extern unsigned int *puRam10115f40;
-extern unsigned int *puRam10115f7c;
+extern unsigned int *gProgressBar;
 extern unsigned int *puRam10115fa8;
 extern unsigned int *puRam10116208;
 extern unsigned int *puRam101163ac;
 extern unsigned int *puRam101165f0;
-extern unsigned int *puRam101165f4;
-extern unsigned int *puRam101165f8;
+extern unsigned int *gTuneHeaderH;
+extern unsigned int *gTuneDataH;
 extern unsigned int *puRam10116910;
 extern unsigned int *puRam10116914;
 extern unsigned int *puRam101169c4;
@@ -236,14 +236,14 @@ extern unsigned int *puRam10117370;
 extern unsigned int *puRam10117424;
 extern unsigned int *puRam10117428;
 extern unsigned int *puRam10117468;
-extern unsigned int *puRam10117598;
-extern unsigned int *puRam1011759c;
+extern unsigned int *gDistGridDeref;
+extern unsigned int *gDistGridHandlePtr;
 extern unsigned int *puRam101175ac;
-extern unsigned int *puRam101175b4;
+extern unsigned int *gCurrentPathFlags;
 extern unsigned int *puRam101175f4;
 extern unsigned int *puRam1011760c;
-extern unsigned int *puRam10117710;
-extern unsigned int *puRam10117738;
+extern unsigned int *gCurrentMoveMode;
+extern unsigned int *gCombatSoundIDs;
 extern unsigned int *puRam10117850;
 extern unsigned int *puRam10117854;
 extern unsigned int *puRam10117858;
@@ -261,11 +261,11 @@ extern unsigned int uRam10117018;
 extern unsigned int uRam101172f8;
 extern unsigned int uRam101173c8;
 extern unsigned int uRam101173d8;
-extern unsigned int uRam101175d4;
-extern unsigned int uRam101176cc;
+extern unsigned int gItemNameBuffer;
+extern unsigned int gColorPalette;
 extern unsigned int uRam1011772c;
-extern unsigned int uRam101177f0;
-extern short *psRam10115e2c;
+extern unsigned int gProgressCounterBase;
+extern short *gAutoModeFlag;
 extern unsigned int uRam101174f0;
 extern unsigned int uRam101174d0;
 
@@ -3092,7 +3092,7 @@ void FUN_1001e3ec(long long param_1)
 void FUN_1001f5e8(short param_1,short param_2)
 
 {
-  SetupInfluenceMap(0xf,param_1,param_2,*puRam10117710,*puRam101175b4);
+  SetupInfluenceMap(0xf,param_1,param_2,*gCurrentMoveMode,*gCurrentPathFlags);
   FUN_1001f220(param_1,param_2,1);
   return;
 }
@@ -12110,7 +12110,7 @@ void FUN_1003cac4(long long param_1,short param_2)
   int *puVar3;
   int local_2c;
   
-  iVar2 = ResourceRead_Dispatch(*piRam10115fa4 + (int)*(short *)(*(int *)*piRam10115fa4 + 0x308),0x696e666f);
+  iVar2 = ResourceRead_Dispatch(*gOverviewWindow + (int)*(short *)(*(int *)*gOverviewWindow + 0x308),0x696e666f);
   if (iVar2 != 0) {
     puVar3 = (int *)
              (*(short *)(**(int **)(local_2c + -0x544) +
@@ -12187,10 +12187,10 @@ void FUN_1003d5d4()
   int *piVar3;
   int **local_2c;
   
-  piVar3 = piRam101163ac;
+  piVar3 = gActiveDocView;
   ppuVar2 = 0 /* TVect base */;
-  if (*piRam101163ac != 0) {
-    *(char *)(*piRam101163ac + 0xbe) = 1;
+  if (*gActiveDocView != 0) {
+    *(char *)(*gActiveDocView + 0xbe) = 1;
     piVar1 = (int *)*piVar3;
     ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x4d0));
     piVar3 = (int *)*piVar3;
@@ -12214,7 +12214,7 @@ void FUN_1003d6c4()
 {
   int *piVar1;
   
-  piVar1 = (int *)ResourceRead_Dispatch(*piRam10115fa4 + (int)*(short *)(*(int *)*piRam10115fa4 + 0x308),
+  piVar1 = (int *)ResourceRead_Dispatch(*gOverviewWindow + (int)*(short *)(*(int *)*gOverviewWindow + 0x308),
                                0x696e666f);
   if (piVar1 != (int *)0x0) {
     *(char *)(piVar1 + 0x2a) = 0;
@@ -40877,7 +40877,7 @@ void FUN_1004039c(short param_1)
 {
   long long uVar1;
   
-  uVar1 = ResourceRead_Dispatch(*piRam10115fa4 + (int)*(short *)(*(int *)*piRam10115fa4 + 0x308),0x696e666f);
+  uVar1 = ResourceRead_Dispatch(*gOverviewWindow + (int)*(short *)(*(int *)*gOverviewWindow + 0x308),0x696e666f);
   if ((int)uVar1 != 0) {
     FUN_10080fe4(uVar1,param_1);
   }
@@ -40951,9 +40951,9 @@ void FUN_100423a0(short param_1)
   int iVar5;
   int iVar6;
   
-  piVar4 = piRam1011758c;
-  piVar3 = piRam10117588;
-  piVar2 = (int *)*piRam10117588;
+  piVar4 = gPathCachePtr;
+  piVar3 = gPathCacheHandle;
+  piVar2 = (int *)*gPathCacheHandle;
   if (piVar2 != (int *)0x0) {
     DetachResource(piVar2);
   }
@@ -41125,7 +41125,7 @@ void FUN_1004248c()
   long long lVar1;
   int iVar2;
   
-  if (*psRam10115ea4 != 0) {
+  if (*gPathfindingInitialized != 0) {
     lVar1 = 0x13;
     do {
       FUN_100423a0(lVar1);
@@ -41147,10 +41147,10 @@ void FUN_100424e4()
   int iVar5;
   int **local_34;
   
-  piVar4 = piRam10117594;
-  piVar3 = piRam10117590;
-  piVar2 = piRam10117588;
-  piVar1 = (int *)*piRam10117594;
+  piVar4 = gDistGridHandle;
+  piVar3 = gCostMapHandle;
+  piVar2 = gPathCacheHandle;
+  piVar1 = (int *)*gDistGridHandle;
   if (piVar1 == (int *)0x0) {
     local_34 = 0 /* TVect base */;
     iVar5 = FUN_100f15e0(0x8880,0);
@@ -41409,8 +41409,8 @@ int FUN_100425c0(short param_1,short param_2,short param_3)
   short local_20;
   short local_1e [15];
   
-  piVar1 = piRam1011758c;
-  iVar4 = *piRam1011758c + param_3 * 0xd6;
+  piVar1 = gPathCachePtr;
+  iVar4 = *gPathCachePtr + param_3 * 0xd6;
   local_1e[0] = *(short *)(iVar4 + 6);
   local_20 = *(short *)(iVar4 + 8);
   iVar4 = 0;
@@ -41442,10 +41442,10 @@ long long FUN_100426b4(short *param_1,short param_2)
   int iVar4;
   short sVar5;
   
-  piVar1 = piRam1011758c;
-  if (param_1[2] == *(short *)(param_2 * 0xd6 + *piRam1011758c + 10)) {
+  piVar1 = gPathCachePtr;
+  if (param_1[2] == *(short *)(param_2 * 0xd6 + *gPathCachePtr + 10)) {
     uVar2 = 0;
-    iVar3 = *piRam1011758c + param_2 * 0xd6;
+    iVar3 = *gPathCachePtr + param_2 * 0xd6;
     if ((((param_1[3] == *(short *)(iVar3 + 0xc)) && (param_1[5] == *(short *)(iVar3 + 2))) &&
         (param_1[4] == *(short *)(iVar3 + 4))) &&
        (iVar3 = FUN_100425c0(*param_1,param_1[1],param_2), iVar3 != -1)) {
@@ -41483,10 +41483,10 @@ long long FUN_100427cc(long long param_1,short param_2)
   long long uVar8;
   int **local_44;
   
-  puVar4 = puRam10117598;
-  piVar3 = piRam10117594;
-  piVar2 = piRam10117588;
-  puVar1 = (int *)*piRam10117588;
+  puVar4 = gDistGridDeref;
+  piVar3 = gDistGridHandle;
+  piVar2 = gPathCacheHandle;
+  puVar1 = (int *)*gPathCacheHandle;
   uVar8 = 0;
   ppuVar5 = 0 /* TVect base */;
   if (puVar1 != (int *)0x0) {
@@ -41789,27 +41789,27 @@ short FUN_10043248(short *param_1,short param_2)
   short local_62;
   short local_58;
   
-  psVar13 = psRam101175a4;
-  piVar12 = piRam101175a0;
-  puVar11 = puRam1011759c;
-  iVar10 = iRam10115ec0;
-  iVar9 = iRam10115ebc;
+  psVar13 = gZoCPenalty;
+  piVar12 = gCostMapPtr;
+  puVar11 = gDistGridHandlePtr;
+  iVar10 = gNeighborDXOffsets;
+  iVar9 = gNeighborDYOffsets;
   local_86 = 1;
   local_84 = 3;
   bVar7 = false;
-  if ((*psRam10115eb4 == 0) || (param_2 == 0)) {
+  if ((*gAIModeFlag == 0) || (param_2 == 0)) {
     if ((param_1[4] & 0x10U) == 0) {
       if (param_2 == 0) {
         sVar17 = 0;
       }
       else {
-        sVar17 = *psRam101175a8;
+        sVar17 = *gSearchRadius;
       }
-      *psRam101175a8 = sVar17;
+      *gSearchRadius = sVar17;
       if (param_2 == 0) {
         local_80 = 6;
       }
-      else if (*psRam10115eb4 == 0) {
+      else if (*gAIModeFlag == 0) {
         local_80 = 0x32;
       }
       else {
@@ -41817,8 +41817,8 @@ short FUN_10043248(short *param_1,short param_2)
       }
     }
     else {
-      *psRam101175a8 = 0;
-      local_80 = *psRam101175ac;
+      *gSearchRadius = 0;
+      local_80 = *gMaxSearchRange;
     }
     local_7a = *param_1;
     if (param_1[2] < *param_1) {
@@ -41856,14 +41856,14 @@ short FUN_10043248(short *param_1,short param_2)
     sVar3 = param_1[1];
     do {
       bVar8 = false;
-      if (((param_1[4] & 0x10U) != 0) && (*psRam101175a8 == local_80)) {
+      if (((param_1[4] & 0x10U) != 0) && (*gSearchRadius == local_80)) {
         return local_86;
       }
-      local_62 = param_1[2] + *psRam101175a8;
+      local_62 = param_1[2] + *gSearchRadius;
       if (0x6f < local_62) {
         local_62 = 0x6f;
       }
-      sVar14 = param_1[3] + *psRam101175a8;
+      sVar14 = param_1[3] + *gSearchRadius;
       if (0x9b < sVar14) {
         sVar14 = 0x9b;
       }
@@ -41880,7 +41880,7 @@ short FUN_10043248(short *param_1,short param_2)
       else {
         local_58 = local_74;
       }
-      lVar22 = (long long)(short)(param_1[2] - *psRam101175a8);
+      lVar22 = (long long)(short)(param_1[2] - *gSearchRadius);
       if (lVar22 < 0) {
         lVar22 = 0;
       }
@@ -41891,8 +41891,8 @@ short FUN_10043248(short *param_1,short param_2)
         do {
           iVar6 = (int)lVar22;
           iVar5 = *(int *)*puVar11 + iVar6 * 0x138;
-          sVar14 = param_1[3] - *psRam101175a8;
-          if ((short)(param_1[3] - *psRam101175a8) < local_58) {
+          sVar14 = param_1[3] - *gSearchRadius;
+          if ((short)(param_1[3] - *gSearchRadius) < local_58) {
             sVar14 = local_58;
           }
           for (; sVar14 <= sVar21; sVar14 = sVar14 + 1) {
@@ -41901,7 +41901,7 @@ short FUN_10043248(short *param_1,short param_2)
               bVar1 = *(unsigned char *)(*piVar12 + iVar6 * 0x9c + (int)sVar14);
               *(short *)(sVar14 * 2 + iVar5) = -sVar4;
               bVar8 = true;
-              if (*psRam10115eb4 == 0) {
+              if (*gAIModeFlag == 0) {
                 sVar20 = 0;
               }
               else {
@@ -41936,7 +41936,7 @@ short FUN_10043248(short *param_1,short param_2)
               else if (iVar6 == 0x6f) {
                 iVar16 = 5;
               }
-              iVar16 = (int)*(short *)(iVar16 * 2 + iRam10115ec4);
+              iVar16 = (int)*(short *)(iVar16 * 2 + gNeighborPatternTable);
               sVar20 = *(short *)(iVar16 * 2 + iVar10);
               while (sVar20 != -10) {
                 sVar20 = (short)lVar22 + sVar20;
@@ -42010,7 +42010,7 @@ LAB_10043894:
       if ((bVar7) && (local_84 != 0)) {
         local_84 = local_84 + -1;
       }
-      *psRam101175a8 = *psRam101175a8 + 1;
+      *gSearchRadius = *gSearchRadius + 1;
       if ((!bVar8) && (local_84 = 0, !bVar7)) {
         local_86 = 0;
       }
@@ -42051,10 +42051,10 @@ void FUN_100439a4(short *param_1)
   unsigned int local_6c;
   short local_48;
   
-  piVar6 = piRam101175a0;
-  puVar5 = puRam1011759c;
-  psVar4 = psRam10115eb4;
-  sVar9 = AbsShort(*(short *)(*(int *)*puRam1011759c + *param_1 * 0x138 + param_1[1] * 2));
+  piVar6 = gCostMapPtr;
+  puVar5 = gDistGridHandlePtr;
+  psVar4 = gAIModeFlag;
+  sVar9 = AbsShort(*(short *)(*(int *)*gDistGridHandlePtr + *param_1 * 0x138 + param_1[1] * 2));
   uVar7 = (unsigned long long)local_6c;
   local_48 = 0;
   uVar14 = (long long)param_1[1];
@@ -42146,9 +42146,9 @@ void FUN_10043c84(short param_1,short *param_2,short param_3)
   int iVar8;
   int iVar9;
   
-  piVar4 = piRam1011758c;
-  piVar3 = piRam10117588;
-  piVar2 = (int *)*piRam10117588;
+  piVar4 = gPathCachePtr;
+  piVar3 = gPathCacheHandle;
+  piVar2 = (int *)*gPathCacheHandle;
   iVar9 = -1;
   sVar7 = 10000;
   bVar1 = true;
@@ -42519,11 +42519,11 @@ long long FUN_10043e60(short *param_1)
   int iVar13;
   long long uVar14;
   
-  piVar8 = piRam101175a0;
-  puVar7 = puRam1011759c;
-  puVar6 = puRam10117598;
-  piVar5 = piRam10117594;
-  piVar4 = piRam10117590;
+  piVar8 = gCostMapPtr;
+  puVar7 = gDistGridHandlePtr;
+  puVar6 = gDistGridDeref;
+  piVar5 = gDistGridHandle;
+  piVar4 = gCostMapHandle;
   ppuVar9 = 0 /* TVect base */;
   uVar10 = CalcDistance(param_1[2],param_1[3],*param_1,param_1[1]);
   uVar14 = 0;
@@ -42975,7 +42975,7 @@ unsigned char FUN_100445fc(int param_1,short param_2,short param_3,short param_4
   unsigned char bVar1;
   unsigned char bVar2;
   
-  bVar1 = *(unsigned char *)(*piRam101175a0 + param_2 * 0x9c + (int)param_3);
+  bVar1 = *(unsigned char *)(*gCostMapPtr + param_2 * 0x9c + (int)param_3);
   bVar2 = bVar1 & 7;
   if (*param_5 != 0) {
     return 0x80;
@@ -43033,9 +43033,9 @@ short FUN_10044728(short *param_1,short param_2,int param_3)
   short local_3c;
   short local_3a [29];
   
-  puVar4 = puRam10117598;
-  piVar6 = piRam10117594;
-  piVar5 = piRam10117590;
+  puVar4 = gDistGridDeref;
+  piVar6 = gDistGridHandle;
+  piVar5 = gCostMapHandle;
   local_3a[0] = *param_1;
   local_3c = param_1[1];
   uVar2 = param_1[4];
@@ -43500,8 +43500,8 @@ void FUN_10045170()
   short sVar4;
   int iVar5;
   
-  psVar3 = psRam10115ee8;
-  iVar2 = iRam10115ee4;
+  psVar3 = gSpriteCount;
+  iVar2 = gSpriteTable;
   FUN_100099cc();
   iVar5 = 0;
   if (0 < *psVar3) {
@@ -43526,11 +43526,11 @@ void FUN_100451f4(short param_1)
   int iVar3;
   unsigned long long uVar4;
   
-  iVar1 = iRam10115ee4;
+  iVar1 = gSpriteTable;
   uVar4 = (unsigned long long)param_1;
   uVar2 = HLock_Thunk(*(int *)
                         (*(int *)((int)(((uVar4 & 0x3fffffff) * 4 + uVar4 & 0xffffffff) << 2) +
-                                  iRam10115ee4 + 4) + 0x10));
+                                  gSpriteTable + 4) + 0x10));
   iVar3 = FUN_10001d70(uVar2);
   if (iVar3 == 0) {
     FUN_10044d8c(uVar4);
@@ -43651,9 +43651,9 @@ void FUN_1004530c(short param_1)
   char auStack_148 [256];
   char auStack_48 [72];
   
-  iVar3 = iRam10115ee4;
+  iVar3 = gSpriteTable;
   uVar4 = (unsigned long long)param_1;
-  if (*(int *)(*(int *)((int)(((uVar4 & 0x3fffffff) * 4 + uVar4 & 0xffffffff) << 2) + iRam10115ee4 +
+  if (*(int *)(*(int *)((int)(((uVar4 & 0x3fffffff) * 4 + uVar4 & 0xffffffff) << 2) + gSpriteTable +
                        4) + 0x10) == 0) {
     DrawNumber(auStack_48,(unsigned long long)uRam10115ed8 + 0xec,uVar4);
     BuildPascalString(auStack_148,auStack_48);
@@ -43662,7 +43662,7 @@ void FUN_1004530c(short param_1)
   }
   else {
     iVar2 = (int)(((uVar4 & 0x3fffffff) * 4 + uVar4 & 0x3fffffff) << 2);
-    iVar1 = iVar2 + iRam10115ee4;
+    iVar1 = iVar2 + gSpriteTable;
     HLock_Thunk(*(int *)(*(int *)(iVar1 + 4) + 0x10));
     HUnlock_Thunk();
     if ((*(unsigned int *)(iVar2 + iVar3) >> 0x1a & 1) != 0) {
@@ -43862,14 +43862,14 @@ void FUN_100462c8(short param_1)
   unsigned long long uVar3;
   
   uVar3 = (unsigned long long)param_1;
-  if ((*(unsigned int *)((int)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 2) + iRam10115ee4) >> 0x1d
+  if ((*(unsigned int *)((int)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 2) + gSpriteTable) >> 0x1d
       & 1) == 0) {
     iVar2 = 0;
-    if (0 < *psRam10115ee8) {
+    if (0 < *gSpriteCount) {
       do {
-        if ((*(unsigned int *)(iVar2 * 0x14 + iRam10115ee4) >> 0x1d & 1) != 0) {
-          if (*(char *)(iVar2 * 0x14 + iRam10115ee4 + 8) ==
-              *(char *)((int)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 2) + iRam10115ee4 +
+        if ((*(unsigned int *)(iVar2 * 0x14 + gSpriteTable) >> 0x1d & 1) != 0) {
+          if (*(char *)(iVar2 * 0x14 + gSpriteTable + 8) ==
+              *(char *)((int)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 2) + gSpriteTable +
                        8)) {
             FUN_100450f4(iVar2);
             break;
@@ -43877,7 +43877,7 @@ void FUN_100462c8(short param_1)
         }
         sVar1 = (short)iVar2 + 1;
         iVar2 = (int)sVar1;
-      } while (sVar1 < *psRam10115ee8);
+      } while (sVar1 < *gSpriteCount);
     }
     FUN_10044d8c(uVar3);
   }
@@ -43899,9 +43899,9 @@ void FUN_10049e68()
 {
   int *piVar1;
   
-  piVar1 = piRam10115f0c;
-  if (*piRam10115f0c != 0) {
-    ReleaseHandle_Mapgen(*piRam10115f0c);
+  piVar1 = gUnitDataHandle;
+  if (*gUnitDataHandle != 0) {
+    ReleaseHandle_Mapgen(*gUnitDataHandle);
     *piVar1 = 0;
   }
   return;
@@ -43975,7 +43975,7 @@ int FUN_1004a21c(short param_1)
   short sVar3;
   int iVar4;
   
-  uVar2 = uRam101175d4;
+  uVar2 = gItemNameBuffer;
   piVar1 = piRam101175d0;
   LockUnitData();
   iVar4 = 0;
@@ -44357,8 +44357,8 @@ void FUN_100516c0()
 {
   int *puVar1;
   
-  puVar1 = puRam10115f7c;
-  ProgressUpdate(*puRam10115f7c,0);
+  puVar1 = gProgressBar;
+  ProgressUpdate(*gProgressBar,0);
   LoadScenarioTemplate();
   InitializeMapToOcean();
   PlacePlayerStartZones();
@@ -57981,7 +57981,7 @@ void FUN_1005cc8c()
   int *piVar2;
   long long uVar3;
   
-  piVar2 = piRam10115fa4;
+  piVar2 = gOverviewWindow;
   *puRam10115fa8 = 0;
   piVar1 = (int *)*piVar2;
   uVar3 = ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x308),0x696e666f);
@@ -58062,12 +58062,12 @@ void FUN_10061980(short param_1,short param_2,short param_3)
   short sVar8;
   int **local_44;
   
-  piVar1 = piRam101163b0;
-  iVar3 = iRam10116004;
-  piVar2 = piRam10115fe8;
+  piVar1 = gActiveView;
+  iVar3 = gArrowDirTable;
+  piVar2 = gScreenGWorld;
   ppuVar4 = 0 /* TVect base */;
-  if (*piRam101163b0 != 0) {
-    *piRam10115fe8 = *piRam101163b0 + 0x80;
+  if (*gActiveView != 0) {
+    *gScreenGWorld = *gActiveView + 0x80;
   }
   piVar1 = (int *)*piVar1;
   if (piVar1 == (int *)0x0) {
@@ -58122,7 +58122,7 @@ void FUN_10064498(short param_1,short param_2,short param_3)
   ppuVar8 = 0 /* TVect base */;
   uVar13 = (unsigned long long)param_3;
   uVar14 = (unsigned long long)param_2;
-  uVar15 = (unsigned long long)uRam101176cc;
+  uVar15 = (unsigned long long)gColorPalette;
   if (param_1 != 0) {
     ppuVar8 = 0 /* TVect base */;
     FUN_10063784();
@@ -61921,7 +61921,7 @@ void FUN_10075ee0(int param_1,short param_2,short param_3)
 {
   int *piVar1;
   
-  piVar1 = piRam10116200;
+  piVar1 = gInfoWindow;
   *(short *)(param_1 + param_2 * 2 + 0x8c) = param_3;
   if ((*piVar1 != 0) &&
      (piVar1 = (int *)*piVar1,
@@ -62115,7 +62115,7 @@ void FUN_10091338(short param_1,short param_2)
   short *psVar3;
   
   psVar3 = psRam101165d8;
-  piVar2 = piRam1011639c;
+  piVar2 = gSidePanelWindow;
   if ((*psRam101165dc != param_1) || (*psRam101165d8 != param_2)) {
     *psRam101165dc = param_1;
     *psVar3 = param_2;
@@ -65433,10 +65433,10 @@ void FUN_10091b18()
   int *piVar2;
   int *piVar3;
   
-  piVar3 = piRam101165ec;
-  piVar2 = piRam101165e8;
-  if (*piRam101165ec != 0) {
-    SndDisposeChannel_Thunk(*piRam101165ec,1);
+  piVar3 = gSndChannel;
+  piVar2 = gSndHandle;
+  if (*gSndChannel != 0) {
+    SndDisposeChannel_Thunk(*gSndChannel,1);
   }
   iVar1 = *piVar2;
   if (iVar1 != 0) {
@@ -65569,11 +65569,11 @@ char FUN_10091b80()
   char auStack_20 [12];
   char local_14;
   
-  if (*piRam101165ec == 0) {
+  if (*gSndChannel == 0) {
     local_14 = '\0';
   }
   else {
-    iVar1 = SndChannelStatus_Thunk(*piRam101165ec,0x18,auStack_20);
+    iVar1 = SndChannelStatus_Thunk(*gSndChannel,0x18,auStack_20);
     if (iVar1 == 0) {
       if (local_14 == '\0') {
         StopGlobalSound();
@@ -67255,8 +67255,8 @@ void FUN_10091ca4(short param_1,short param_2)
   short local_1e;
   int local_1c;
   
-  piVar2 = piRam101165ec;
-  piVar1 = piRam101165e8;
+  piVar2 = gSndChannel;
+  piVar1 = gSndHandle;
   if (param_1 != 0) {
     iVar3 = IsGlobalSoundPlaying();
     while (iVar3 != 0) {
@@ -69571,8 +69571,8 @@ void FUN_10091f40()
   short uVar3;
   long long lVar4;
   
-  piVar1 = piRam101165f0;
-  if (*piRam101165f0 != 0) {
+  piVar1 = gTunePlayer;
+  if (*gTunePlayer != 0) {
     uVar2 = GetMusicVolume();
     lVar4 = ((uVar2 & 0x3fffffff) * 4 - uVar2 & 0x1fffff) << 0xb;
     if (-1 < (int)lVar4) {
@@ -69727,9 +69727,9 @@ void FUN_10091fd4()
   int *puVar2;
   int iVar3;
   
-  puVar2 = puRam101165f8;
-  puVar1 = puRam101165f4;
-  if (*piRam101165f0 != 0) {
+  puVar2 = gTuneDataH;
+  puVar1 = gTuneHeaderH;
+  if (*gTunePlayer != 0) {
     TuneUnroll_Thunk();
   }
   iVar3 = IsHandleValid(*puVar2);
@@ -69927,13 +69927,13 @@ void FUN_10092080(long long param_1,long long param_2)
   unsigned char local_138 [312];
   
   puVar8 = puRam10117370;
-  piVar2 = piRam10116a48;
-  puVar7 = puRam101165f8;
-  puVar6 = puRam101165f4;
-  piVar5 = piRam101165f0;
-  piVar4 = piRam101163ac;
-  piVar3 = piRam10116204;
-  uVar14 = (unsigned long long)uRam101177f0;
+  piVar2 = gProgressView;
+  puVar7 = gTuneDataH;
+  puVar6 = gTuneHeaderH;
+  piVar5 = gTunePlayer;
+  piVar4 = gActiveDocView;
+  piVar3 = gMainDocView;
+  uVar14 = (unsigned long long)gProgressCounterBase;
   puVar10 = (int *)FUN_10001470(0x3f4);
   if (puVar10 != (int *)0x0) {
     piVar1 = (int *)*piVar2;
@@ -73584,8 +73584,8 @@ void FUN_100923a4(long long param_1,char param_2)
   int local_34;
   
   piVar2 = piRam101165f8;
-  piVar1 = piRam101165f0;
-  if (((*piRam101165f0 != 0) && (*piRam101165f8 != 0)) && (*piRam101165f4 != 0)) {
+  piVar1 = gTunePlayer;
+  if (((*gTunePlayer != 0) && (*piRam101165f8 != 0)) && (*piRam101165f4 != 0)) {
     uVar3 = GetMusicVolume();
     lVar5 = ((uVar3 & 0x3fffffff) * 4 - uVar3 & 0x1fffff) << 0xb;
     TuneSetVolume_Thunk(*piVar1,lVar5);
@@ -74338,7 +74338,7 @@ void YieldToEventLoop()
   int local_10;
   
   puVar1 = puRam10117370;
-  if (*(char *)(iRam1011788c + 0x34) != '\0') {
+  if (*(char *)(gSoundPrefs + 0x34) != '\0') {
     TuneStop_Thunk(0,0);
     if ((**(char **)(local_144 + -0x12a4) != '\0') && (iVar2 = IsMusicPlaying(), iVar2 == 0)) {
       local_20 = 0;
@@ -74547,8 +74547,8 @@ void YieldToEventLoop()
 void FUN_10092a58(short param_1)
 
 {
-  if (*piRam101165f0 != 0) {
-    TuneSetVolume_Thunk(*piRam101165f0,
+  if (*gTunePlayer != 0) {
+    TuneSetVolume_Thunk(*gTunePlayer,
                  (((long long)param_1 & 0x3fffffffU) * 4 - (long long)param_1 & 0x1fffff) << 0xb);
   }
   return;
@@ -74606,8 +74606,8 @@ void FUN_10092a58(short param_1)
 void FUN_10092aa4()
 
 {
-  if (*psRam10116600 != -1) {
-    SelectMusic(*psRam10116600);
+  if (*gCurrentMusicID != -1) {
+    SelectMusic(*gCurrentMusicID);
   }
   return;
 }
@@ -77849,7 +77849,7 @@ void FUN_10093a5c()
   int *ppuVar2;
   short uVar3;
   
-  puVar1 = puRam10117738;
+  puVar1 = gCombatSoundIDs;
   ppuVar2 = 0 /* TVect base */;
   FUN_1005f6b0(0x40,0);
   uVar3 = ResolveSoundName();
@@ -79986,7 +79986,7 @@ void ExpandPlayerZone(short param_1)
   short local_36 [27];
   
   puVar8 = puRam101175f4;
-  piVar7 = piRam101175f0;
+  piVar7 = gMapGenData;
   uVar15 = (unsigned long long)param_1;
   iVar3 = (int)((uVar15 & 0xffffffff) << 2);
   iVar4 = (int)(((uVar15 & 0x3fffffff) * 4 + uVar15 & 0xfffffff) << 4);
@@ -80634,7 +80634,7 @@ void ConnectAdjacentZones()
   unsigned long long uVar6;
   unsigned long long uVar7;
   
-  piVar3 = piRam101175f4;
+  piVar3 = gMapGenConfig;
   uVar6 = 0;
   do {
     uVar7 = 0;
@@ -80717,33 +80717,33 @@ long long ShouldBeCoastal(short param_1,short param_2)
   unsigned long long uVar1;
   
   uVar1 = (unsigned long long)param_2;
-  if (*(char *)(*piRam101175f0 + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
+  if (*(char *)(*gMapGenData + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
                 (int)param_1 + 0x34a) == '\x03') {
     return 0;
   }
-  if (*(char *)(*piRam101175f0 + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
+  if (*(char *)(*gMapGenData + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
                 (int)param_1 + 0x34a) == '\x01') {
     return 0;
   }
   if ((((param_1 == 0) || (param_2 == 0)) || (param_1 == 0x6f)) || (param_2 == 0x9b)) {
-    if (*(char *)(*piRam101175f0 + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
+    if (*(char *)(*gMapGenData + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
                   (int)param_1 + 0x34a) == '\0') {
       return 1;
     }
   }
-  if (*(char *)(*piRam101175f0 + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
+  if (*(char *)(*gMapGenData + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
                 (int)param_1 + 0x34b) == '\x02') {
     return 1;
   }
-  if (*(char *)(*piRam101175f0 + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
+  if (*(char *)(*gMapGenData + (int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) +
                 (int)param_1 + 0x349) == '\x02') {
     return 1;
   }
-  if (*(char *)((int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) + *piRam101175f0 +
+  if (*(char *)((int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) + *gMapGenData +
                 (int)param_1 + 0x3ba) == '\x02') {
     return 1;
   }
-  if (*(char *)((int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) + *piRam101175f0 +
+  if (*(char *)((int)(((uVar1 & 0x1fffffff) * 8 - uVar1 & 0xffffffff) << 4) + *gMapGenData +
                 (int)param_1 + 0x2da) == '\x02') {
     return 1;
   }
@@ -80763,7 +80763,7 @@ void ConvertToTerrainCodes()
   unsigned long long uVar7;
   int iVar8;
   
-  piVar2 = piRam101175f0;
+  piVar2 = gMapGenData;
   iVar6 = 0;
   do {
     uVar7 = 0;
@@ -80878,13 +80878,13 @@ long long FUN_1009ff14(short param_1,short param_2)
   
   iVar2 = 0;
   while( true ) {
-    iVar5 = *piRam101175f4 + iVar2 * 4;
+    iVar5 = *gMapGenConfig + iVar2 * 4;
     lVar4 = (long long)param_1 + (long long)*(short *)(iVar5 + 0xbc);
     if ((((-1 < lVar4) &&
          (uVar3 = (long long)param_2 + (long long)*(short *)(iVar5 + 0xbe), -1 < (long long)uVar3)) &&
         (iVar5 = (int)lVar4, iVar5 < 0x70)) &&
        (((int)uVar3 < 0x9c &&
-        (*(char *)(*piRam101175f0 + (int)(((uVar3 & 0x1fffffff) * 8 - uVar3 & 0xffffffff) << 4) +
+        (*(char *)(*gMapGenData + (int)(((uVar3 & 0x1fffffff) * 8 - uVar3 & 0xffffffff) << 4) +
                    iVar5 + 0x34a) == '\a')))) break;
     sVar1 = (short)iVar2 + 1;
     iVar2 = (int)sVar1;
@@ -80907,13 +80907,13 @@ long long FUN_1009ffa4(short param_1,short param_2,short param_3)
   
   iVar2 = 0;
   while( true ) {
-    iVar5 = *piRam101175f4 + iVar2 * 4;
+    iVar5 = *gMapGenConfig + iVar2 * 4;
     lVar4 = (long long)param_1 + (long long)*(short *)(iVar5 + 0xbc);
     if ((((-1 < lVar4) &&
          (uVar3 = (long long)param_2 + (long long)*(short *)(iVar5 + 0xbe), -1 < (long long)uVar3)) &&
         (iVar5 = (int)lVar4, iVar5 < 0x70)) &&
        (((int)uVar3 < 0x9c &&
-        ((int)*(char *)(*piRam101175f0 + (int)(((uVar3 & 0x1fffffff) * 8 - uVar3 & 0xffffffff) << 4)
+        ((int)*(char *)(*gMapGenData + (int)(((uVar3 & 0x1fffffff) * 8 - uVar3 & 0xffffffff) << 4)
                         + iVar5 + 0x34a) == (int)param_3)))) break;
     sVar1 = (short)iVar2 + 1;
     iVar2 = (int)sVar1;
@@ -80935,7 +80935,7 @@ void ExpandCoastalTiles()
   int iVar5;
   unsigned long long uVar6;
   
-  piVar1 = piRam101175f0;
+  piVar1 = gMapGenData;
   iVar5 = 0;
   do {
     uVar6 = 0;
@@ -82072,13 +82072,13 @@ void CalculateLandTarget()
   int iVar5;
   int iVar6;
   
-  piVar2 = piRam101175f4;
+  piVar2 = gMapGenConfig;
   iVar5 = 0;
   iVar4 = 0;
   do {
     iVar6 = 0;
     do {
-      cVar1 = *(char *)(*piRam101175f0 + iVar6 * 0x70 + iVar4 + 0x34a);
+      cVar1 = *(char *)(*gMapGenData + iVar6 * 0x70 + iVar4 + 0x34a);
       if (((cVar1 == '\a') || (cVar1 == '\x05')) || (cVar1 == '\x06')) {
         iVar5 = (int)(short)((short)iVar5 + 1);
       }
@@ -82088,7 +82088,7 @@ void CalculateLandTarget()
     sVar3 = (short)iVar4 + 1;
     iVar4 = (int)sVar3;
   } while (sVar3 < 0x70);
-  *(short *)(*piRam101175f4 + 0x1f54) = (short)(iVar5 / 100) * *(short *)(*piRam101175f4 + 0x3c);
+  *(short *)(*gMapGenConfig + 0x1f54) = (short)(iVar5 / 100) * *(short *)(*gMapGenConfig + 0x3c);
   *(short *)(*piVar2 + 0x1f52) = 0;
   return;
 }
@@ -82100,8 +82100,8 @@ short CheckLandTarget()
   unsigned short uVar1;
   unsigned short uVar2;
   
-  uVar1 = *(unsigned short *)(*piRam101175f4 + 0x1f52);
-  uVar2 = *(unsigned short *)(*piRam101175f4 + 0x1f54);
+  uVar1 = *(unsigned short *)(*gMapGenConfig + 0x1f52);
+  uVar2 = *(unsigned short *)(*gMapGenConfig + 0x1f54);
   return (((short)uVar1 >> 0xf) - ((short)uVar2 >> 0xf)) + (unsigned short)(uVar2 <= uVar1);
 }
 
@@ -82139,8 +82139,8 @@ void GrowLandBlob()
   int local_50;
   int local_4c;
   
-  piVar3 = piRam101175f4;
-  piVar2 = piRam101175f0;
+  piVar3 = gMapGenConfig;
+  piVar2 = gMapGenData;
   bVar1 = false;
   do {
     iVar4 = RandomRange(1,0x70,0xffffffffffffffff);
@@ -83172,8 +83172,8 @@ void FillEnclosedWater()
   int iVar8;
   unsigned long long uVar9;
   
-  piVar4 = piRam101175f4;
-  piVar3 = piRam101175f0;
+  piVar4 = gMapGenConfig;
+  piVar3 = gMapGenData;
   iVar8 = 0;
   do {
     uVar9 = 0;
@@ -83930,9 +83930,9 @@ void PlacePlayerCities()
   unsigned long long uVar4;
   short sVar6;
   
-  piVar3 = piRam101175f4;
-  piVar2 = piRam101175f0;
-  if (0 < *(short *)(*piRam101175f4 + 0x34)) {
+  piVar3 = gMapGenConfig;
+  piVar2 = gMapGenData;
+  if (0 < *(short *)(*gMapGenConfig + 0x34)) {
     sVar6 = 0;
     do {
       bVar1 = false;
@@ -84185,9 +84185,9 @@ void PlaceNeutralCities()
   unsigned long long uVar4;
   short sVar6;
   
-  piVar3 = piRam101175f4;
-  piVar2 = piRam101175f0;
-  if (0 < *(short *)(*piRam101175f4 + 0x36)) {
+  piVar3 = gMapGenConfig;
+  piVar2 = gMapGenData;
+  if (0 < *(short *)(*gMapGenConfig + 0x36)) {
     sVar6 = 0;
     do {
       bVar1 = false;
@@ -84444,9 +84444,9 @@ void AssignCityAlliances()
   int iVar9;
   int iVar10;
   
-  piVar1 = piRam101175f0;
-  if ((1 < *(short *)(*piRam101175f0 + 0x348)) &&
-     (uVar8 = 0, 0 < *(short *)(*piRam101175f0 + 0x348))) {
+  piVar1 = gMapGenData;
+  if ((1 < *(short *)(*gMapGenData + 0x348)) &&
+     (uVar8 = 0, 0 < *(short *)(*gMapGenData + 0x348))) {
     do {
       if (*(short *)(*piVar1 + (int)(((uVar8 & 0x1fffffff) * 8 - uVar8 & 0xffffffff) << 1) + 4) == 1
          ) {
@@ -84557,9 +84557,9 @@ void GenerateRoadsBetweenCities()
   unsigned long long uVar6;
   int iVar7;
   
-  piVar3 = piRam101175f0;
-  if ((1 < *(short *)(*piRam101175f0 + 0x348)) &&
-     (uVar5 = 0, 0 < *(short *)(*piRam101175f0 + 0x348))) {
+  piVar3 = gMapGenData;
+  if ((1 < *(short *)(*gMapGenData + 0x348)) &&
+     (uVar5 = 0, 0 < *(short *)(*gMapGenData + 0x348))) {
     do {
       iVar1 = (int)(((uVar5 & 0x1fffffff) * 8 - uVar5 & 0x7fffffff) << 1);
       iVar7 = *piVar3 + iVar1;
@@ -84633,7 +84633,7 @@ void FUN_100a35cc()
   int iVar7;
   unsigned long long uVar6;
   
-  piVar2 = piRam101175f0;
+  piVar2 = gMapGenData;
   iVar5 = 0;
   do {
     iVar7 = 0;
@@ -85314,7 +85314,7 @@ void FUN_100a39ac()
   short sVar5;
   int iVar6;
   
-  piVar2 = piRam101175f0;
+  piVar2 = gMapGenData;
   iVar3 = CheckLandConnectivity();
   if (iVar3 != 0) {
     iVar3 = 0;
@@ -85527,7 +85527,7 @@ void FUN_100a39ac()
 void PlaceCitiesAndRoads()
 
 {
-  *(short *)(*piRam101175f0 + 0x348) = 0;
+  *(short *)(*gMapGenData + 0x348) = 0;
   PlacePlayerCities();
   PlaceNeutralCities();
   AssignCityAlliances();
@@ -85553,7 +85553,7 @@ void FinalizeAndSave()
 {
   int *puVar1;
   
-  puVar1 = puRam10115f7c;
+  puVar1 = gProgressBar;
   AssignTerrainGraphics();
   ProgressUpdate(*puVar1,0x5c);
   RegisterCities();
@@ -85581,8 +85581,8 @@ void ScatterSwampTiles(short param_1,short param_2)
   short local_28;
   short local_26 [19];
   
-  piVar2 = piRam101175f4;
-  piVar1 = piRam101175f0;
+  piVar2 = gMapGenConfig;
+  piVar1 = gMapGenData;
   sVar4 = RandomRange(1,5,3);
   sVar6 = 0;
   if (0 < sVar4) {
@@ -85822,7 +85822,7 @@ void PlaceSwampCluster()
   int iVar7;
   short sVar8;
   
-  piVar4 = piRam101175f0;
+  piVar4 = gMapGenData;
   sVar8 = 0;
   bVar3 = false;
   do {
@@ -86241,9 +86241,9 @@ void PlaceRuins()
   char auStack_134 [308];
   
   puVar5 = puRam101175f4;
-  piVar4 = piRam101175f0;
+  piVar4 = gMapGenData;
   puVar3 = puRam1011735c;
-  puVar2 = puRam10115f7c;
+  puVar2 = gProgressBar;
   *(short *)(*puRam1011735c + 0x810) = 0x28;
   sVar12 = 0;
   iVar15 = 0;
@@ -86848,7 +86848,7 @@ void FUN_100a9628()
   unsigned long long uVar8;
   int iVar9;
   
-  piVar3 = piRam101175f0;
+  piVar3 = gMapGenData;
   iVar7 = 0;
   do {
     uVar8 = 0;
@@ -87908,9 +87908,9 @@ void PlaceRiverWaterChannels()
   int *piVar1;
   short sVar2;
   
-  piVar1 = piRam101175f4;
+  piVar1 = gMapGenConfig;
   sVar2 = 0;
-  if (0 < *(short *)(*piRam101175f4 + 0x3a)) {
+  if (0 < *(short *)(*gMapGenConfig + 0x3a)) {
     do {
       CutWaterChannel(0,1,0);
       sVar2 = sVar2 + 1;
@@ -88103,7 +88103,7 @@ void FUN_100ab9e4()
   int iVar5;
   unsigned long long uVar6;
   
-  piVar2 = piRam101175f0;
+  piVar2 = gMapGenData;
   iVar5 = 0;
   do {
     uVar6 = 0;
@@ -88428,7 +88428,7 @@ void FUN_100abb68()
   int iVar5;
   unsigned long long uVar6;
   
-  piVar2 = piRam101175f0;
+  piVar2 = gMapGenData;
   iVar5 = 0;
   do {
     uVar6 = 0;
@@ -88749,9 +88749,9 @@ void PlaceMountainForestChains()
   int *piVar1;
   short sVar2;
   
-  piVar1 = piRam101175f4;
+  piVar1 = gMapGenConfig;
   sVar2 = 0;
-  if (0 < *(short *)(*piRam101175f4 + 0x40)) {
+  if (0 < *(short *)(*gMapGenConfig + 0x40)) {
     do {
       DrawTerrainChain(0);
       sVar2 = sVar2 + 1;
@@ -98832,7 +98832,7 @@ void FUN_10005f90()
   iVar46 = iRam10117700;
   iVar13 = iRam10117424;
   piVar12 = piRam1011735c;
-  piVar26 = piRam101163ac;
+  piVar26 = gActiveDocView;
   pcVar11 = pcRam10116398;
   uVar14 = ZEXT48(((char*)0));
   ppuVar16 = 0 /* TVect base */;
@@ -114184,7 +114184,7 @@ void FUN_100090f0()
   piVar7 = piRam1011735c;
   piVar6 = piRam10117354;
   piVar5 = piRam10115cf4;
-  piVar4 = piRam10115cf0;
+  piVar4 = gCityOwnership;
   ppuVar8 = 0 /* TVect base */;
   if (*piRam10117354 == 0) {
     ppuVar8 = 0 /* TVect base */;
@@ -116862,7 +116862,7 @@ void FUN_1000fccc(short param_1)
   long long lVar10;
   unsigned long long uVar11;
   
-  iVar4 = iRam101176e8;
+  iVar4 = gCombatDisplayPieces;
   puVar3 = puRam10117360;
   piVar2 = piRam1011735c;
   uVar5 = ZEXT48(0 /* TVect base */);
@@ -118293,7 +118293,7 @@ long long FUN_1000ffe0(short param_1,short param_2,int param_3,int param_4)
   piVar10 = piRam10117364;
   piVar9 = piRam10117360;
   if (param_2 < 0xd) {
-    sVar13 = (short)*(char *)(param_2 + iRam10115d28);
+    sVar13 = (short)*(char *)(param_2 + gFrontLineLookup);
   }
   else {
     sVar13 = 8;
@@ -134911,11 +134911,11 @@ long long FUN_10012a8c(long long param_1,short param_2)
     param_1 = (long long)(short)param_1;
     bVar5 = false;
     if (*(short *)(*piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 0xc + 0x1142) != 0) {
-      sVar2 = (short)*pcRam101174d0;
-      if (*pcRam101174d0 != '\0') {
+      sVar2 = (short)*gSelectionCount;
+      if (*gSelectionCount != '\0') {
         do {
           sVar2 = sVar2 + -1;
-          if (*(int *)(sVar2 * 4 + iRam101174f0) ==
+          if (*(int *)(sVar2 * 4 + gSelectionArray) ==
               *piRam10117360 +
               *(short *)(*piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 0xc + 0x1146) * 0x16)
           {
@@ -136236,8 +136236,8 @@ long long FUN_10013a10(short param_1,short param_2)
   unsigned long long uVar12;
   int iVar13;
   
-  iVar3 = iRam101176e8;
-  psVar7 = psRam101176e4;
+  iVar3 = gCombatDisplayPieces;
+  psVar7 = gHeroCount;
   piVar6 = piRam10117364;
   piVar5 = piRam10117360;
   piVar4 = piRam1011735c;
@@ -141472,7 +141472,7 @@ long long FUN_1001e160(int param_1,short param_2,short param_3,unsigned short pa
   int iVar14;
   unsigned long long uVar13;
   
-  iVar5 = iRam101176e8;
+  iVar5 = gCombatDisplayPieces;
   piVar4 = piRam101176e0;
   piVar3 = piRam10117360;
   iVar10 = (int)*(short *)(*piRam1011735c + 0x110);
@@ -147388,8 +147388,8 @@ long long FUN_1002869c()
   
   iVar6 = iRam10117684;
   piVar5 = piRam1011734c;
-  iVar2 = iRam10115ee4;
-  uVar17 = (unsigned long long)uRam101176cc;
+  iVar2 = gSpriteTable;
+  uVar17 = (unsigned long long)gColorPalette;
   uVar16 = 0;
   if (*(short *)(*piRam1011735c + 0x124) != 0) {
     CenterMapOnArmy(*(short *)(*piRam1011735c + 0x110));
@@ -150635,7 +150635,7 @@ long long FUN_10028b30(int *param_1,short param_2,short param_3)
   int local_28;
   int local_24;
   
-  iVar4 = iRam101176e8;
+  iVar4 = gCombatDisplayPieces;
   piVar3 = piRam10117360;
   piVar2 = piRam10115f7c;
   if ((*psRam10116304 == 0) && (*psRam10115ce0 != 0)) {
@@ -152709,8 +152709,8 @@ short FUN_10028e10(long long param_1,short param_2,short param_3)
   char auStack_194 [256];
   char auStack_94 [148];
   
-  iVar1 = iRam101176e8;
-  iVar31 = iRam10117604;
+  iVar1 = gCombatDisplayPieces;
+  iVar31 = gSCENInfo;
   piVar16 = piRam10117360;
   piVar7 = piRam1011735c;
   piVar13 = piRam1011734c;
@@ -152723,7 +152723,7 @@ short FUN_10028e10(long long param_1,short param_2,short param_3)
   puVar29 = (int *)(((char*)0) + -0x2f8);
   puVar30 = ((char*)0) + -0x2ec;
   if ((*psRam10116304 == 0) && (*psRam10115ce0 != 0)) {
-    BlockMoveData_Thunk(puVar26,iRam10117604 + 0x44);
+    BlockMoveData_Thunk(puVar26,gSCENInfo + 0x44);
     ppuVar8 = local_3ec;
   }
   else {
@@ -161055,7 +161055,7 @@ void FUN_1002b230(short param_1)
   int iVar11;
   int iVar12;
   
-  iVar5 = iRam101176e8;
+  iVar5 = gCombatDisplayPieces;
   piVar4 = piRam10117360;
   piVar3 = piRam1011735c;
   piVar2 = piRam10117354;
@@ -163312,7 +163312,7 @@ void FUN_1002bdc4()
   short sVar5;
   int iVar6;
   
-  iVar4 = iRam1011757c;
+  iVar4 = gPerPlayerArmyCount;
   piVar3 = piRam1011735c;
   iVar6 = 0;
   do {
@@ -176748,11 +176748,11 @@ void FUN_1003cb84()
   unsigned int local_a4;
   char auStack_80 [128];
   
-  iVar9 = iRam1011757c;
+  iVar9 = gPerPlayerArmyCount;
   piVar8 = piRam10117360;
   puVar7 = puRam1011735c;
   piVar6 = piRam1011734c;
-  piVar5 = piRam10116208;
+  piVar5 = gMainGameWindow;
   uVar14 = ZEXT48(0 /* TVect base */);
   GetAIStateSnapshot();
   bVar4 = false;
@@ -179660,7 +179660,7 @@ void FUN_1003d094()
   char auStack_78 [96];
   int uStack_18;
   
-  iVar9 = iRam1011757c;
+  iVar9 = gPerPlayerArmyCount;
   puVar5 = puRam1011735c;
   piVar4 = piRam10117358;
   ppuVar6 = 0 /* TVect base */;
@@ -183741,7 +183741,7 @@ int FUN_10042a24(short param_1,short param_2)
   
   piVar4 = piRam1011735c;
   piVar3 = piRam10117358;
-  iVar2 = iRam10115ea8;
+  iVar2 = gTileWalkOffsets;
   iVar6 = 0;
   iVar7 = 0;
   sStack0000001a = param_1;
@@ -184873,12 +184873,12 @@ void FUN_10042bb4(short param_1,short param_2)
   int iVar11;
   int iVar12;
   
-  piVar7 = piRam101175a0;
+  piVar7 = gCostMapPtr;
   piVar6 = piRam1011735c;
   piVar5 = piRam10117358;
-  iVar4 = iRam10115eb0;
-  iVar3 = iRam10115eac;
-  iVar2 = iRam10115e84;
+  iVar4 = gZoCNeighborDXOffsets;
+  iVar3 = gZoCNeighborDYOffsets;
+  iVar2 = gStdMoveCostTable;
   iVar10 = 3;
   do {
     iVar12 = *piVar6 + param_1 * 0x42;
@@ -186233,18 +186233,18 @@ void FUN_10044110(short param_1,short param_2)
   int iVar24;
   int **local_5c;
   
-  psVar14 = psRam101175b0;
-  piVar13 = piRam101175a0;
-  puVar12 = puRam10117598;
-  piVar11 = piRam10117594;
-  piVar10 = piRam10117590;
+  psVar14 = gLastArmyTypeForCostMap;
+  piVar13 = gCostMapPtr;
+  puVar12 = gDistGridDeref;
+  piVar11 = gDistGridHandle;
+  piVar10 = gCostMapHandle;
   piVar9 = piRam1011735c;
   piVar8 = piRam10117358;
   piVar7 = piRam10117354;
-  iVar19 = iRam10115ed4;
-  iVar16 = iRam10115e84;
+  iVar19 = gFlyingMoveCostTable;
+  iVar16 = gStdMoveCostTable;
   ppuVar15 = 0 /* TVect base */;
-  if (*psRam10115ea4 == 0) {
+  if (*gPathfindingInitialized == 0) {
     ppuVar15 = 0 /* TVect base */;
     FUN_100424e4();
   }
@@ -189506,8 +189506,8 @@ void FUN_100445a8(short *param_1,int param_2)
   param_1[2] = *(short *)(*piVar1 + 0x12);
   param_1[3] = *(short *)(*piVar1 + 0x14);
   *(int *)(param_1 + 6) = param_2;
-  param_1[5] = *puRam10117710;
-  param_1[4] = *puRam101175b4;
+  param_1[5] = *gCurrentMoveMode;
+  param_1[4] = *gCurrentPathFlags;
   return;
 }
 
@@ -189541,7 +189541,7 @@ void FUN_10045ac8()
   int uVar2;
   
   puVar10 = puRam101175f8;
-  iVar13 = iRam10115ee4;
+  iVar13 = gSpriteTable;
   puVar9 = puRam10115ee0;
   puVar8 = puRam10115edc;
   iVar5 = *(int *)(*piRam1011734c + 0x88);
@@ -197300,7 +197300,7 @@ void FUN_100517f8(short param_1,short param_2,short param_3,short param_4)
   ppuVar6 = 0 /* TVect base */;
   local_40 = 0xca;
   local_3c = 0x3c;
-  ProgressCreate(*puRam10115f7c,&local_40,0x3f3);
+  ProgressCreate(*gProgressBar,&local_40,0x3f3);
   puVar7 = (unsigned int *)FUN_100f15e0(0x5dd6);
   if (puVar7 != (unsigned int *)0x0) {
     DetachResource(puVar7);
@@ -201777,11 +201777,11 @@ void FUN_100539e8(int param_1,short param_2,short param_3)
   puVar7 = puRam1011735c;
   piVar6 = piRam10117358;
   piVar3 = piRam10115f64;
-  psVar5 = psRam10115e2c;
+  psVar5 = gAutoModeFlag;
   ppuVar12 = 0 /* TVect base */;
   uVar24 = (unsigned long long)param_3;
   uVar23 = (unsigned long long)param_2;
-  if ((*psRam10115e2c == 0) &&
+  if ((*gAutoModeFlag == 0) &&
      (*(short *)(*puRam1011735c + *(short *)(*puRam1011735c + 0x110) * 2 + 0xd0) != 1)) {
     bVar20 = false;
   }
@@ -209116,7 +209116,7 @@ long long FUN_10057448(short param_1)
   uVar1 = uRam1011772c;
   piVar5 = piRam1011735c;
   piVar3 = piRam1011734c;
-  puVar16 = puRam10115f7c;
+  puVar16 = gProgressBar;
   ppuVar6 = 0 /* TVect base */;
   if (param_1 != 0) {
     ppuVar6 = 0 /* TVect base */;
@@ -212367,19 +212367,19 @@ void FUN_10060078(int *param_1,short param_2)
   short local_48;
   short local_46;
   
-  puVar12 = puRam10117660;
+  puVar12 = gViewportOffset;
   piVar11 = piRam1011735c;
   piVar10 = piRam10117354;
-  piVar9 = piRam101163b0;
-  piVar8 = piRam10115fe8;
-  iVar7 = iRam10115fe4;
+  piVar9 = gActiveView;
+  piVar8 = gScreenGWorld;
+  iVar7 = gPlayerColorTable;
   ppuVar6 = 0 /* TVect base */;
   iVar23 = *piRam1011735c;
   if ((((*(short *)(iVar23 + 0x124) == 0) ||
        (*(short *)(*(short *)(iVar23 + 0x110) * 2 + iVar23 + 0xd0) == 0)) ||
-      (*(short *)(iVar23 + 0x15a) != 0)) || (*psRam10115fec != 0)) {
-    if (*piRam101163b0 != 0) {
-      *piRam10115fe8 = *piRam101163b0 + 0x80;
+      (*(short *)(iVar23 + 0x15a) != 0)) || (*gScrollLockFlag != 0)) {
+    if (*gActiveView != 0) {
+      *gScreenGWorld = *gActiveView + 0x80;
     }
     piVar1 = (int *)*piVar9;
     if (piVar1 == (int *)0x0) {
@@ -217062,11 +217062,11 @@ void FUN_100632a0(short param_1,short param_2,short param_3)
   short local_2c;
   short local_2a;
   
-  iVar5 = iRam10117688;
+  iVar5 = gMinimapGWorld;
   piVar4 = piRam1011735c;
   ppuVar6 = 0 /* TVect base */;
   if (*(short *)(*piRam1011735c + 0x124) != 0) {
-    uVar10 = (unsigned long long)uRam101176cc;
+    uVar10 = (unsigned long long)gColorPalette;
     iVar1 = *piRam1011735c;
     if (((*(short *)(iVar1 + *(short *)(iVar1 + 0x110) * 2 + 0xd0) == 0) ||
         (*(short *)(iVar1 + 0x15a) != 0)) &&
@@ -219457,11 +219457,11 @@ void FUN_1007d168(int *param_1,long long param_2)
   int iVar7;
   int *piVar8;
   
-  piVar4 = piRam101169c4;
-  piVar3 = piRam1011639c;
-  piVar2 = piRam10116208;
-  piVar1 = piRam10116200;
-  piVar8 = piRam10115fa4;
+  piVar4 = gAppObject;
+  piVar3 = gSidePanelWindow;
+  piVar2 = gMainGameWindow;
+  piVar1 = gInfoWindow;
+  piVar8 = gOverviewWindow;
   ppuVar5 = 0 /* TVect base */;
   iVar7 = (int)param_2;
   if (iVar7 == 0x57e) goto LAB_1007d654;
@@ -219563,7 +219563,7 @@ void FUN_1007d168(int *param_1,long long param_2)
               return;
             }
             if (iVar7 == 0x3fa) {
-              ResourceRead_Dispatch(*piRam10116208 + (int)*(short *)(*(int *)*piRam10116208 + 0x4c8));
+              ResourceRead_Dispatch(*gMainGameWindow + (int)*(short *)(*(int *)*gMainGameWindow + 0x4c8));
               ResourceRead_Dispatch(*piVar3 + (int)*(short *)(*(int *)*piVar3 + 0x4c8));
               ResourceRead_Dispatch(*piVar8 + (int)*(short *)(*(int *)*piVar8 + 0x4c8));
               ResourceRead_Dispatch(*piVar1 + (int)*(short *)(*(int *)*piVar1 + 0x4c8));
@@ -219889,7 +219889,7 @@ LAB_1007d7f8:
       }
       if (0x76d < iVar7) {
         if (iVar7 == 0x771) {
-          piVar1 = (int *)*piRam10115fa4;
+          piVar1 = (int *)*gOverviewWindow;
           if (piVar1 == (int *)0x0) {
             return;
           }
@@ -219910,7 +219910,7 @@ LAB_1007d7f8:
         }
         if (iVar7 < 0x772) {
           if (iVar7 == 0x76f) {
-            piVar8 = (int *)*piRam1011639c;
+            piVar8 = (int *)*gSidePanelWindow;
             if (piVar8 == (int *)0x0) {
               return;
             }
@@ -219930,7 +219930,7 @@ LAB_1007d7f8:
             return;
           }
           if (iVar7 == 0x770) {
-            piVar8 = (int *)*piRam10116200;
+            piVar8 = (int *)*gInfoWindow;
             if (piVar8 == (int *)0x0) {
               return;
             }
@@ -232641,13 +232641,13 @@ void FUN_1007e314(int param_1)
   int local_14c;
   char local_128 [296];
   
-  iVar8 = iRam101176f0;
+  iVar8 = gDisplayState;
   piVar7 = piRam101176e0;
   piVar6 = piRam1011734c;
-  piVar1 = piRam1011639c;
-  psVar5 = psRam10116360;
-  piVar2 = piRam10116200;
-  piVar3 = piRam10115fa4;
+  piVar1 = gSidePanelWindow;
+  psVar5 = gUIShortGlobal;
+  piVar2 = gInfoWindow;
+  piVar3 = gOverviewWindow;
   FUN_100d6dd0(param_1);
   if ((*(char *)(param_1 + 0x16c) == '\0') && (*(char *)(*piVar6 + 0x9a) != '\0')) {
     FUN_100f27d0(0x1f,0);
@@ -239994,8 +239994,8 @@ void ScanForExistingCities()
   int iVar6;
   int iVar7;
   
-  piVar4 = piRam101175f4;
-  piVar3 = piRam101175f0;
+  piVar4 = gMapGenConfig;
+  piVar3 = gMapGenData;
   piVar2 = piRam1011735c;
   iVar6 = 0;
   do {
@@ -240118,7 +240118,7 @@ void FUN_100a9f78(int param_1)
   unsigned long long uVar13;
   short sVar14;
   
-  piVar8 = piRam101175f0;
+  piVar8 = gMapGenData;
   piVar7 = piRam10117358;
   piVar6 = piRam10117354;
   iVar10 = 0;
@@ -244050,7 +244050,7 @@ void FUN_1003c368()
   unsigned long long uVar16;
   unsigned long long uVar17;
   
-  iVar13 = iRam101176e8;
+  iVar13 = gCombatDisplayPieces;
   piVar5 = piRam10117360;
   piVar4 = piRam1011735c;
   piVar3 = piRam10117358;
@@ -247457,7 +247457,7 @@ void FUN_10064850(short param_1,short param_2)
   
   piVar4 = piRam1011735c;
   piVar3 = piRam10116bc0;
-  piVar6 = (int *)*piRam10116208;
+  piVar6 = (int *)*gMainGameWindow;
   if (piVar6 == (int *)0x0) {
     piVar6 = (int *)0x0;
   }
