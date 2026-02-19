@@ -1,5 +1,12 @@
 .DS_Store
 *.o
 *.zip
+*.pef
 warlords2
+warlords2_ppc
+warlords2_solo
 __pycache__/
+src/Warlords II
+test_app/test_ppc
+test_app/test.pef
+test_app/Test App
