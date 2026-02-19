@@ -25,6 +25,7 @@
     #include <Menus.h>
     #include <TextEdit.h>
     #include <Fonts.h>
+    #include <math.h>
 #endif
 
 /* Game constants */

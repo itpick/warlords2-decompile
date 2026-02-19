@@ -232,11 +232,12 @@ int CalcArmyStrength(short armyIdx)
 
 /* =========================================================================
  * CalcPathCost - Calculate path movement cost
- * Original: EvaluatePosition (via movement.c)
+ * Original: FUN_1001eff8 at 0x1001eff8 (180 bytes)
+ * Takes army x,y coordinates, returns path cost score
  * ========================================================================= */
-int CalcPathCost(short armyIdx, short destX, short destY)
+int CalcPathCost(short x, short y)
 {
-    /* EvaluatePosition - pathfinding (implemented in movement.c) */
+    /* CalcPathCost - pathfinding cost evaluation */
     return 0;
 }
 
@@ -459,8 +460,8 @@ int DisbandUnit(short unitIdx, short mode)
  * ========================================================================= */
 int DisposeHandle_Thunk(void *h)
 {
-    /* Mac OS Toolbox wrapper - DisposeHandle_Thunk */
-    DisposeHandle_Thunk((Handle)h);
+    /* Mac OS Toolbox wrapper - calls real DisposeHandle */
+    DisposeHandle((Handle)h);
     return 0;
 }
 
