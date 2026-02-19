@@ -15,77 +15,77 @@
  * ========================================================================= */
 
 /* Virtual method dispatch -- universal dispatcher for vtable calls.
- * In the decompiled code, FUN_10117884 dispatches ALL virtual calls:
- *   FUN_10117884(obj + vtable_offset, arg1, arg2, ...)
+ * In the decompiled code, ResourceRead_Dispatch dispatches ALL virtual calls:
+ *   ResourceRead_Dispatch(obj + vtable_offset, arg1, arg2, ...)
  */
-extern long  VtableDispatch(int vtableCall, ...);           /* FUN_10117884 */
+extern long  VtableDispatch(int vtableCall, ...);           /* ResourceRead_Dispatch */
 
 /* Stream operations (declared extern, implemented via vtable dispatch) */
 extern int  *GetResourceStream(unsigned long resType, short resID,
                                 short openMode);             /* FUN_10052184 */
 extern int  *OpenStream(int resourceRef, short openMode,
                          short isWritable);                  /* FUN_100522dc */
-extern void  CloseStream(int *stream, short release);        /* FUN_100523a8 */
-extern void  StreamRead(int *stream, void *buffer, long count);  /* FUN_10052490 */
-extern void  StreamWrite(int *stream, void *buffer, long count); /* FUN_100524d4 */
-extern void  StreamSetPosition(int *stream, long position, short mode); /* FUN_10052518 */
+extern void  CloseStream(int *stream, short release);        /* CloseStream */
+extern void  StreamRead(int *stream, void *buffer, long count);  /* StreamRead */
+extern void  StreamWrite(int *stream, void *buffer, long count); /* StreamWrite */
+extern void  StreamSetPosition(int *stream, long position, short mode); /* StreamSetPosition */
 
 /* Memory allocation */
 extern void *AllocateBlock(long size);                       /* FUN_100f1640 */
-extern void  FreeBlock(void *ptr);                           /* FUN_100ef580 */
+extern void  FreeBlock(void *ptr);                           /* FreeBlock */
 
 /* MacApp object lifecycle */
-extern void  FocusObject(void *obj);                         /* FUN_100db26c */
-extern void  EndFocus(void);                                 /* FUN_100db2f4 */
-extern void  MarkChanged(void);                              /* FUN_100db328 */
+extern void  FocusObject(void *obj);                         /* FocusObject */
+extern void  EndFocus(void);                                 /* EndFocus */
+extern void  MarkChanged(void);                              /* MarkChanged */
 
 /* MacApp resource stream factory */
 extern void *NewResourceReader(int param);                   /* FUN_100fb260 */
-extern void  SetResourceType(void *reader, long resType, short resID); /* FUN_100fb300 */
+extern void  SetResourceType(void *reader, long resType, short resID); /* SetResourceType */
 
 /* Resource management */
 extern void *GetNamedResource(long resType, short resID);    /* FUN_10003558 */
-extern void  AddResource(int handle, long resType, short resID, void *data); /* FUN_10002568 */
-extern void  DetachResource(void *h);                        /* FUN_10002598 */
+extern void  AddResource(int handle, long resType, short resID, void *data); /* AddResource */
+extern void  DetachResource(void *h);                        /* DetachResource */
 #ifndef MODERN_BUILD
-extern void  DisposeHandle(int h);                           /* FUN_10002ad8 */
-extern void  ReleaseResource(int h);                         /* FUN_100002a0 */
+extern void  DisposeHandle_Thunk(int h);                           /* DisposeHandle_Thunk */
+extern void  ReleaseResource_Thunk(int h);                         /* ReleaseResource_Thunk */
 #endif
-extern void  DisposeHandleFull(int h);                       /* FUN_10002ce8 */
+extern void  DisposeHandleFull(int h);                       /* DisposeHandleFull */
 
 /* Alias manager */
 extern void *NewAlias(void *path);                           /* FUN_100b1c84 */
-extern void  MakeAlias(void *a, void *b, int *outAlias);    /* FUN_100006d8 */
-extern void  ResolveAlias(void *res, void *a, void *b, void *path); /* FUN_10001758 */
-extern void  CopyResourceToDoc(void *doc, void *res);        /* FUN_10029dcc */
+extern void  MakeAlias(void *a, void *b, int *outAlias);    /* MakeAlias */
+extern void  ResolveAlias(void *res, void *a, void *b, void *path); /* ResolveAlias */
+extern void  CopyResourceToDoc(void *doc, void *res);        /* CopyResourceToDoc */
 
 /* String/memory utilities */
 #ifndef MODERN_BUILD
-extern void  BlockMoveData(void *dst, void *src);            /* FUN_10001e78 */
+extern void  BlockMoveData_Thunk(void *dst, void *src);            /* BlockMoveData_Thunk */
 #endif
-extern void  DisposeGeneric(void *param);                    /* FUN_10000318 */
-extern void  GetString(long param, void *outBuf);            /* FUN_10001bd8 */
+extern void  DisposeGeneric(void *param);                    /* DisposeGeneric */
+extern void  GetString(long param, void *outBuf);            /* GetString */
 
 /* Game subsystem calls */
 extern void *GetCityByIndex(short cityIndex);                /* FUN_1000d910 */
-extern void  ReleaseCityData(short cityIndex);               /* FUN_1000d9ac */
-extern void  FlushCityCache(void);                           /* FUN_1000c7b4 */
-extern void  PostLoadCityInit(void);                         /* FUN_1004248c */
-extern void  GetScoreSnapshot(void *outBuf);                 /* FUN_10050bb0 */
-extern void  GetAIStateSnapshot(void);                       /* FUN_1002bdc4 */
-extern void  InitCityNames(void);                            /* FUN_10045170 */
-extern void  InitArmyData(void);                             /* FUN_10045ac8 */
-extern void  InitSpecialLocations(void);                     /* FUN_1001d15c */
-extern void  PostLoadInitialization(void);                   /* FUN_1002869c */
+extern void  ReleaseCityData(short cityIndex);               /* ReleaseCityData */
+extern void  FlushCityCache(void);                           /* FlushCityCache */
+extern void  PostLoadCityInit(void);                         /* PostLoadCityInit */
+extern void  GetScoreSnapshot(void *outBuf);                 /* GetScoreSnapshot */
+extern void  GetAIStateSnapshot(void);                       /* GetAIStateSnapshot */
+extern void  InitCityNames(void);                            /* InitCityNames */
+extern void  InitArmyData(void);                             /* InitArmyData */
+extern void  InitSpecialLocations(void);                     /* InitSpecialLocations */
+extern void  PostLoadInitialization(void);                   /* PostLoadInitialization */
 
 /* Progress dialog */
 extern void *GetSTRValueAt(short resID, short index);        /* FUN_1005f678 */
 extern void  InitDataStructures(void *a, void *b, void *c,
                                  void *d, void *e, void *f,
-                                 void *g);                   /* FUN_10040408 */
-extern void  ProgressCreate(void *bar, void *rect, short resID); /* FUN_100513b4 */
-extern void  ProgressUpdate(void *bar, short percent);       /* FUN_100514d8 */
-extern void  ProgressDelay(int param);                       /* FUN_1005f144 */
+                                 void *g);                   /* InitDataStructures */
+extern void  ProgressCreate(void *bar, void *rect, short resID); /* ProgressCreate */
+extern void  ProgressUpdate(void *bar, short percent);       /* ProgressUpdate */
+extern void  ProgressDelay(int param);                       /* ProgressDelay */
 
 /* External globals - declared in wl2_globals.h as pint* */
 /* gGameState, gExtState, gMapTiles, gUnitTypeTable, gResourcePtr
@@ -105,7 +105,7 @@ extern char         gSCENInfo[];           /* iRam10117604 - 0x54 bytes */
  * ========================================================================= */
 
 /*
- * ByteSwap16 -- FUN_100525a0
+ * ByteSwap16 -- ByteSwap16
  * Address: 0x100525a0, Size: 44 bytes
  *
  * Swaps bytes of a 16-bit value (big-endian <-> little-endian).
@@ -113,14 +113,14 @@ extern char         gSCENInfo[];           /* iRam10117604 - 0x54 bytes */
  *
  * Original decompiled: return param_1 * 0x100 + (param_1 >> 8)
  */
-short ByteSwap16(unsigned short val)                         /* FUN_100525a0 */
+short ByteSwap16(unsigned short val)                         /* ByteSwap16 */
 {
     return (short)(val * 0x100 + (val >> 8));
 }
 
 
 /*
- * ByteSwap32 -- FUN_100525cc
+ * ByteSwap32 -- ByteSwap32
  * Address: 0x100525cc, Size: 60 bytes
  *
  * Swaps bytes of a 32-bit value.
@@ -128,7 +128,7 @@ short ByteSwap16(unsigned short val)                         /* FUN_100525a0 */
  * Original decompiled logic reverses 4 bytes:
  *   byte[0] -> byte[3], byte[1] -> byte[2], etc.
  */
-long ByteSwap32(unsigned long val)                           /* FUN_100525cc */
+long ByteSwap32(unsigned long val)                           /* ByteSwap32 */
 {
     unsigned char b0 = (unsigned char)(val >> 0x18);
     unsigned char b1 = (unsigned char)(val >> 0x10);
@@ -147,14 +147,14 @@ long ByteSwap32(unsigned long val)                           /* FUN_100525cc */
  * ========================================================================= */
 
 /*
- * LoadMapResources -- FUN_10057334
+ * LoadMapResources -- LoadMapResources
  * Address: 0x10057334, Size: 276 bytes
  *
  * Loads MAP and RD (road) resources from the current scenario file.
  *   MAP: 0x8880 bytes (112 x 156 tiles, 2 bytes each)
  *   RD:  0x4440 bytes (112 x 156 tiles, 1 byte each)
  */
-void LoadMapResources(void)                                  /* FUN_10057334 */
+void LoadMapResources(void)                                  /* LoadMapResources */
 {
     int *mapPtr  = (int *)gMapTiles;     /* piRam10117358 */
     int *roadPtr = (int *)gRoadData;     /* piRam10117354 */
@@ -176,8 +176,8 @@ void LoadMapResources(void)                                  /* FUN_10057334 */
     }
 
     /* Read 0x8880 bytes of map tile data */
-    StreamRead(stream, (void *)*mapPtr, 0x8880);             /* FUN_10052490 */
-    CloseStream(stream, 1);                                  /* FUN_100523a8 */
+    StreamRead(stream, (void *)*mapPtr, 0x8880);             /* StreamRead */
+    CloseStream(stream, 1);                                  /* CloseStream */
 
     /* Load RD resource (type 'RD  ', ID 10000) */
     stream = GetResourceStream(0x52442020, 10000, 1);
@@ -194,7 +194,7 @@ void LoadMapResources(void)                                  /* FUN_10057334 */
 
 
 /*
- * ReadSCNResource -- FUN_1005668c
+ * ReadSCNResource -- ReadSCNResource
  * Address: 0x1005668c, Size: 3240 bytes
  *
  * The main game state deserializer. Reads from the SCN resource
@@ -204,13 +204,13 @@ void LoadMapResources(void)                                  /* FUN_10057334 */
  * param_1: TStream pointer (opened on 'SCN ' resource)
  * param_2: pointer to game state buffer (0x2FCC bytes)
  */
-void ReadSCNResource(int *stream, int gameState)             /* FUN_1005668c */
+void ReadSCNResource(int *stream, int gameState)             /* ReadSCNResource */
 {
     short i, j, k;
     int   base;
     short swapped;
 
-    FocusObject(stream);                                     /* FUN_100db26c */
+    FocusObject(stream);                                     /* FocusObject */
 
     /* Step 1: Read raw header block (0xA0 bytes at +0x000) */
     /* vtable +0xE0: ReadData */
@@ -545,7 +545,7 @@ void ReadSCNResource(int *stream, int gameState)             /* FUN_1005668c */
 
 
 /*
- * WriteSCNResource -- FUN_10058c64
+ * WriteSCNResource -- WriteSCNResource
  * Address: 0x10058c64, Size: 3864 bytes
  *
  * The exact mirror of ReadSCNResource. Writes game state back to
@@ -553,14 +553,14 @@ void ReadSCNResource(int *stream, int gameState)             /* FUN_1005668c */
  *
  * Notable: player race values 0xFF -> 0, 0 -> 0xF on write.
  */
-void WriteSCNResource(int *stream, int gameState)            /* FUN_10058c64 */
+void WriteSCNResource(int *stream, int gameState)            /* WriteSCNResource */
 {
     short i, j, k;
     int   base, vt;
     long  sw;
     short sVar;
 
-    FocusObject(stream);                                     /* FUN_100db26c */
+    FocusObject(stream);                                     /* FocusObject */
 
     /* Header block: 0xA0 bytes raw (vtable +0x170: WriteData) */
     VtableDispatch((int)stream + (int)*(short *)(*stream + 0x170),
@@ -865,12 +865,12 @@ void WriteSCNResource(int *stream, int gameState)            /* FUN_10058c64 */
 
 
 /*
- * LoadScenario -- FUN_10057448
+ * LoadScenario -- LoadScenario
  * Address: 0x10057448, Size: 936 bytes
  *
  * Main entry point for loading a scenario file.
  */
-long LoadScenario(short showProgress)                        /* FUN_10057448 */
+long LoadScenario(short showProgress)                        /* LoadScenario */
 {
     int *gsPtr = (int *)gGameState;
     int *scnStream;
@@ -927,26 +927,26 @@ long LoadScenario(short showProgress)                        /* FUN_10057448 */
     }
 
     /* Initialize city names and army data */
-    InitCityNames();                                         /* FUN_10045170 */
-    InitArmyData();                                          /* FUN_10045ac8 */
+    InitCityNames();                                         /* InitCityNames */
+    InitArmyData();                                          /* InitArmyData */
 
     /* Load MAP and RD resources */
-    LoadMapResources();                                      /* FUN_10057334 */
+    LoadMapResources();                                      /* LoadMapResources */
 
     if (showProgress != 0) {
         ProgressUpdate(*(void **)gProgressBar, 0x3C);
     }
 
     /* Initialize special locations */
-    InitSpecialLocations();                                  /* FUN_1001d15c */
+    InitSpecialLocations();                                  /* InitSpecialLocations */
 
     if (showProgress != 0) {
         ProgressUpdate(*(void **)gProgressBar, 100);
-        ProgressDelay(10);                                   /* FUN_1005f144 */
+        ProgressDelay(10);                                   /* ProgressDelay */
     }
 
     /* Post-load initialization */
-    PostLoadInitialization();                                 /* FUN_1002869c */
+    PostLoadInitialization();                                 /* PostLoadInitialization */
 
     /* Set player defaults for inactive players */
     {
@@ -971,12 +971,12 @@ long LoadScenario(short showProgress)                        /* FUN_10057448 */
  * ========================================================================= */
 
 /*
- * ClearCommandRecords -- FUN_10038860
+ * ClearCommandRecords -- ClearCommandRecords
  * Address: 0x10038860, Size: 48 bytes
  *
  * Zeros out all 8 AI command record type flags after saving turn state.
  */
-void ClearCommandRecords(void)                               /* FUN_10038860 */
+void ClearCommandRecords(void)                               /* ClearCommandRecords */
 {
     int *gsPtr = (int *)gGameState;                          /* piRam1011735c */
     short sVar;
@@ -992,7 +992,7 @@ void ClearCommandRecords(void)                               /* FUN_10038860 */
 
 
 /*
- * SerializeMoveData -- FUN_1003865c
+ * SerializeMoveData -- SerializeMoveData
  * Address: 0x1003865c, Size: 516 bytes
  *
  * Serializes AI command records from gameState + 0x1422 into compact
@@ -1004,7 +1004,7 @@ void ClearCommandRecords(void)                               /* FUN_10038860 */
  *
  * Returns: number of moves serialized
  */
-long SerializeMoveData(int outBuffer, short *outSize)        /* FUN_1003865c */
+long SerializeMoveData(int outBuffer, short *outSize)        /* SerializeMoveData */
 {
     unsigned int *gsPtr = (unsigned int *)gGameState;        /* puRam1011735c */
     long   moveCount = 0;
@@ -1085,7 +1085,7 @@ long SerializeMoveData(int outBuffer, short *outSize)        /* FUN_1003865c */
                         *(short *)(cmdOfs + *gsPtr + slot * 2 + 0x142A);
 
                     /* Copy 16 bytes of command data */
-                    BlockMoveData(
+                    BlockMoveData_Thunk(
                         (void *)((unsigned long)*gsPtr + player * 0x2C +
                                  slot * 0x10 + 0x142E),
                         (void *)(outOfs + 6),
@@ -1109,7 +1109,7 @@ long SerializeMoveData(int outBuffer, short *outSize)        /* FUN_1003865c */
 
 
 /*
- * SaveTurnState -- FUN_10038890
+ * SaveTurnState -- SaveTurnState
  * Address: 0x10038890, Size: 976 bytes
  *
  * Saves a snapshot of the current turn's state into the per-turn
@@ -1118,13 +1118,13 @@ long SerializeMoveData(int outBuffer, short *outSize)        /* FUN_1003865c */
  * Data written per turn:
  *   - Record size (2 bytes)
  *   - Gold per player (8 x 2 = 16 bytes from gameState+0x186)
- *   - Score snapshot (16 bytes via FUN_10050bb0)
+ *   - Score snapshot (16 bytes via GetScoreSnapshot)
  *   - AI state (16 bytes)
  *   - Army visibility (army_count bytes, 0xFF if hidden)
  *   - Move data size + serialized AI commands
  *   - Stream position checksum (4 bytes written back to start)
  */
-void SaveTurnState(void)                                     /* FUN_10038890 */
+void SaveTurnState(void)                                     /* SaveTurnState */
 {
     int    *gsPtr  = (int *)gGameState;                      /* piRam1011735c */
     int    *mapPtr = (int *)gMapTiles;                       /* piRam10117358 */
@@ -1235,10 +1235,10 @@ void SaveTurnState(void)                                     /* FUN_10038890 */
     } while (sVar < 8);
 
     /* Get score snapshot */
-    GetScoreSnapshot(scoreSnapshot);                         /* FUN_10050bb0 */
+    GetScoreSnapshot(scoreSnapshot);                         /* GetScoreSnapshot */
 
     /* Get AI state snapshot */
-    GetAIStateSnapshot();                                    /* FUN_1002bdc4 */
+    GetAIStateSnapshot();                                    /* GetAIStateSnapshot */
 
     /* Serialize move data */
     moveCountField = (short)SerializeMoveData((int)moveBuffer, &moveSizeField);
@@ -1275,7 +1275,7 @@ void SaveTurnState(void)                                     /* FUN_10038890 */
     CloseStream(turnStream, 1);
 
     /* Clear command records for next turn */
-    ClearCommandRecords();                                   /* FUN_10038860 */
+    ClearCommandRecords();                                   /* ClearCommandRecords */
 }
 
 
@@ -1284,14 +1284,14 @@ void SaveTurnState(void)                                     /* FUN_10038890 */
  * ========================================================================= */
 
 /*
- * WriteCityRecords -- FUN_1001e330
+ * WriteCityRecords -- WriteCityRecords
  * Address: 0x1001e330, Size: 188 bytes
  *
  * Writes 8 city records (each 0x42C bytes) plus a shared 0x4B0 byte
  * city data block to the save stream. City data is NOT inline in the
  * main game state but in separate allocations via GetCityByIndex.
  */
-void WriteCityRecords(int *stream)                           /* FUN_1001e330 */
+void WriteCityRecords(int *stream)                           /* WriteCityRecords */
 {
     short i;
     void *cityData;
@@ -1302,32 +1302,32 @@ void WriteCityRecords(int *stream)                           /* FUN_1001e330 */
         cityData = GetCityByIndex(i);                        /* FUN_1000d910 */
 
         /* Write 0x42C bytes of city data */
-        StreamWrite(stream, cityData, 0x42C);                /* FUN_100524d4 */
+        StreamWrite(stream, cityData, 0x42C);                /* StreamWrite */
 
         /* Release the city data handle */
-        ReleaseCityData(i);                                  /* FUN_1000d9ac */
+        ReleaseCityData(i);                                  /* ReleaseCityData */
 
         i = i + 1;
     } while (i < 8);
 
     /* Flush city cache */
-    FlushCityCache();                                        /* FUN_1000c7b4 */
+    FlushCityCache();                                        /* FlushCityCache */
 
     /* Write shared city data block (0x4B0 bytes) */
-    /* Original: FUN_100524d4(param_1, **(undefined4 **)(iVar2 + -0x430), 0x4b0) */
+    /* Original: StreamWrite(param_1, **(undefined4 **)(iVar2 + -0x430), 0x4b0) */
     /* The pointer comes from a global offset relative to the base pointer
      * established by ZEXT48(&.TVect::OCECToRString) -- architecture-specific */
 }
 
 
 /*
- * ReadCityRecords -- FUN_1001e3ec
+ * ReadCityRecords -- ReadCityRecords
  * Address: 0x1001e3ec, Size: 196 bytes
  *
  * Reads 8 city records (each 0x42C bytes) plus the shared 0x4B0 byte
  * city data block from the save stream.
  */
-void ReadCityRecords(int *stream)                            /* FUN_1001e3ec */
+void ReadCityRecords(int *stream)                            /* ReadCityRecords */
 {
     short i;
     void *cityData;
@@ -1338,22 +1338,22 @@ void ReadCityRecords(int *stream)                            /* FUN_1001e3ec */
         cityData = GetCityByIndex(i);                        /* FUN_1000d910 */
 
         /* Read 0x42C bytes of city data */
-        StreamRead(stream, cityData, 0x42C);                 /* FUN_10052490 */
+        StreamRead(stream, cityData, 0x42C);                 /* StreamRead */
 
         /* Release the city data handle */
-        ReleaseCityData(i);                                  /* FUN_1000d9ac */
+        ReleaseCityData(i);                                  /* ReleaseCityData */
 
         i = i + 1;
     } while (i < 8);
 
     /* Flush city cache */
-    FlushCityCache();                                        /* FUN_1000c7b4 */
+    FlushCityCache();                                        /* FlushCityCache */
 
     /* Read shared city data block (0x4B0 bytes) */
-    /* Original: FUN_10052490(param_1, **(undefined4 **)(iVar2 + -0x430), 0x4b0) */
+    /* Original: StreamRead(param_1, **(undefined4 **)(iVar2 + -0x430), 0x4b0) */
 
     /* Post-load city initialization */
-    PostLoadCityInit();                                      /* FUN_1004248c */
+    PostLoadCityInit();                                      /* PostLoadCityInit */
 }
 
 
@@ -1362,7 +1362,7 @@ void ReadCityRecords(int *stream)                            /* FUN_1001e3ec */
  * ========================================================================= */
 
 /*
- * WriteGameState -- FUN_10029e84
+ * WriteGameState -- WriteGameState
  * Address: 0x10029e84, Size: 2160 bytes
  *
  * Writes the full game state to the document's resource fork (native format).
@@ -1375,7 +1375,7 @@ void ReadCityRecords(int *stream)                            /* FUN_1001e3ec */
  *     embedded resources (size-prefixed) + city records (8 x 0x42C + 0x4B0)
  *   Player name aliases (NAME + alis resources per player)
  */
-void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
+void WriteGameState(int *docHandle)                          /* WriteGameState */
 {
     int    *gsPtr    = (int *)gGameState;                    /* piRam1011735c */
     int    *cityOwn  = (int *)gCityOwnership;                /* piRam10115cf0 */
@@ -1398,7 +1398,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
     }
 
     /* Write SCEN info header (0x54 bytes) */
-    StreamWrite(saveStream, gSCENInfo, 0x54);                /* FUN_100524d4 */
+    StreamWrite(saveStream, gSCENInfo, 0x54);                /* StreamWrite */
 
     /* Write game state block (0x2FCC bytes) */
     StreamWrite(saveStream, (void *)*gsPtr, 0x2FCC);
@@ -1416,11 +1416,11 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
     {
         void *ownerData = *(void **)cityOwn;
         if (ownerData != NULL) {
-            DetachResource(ownerData);                       /* FUN_10002598 / HLock */
+            DetachResource(ownerData);                       /* DetachResource / HLock */
         }
         StreamWrite(saveStream, ownerData, 0x4440);
         if (*cityOwn != 0) {
-            DisposeHandle(*cityOwn);                         /* FUN_10002ad8 / HUnlock */
+            DisposeHandle_Thunk(*cityOwn);                         /* DisposeHandle_Thunk / HUnlock */
         }
     }
 
@@ -1447,7 +1447,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
     FreeBlock(tempBuf);
 
     /* Write city records (8 x 0x42C + 0x4B0) */
-    WriteCityRecords(saveStream);                            /* FUN_1001e330 */
+    WriteCityRecords(saveStream);                            /* WriteCityRecords */
 
     /* Write player name aliases (if message_pending == 0) */
     if (*(short *)(*gsPtr + 0x120) == 0) {
@@ -1469,7 +1469,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
             void *aliasData = NewAlias(pathBuf);
             AddResource(aliasHandle, 0x616C6973, 1000, aliasData); /* 'alis' */
             MarkChanged();
-            ReleaseResource(aliasHandle);
+            ReleaseResource_Thunk(aliasHandle);
             DisposeHandleFull(aliasHandle);
         }
 
@@ -1489,7 +1489,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
             void *aliasData = NewAlias(pathBuf);
             AddResource(aliasHandle, 0x616C6973, 0x3E9, aliasData);
             MarkChanged();
-            ReleaseResource(aliasHandle);
+            ReleaseResource_Thunk(aliasHandle);
         }
 
         /* Player 2: NAME #20000, alis #1002 (0x3EA) -- if present */
@@ -1508,7 +1508,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
                 void *aliasData = NewAlias(pathBuf);
                 AddResource(aliasHandle, 0x616C6973, 0x3EA, aliasData);
                 MarkChanged();
-                ReleaseResource(aliasHandle);
+                ReleaseResource_Thunk(aliasHandle);
             }
         }
 
@@ -1528,7 +1528,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
                 void *aliasData = NewAlias(pathBuf);
                 AddResource(aliasHandle, 0x616C6973, 0x3EB, aliasData);
                 MarkChanged();
-                ReleaseResource(aliasHandle);
+                ReleaseResource_Thunk(aliasHandle);
             }
         }
 
@@ -1548,7 +1548,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
                 void *aliasData = NewAlias(pathBuf);
                 AddResource(aliasHandle, 0x616C6973, 0x3EC, aliasData);
                 MarkChanged();
-                ReleaseResource(aliasHandle);
+                ReleaseResource_Thunk(aliasHandle);
             }
         }
     }
@@ -1559,7 +1559,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
 
 
 /*
- * WriteGameStateCrossFormat -- FUN_1002a864
+ * WriteGameStateCrossFormat -- WriteGameStateCrossFormat
  * Address: 0x1002a864, Size: 2508 bytes
  *
  * Cross-platform save with individual field byte-swapping.
@@ -1574,7 +1574,7 @@ void WriteGameState(int *docHandle)                          /* FUN_10029e84 */
  *   - City records (per-field byte-swapped)
  *   - Extra city data (0x4B0)
  */
-void WriteGameStateCrossFormat(int *docHandle)               /* FUN_1002a864 */
+void WriteGameStateCrossFormat(int *docHandle)               /* WriteGameStateCrossFormat */
 {
     int    *gsPtr     = (int *)gGameState;
     int    *unitTypes = (int *)gUnitTypeTable;
@@ -1690,7 +1690,7 @@ void WriteGameStateCrossFormat(int *docHandle)               /* FUN_1002a864 */
         }
         StreamWrite(saveStream, ownerData, 0x4440);
         if (*cityOwn != 0) {
-            DisposeHandle(*cityOwn);
+            DisposeHandle_Thunk(*cityOwn);
         }
     }
 
@@ -1848,14 +1848,14 @@ void WriteGameStateCrossFormat(int *docHandle)               /* FUN_1002a864 */
             VtableDispatch((int)saveStream + (int)*(short *)(vt + 400), sw);
         }
 
-        ReleaseCityData(i);                                  /* FUN_1000d9ac */
+        ReleaseCityData(i);                                  /* ReleaseCityData */
     }
 
     /* Flush city cache */
-    FlushCityCache();                                        /* FUN_1000c7b4 */
+    FlushCityCache();                                        /* FlushCityCache */
 
     /* Write shared city data block (0x4B0 bytes raw) */
-    /* Original: FUN_100524d4(piVar8, **(undefined4 **)(iVar17 + -0x430), 0x4b0) */
+    /* Original: StreamWrite(piVar8, **(undefined4 **)(iVar17 + -0x430), 0x4b0) */
 
     /* Close the save stream */
     CloseStream(saveStream, 1);

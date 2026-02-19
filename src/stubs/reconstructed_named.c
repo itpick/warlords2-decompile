@@ -15,7 +15,7 @@
 /* =========================================================================
  * Forward declarations for internal calls
  * ========================================================================= */
-int FUN_10117884();
+int ResourceRead_Dispatch();
 void FUN_10000150(void);
 int FUN_10000090(void *exception_buf);
 void FUN_10000378(int);
@@ -34,9 +34,9 @@ extern int *piRam10117114;
 
 /* =========================================================================
  * AbsShort - Absolute value (Mac OS Toolbox trampoline)
- * Original: FUN_10003768, 24 bytes (TVect trampoline)
+ * Original: AbsShort, 24 bytes (TVect trampoline)
  * ========================================================================= */
-short AbsShort(long value)
+short FUN_10003768(long value)
 {
     /* TVect trampoline to abs() */
     return (short)((value < 0) ? -value : value);
@@ -45,18 +45,18 @@ short AbsShort(long value)
 
 /* =========================================================================
  * ActivateAttackEvent - Clear siege slot / activate attack
- * Original: FUN_1000de24
+ * Original: ActivateAttackEvent
  * ========================================================================= */
-int ActivateAttackEvent(void)
+int FUN_1000de24(void)
 {
-    /* FUN_1000de24 - implemented in combat.c or ai.c */
+    /* ActivateAttackEvent - implemented in combat.c or ai.c */
     return 0;
 }
 
 
 /* =========================================================================
  * AddResource - Mac OS Resource Manager: AddResource wrapper
- * Original: FUN_10002568, 24 bytes (TVect trampoline)
+ * Original: AddResource, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int AddResource(int handle, long resType, short resID, void *data)
 {
@@ -67,11 +67,11 @@ int AddResource(int handle, long resType, short resID, void *data)
 
 /* =========================================================================
  * AdvanceGroupToTarget - Move army group toward target
- * Original: FUN_1001cd68
+ * Original: AdvanceGroupToTarget
  * ========================================================================= */
 int AdvanceGroupToTarget(int groupIdx)
 {
-    /* FUN_1001cd68 - movement system, implemented in movement.c */
+    /* AdvanceGroupToTarget - movement system, implemented in movement.c */
     return 0;
 }
 
@@ -123,11 +123,11 @@ void *AllocateMemory(long size)
 
 /* =========================================================================
  * AllocInfluenceMap - Allocate AI influence map buffer
- * Original: FUN_10044950
+ * Original: AllocInfluenceMap
  * ========================================================================= */
 long AllocInfluenceMap(void)
 {
-    /* FUN_10044950 - AI subsystem */
+    /* AllocInfluenceMap - AI subsystem */
     return 0;
 }
 
@@ -145,56 +145,56 @@ void *AppendSTRSuffix(unsigned char *dst, unsigned long addr, short index)
 
 /* =========================================================================
  * AssignPlayerHomeCities - Assign home cities to players (mapgen)
- * Original: FUN_100a88d0 (FAILED decompile)
+ * Original: AssignPlayerHomeCities (FAILED decompile)
  * ========================================================================= */
 int AssignPlayerHomeCities(void)
 {
-    /* FUN_100a88d0 - map generation phase */
+    /* AssignPlayerHomeCities - map generation phase */
     return 0;
 }
 
 
 /* =========================================================================
  * AssignPlayerStartPositions - Assign player start positions
- * Original: FUN_100ab334
+ * Original: AssignPlayerStartPositions
  * ========================================================================= */
 int AssignPlayerStartPositions(void)
 {
-    /* FUN_100ab334 - map generation phase */
+    /* AssignPlayerStartPositions - map generation phase */
     return 0;
 }
 
 
 /* =========================================================================
  * AssignTerrainGraphics - Assign tile graphics based on terrain
- * Original: FUN_100a4ae8
+ * Original: AssignTerrainGraphics
  * ========================================================================= */
 int AssignTerrainGraphics(void)
 {
-    /* FUN_100a4ae8 - map generation phase */
+    /* AssignTerrainGraphics - map generation phase */
     return 0;
 }
 
 
 /* =========================================================================
  * AssignToDefense - Assign unit to defense duty
- * Original: FUN_1001a348
+ * Original: AssignToDefense
  * ========================================================================= */
-int AssignToDefense(long unitIdx, long targetIdx)
+int FUN_1001a348(long unitIdx, long targetIdx)
 {
-    /* FUN_1001a348 - AI/combat */
+    /* AssignToDefense - AI/combat */
     return 0;
 }
 
 
 /* =========================================================================
  * BuildPascalString - Build Pascal string from C parameters
- * Original: FUN_100b19f4, 188 bytes
+ * Original: BuildPascalString, 188 bytes
  * ========================================================================= */
-/* Implemented in reconstructed_5.c as FUN_100b19f4 */
-int BuildPascalString(unsigned char *dst, ...)
+/* Implemented in reconstructed_5.c as BuildPascalString */
+int FUN_100b19f4(unsigned char *dst, ...)
 {
-    /* FUN_100b19f4 - string utility */
+    /* BuildPascalString - string utility */
     if (dst != (unsigned char *)0) {
         dst[0] = 0;
     }
@@ -204,139 +204,139 @@ int BuildPascalString(unsigned char *dst, ...)
 
 /* =========================================================================
  * BuildRoadConnectivityGraph - Build road graph for map
- * Original: FUN_100a49cc
+ * Original: BuildRoadConnectivityGraph
  * ========================================================================= */
 int BuildRoadConnectivityGraph(void)
 {
-    /* FUN_100a49cc - mapgen road system */
+    /* BuildRoadConnectivityGraph - mapgen road system */
     return 0;
 }
 
 
 /* =========================================================================
  * BuildRoadSegment - Build single road segment between endpoints
- * Original: FUN_100a9f78
+ * Original: BuildRoadSegment
  * ========================================================================= */
 int BuildRoadSegment(void *buf, int ep1, int ep2)
 {
-    /* FUN_100a9f78 - mapgen road system */
+    /* BuildRoadSegment - mapgen road system */
     return 0;
 }
 
 
 /* =========================================================================
  * CalcArmyStrength - Calculate army combat strength
- * Original: FUN_1000fe90, 336 bytes
+ * Original: CalcArmyStrength, 336 bytes
  * ========================================================================= */
 int CalcArmyStrength(short armyIdx)
 {
-    /* FUN_1000fe90 - combat system (implemented in combat.c) */
+    /* CalcArmyStrength - combat system (implemented in combat.c) */
     return 0;
 }
 
 
 /* =========================================================================
  * CalcPathCost - Calculate path movement cost
- * Original: FUN_1001eff8 (via movement.c)
+ * Original: EvaluatePosition (via movement.c)
  * ========================================================================= */
 int CalcPathCost(short armyIdx, short destX, short destY)
 {
-    /* FUN_1001eff8 - pathfinding (implemented in movement.c) */
+    /* EvaluatePosition - pathfinding (implemented in movement.c) */
     return 0;
 }
 
 
 /* =========================================================================
  * CheckArmyEscort - Check if army has escort units
- * Original: FUN_1001e4b0
+ * Original: CheckArmyEscort
  * ========================================================================= */
 int CheckArmyEscort(short armyIdx)
 {
-    /* FUN_1001e4b0 - movement/AI */
+    /* CheckArmyEscort - movement/AI */
     return 0;
 }
 
 
 /* =========================================================================
  * CheckHeroQuest - Check hero quest availability
- * Original: FUN_10039e24
+ * Original: CheckHeroQuest
  * ========================================================================= */
 int CheckHeroQuest(int unitPtr)
 {
-    /* FUN_10039e24 - quest system */
+    /* CheckHeroQuest - quest system */
     return 0;
 }
 
 
 /* =========================================================================
  * CheckQuestCondition - Evaluate quest completion condition
- * Original: FUN_1004639c
+ * Original: CheckQuestCondition
  * ========================================================================= */
-int CheckQuestCondition(long unitIdx)
+int FUN_1004639c(long unitIdx)
 {
-    /* FUN_1004639c - quest system */
+    /* CheckQuestCondition - quest system */
     return 0;
 }
 
 
 /* =========================================================================
  * CloseStream - Close resource stream
- * Original: FUN_100523a8
+ * Original: CloseStream
  * ========================================================================= */
 int CloseStream(int *stream, short release)
 {
-    /* FUN_100523a8 - serialization */
+    /* CloseStream - serialization */
     return 0;
 }
 
 
 /* =========================================================================
  * ConcatBuildName - Concatenate name components
- * Original: FUN_100b1ed0
+ * Original: ConcatBuildName
  * ========================================================================= */
 int ConcatBuildName(unsigned char *dst, unsigned char *a, unsigned char *b)
 {
-    /* FUN_100b1ed0 - string utility */
+    /* ConcatBuildName - string utility */
     return 0;
 }
 
 
 /* =========================================================================
  * ConcatPStrings - Concatenate Pascal strings
- * Original: FUN_100b1c88, 148 bytes
+ * Original: ConcatPStrings, 148 bytes
  * ========================================================================= */
 int ConcatPStrings(unsigned char *dst, short mode, void *src)
 {
-    /* FUN_100b1c88 - Pascal string concat with mode */
+    /* ConcatPStrings - Pascal string concat with mode */
     return 0;
 }
 
 
 /* =========================================================================
  * ConnectWaypoints - Connect two waypoints with road
- * Original: FUN_1009f350
+ * Original: ConnectWaypoints
  * ========================================================================= */
 int ConnectWaypoints(long packedFrom, long packedTo)
 {
-    /* FUN_1009f350 - mapgen road connectivity */
+    /* ConnectWaypoints - mapgen road connectivity */
     return 0;
 }
 
 
 /* =========================================================================
  * ConnectWaypointsViaEdge - Connect waypoints via map edge
- * Original: FUN_1009f524
+ * Original: ConnectWaypointsViaEdge
  * ========================================================================= */
 int ConnectWaypointsViaEdge(long packedFrom, long packedTo)
 {
-    /* FUN_1009f524 - mapgen road connectivity */
+    /* ConnectWaypointsViaEdge - mapgen road connectivity */
     return 0;
 }
 
 
 /* =========================================================================
  * CopyBits_Thunk - Mac OS QuickDraw CopyBits wrapper
- * Original: FUN_100008d0, 24 bytes (TVect trampoline)
+ * Original: CopyBits_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int CopyBits_Thunk(int src, int dst, void *srcR, void *dstR, short mode, int rgn)
 {
@@ -348,11 +348,11 @@ int CopyBits_Thunk(int src, int dst, void *srcR, void *dstR, short mode, int rgn
 
 /* =========================================================================
  * CopyResourceToDoc - Copy resource into document
- * Original: FUN_10029dcc, 184 bytes
+ * Original: CopyResourceToDoc, 184 bytes
  * ========================================================================= */
 int CopyResourceToDoc(void *doc, void *res)
 {
-    /* FUN_10029dcc - resource/doc management */
+    /* CopyResourceToDoc - resource/doc management */
     return 0;
 }
 
@@ -369,12 +369,12 @@ int CopyScenarioData(void *src, int dest)
 
 
 /* =========================================================================
- * CopyString - Copy C string (BlockMoveData equivalent)
- * Original: FUN_10001e78, 24 bytes (TVect trampoline)
+ * CopyString - Copy C string (BlockMoveData_Thunk equivalent)
+ * Original: BlockMoveData_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int CopyString(void *dest, char *src)
 {
-    /* Mac OS Toolbox wrapper - BlockMoveData / string copy */
+    /* Mac OS Toolbox wrapper - BlockMoveData_Thunk / string copy */
     if (dest && src) {
         char *d = (char *)dest;
         while ((*d++ = *src++) != '\0');
@@ -385,32 +385,32 @@ int CopyString(void *dest, char *src)
 
 /* =========================================================================
  * CreateUnitTemplate - Create unit type template record
- * Original: FUN_1004a0c4
+ * Original: CreateUnitTemplate
  * ========================================================================= */
 long CreateUnitTemplate(short typeId, char *a, short *b,
                         char *c, short *d, char *e)
 {
-    /* FUN_1004a0c4 - unit creation */
+    /* CreateUnitTemplate - unit creation */
     return 0;
 }
 
 
 /* =========================================================================
  * CutWaterChannel - Cut water channel through terrain
- * Original: FUN_100a8d88
+ * Original: CutWaterChannel
  * ========================================================================= */
 int CutWaterChannel(short channelWidth, short stopAtOcean, short extraWidth)
 {
-    /* FUN_100a8d88 - mapgen terrain */
+    /* CutWaterChannel - mapgen terrain */
     return 0;
 }
 
 
 /* =========================================================================
  * DetachResource - Mac OS Resource Manager: DetachResource
- * Original: FUN_10002598, 24 bytes (TVect trampoline)
+ * Original: DetachResource, 24 bytes (TVect trampoline)
  * ========================================================================= */
-int DetachResource(void *h)
+int FUN_10002598(void *h)
 {
     /* Mac OS Toolbox wrapper - DetachResource / HLock */
     return 0;
@@ -419,7 +419,7 @@ int DetachResource(void *h)
 
 /* =========================================================================
  * DetachResource_Thunk - DetachResource alias
- * Original: FUN_10002598
+ * Original: DetachResource
  * ========================================================================= */
 int DetachResource_Thunk(void *h)
 {
@@ -430,12 +430,12 @@ int DetachResource_Thunk(void *h)
 
 /* =========================================================================
  * DiceRoll - Random dice roll (numDice x dieSize + bonus)
- * Original: FUN_1005f230, 252 bytes
+ * Original: RandomRange, 252 bytes
  * ========================================================================= */
 /* Implemented in core/utils.c as RandomRange */
 short DiceRoll(short numDice, short dieSize, short bonus)
 {
-    /* FUN_1005f230 - alias for RandomRange */
+    /* RandomRange - alias for RandomRange */
     short total = 0;
     short i;
     if (dieSize == 0) return bonus;
@@ -448,43 +448,43 @@ short DiceRoll(short numDice, short dieSize, short bonus)
 
 /* =========================================================================
  * DisbandUnit - Remove unit from army
- * Original: FUN_1000fc38
+ * Original: DisbandUnit
  * ========================================================================= */
 int DisbandUnit(short unitIdx, short mode)
 {
-    /* FUN_1000fc38 - combat/unit management */
+    /* DisbandUnit - combat/unit management */
     return 0;
 }
 
 
 /* =========================================================================
- * DisposeHandle_Thunk - Mac OS Memory Manager: DisposeHandle
- * Original: FUN_10002ad8, 24 bytes (TVect trampoline)
+ * DisposeHandle_Thunk - Mac OS Memory Manager: DisposeHandle_Thunk
+ * Original: DisposeHandle_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int DisposeHandle_Thunk(void *h)
 {
-    /* Mac OS Toolbox wrapper - DisposeHandle */
-    DisposeHandle((Handle)h);
+    /* Mac OS Toolbox wrapper - DisposeHandle_Thunk */
+    DisposeHandle_Thunk((Handle)h);
     return 0;
 }
 
 
 /* =========================================================================
  * DisposeHandleFull - Dispose handle with full cleanup
- * Original: FUN_10002ce8
+ * Original: DisposeHandleFull
  * ========================================================================= */
 int DisposeHandleFull(int h)
 {
-    /* FUN_10002ce8 - extended dispose */
+    /* DisposeHandleFull - extended dispose */
     return 0;
 }
 
 
 /* =========================================================================
  * DisposePtr_Thunk - Mac OS Memory Manager: DisposePtr
- * Original: FUN_100f5708
+ * Original: DisposePtr_Thunk
  * ========================================================================= */
-int DisposePtr_Thunk(void *p)
+int FUN_100f5708(void *p)
 {
     /* Mac OS Toolbox wrapper - DisposePtr */
     DisposePtr((Ptr)p);
@@ -494,220 +494,220 @@ int DisposePtr_Thunk(void *p)
 
 /* =========================================================================
  * DrawRoadBetweenNeutral - Draw road between neutral cities
- * Original: FUN_100a3280
+ * Original: DrawRoadBetweenNeutral
  * ========================================================================= */
 int DrawRoadBetweenNeutral(long from, long to)
 {
-    /* FUN_100a3280 - mapgen roads */
+    /* DrawRoadBetweenNeutral - mapgen roads */
     return 0;
 }
 
 
 /* =========================================================================
  * DrawRoadBetweenPlayer - Draw road between player cities
- * Original: FUN_100a32b8
+ * Original: DrawRoadBetweenPlayer
  * ========================================================================= */
 int DrawRoadBetweenPlayer(long from, long to)
 {
-    /* FUN_100a32b8 - mapgen roads */
+    /* DrawRoadBetweenPlayer - mapgen roads */
     return 0;
 }
 
 
 /* =========================================================================
  * DrawRoadFromCity - Draw road originating from city
- * Original: FUN_100a31d8
+ * Original: DrawRoadFromCity
  * ========================================================================= */
 int DrawRoadFromCity(long packedCityPos)
 {
-    /* FUN_100a31d8 - mapgen roads */
+    /* DrawRoadFromCity - mapgen roads */
     return 0;
 }
 
 
 /* =========================================================================
  * DrawStandaloneRoad - Draw standalone road segment
- * Original: FUN_100a3304
+ * Original: DrawStandaloneRoad
  * ========================================================================= */
 int DrawStandaloneRoad(long packedCityPos)
 {
-    /* FUN_100a3304 - mapgen roads */
+    /* DrawStandaloneRoad - mapgen roads */
     return 0;
 }
 
 
 /* =========================================================================
  * DrawTerrainChain - Draw terrain chain (mountain/forest)
- * Original: FUN_100ab368
+ * Original: DrawTerrainChain
  * ========================================================================= */
 int DrawTerrainChain(short chainType)
 {
-    /* FUN_100ab368 - mapgen terrain */
+    /* DrawTerrainChain - mapgen terrain */
     return 0;
 }
 
 
 /* =========================================================================
  * EnsureCityCoastalAccess - Ensure cities have water access
- * Original: FUN_100a39ac
+ * Original: EnsureCityCoastalAccess
  * ========================================================================= */
 int EnsureCityCoastalAccess(void)
 {
-    /* FUN_100a39ac - mapgen terrain */
+    /* EnsureCityCoastalAccess - mapgen terrain */
     return 0;
 }
 
 
 /* =========================================================================
  * ErodeLandTiles - Erode land tiles near water
- * Original: FUN_100a9628
+ * Original: ErodeLandTiles
  * ========================================================================= */
 int ErodeLandTiles(void)
 {
-    /* FUN_100a9628 - mapgen terrain */
+    /* ErodeLandTiles - mapgen terrain */
     return 0;
 }
 
 
 /* =========================================================================
  * EvaluatePosition - Evaluate map position value
- * Original: FUN_1001eff8
+ * Original: EvaluatePosition
  * ========================================================================= */
 int EvaluatePosition(short x, short y)
 {
-    /* FUN_1001eff8 - movement/AI (implemented in movement.c) */
+    /* EvaluatePosition - movement/AI (implemented in movement.c) */
     return 0;
 }
 
 
 /* =========================================================================
  * ExecuteArmyMove - Execute army movement order
- * Original: FUN_10018180
+ * Original: ExecuteArmyMove
  * ========================================================================= */
 int ExecuteArmyMove(short x, short y, short flags)
 {
-    /* FUN_10018180 - movement (implemented in movement.c) */
+    /* ExecuteArmyMove - movement (implemented in movement.c) */
     return 0;
 }
 
 
 /* =========================================================================
  * FilterEnemyUnits - Filter unit list to enemy units only
- * Original: FUN_1001ec20
+ * Original: FilterEnemyUnits
  * ========================================================================= */
 int FilterEnemyUnits(short *unitList)
 {
-    /* FUN_1001ec20 - AI/combat */
+    /* FilterEnemyUnits - AI/combat */
     return 0;
 }
 
 
 /* =========================================================================
  * FindArmySlot - Find empty slot in army
- * Original: FUN_1001e9d0
+ * Original: FindArmySlot
  * ========================================================================= */
 long FindArmySlot(short armyIdx)
 {
-    /* FUN_1001e9d0 - unit management */
+    /* FindArmySlot - unit management */
     return 0;
 }
 
 
 /* =========================================================================
  * FindBestTarget - Find best attack target for army
- * Original: FUN_10020d88
+ * Original: FindBestTarget
  * ========================================================================= */
 short FindBestTarget(short armyIdx, short *outCoords,
                      char *buf, long influenceMap, short extended)
 {
-    /* FUN_10020d88 - AI targeting */
+    /* FindBestTarget - AI targeting */
     return 0;
 }
 
 
 /* =========================================================================
  * FindNearestEnemy - Find nearest enemy army
- * Original: FUN_100186cc
+ * Original: FindNearestEnemy
  * ========================================================================= */
-int FindNearestEnemy(short x, short y, long filterPlayer)
+int FUN_100186cc(short x, short y, long filterPlayer)
 {
-    /* FUN_100186cc - movement/AI (implemented in movement.c) */
+    /* FindNearestEnemy - movement/AI (implemented in movement.c) */
     return 0;
 }
 
 
 /* =========================================================================
  * FindNextRoadSegment - Find next road segment in path
- * Original: FUN_100a9d34
+ * Original: FindNextRoadSegment
  * ========================================================================= */
 int FindNextRoadSegment(void *buf, void *endpoints, void *len)
 {
-    /* FUN_100a9d34 - mapgen road */
+    /* FindNextRoadSegment - mapgen road */
     return 0;
 }
 
 
 /* =========================================================================
  * FindPath - Find path between two map positions
- * Original: FUN_1001ee88
+ * Original: FindPath
  * ========================================================================= */
 int FindPath(short x, short y, char *pathBuf,
              short terrainBonus, short orderType, short flags)
 {
-    /* FUN_1001ee88 - pathfinding (implemented in movement.c) */
+    /* FindPath - pathfinding (implemented in movement.c) */
     return 0;
 }
 
 
 /* =========================================================================
  * FindPrimaryThreat - Identify primary threat direction
- * Original: FUN_1000df58
+ * Original: FindPrimaryThreat
  * ========================================================================= */
 short FindPrimaryThreat(short mode)
 {
-    /* FUN_1000df58 - AI/combat */
+    /* FindPrimaryThreat - AI/combat */
     return 0;
 }
 
 
 /* =========================================================================
  * FindUnitsInRange - Find all units within range of position
- * Original: FUN_1001ed3c
+ * Original: FindUnitsInRange
  * ========================================================================= */
 int FindUnitsInRange(short x, short y, short *outList, short range)
 {
-    /* FUN_1001ed3c - movement/AI */
+    /* FindUnitsInRange - movement/AI */
     return 0;
 }
 
 
 /* =========================================================================
  * FlushCityCache - Flush cached city data
- * Original: FUN_1000c7b4
+ * Original: FlushCityCache
  * ========================================================================= */
-int FlushCityCache(void)
+int FUN_1000c7b4(void)
 {
-    /* FUN_1000c7b4 - city management */
+    /* FlushCityCache - city management */
     return 0;
 }
 
 
 /* =========================================================================
  * FocusObject - Set focus to MacApp object (unlock handler)
- * Original: FUN_100db26c, 56 bytes
+ * Original: FocusObject, 56 bytes
  * ========================================================================= */
-/* Implemented in reconstructed_5.c as FUN_100db26c */
-int FocusObject(void *obj)
+/* Implemented in reconstructed_5.c as FocusObject */
+int FUN_100db26c(void *obj)
 {
-    /* FUN_100db26c - MacApp focus management */
-    FUN_100db26c((int)(long)obj);
+    /* FocusObject - MacApp focus management */
+    FocusObject((int)(long)obj);
     return 0;
 }
 
 
 /* =========================================================================
  * FormatString - Format number to string (NumToString equivalent)
- * Original: FUN_10001dd0, 24 bytes (TVect trampoline)
+ * Original: DrawNumber, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int FormatString(char *dest, ...)
 {
@@ -718,30 +718,30 @@ int FormatString(char *dest, ...)
 
 /* =========================================================================
  * FreeBlock - Free heap block (DisposePtr wrapper)
- * Original: FUN_100ef580, 56 bytes
+ * Original: FreeBlock, 56 bytes
  * ========================================================================= */
 /* Implemented in reconstructed_5.c */
-int FreeBlock(void *ptr)
+int FUN_100ef580(void *ptr)
 {
-    /* FUN_100ef580 */
-    return FUN_100ef580((int)(long)ptr);
+    /* FreeBlock */
+    return FreeBlock((int)(long)ptr);
 }
 
 
 /* =========================================================================
  * FreeInfluenceMap - Free AI influence map
- * Original: FUN_100449bc
+ * Original: FreeInfluenceMap
  * ========================================================================= */
 int FreeInfluenceMap(void)
 {
-    /* FUN_100449bc - AI subsystem */
+    /* FreeInfluenceMap - AI subsystem */
     return 0;
 }
 
 
 /* =========================================================================
  * Get1NamedResource_Thunk - Mac OS: Get1NamedResource wrapper
- * Original: FUN_10002238, 24 bytes (TVect trampoline)
+ * Original: Get1NamedResource_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int Get1NamedResource_Thunk(int resType, void *name)
 {
@@ -752,45 +752,45 @@ int Get1NamedResource_Thunk(int resType, void *name)
 
 /* =========================================================================
  * GetAdjacentArmies - Get armies adjacent to position
- * Original: FUN_1000da14
+ * Original: GetAdjacentArmies
  * ========================================================================= */
-int GetAdjacentArmies(long armyIdx, short mode,
+int FUN_1000da14(long armyIdx, short mode,
                       unsigned char *neighbors, unsigned char *extra)
 {
-    /* FUN_1000da14 - army/map query */
+    /* GetAdjacentArmies - army/map query */
     return 0;
 }
 
 
 /* =========================================================================
  * GetAIStateSnapshot - Capture AI state for save
- * Original: FUN_1002bdc4
+ * Original: GetAIStateSnapshot
  * ========================================================================= */
 int GetAIStateSnapshot(void)
 {
-    /* FUN_1002bdc4 - serialization/AI */
+    /* GetAIStateSnapshot - serialization/AI */
     return 0;
 }
 
 
 /* =========================================================================
  * GetArmyInfo - Get army information buffer
- * Original: FUN_1001f648
+ * Original: GetArmyInfo
  * ========================================================================= */
 int GetArmyInfo(short armyIdx, short *outBuf)
 {
-    /* FUN_1001f648 - army data query */
+    /* GetArmyInfo - army data query */
     return 0;
 }
 
 
 /* =========================================================================
  * GetBitMapPtr - Get bitmap pointer for rect
- * Original: FUN_100b0578, 4 bytes (NOP)
+ * Original: GetBitMapPtr, 4 bytes (NOP)
  * ========================================================================= */
 int GetBitMapPtr(void *r)
 {
-    /* FUN_100b0578 - returns immediately (NOP in decompilation) */
+    /* GetBitMapPtr - returns immediately (NOP in decompilation) */
     return 0;
 }
 
@@ -808,7 +808,7 @@ void *GetCityByIndex(short cityIndex)
 
 /* =========================================================================
  * GetGWorld_Wrapper - QuickDraw GetGWorld wrapper
- * Original: FUN_10000870 (TVect trampoline)
+ * Original: GetGWorld_Wrapper (TVect trampoline)
  * ========================================================================= */
 int GetGWorld_Wrapper(int *port, int *gdh)
 {
@@ -832,19 +832,19 @@ void *GetNamedResource(long resType, short resID)
 
 /* =========================================================================
  * GetNeighborArmies - Get neighboring army indices
- * Original: FUN_10018574
+ * Original: GetNeighborArmies
  * ========================================================================= */
 int GetNeighborArmies(short armyIdx, unsigned char *neighbors,
                       unsigned char *extra)
 {
-    /* FUN_10018574 - army/map query */
+    /* GetNeighborArmies - army/map query */
     return 0;
 }
 
 
 /* =========================================================================
  * GetResInfo_Thunk - Mac OS: GetResInfo wrapper
- * Original: FUN_10001758, 24 bytes (TVect trampoline)
+ * Original: ResolveAlias, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int GetResInfo_Thunk(void *h, short *id, void *type, void *name)
 {
@@ -856,9 +856,9 @@ int GetResInfo_Thunk(void *h, short *id, void *type, void *name)
 
 /* =========================================================================
  * GetResource_Thunk - Mac OS: GetResource wrapper
- * Original: FUN_10001728, 24 bytes (TVect trampoline)
+ * Original: GetResource_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
-int GetResource_Thunk(int resType, short resID)
+int FUN_10001728(int resType, short resID)
 {
     /* Mac OS Toolbox wrapper - GetResource */
     return (int)(long)GetResource(resType, resID);
@@ -878,11 +878,11 @@ int *GetResourceStream(unsigned long resType, short resID, short openMode)
 
 /* =========================================================================
  * GetScoreSnapshot - Get current score data for save
- * Original: FUN_10050bb0
+ * Original: GetScoreSnapshot
  * ========================================================================= */
 int GetScoreSnapshot(void *outBuf)
 {
-    /* FUN_10050bb0 - serialization */
+    /* GetScoreSnapshot - serialization */
     return 0;
 }
 
@@ -913,20 +913,20 @@ void *GetSTRValueAt(short resID, short index)
 
 /* =========================================================================
  * GetUnitStats - Get unit type statistics
- * Original: FUN_10049628 (implemented in economy.c)
+ * Original: GetUnitStats (implemented in economy.c)
  * ========================================================================= */
-int GetUnitStats(unsigned char typeId, char *buffer)
+int FUN_10049628(unsigned char typeId, char *buffer)
 {
-    /* FUN_10049628 - unit data access */
+    /* GetUnitStats - unit data access */
     return 0;
 }
 
 
 /* =========================================================================
- * HLock_Thunk - Mac OS Memory Manager: HLock
- * Original: FUN_10001290 (rendering.c) or FUN_10000b70 (sound.c)
+ * HLock_Thunk_Sound - Mac OS Memory Manager: HLock
+ * Original: HLock_Thunk_Sound (rendering.c) or HLock_Thunk_Sound (sound.c)
  * ========================================================================= */
-int HLock_Thunk(int h)
+int HLock_Thunk_Sound(int h)
 {
     /* Mac OS Toolbox wrapper - HLock */
     HLock((Handle)(long)h);
@@ -936,7 +936,7 @@ int HLock_Thunk(int h)
 
 /* =========================================================================
  * HUnlock_Thunk - Mac OS Memory Manager: HUnlock
- * Original: FUN_10003468, 24 bytes (TVect trampoline)
+ * Original: HUnlock_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int HUnlock_Thunk(int h)
 {
@@ -948,78 +948,78 @@ int HUnlock_Thunk(int h)
 
 /* =========================================================================
  * InitArmyData - Initialize army data structures
- * Original: FUN_10045ac8
+ * Original: InitArmyData
  * ========================================================================= */
 int InitArmyData(void)
 {
-    /* FUN_10045ac8 - game initialization */
+    /* InitArmyData - game initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * InitArmyProduction - Initialize army production queues
- * Original: FUN_10049e68
+ * Original: InitArmyProduction
  * ========================================================================= */
 int InitArmyProduction(void)
 {
-    /* FUN_10049e68 - economy initialization */
+    /* InitArmyProduction - economy initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * InitCityNames - Initialize city name table
- * Original: FUN_10045170
+ * Original: InitCityNames
  * ========================================================================= */
 int InitCityNames(void)
 {
-    /* FUN_10045170 - game initialization */
+    /* InitCityNames - game initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * InitDataStructures - Initialize core game data from resources
- * Original: FUN_10040408
+ * Original: InitDataStructures
  * ========================================================================= */
 int InitDataStructures(void *a, void *b, void *c,
                        void *d, void *e, void *f, void *g)
 {
-    /* FUN_10040408 - game initialization */
+    /* InitDataStructures - game initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * InitPlayerData - Initialize player data arrays
- * Original: FUN_10025f98
+ * Original: InitPlayerData
  * ========================================================================= */
 int InitPlayerData(void)
 {
-    /* FUN_10025f98 - game initialization */
+    /* InitPlayerData - game initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * InitSpecialLocations - Initialize ruins/temples/libraries
- * Original: FUN_1001d15c
+ * Original: InitSpecialLocations
  * ========================================================================= */
 int InitSpecialLocations(void)
 {
-    /* FUN_1001d15c - game initialization */
+    /* InitSpecialLocations - game initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * IsHandleValid - Check if Mac OS handle is valid
- * Original: FUN_100ef2f8, 56 bytes
+ * Original: IsHandleValid, 56 bytes
  * ========================================================================= */
 int IsHandleValid(void *h)
 {
-    /* FUN_100ef2f8 - validates handle pointer */
+    /* IsHandleValid - validates handle pointer */
     long val;
     long inv;
     if (h == (void *)0) return 0;
@@ -1031,29 +1031,29 @@ int IsHandleValid(void *h)
 
 /* =========================================================================
  * LaunchAllianceAttack - Launch allied attack
- * Original: FUN_1001bbf0
+ * Original: LaunchAllianceAttack
  * ========================================================================= */
-int LaunchAllianceAttack(long armyIdx, short mode)
+int FUN_1001bbf0(long armyIdx, short mode)
 {
-    /* FUN_1001bbf0 - AI/combat */
+    /* LaunchAllianceAttack - AI/combat */
     return 0;
 }
 
 
 /* =========================================================================
  * LaunchAllianceDefense - Launch allied defense
- * Original: FUN_1001ba60
+ * Original: LaunchAllianceDefense
  * ========================================================================= */
-int LaunchAllianceDefense(long armyIdx)
+int FUN_1001ba60(long armyIdx)
 {
-    /* FUN_1001ba60 - AI/combat */
+    /* LaunchAllianceDefense - AI/combat */
     return 0;
 }
 
 
 /* =========================================================================
  * LineTo_Thunk - Mac OS QuickDraw: LineTo wrapper
- * Original: FUN_10000288, 24 bytes (TVect trampoline)
+ * Original: LineTo_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int LineTo_Thunk(short dh, short dv)
 {
@@ -1065,40 +1065,40 @@ int LineTo_Thunk(short dh, short dv)
 
 /* =========================================================================
  * LockPixels_Wrapper - QuickDraw LockPixels wrapper
- * Original: FUN_10009a98, 104 bytes
+ * Original: LockPixels_Wrapper, 104 bytes
  * ========================================================================= */
 int LockPixels_Wrapper(int pixMap)
 {
-    /* FUN_10009a98 - GWorld pixel locking */
+    /* LockPixels_Wrapper - GWorld pixel locking */
     return (int)LockPixels((PixMapHandle)(long)pixMap);
 }
 
 
 /* =========================================================================
  * LookupCityAtPos - Find city at map coordinates
- * Original: FUN_1002be50
+ * Original: LookupCityAtPos
  * ========================================================================= */
-short LookupCityAtPos(short x, short y)
+short FUN_1002be50(short x, short y)
 {
-    /* FUN_1002be50 - city/map lookup */
+    /* LookupCityAtPos - city/map lookup */
     return -1;
 }
 
 
 /* =========================================================================
  * LookupRuinAtPos - Find ruin/temple at map coordinates
- * Original: FUN_1002bef8
+ * Original: LookupRuinAtPos
  * ========================================================================= */
 short LookupRuinAtPos(short x, short y)
 {
-    /* FUN_1002bef8 - site/map lookup */
+    /* LookupRuinAtPos - site/map lookup */
     return -1;
 }
 
 
 /* =========================================================================
  * MakeAlias - Create Mac OS file alias
- * Original: FUN_100006d8, 24 bytes (TVect trampoline)
+ * Original: MakeAlias, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int MakeAlias(void *a, void *b, int *outAlias)
 {
@@ -1110,32 +1110,32 @@ int MakeAlias(void *a, void *b, int *outAlias)
 
 /* =========================================================================
  * MarkChanged - Mark document as changed
- * Original: FUN_100db328, 64 bytes
+ * Original: MarkChanged, 64 bytes
  * ========================================================================= */
-/* Implemented in reconstructed_5.c as FUN_100db328 */
-int MarkChanged(void)
+/* Implemented in reconstructed_5.c as MarkChanged */
+int FUN_100db328(void)
 {
-    /* FUN_100db328 - MacApp doc changed notification */
-    FUN_100db328();
+    /* MarkChanged - MacApp doc changed notification */
+    MarkChanged();
     return 0;
 }
 
 
 /* =========================================================================
  * MoveArmyToTarget - Move army units toward target
- * Original: FUN_1001e160 (implemented in movement.c)
+ * Original: MoveArmyToTarget (implemented in movement.c)
  * ========================================================================= */
 int MoveArmyToTarget(short *unitList, short orderType,
                      long targetIdx, short flags)
 {
-    /* FUN_1001e160 - movement system */
+    /* MoveArmyToTarget - movement system */
     return 0;
 }
 
 
 /* =========================================================================
  * MoveTo_Thunk - Mac OS QuickDraw: MoveTo wrapper
- * Original: FUN_10000270, 24 bytes (TVect trampoline)
+ * Original: MoveTo_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int MoveTo_Thunk(short h, short v)
 {
@@ -1158,7 +1158,7 @@ void *NewAlias(void *path)
 
 /* =========================================================================
  * NewGWorld_Wrapper - QuickDraw NewGWorld wrapper
- * Original: FUN_10003198, 24 bytes (TVect trampoline)
+ * Original: NewGWorld_Wrapper, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int NewGWorld_Wrapper(int *gw, int depth, Rect *r, int cTable,
                       int aGDevice, unsigned long flags)
@@ -1171,11 +1171,11 @@ int NewGWorld_Wrapper(int *gw, int depth, Rect *r, int cTable,
 
 /* =========================================================================
  * NewPtr_Thunk - Mac OS Memory Manager: NewPtr
- * Original: FUN_100f56e4, 36 bytes
+ * Original: NewPtr_Thunk, 36 bytes
  * ========================================================================= */
-int NewPtr_Thunk(int byteCount)
+int FUN_100f56e4(int byteCount)
 {
-    /* FUN_100f56e4 - calls FUN_100f5640 */
+    /* NewPtr_Thunk - calls FUN_100f5640 */
     FUN_100f5640();
     return 0;
 }
@@ -1194,22 +1194,22 @@ void *NewResourceReader(int param)
 
 /* =========================================================================
  * NotifyAllTilesChanged - Mark all map tiles as changed
- * Original: FUN_10051d64
+ * Original: NotifyAllTilesChanged
  * ========================================================================= */
 int NotifyAllTilesChanged(void)
 {
-    /* FUN_10051d64 - map rendering */
+    /* NotifyAllTilesChanged - map rendering */
     return 0;
 }
 
 
 /* =========================================================================
  * NotifyTileChanged - Mark single map tile as changed
- * Original: FUN_10051d60 (NOP in practice)
+ * Original: NotifyTileChanged (NOP in practice)
  * ========================================================================= */
 int NotifyTileChanged(short x, short y)
 {
-    /* FUN_10051d60 - likely NOP (no-op in many builds) */
+    /* NotifyTileChanged - likely NOP (no-op in many builds) */
     return 0;
 }
 
@@ -1227,7 +1227,7 @@ void *OpenDATResource(long resType, long resID, short flags)
 
 /* =========================================================================
  * OpenDefaultComponent_Thunk - Mac OS Component Manager wrapper
- * Original: FUN_100020d0, 24 bytes (TVect trampoline)
+ * Original: OpenDefaultComponent_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int OpenDefaultComponent_Thunk(int type, int subType)
 {
@@ -1249,7 +1249,7 @@ int *OpenStream(int resourceRef, short openMode, short isWritable)
 
 /* =========================================================================
  * PaintRect_Thunk - Mac OS QuickDraw: PaintRect wrapper
- * Original: FUN_10002148, 24 bytes (TVect trampoline)
+ * Original: PaintRect_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int PaintRect_Thunk(Rect *r)
 {
@@ -1261,110 +1261,110 @@ int PaintRect_Thunk(Rect *r)
 
 /* =========================================================================
  * PlaceHeroesOnMap - Place hero units on map during generation
- * Original: FUN_100a4e0c
+ * Original: PlaceHeroesOnMap
  * ========================================================================= */
 int PlaceHeroesOnMap(void)
 {
-    /* FUN_100a4e0c - mapgen */
+    /* PlaceHeroesOnMap - mapgen */
     return 0;
 }
 
 
 /* =========================================================================
  * PlaceUnitInArmy - Place unit template into army slot
- * Original: FUN_10049fa8
+ * Original: PlaceUnitInArmy
  * ========================================================================= */
 int PlaceUnitInArmy(short armyIdx, long slot, long tmpl)
 {
-    /* FUN_10049fa8 - unit management */
+    /* PlaceUnitInArmy - unit management */
     return 0;
 }
 
 
 /* =========================================================================
  * PostLoadCityInit - Initialize cities after loading save
- * Original: FUN_1004248c
+ * Original: PostLoadCityInit
  * ========================================================================= */
 int PostLoadCityInit(void)
 {
-    /* FUN_1004248c - post-load initialization */
+    /* PostLoadCityInit - post-load initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * PostLoadInitialization - Full post-load initialization
- * Original: FUN_1002869c
+ * Original: PostLoadInitialization
  * ========================================================================= */
 int PostLoadInitialization(void)
 {
-    /* FUN_1002869c - game state initialization */
+    /* PostLoadInitialization - game state initialization */
     return 0;
 }
 
 
 /* =========================================================================
  * PrepareUnitDisplay - Prepare unit display data
- * Original: FUN_10041de8
+ * Original: PrepareUnitDisplay
  * ========================================================================= */
 int PrepareUnitDisplay(void)
 {
-    /* FUN_10041de8 - UI/rendering */
+    /* PrepareUnitDisplay - UI/rendering */
     return 0;
 }
 
 
 /* =========================================================================
  * ProcessQuestReward - Process quest reward for hero
- * Original: FUN_1004b11c
+ * Original: ProcessQuestReward
  * ========================================================================= */
 int ProcessQuestReward(short mode)
 {
-    /* FUN_1004b11c - quest system */
+    /* ProcessQuestReward - quest system */
     return 0;
 }
 
 
 /* =========================================================================
  * ProcessSingleAssignment - Process one AI assignment round
- * Original: FUN_1001a864
+ * Original: ProcessSingleAssignment
  * ========================================================================= */
 int ProcessSingleAssignment(short round, char *followerCount)
 {
-    /* FUN_1001a864 - AI assignment */
+    /* ProcessSingleAssignment - AI assignment */
     return 0;
 }
 
 
 /* =========================================================================
  * ProgressCreate - Create progress bar dialog
- * Original: FUN_100513b4
+ * Original: ProgressCreate
  * ========================================================================= */
 int ProgressCreate(void *bar, void *rect, short resID)
 {
-    /* FUN_100513b4 - UI/progress */
+    /* ProgressCreate - UI/progress */
     return 0;
 }
 
 
 /* =========================================================================
  * ProgressDelay - Delay after progress update
- * Original: FUN_1005f144
+ * Original: ProgressDelay
  * ========================================================================= */
 int ProgressDelay(int param)
 {
-    /* FUN_1005f144 - UI timing */
+    /* ProgressDelay - UI timing */
     return 0;
 }
 
 
 /* =========================================================================
  * ProgressUpdate - Update progress bar value
- * Original: FUN_100514d8
+ * Original: ProgressUpdate
  * ========================================================================= */
 int ProgressUpdate(void *bar, short percent)
 {
-    /* FUN_100514d8 - UI/progress */
+    /* ProgressUpdate - UI/progress */
     return 0;
 }
 
@@ -1382,11 +1382,11 @@ int PStrToHandle(unsigned char *pstr)
 
 /* =========================================================================
  * ReadShortFromStream - Read short value from stream
- * Original: FUN_100525a0
+ * Original: ByteSwap16
  * ========================================================================= */
 short ReadShortFromStream(void)
 {
-    /* FUN_100525a0 - serialization */
+    /* ByteSwap16 - serialization */
     return 0;
 }
 
@@ -1404,40 +1404,40 @@ int RegisterCities(void)
 
 /* =========================================================================
  * ReleaseCityData - Release city data for index
- * Original: FUN_1000d9ac
+ * Original: ReleaseCityData
  * ========================================================================= */
 int ReleaseCityData(short cityIndex)
 {
-    /* FUN_1000d9ac - city management */
+    /* ReleaseCityData - city management */
     return 0;
 }
 
 
 /* =========================================================================
- * ReleaseHandle - Release/dispose a handle
- * Original: FUN_100ef510 (mapgen) or FUN_10001c98 (sound)
+ * ReleaseHandle_Mapgen - Release/dispose a handle
+ * Original: ReleaseHandle_Mapgen (mapgen) or ReleaseHandle_Mapgen (sound)
  * ========================================================================= */
-int ReleaseHandle(void *handle)
+int FUN_100ef510(void *handle)
 {
-    /* FUN_100ef510 / FUN_10001c98 - handle cleanup */
+    /* ReleaseHandle_Mapgen / ReleaseHandle_Mapgen - handle cleanup */
     return 0;
 }
 
 
 /* =========================================================================
  * ReleaseUnits - Release unit list
- * Original: FUN_1000fde4
+ * Original: ReleaseUnits
  * ========================================================================= */
 int ReleaseUnits(short *unitList, short mode)
 {
-    /* FUN_1000fde4 - combat/unit management */
+    /* ReleaseUnits - combat/unit management */
     return 0;
 }
 
 
 /* =========================================================================
  * ResolveAlias - Resolve Mac OS file alias
- * Original: FUN_10001758, 24 bytes (TVect trampoline)
+ * Original: ResolveAlias, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int ResolveAlias(void *res, void *a, void *b, void *path)
 {
@@ -1448,9 +1448,9 @@ int ResolveAlias(void *res, void *a, void *b, void *path)
 
 /* =========================================================================
  * RGBForeColor_Thunk - Mac OS QuickDraw: RGBForeColor wrapper
- * Original: FUN_100b2268
+ * Original: RGBForeColor_Thunk
  * ========================================================================= */
-int RGBForeColor_Thunk(RGBColor *color)
+int FUN_100b2268(RGBColor *color)
 {
     /* Mac OS Toolbox wrapper - RGBForeColor */
     RGBForeColor(color);
@@ -1460,53 +1460,53 @@ int RGBForeColor_Thunk(RGBColor *color)
 
 /* =========================================================================
  * SaveMapToResources - Save generated map to resource fork
- * Original: FUN_100a52b8
+ * Original: SaveMapToResources
  * ========================================================================= */
 int SaveMapToResources(void)
 {
-    /* FUN_100a52b8 - mapgen serialization */
+    /* SaveMapToResources - mapgen serialization */
     return 0;
 }
 
 
 /* =========================================================================
  * SaveScenarioData - Save scenario data to resource
- * Original: FUN_100a6060
+ * Original: SaveScenarioData
  * ========================================================================= */
 int SaveScenarioData(void)
 {
-    /* FUN_100a6060 - mapgen serialization */
+    /* SaveScenarioData - mapgen serialization */
     return 0;
 }
 
 
 /* =========================================================================
  * ScanDefenseGrid - Scan defense grid for AI
- * Original: FUN_1005447c
+ * Original: ScanDefenseGrid
  * ========================================================================= */
-int ScanDefenseGrid(void)
+int FUN_1005447c(void)
 {
-    /* FUN_1005447c - AI defense */
+    /* ScanDefenseGrid - AI defense */
     return 0;
 }
 
 
 /* =========================================================================
  * ScoreUnitForHire - Score a unit type for AI hiring
- * Original: FUN_10020f94
+ * Original: ScoreUnitForHire
  * ========================================================================= */
 short ScoreUnitForHire(short isExpensive)
 {
-    /* FUN_10020f94 - AI economy */
+    /* ScoreUnitForHire - AI economy */
     return 0;
 }
 
 
 /* =========================================================================
  * SetForeColor_Thunk - Set foreground drawing color
- * Original: FUN_100021c0, 24 bytes (TVect trampoline)
+ * Original: SetForeColor_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
-int SetForeColor_Thunk(void)
+int FUN_100021c0(void)
 {
     /* Mac OS Toolbox wrapper - ForeColor or equivalent */
     return 0;
@@ -1515,7 +1515,7 @@ int SetForeColor_Thunk(void)
 
 /* =========================================================================
  * SetGWorld_Wrapper - QuickDraw SetGWorld wrapper
- * Original: FUN_10000888 (TVect trampoline)
+ * Original: SetGWorld_Wrapper (TVect trampoline)
  * ========================================================================= */
 int SetGWorld_Wrapper(int port, int gdh)
 {
@@ -1527,7 +1527,7 @@ int SetGWorld_Wrapper(int port, int gdh)
 
 /* =========================================================================
  * SetMacRect - Set Rect fields (top, left, bottom, right)
- * Original: FUN_10003108, 24 bytes (TVect trampoline to SetRect)
+ * Original: SetMacRect, 24 bytes (TVect trampoline to SetRect)
  * ========================================================================= */
 int SetMacRect(Rect *r, short t, short l, short b, short ri)
 {
@@ -1544,11 +1544,11 @@ int SetMacRect(Rect *r, short t, short l, short b, short ri)
 
 /* =========================================================================
  * SetRect4 - Set rect from x, y, w, h
- * Original: FUN_100226b0, 36 bytes
+ * Original: SetRect4, 36 bytes
  * ========================================================================= */
-int SetRect4(void *r, short x, short y, short w, short h)
+int FUN_100226b0(void *r, short x, short y, short w, short h)
 {
-    /* FUN_100226b0 - stores 4 shorts sequentially */
+    /* SetRect4 - stores 4 shorts sequentially */
     short *p = (short *)r;
     if (p) {
         p[0] = x;
@@ -1562,11 +1562,11 @@ int SetRect4(void *r, short x, short y, short w, short h)
 
 /* =========================================================================
  * SetResourceType - Set resource type on reader object
- * Original: FUN_100fb300
+ * Original: SetResourceType
  * ========================================================================= */
 int SetResourceType(void *reader, long resType, short resID)
 {
-    /* FUN_100fb300 - serialization */
+    /* SetResourceType - serialization */
     return 0;
 }
 
@@ -1584,51 +1584,51 @@ int SetupHandle(void *handle)
 
 /* =========================================================================
  * SetupInfluenceMap - Setup AI influence map parameters
- * Original: FUN_100448e4
+ * Original: SetupInfluenceMap
  * ========================================================================= */
 int SetupInfluenceMap(short range, short x, short y, short a, short b)
 {
-    /* FUN_100448e4 - AI subsystem */
+    /* SetupInfluenceMap - AI subsystem */
     return 0;
 }
 
 
 /* =========================================================================
  * SmoothForestRegions - Smooth forest tile transitions
- * Original: FUN_100abb68
+ * Original: SmoothForestRegions
  * ========================================================================= */
 int SmoothForestRegions(void)
 {
-    /* FUN_100abb68 - mapgen terrain smoothing */
+    /* SmoothForestRegions - mapgen terrain smoothing */
     return 0;
 }
 
 
 /* =========================================================================
  * SmoothMountainRegions - Smooth mountain tile transitions
- * Original: FUN_100ab9e4
+ * Original: SmoothMountainRegions
  * ========================================================================= */
 int SmoothMountainRegions(void)
 {
-    /* FUN_100ab9e4 - mapgen terrain smoothing */
+    /* SmoothMountainRegions - mapgen terrain smoothing */
     return 0;
 }
 
 
 /* =========================================================================
  * SmoothTerrainAroundCities - Smooth terrain near cities
- * Original: FUN_100a35cc
+ * Original: SmoothTerrainAroundCities
  * ========================================================================= */
 int SmoothTerrainAroundCities(void)
 {
-    /* FUN_100a35cc - mapgen terrain smoothing */
+    /* SmoothTerrainAroundCities - mapgen terrain smoothing */
     return 0;
 }
 
 
 /* =========================================================================
  * SndChannelStatus_Thunk - Mac OS Sound Manager wrapper
- * Original: FUN_100035b8, 24 bytes (TVect trampoline)
+ * Original: SndChannelStatus_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int SndChannelStatus_Thunk(void *chan, short len, void *status)
 {
@@ -1639,7 +1639,7 @@ int SndChannelStatus_Thunk(void *chan, short len, void *status)
 
 /* =========================================================================
  * SndDisposeChannel_Thunk - Mac OS Sound Manager wrapper
- * Original: FUN_10000900, 24 bytes (TVect trampoline)
+ * Original: SndDisposeChannel_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int SndDisposeChannel_Thunk(void *chan, char quiet)
 {
@@ -1650,7 +1650,7 @@ int SndDisposeChannel_Thunk(void *chan, char quiet)
 
 /* =========================================================================
  * SndDoImmediate_Thunk - Mac OS Sound Manager wrapper
- * Original: FUN_10002178, 24 bytes (TVect trampoline)
+ * Original: SndDoImmediate_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int SndDoImmediate_Thunk(void *chan, void *cmd)
 {
@@ -1661,7 +1661,7 @@ int SndDoImmediate_Thunk(void *chan, void *cmd)
 
 /* =========================================================================
  * SndNewChannel_Thunk - Mac OS Sound Manager wrapper
- * Original: FUN_10002d00, 24 bytes (TVect trampoline)
+ * Original: SndNewChannel_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int SndNewChannel_Thunk(void **chan, short synth, long init, void *proc)
 {
@@ -1672,7 +1672,7 @@ int SndNewChannel_Thunk(void **chan, short synth, long init, void *proc)
 
 /* =========================================================================
  * SndPlay_Thunk - Mac OS Sound Manager wrapper
- * Original: FUN_10001638, 24 bytes (TVect trampoline)
+ * Original: SndPlay_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int SndPlay_Thunk(void *chan, void *sndH, char async)
 {
@@ -1683,11 +1683,11 @@ int SndPlay_Thunk(void *chan, void *sndH, char async)
 
 /* =========================================================================
  * StoreCoords - Store x,y coordinate pair
- * Original: FUN_1002269c, 20 bytes
+ * Original: StoreCoords, 20 bytes
  * ========================================================================= */
 int StoreCoords(void *dest, short x, short y)
 {
-    /* FUN_1002269c - stores two shorts at dest */
+    /* StoreCoords - stores two shorts at dest */
     short *p = (short *)dest;
     if (p) {
         p[0] = x;
@@ -1699,42 +1699,42 @@ int StoreCoords(void *dest, short x, short y)
 
 /* =========================================================================
  * StreamRead - Read bytes from stream
- * Original: FUN_10052490
+ * Original: StreamRead
  * ========================================================================= */
 int StreamRead(int *stream, void *buffer, long count)
 {
-    /* FUN_10052490 - serialization */
+    /* StreamRead - serialization */
     return 0;
 }
 
 
 /* =========================================================================
  * StreamSetPosition - Set stream read/write position
- * Original: FUN_10052518
+ * Original: StreamSetPosition
  * ========================================================================= */
 int StreamSetPosition(int *stream, long position, short mode)
 {
-    /* FUN_10052518 - serialization */
+    /* StreamSetPosition - serialization */
     return 0;
 }
 
 
 /* =========================================================================
  * StreamWrite - Write bytes to stream
- * Original: FUN_100524d4
+ * Original: StreamWrite
  * ========================================================================= */
 int StreamWrite(int *stream, void *buffer, long count)
 {
-    /* FUN_100524d4 - serialization */
+    /* StreamWrite - serialization */
     return 0;
 }
 
 
 /* =========================================================================
  * StringLength - Get C string length
- * Original: FUN_100012c0, 24 bytes (TVect trampoline to strlen)
+ * Original: StringLength, 24 bytes (TVect trampoline to strlen)
  * ========================================================================= */
-short StringLength(char *str)
+short FUN_100012c0(char *str)
 {
     /* Mac OS Toolbox wrapper - strlen equivalent */
     short len = 0;
@@ -1747,7 +1747,7 @@ short StringLength(char *str)
 
 /* =========================================================================
  * TuneGetStatus_Thunk - QuickTime Tune status
- * Original: FUN_100032e8, 24 bytes (TVect trampoline)
+ * Original: TuneGetStatus_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int TuneGetStatus_Thunk(int tp, void *status)
 {
@@ -1758,7 +1758,7 @@ int TuneGetStatus_Thunk(int tp, void *status)
 
 /* =========================================================================
  * TunePreroll_Thunk - QuickTime Tune preroll
- * Original: FUN_10003678, 24 bytes (TVect trampoline)
+ * Original: TunePreroll_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int TunePreroll_Thunk(int tp)
 {
@@ -1769,7 +1769,7 @@ int TunePreroll_Thunk(int tp)
 
 /* =========================================================================
  * TuneQueue_Thunk - QuickTime Tune queue
- * Original: FUN_10003228, 24 bytes (TVect trampoline)
+ * Original: TuneQueue_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int TuneQueue_Thunk(int tp, void *data, unsigned long rate, long offset,
                     long duration, long loop, void *callBackProc, long refCon)
@@ -1781,7 +1781,7 @@ int TuneQueue_Thunk(int tp, void *data, unsigned long rate, long offset,
 
 /* =========================================================================
  * TuneSetHeader_Thunk - QuickTime Tune set header
- * Original: FUN_10002100, 24 bytes (TVect trampoline)
+ * Original: TuneSetHeader_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int TuneSetHeader_Thunk(int tp, void *header)
 {
@@ -1792,7 +1792,7 @@ int TuneSetHeader_Thunk(int tp, void *header)
 
 /* =========================================================================
  * TuneSetVolume_Thunk - QuickTime Tune set volume
- * Original: FUN_100026b8, 24 bytes (TVect trampoline)
+ * Original: TuneSetVolume_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int TuneSetVolume_Thunk(int tp, int vol)
 {
@@ -1803,7 +1803,7 @@ int TuneSetVolume_Thunk(int tp, int vol)
 
 /* =========================================================================
  * TuneStop_Thunk - QuickTime Tune stop
- * Original: FUN_10003660, 24 bytes (TVect trampoline)
+ * Original: TuneStop_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int TuneStop_Thunk(int tp, long stopMode)
 {
@@ -1814,7 +1814,7 @@ int TuneStop_Thunk(int tp, long stopMode)
 
 /* =========================================================================
  * TuneUnroll_Thunk - QuickTime Tune unroll
- * Original: FUN_100035a0, 24 bytes (TVect trampoline)
+ * Original: TuneUnroll_Thunk, 24 bytes (TVect trampoline)
  * ========================================================================= */
 int TuneUnroll_Thunk(void)
 {
@@ -1836,12 +1836,12 @@ int TVect_OCECToRString(void)
 
 /* =========================================================================
  * UnlockHandle - Release handle lock state
- * Original: FUN_100db26c (conditional dispatch) or FUN_100ef510
+ * Original: FocusObject (conditional dispatch) or ReleaseHandle_Mapgen
  * ========================================================================= */
 int UnlockHandle(int unused)
 {
     /* Handle unlock / release operation */
-    FUN_100db26c(0);
+    FocusObject(0);
     return 0;
 }
 
@@ -1859,11 +1859,11 @@ int UnlockHandle2(void *handle)
 
 /* =========================================================================
  * UnlockPixels_Wrapper - QuickDraw UnlockPixels wrapper
- * Original: FUN_10009b00, 72 bytes
+ * Original: UnlockPixels_Wrapper, 72 bytes
  * ========================================================================= */
 int UnlockPixels_Wrapper(int pixMap)
 {
-    /* FUN_10009b00 - GWorld pixel unlocking */
+    /* UnlockPixels_Wrapper - GWorld pixel unlocking */
     UnlockPixels((PixMapHandle)(long)pixMap);
     return 0;
 }
@@ -1882,29 +1882,29 @@ int UpdateDocAfterMapGen(int doc, void *data)
 
 /* =========================================================================
  * UpdateProgressBar - Update progress bar display
- * Original: FUN_100514d8 (serialization) or FUN_1004039c (AI)
+ * Original: ProgressUpdate (serialization) or UpdateProgressBar (AI)
  * ========================================================================= */
 int UpdateProgressBar(int dialogHandle, short percent)
 {
-    /* FUN_100514d8 / FUN_1004039c - progress UI */
+    /* ProgressUpdate / UpdateProgressBar - progress UI */
     return 0;
 }
 
 
 /* =========================================================================
  * VtableDispatch / VTableDispatch - Virtual method dispatch
- * Original: FUN_10117884, 20 bytes
+ * Original: ResourceRead_Dispatch, 20 bytes
  * Both names resolve to the same function.
  * ========================================================================= */
 /* Already defined in reconstructed_5.c and core/utils.c */
 long VtableDispatch(int vtableCall, ...)
 {
-    /* FUN_10117884 - universal vtable dispatch trampoline */
+    /* ResourceRead_Dispatch - universal vtable dispatch trampoline */
     return 0;
 }
 
 long VTableDispatch(int vtableCall, ...)
 {
-    /* FUN_10117884 - alias for VtableDispatch */
+    /* ResourceRead_Dispatch - alias for VtableDispatch */
     return 0;
 }

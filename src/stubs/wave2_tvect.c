@@ -51,8 +51,8 @@ void FUN_100001f8();
 void FUN_10000228();
 void FUN_10000240();
 void FUN_10000258();
-void FUN_10000270();
-void FUN_10000288();
+void MoveTo_Thunk();
+void LineTo_Thunk();
 void FUN_100002b8();
 void FUN_100002d0();
 void FUN_100002e8();
@@ -103,8 +103,8 @@ void FUN_10000810();
 void FUN_10000828();
 void FUN_10000840();
 void FUN_10000858();
-void FUN_10000870();
-void FUN_10000888();
+void GetGWorld_Wrapper();
+void SetGWorld_Wrapper();
 void FUN_100008a0();
 void FUN_10000930();
 void FUN_10000978();
@@ -124,7 +124,7 @@ void FUN_10000b10();
 void FUN_10000b28();
 void FUN_10000b40();
 void FUN_10000b58();
-void FUN_10000b70();
+void HLock_Thunk_Sound();
 void FUN_10000b88();
 void FUN_10000ba0();
 void FUN_10000bb8();
@@ -196,7 +196,7 @@ void FUN_10001230();
 void FUN_10001248();
 void FUN_10001260();
 void FUN_10001278();
-int FUN_10001290();
+int HLock_Thunk();
 void FUN_100012a8();
 void FUN_10001308();
 void FUN_10001320();
@@ -383,7 +383,7 @@ void FUN_10002a78();
 void FUN_10002a90();
 void FUN_10002aa8();
 void FUN_10002ac0();
-void FUN_10002ad8();
+void DisposeHandle_Thunk();
 void FUN_10002af0();
 void FUN_10002b08();
 void FUN_10002b20();
@@ -441,13 +441,13 @@ void FUN_100030a8();
 void FUN_100030c0();
 void FUN_100030d8();
 void FUN_100030f0();
-void FUN_10003108();
+void SetMacRect();
 void FUN_10003120();
 void FUN_10003138();
 void FUN_10003150();
 void FUN_10003168();
 void FUN_10003180();
-void FUN_10003198();
+void NewGWorld_Wrapper();
 void FUN_100031b0();
 void FUN_100031c8();
 void FUN_100031e0();
@@ -473,7 +473,7 @@ void FUN_10003408();
 void FUN_10003420();
 void FUN_10003438();
 void FUN_10003450();
-void FUN_10003468();
+void HUnlock_Thunk();
 void FUN_10003480();
 void FUN_10003498();
 void FUN_100034b0();
@@ -532,7 +532,7 @@ void FUN_10008c0c(short param_1,short param_2,long long param_3,short param_4,
                  short param_5);
 void FUN_10008de4();
 void FUN_10008e8c();
-long long FUN_1000931c(long long param_1,short param_2,short param_3);
+long long SetArmyDestination(long long param_1,short param_2,short param_3);
 void FUN_10009520();
 void FUN_100095fc();
 unsigned short FUN_10009630(short param_1,short param_2,short param_3);
@@ -557,10 +557,10 @@ void FUN_1000c4c4(short param_1,short param_2,int *param_3);
 void FUN_1000c648();
 int FUN_1000db10(short param_1);
 void FUN_1000dc4c(short param_1,short param_2,int param_3,int *param_4);
-unsigned long long FUN_1000df58(short param_1);
+unsigned long long FindPrimaryThreat(short param_1);
 void FUN_1000f064(short param_1);
-void FUN_1000fc38(short param_1,short param_2);
-void FUN_1000fde4(int param_1,short param_2);
+void DisbandUnit(short param_1,short param_2);
+void ReleaseUnits(int param_1,short param_2);
 
 /* Extern declarations for Ghidra globals */
 int FUN_101159dc();
@@ -2652,7 +2652,7 @@ void FUN_10001278()
 }
 
 /* Address: 0x10001290 Size: 24 bytes */
-int FUN_10001290()
+int HLock_Thunk()
 
 {
 
@@ -5607,7 +5607,7 @@ void FUN_10003960(int *param_1,int *param_2)
   short local_20;
   short local_1e;
   
-  uVar2 = FUN_100ef580(param_1[2]);
+  uVar2 = FreeBlock(param_1[2]);
   param_1[2] = uVar2;
   uVar2 = param_2[1];
   *param_1 = *param_2;
@@ -5821,9 +5821,9 @@ void FUN_10003aa4()
   }
   *(unsigned int *)(iVar1 + 0x28) = *(unsigned int *)(iVar1 + 0x28) & 0x7fffffff;
   *(unsigned int *)(iVar6 + 0x28) = *(unsigned int *)(iVar6 + 0x28) & 0x7fffffff;
-  iVar6 = FUN_1000a12c(uVar3,*(short *)(*(int*)((char*)ppuVar4 - 0x544)),*(short *)(*(int*)((char*)ppuVar4 - 0x545)),8,0);
+  iVar6 = CreateOrResizeGWorld(uVar3,*(short *)(*(int*)((char*)ppuVar4 - 0x544)),*(short *)(*(int*)((char*)ppuVar4 - 0x545)),8,0);
   if (iVar6 == 0) {
-    FUN_100db26c(0);
+    FocusObject(0);
   }
   FUN_1003b3b0();
   return;
@@ -6076,7 +6076,56 @@ void FUN_10003b7c(int param_1)
 /* Address: 0x10003d5c Size: 364 bytes */
 unsigned short FUN_10003d5c()
 {
-  return 0;
+  short param_1 = 0;
+  short param_2 = 0;
+
+  unsigned short uVar1;
+  unsigned short uVar2;
+  unsigned int uVar3;
+  short sVar4;
+  short sVar5;
+  
+  uVar2 = 0;
+  if (*psRam10115ff8 == 0) {
+    uVar3 = 0;
+    do {
+      sVar4 = param_1 + *(short *)(uVar3 * 2 + iRam10115cc0);
+      sVar5 = param_2 + *(short *)(uVar3 * 2 + iRam10115cbc);
+      if ((((sVar4 < 0) || (sVar5 < 0)) || (0x6f < sVar4)) || (0x9b < sVar5)) {
+        uVar1 = (unsigned short)(1 << (uVar3 & 0x3f));
+      }
+      else if ((*(unsigned int *)(*piRam10117354 + sVar5 * 0x70 + (int)sVar4) >> 0x1d & 1) == 0) {
+        uVar1 = (unsigned short)(1 << (uVar3 & 0x3f));
+      }
+      else {
+        uVar1 = 0;
+      }
+      uVar2 = uVar2 | uVar1;
+      sVar4 = (short)uVar3 + 1;
+      uVar3 = (unsigned int)sVar4;
+    } while (sVar4 < 8);
+  }
+  else {
+    uVar3 = 0;
+    do {
+      sVar4 = param_1 + *(short *)(uVar3 * 2 + iRam10115cc0);
+      sVar5 = param_2 + *(short *)(uVar3 * 2 + iRam10115cbc);
+      if (((sVar4 < 0) || (sVar5 < 0)) || ((0x6f < sVar4 || (0x9b < sVar5)))) {
+        uVar1 = (unsigned short)(1 << (uVar3 & 0x3f));
+      }
+      else if (*(int *)(*piRam10117354 + sVar5 * 0x70 + (int)sVar4) < 0) {
+        uVar1 = 0;
+      }
+      else {
+        uVar1 = (unsigned short)(1 << (uVar3 & 0x3f));
+      }
+      uVar2 = uVar2 | uVar1;
+      sVar4 = (short)uVar3 + 1;
+      uVar3 = (unsigned int)sVar4;
+    } while (sVar4 < 8);
+  }
+  return uVar2;
+
 }
 
 /* Address: 0x10003ec8 Size: 724 bytes */
@@ -7030,14 +7079,14 @@ void FUN_1000865c(short param_1,long long param_2,short param_3,short param_4)
   
   ppuVar1 = 0 /* TVect base */;
   sVar2 = param_1 / 0x60;
-  FUN_100462c8(sVar2 + 0x1a);
+  EnsureSpriteLoaded(sVar2 + 0x1a);
   uVar4 = (int)param_1 + ((int)param_1 / 0x60) * -0x60;
   uVar3 = (long long)((int)uVar4 >> 4) + (unsigned long long)((int)uVar4 < 0 && (uVar4 & 0xf) != 0);
   uVar4 = (unsigned int)param_1;
   uVar5 = (long long)param_1 +
           ((long long)((int)uVar4 >> 4) + (unsigned long long)((int)uVar4 < 0 && (uVar4 & 0xf) != 0) &
           0xfffffff) * -0x10;
-  FUN_10009b48((((long long)sVar2 & 0x3fffffffU) * 4 + (long long)sVar2 & 0x3fffffff) * 4 +
+  BlitSpriteNormal((((long long)sVar2 & 0x3fffffffU) * 4 + (long long)sVar2 & 0x3fffffff) * 4 +
                ZEXT48((*(int*)((char*)ppuVar1 - 0x119))),(short)(((uVar5 & 0x3fffffff) * 4 + uVar5 & 0xffffffff) << 3)
                ,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3),0x28,0x28,param_2,
                param_3,param_4);
@@ -7047,7 +7096,184 @@ void FUN_1000865c(short param_1,long long param_2,short param_3,short param_4)
 /* Address: 0x1000873c Size: 1232 bytes */
 void FUN_1000873c()
 {
+  short param_1 = 0;
+  short param_2 = 0;
+  long long param_3 = 0;
+  short param_4 = 0;
+  short param_5 = 0;
+  short param_6 = 0;
+  short param_7 = 0;
+  short param_8 = 0;
+
+  int *puVar1;
+  int iVar2;
+  int iVar3;
+  int bVar4;
+  int *puVar5;
+  int iVar6;
+  int iVar7;
+  unsigned long long uVar8;
+  int *ppuVar9;
+  short sVar10;
+  short sVar12;
+  long long uVar11;
+  long long lVar13;
+  unsigned int uVar14;
+  unsigned int uVar15;
+  unsigned long long uVar16;
+  long long lVar17;
+  unsigned long long uVar18;
+  int iVar19;
+  short in_stack_0000003a;
+  short in_stack_0000003e;
+  short in_stack_00000042;
+  short in_stack_00000046;
+  int **local_b4;
+  short local_58 [44];
+  
+  iVar7 = iRam10115cec;
+  iVar6 = iRam10115ce8;
+  puVar5 = puRam10115ce4;
+  uVar8 = ZEXT48(((char*)0));
+  ppuVar9 = 0 /* TVect base */;
+  uVar16 = (unsigned long long)param_2;
+  lVar17 = uVar8 - 0x80;
+  if (param_2 == 0xf) {
+    uVar16 = 8;
+  }
+  EnsureSpriteLoaded(8);
+  uVar18 = 0;
+  do {
+    *(short *)((int)local_58 + (int)((uVar18 & 0xffffffff) << 2)) = param_4;
+    if ((int)uVar18 < 2) {
+      sVar10 = 0;
+    }
+    else {
+      sVar10 = 0x24;
+    }
+    sVar10 = param_5 + (short)(((uVar18 & 0x3fffffff) * 4 + uVar18 & 0xffffffff) << 1) + sVar10;
+    iVar19 = (int)((uVar18 & 0xffffffff) << 2);
+    *(short *)((int)local_58 + iVar19 + 2) = sVar10;
+    if (in_stack_00000042 == 2) {
+      *(short *)((int)local_58 + iVar19 + 2) = sVar10 + -0x14;
+    }
+    sVar10 = (short)uVar18 + 1;
+    uVar18 = (unsigned long long)sVar10;
+  } while (sVar10 < 4);
+  if (in_stack_00000042 != 0) {
+    uVar18 = ZEXT48((*(int*)((char*)ppuVar9 - 0x6fa)));
+    DrawNumber(lVar17,uVar18 + 0x2c,param_6);
+    DrawNumber(uVar8 - 0x76,uVar18 + 0x34,param_7);
+    DrawNumber(uVar8 - 0x6c,uVar18 + 0x3c,in_stack_0000003a);
+    DrawNumber(uVar8 - 0x62,uVar18 + 0x44,param_8);
+    uVar18 = 0;
+    do {
+      if (in_stack_00000042 == 2) {
+        if (2 < (int)uVar18) {
+          iVar19 = (int)((uVar18 & 0x3fffffff) << 2);
+          *(short *)((int)local_58 + iVar19) = *(short *)((int)local_58 + iVar19) + 8;
+          *(short *)((int)local_58 + iVar19 + 2) = *(short *)((int)local_58 + iVar19 + 2) + -0xf;
+          sVar10 = StringLength(((uVar18 & 0x3fffffff) * 4 + uVar18 & 0x7fffffff) * 2 + lVar17);
+          iVar19 = 0;
+          if (0 < sVar10) {
+            do {
+              lVar13 = ((uVar18 & 0x3fffffff) * 4 + uVar18 & 0x7fffffff) * 2;
+              iVar2 = *(char *)((int)lVar13 + iVar19 + (int)lVar17) * 8 + iVar7;
+              iVar3 = (int)((uVar18 & 0x3fffffff) << 2);
+              FUN_1004602c(8,*(int *)(iVar2 + -0x180),*(int *)(iVar2 + -0x17c),
+                           *(int *)((int)local_58 + iVar3),0x24,0xf);
+              *(short *)((int)local_58 + iVar3) = *(short *)((int)local_58 + iVar3) + 8;
+              sVar12 = (short)iVar19 + 1;
+              iVar19 = (int)sVar12;
+              sVar10 = StringLength(lVar13 + lVar17);
+            } while (sVar12 < sVar10);
+          }
+        }
+      }
+      else {
+        iVar2 = (int)((uVar18 & 0xffffffff) << 3);
+        iVar19 = (int)((uVar18 & 0x3fffffff) << 2);
+        FUN_1004602c(8,*(int *)(iVar2 + iVar6),*(int *)(iVar2 + iVar6 + 4),
+                     *(int *)((int)local_58 + iVar19),0x24,0xf);
+        *(short *)((int)local_58 + iVar19) = *(short *)((int)local_58 + iVar19) + 8;
+        FUN_1004602c(8,*puVar5,puVar5[1],*(int *)((int)local_58 + iVar19),0x24,0xf);
+        *(short *)((int)local_58 + iVar19) = *(short *)((int)local_58 + iVar19) + 8;
+        sVar10 = StringLength(((uVar18 & 0x3fffffff) * 4 + uVar18 & 0x7fffffff) * 2 + lVar17);
+        iVar19 = 0;
+        if (0 < sVar10) {
+          do {
+            lVar13 = ((uVar18 & 0x3fffffff) * 4 + uVar18 & 0x7fffffff) * 2;
+            iVar2 = *(char *)((int)lVar13 + iVar19 + (int)lVar17) * 8 + iVar7;
+            iVar3 = (int)((uVar18 & 0x3fffffff) << 2);
+            FUN_1004602c(8,*(int *)(iVar2 + -0x180),*(int *)(iVar2 + -0x17c),
+                         *(int *)((int)local_58 + iVar3),0x24,0xf);
+            *(short *)((int)local_58 + iVar3) = *(short *)((int)local_58 + iVar3) + 8;
+            sVar12 = (short)iVar19 + 1;
+            iVar19 = (int)sVar12;
+            sVar10 = StringLength(lVar13 + lVar17);
+          } while (sVar12 < sVar10);
+        }
+      }
+      sVar10 = (short)uVar18 + 1;
+      uVar18 = (unsigned long long)sVar10;
+      ppuVar9 = local_b4;
+    } while (sVar10 < 4);
+  }
+  uVar14 = (unsigned int)param_1;
+  if (in_stack_0000003e != 0) {
+    EnsureSpriteLoaded(8);
+    if ((in_stack_0000003e == 1) && (uVar14 == 0xffffffff)) {
+      bVar4 = true;
+    }
+    else {
+      bVar4 = false;
+    }
+    if (bVar4) {
+      sVar10 = 0x200;
+    }
+    else {
+      sVar10 = in_stack_0000003e * 0x20 + -0x20;
+    }
+    if (in_stack_00000042 == 1) {
+      sVar12 = 0x14;
+    }
+    else {
+      sVar12 = 0;
+    }
+    BlitSpriteNormal((*(int*)((char*)ppuVar9 - 0x115)),sVar10,0,0x20,0x1e,param_3,param_4,param_5 + sVar12);
+  }
+  if (-1 < (int)uVar14) {
+    sVar10 = (short)uVar16 + 0x10;
+    puVar1 = (*(int*)((char*)ppuVar9 - 0x11a));
+    EnsureSpriteLoaded(sVar10);
+    uVar15 = (unsigned int)param_1;
+    uVar18 = (long long)((int)uVar14 >> 4) + (unsigned long long)((int)uVar15 < 0 && (uVar14 & 0xf) != 0);
+    EnsureSpriteAndLock(sVar10);
+    if (in_stack_00000046 == 0) {
+      uVar11 = 0;
+    }
+    else {
+      uVar11 = 2;
+    }
+    FUN_100670ec(uVar8 - 0x88,uVar11);
+    if (in_stack_00000042 == 1) {
+      sVar12 = 0x14;
+    }
+    else {
+      sVar12 = 0;
+    }
+    BlitSpriteNormal(((uVar16 & 0x3fffffff) * 4 + uVar16 & 0x3fffffff) * 4 + ZEXT48(puVar1),
+                 (short)(((long long)param_1 +
+                          ((long long)((int)uVar15 >> 4) +
+                           (unsigned long long)((int)uVar15 < 0 && (uVar15 & 0xf) != 0) & 0xfffffff) * -0x10
+                         & 0xffffffff) << 5),
+                 (short)(((uVar18 & 0xfffffff) * 0x10 - uVar18 & 0xffffffff) << 1),0x20,0x1d,param_3
+                 ,param_4,param_5 + sVar12);
+    FUN_10067178(uVar8 - 0x88,2);
+    UnlockAndReleaseSprite(sVar10);
+  }
   return;
+
 }
 
 /* Address: 0x10008c0c Size: 472 bytes */
@@ -7065,26 +7291,26 @@ void FUN_10008c0c(short param_1,short param_2,long long param_3,short param_4,
   if (param_1 == 0xf) {
     uVar3 = 8;
   }
-  FUN_100462c8(5);
-  FUN_100462c8(0x26);
+  EnsureSpriteLoaded(5);
+  EnsureSpriteLoaded(0x26);
   if (param_2 == 0) {
-    FUN_10009b48(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3),0,0x28,0x28,
+    BlitSpriteNormal(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3),0,0x28,0x28,
                  param_3,param_4,param_5);
   }
   else if (param_2 == 1) {
-    FUN_10009b48(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3),0x41,0x28,0x28,
+    BlitSpriteNormal(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3),0x41,0x28,0x28,
                  param_3,param_4,param_5);
   }
   else if (param_2 == 2) {
-    FUN_10009b48(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3),0x28,0x28,0x19,
+    BlitSpriteNormal(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3),0x28,0x28,0x19,
                  param_3,param_4,param_5);
   }
   else if (param_2 == 3) {
-    FUN_10009b48(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3) + 0x18,0x2e,
+    BlitSpriteNormal(uVar1,(short)(((uVar3 & 0x3fffffff) * 4 + uVar3 & 0xffffffff) << 3) + 0x18,0x2e,
                  0x10,0x10,param_3,param_4,param_5);
   }
   else if (param_2 == 4) {
-    FUN_10009d38((*(int*)((char*)ppuVar2 - 0x112)),(short)((uVar3 & 0xffffffff) << 5),0x24,0x20,0x17,param_3,param_4,
+    BlitSpriteWithMask((*(int*)((char*)ppuVar2 - 0x112)),(short)((uVar3 & 0xffffffff) << 5),0x24,0x20,0x17,param_3,param_4,
                  param_5);
   }
   return;
@@ -7108,7 +7334,7 @@ void FUN_10008de4()
   puVar4 = (int *)FUN_100f15e0(0x4440);
   *piVar2 = (int)puVar4;
   if (puVar4 != (int *)0x0) {
-    FUN_10002598(puVar4);
+    DetachResource(puVar4);
     ppuVar3 = local_2c;
   }
   puVar6 = (char *)*puVar4;
@@ -7125,7 +7351,7 @@ void FUN_10008de4()
   } while (sVar7 < 0x9c);
   iVar1 = *piVar2;
   if (iVar1 != 0) {
-    FUN_10002ad8(iVar1);
+    DisposeHandle_Thunk(iVar1);
   }
   return;
 }
@@ -7152,7 +7378,7 @@ void FUN_10008e8c()
   puVar3 = (int *)*piRam10115cf0;
   ppuVar7 = 0 /* TVect base */;
   if (puVar3 != (int *)0x0) {
-    FUN_10002598(puVar3);
+    DetachResource(puVar3);
     ppuVar7 = local_34;
   }
   pbVar9 = (unsigned char *)*puVar3;
@@ -7175,13 +7401,13 @@ void FUN_10008e8c()
     iVar8 = (int)sVar11;
   } while (sVar11 < 0x9c);
   if (*piVar5 != 0) {
-    FUN_10002ad8(*piVar5);
+    DisposeHandle_Thunk(*piVar5);
   }
   return;
 }
 
 /* Address: 0x1000931c Size: 516 bytes */
-long long FUN_1000931c(long long param_1,short param_2,short param_3)
+long long SetArmyDestination(long long param_1,short param_2,short param_3)
 
 {
   short sVar1;
@@ -7611,7 +7837,7 @@ LAB_10009778:
     } while (sVar12 < 8);
     piVar1 = (int *)*piRam10115cf0;
     if (piVar1 != (int *)0x0) {
-      FUN_10002598(piVar1);
+      DetachResource(piVar1);
     }
     *piVar6 = *piVar1;
     iVar14 = 0;
@@ -7637,7 +7863,7 @@ LAB_10009778:
       } while (sVar12 < *(short *)(*piVar8 + 0x1602));
     }
     if (*piVar5 != 0) {
-      FUN_10002ad8(*piVar5);
+      DisposeHandle_Thunk(*piVar5);
     }
     if (bVar4) {
       *(short *)(*piVar8 + 0x124) = 0;
@@ -7689,7 +7915,7 @@ void FUN_10009a0c()
   
   iVar2 = FUN_10116698;
   piVar1 = piRam10115cfc;
-  FUN_100226b0(FUN_10116698,0,0,100,100);
+  SetRect4(FUN_10116698,0,0,100,100);
   *(short *)(iVar2 + 8) = 0xf0;
   *(char *)(iVar2 + 10) = 0;
   *(char *)(iVar2 + 0xb) = 4;
@@ -7839,14 +8065,14 @@ void FUN_1000a4e8()
     iVar8 = FUN_100ebf44(auStack_164);
     while (iVar8 != 0) {
       if (((*(int *)(iVar7 + 0x10) != 0) && (*(char *)(iVar7 + 0xb) != '\x01')) &&
-         (uVar5 = FUN_10001290(*(int *)(iVar7 + 0x10)), (int)uVar5 != 0)) {
+         (uVar5 = HLock_Thunk(*(int *)(iVar7 + 0x10)), (int)uVar5 != 0)) {
         iVar8 = FUN_10001d70(uVar5);
         if (iVar8 == 0) {
           FUN_1000a094(iVar7);
         }
         else {
-          FUN_10003468(uVar5);
-          FUN_10003108(auStack_16c,0,0,*(short *)(iVar7 + 4),*(short *)(iVar7 + 6));
+          HUnlock_Thunk(uVar5);
+          SetMacRect(auStack_16c,0,0,*(short *)(iVar7 + 4),*(short *)(iVar7 + 6));
           cVar11 = '\x01';
           if (*(char *)(iVar7 + 0xb) != '\x01') {
             if (sVar1 == 8) {
@@ -7861,7 +8087,7 @@ void FUN_1000a4e8()
           if (cVar11 == '\x01') {
             puVar10 = puVar3;
           }
-          FUN_10003198(iVar7 + 0x10,cVar11,auStack_16c,*puVar10,0,0x10000000);
+          NewGWorld_Wrapper(iVar7 + 0x10,cVar11,auStack_16c,*puVar10,0,0x10000000);
           *(char *)dVar4 = uVar9;
         }
       }
@@ -8239,9 +8465,9 @@ void FUN_1000a9e4(short param_1,short param_2,short param_3)
   FUN_1000a958(auStack_28,auStack_20,auStack_18,param_1,param_2,param_3);
   puVar2[1] = 0;
   *puVar2 = 0;
-  FUN_100226b0((*(int*)((char*)ppuVar3 - 0x110)),0,0,local_24,local_22);
-  FUN_100462c8(0x1d);
-  FUN_10009b48((*(int*)((char*)ppuVar3 - 0x78)),*puVar1,puVar1[1],puVar1[2],puVar1[3],(*(int*)((char*)ppuVar3 - 0x482)),*puVar2,
+  SetRect4((*(int*)((char*)ppuVar3 - 0x110)),0,0,local_24,local_22);
+  EnsureSpriteLoaded(0x1d);
+  BlitSpriteNormal((*(int*)((char*)ppuVar3 - 0x78)),*puVar1,puVar1[1],puVar1[2],puVar1[3],(*(int*)((char*)ppuVar3 - 0x482)),*puVar2,
                puVar2[1]);
   return;
 }
@@ -8369,11 +8595,11 @@ void FUN_1000aaa8(long long param_1,long long param_2)
   short *psVar2;
   
   psVar2 = psRam10117460;
-  FUN_1003206c(2,7,0xff,0xf9);
+  SetDrawColor(2,7,0xff,0xf9);
   uVar1 = psVar2[2];
   FUN_1005f1d0(*psVar2 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) + -8,
                psVar2[1] + 0xb,param_1);
-  FUN_1003206c(2,0xe0,0xff,0xf9);
+  SetDrawColor(2,0xe0,0xff,0xf9);
   uVar1 = psVar2[2];
   FUN_1005f1d0(*psVar2 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) + -8,
                psVar2[1] + 0x23,param_2);
@@ -8622,7 +8848,112 @@ void FUN_1000ab70(short param_1,short param_2)
 
 void FUN_1000acac()
 {
+  short param_1 = 0;
+
+  char cVar1;
+  unsigned short uVar2;
+  short sVar3;
+  short sVar4;
+  short sVar5;
+  unsigned int uVar6;
+  int iVar7;
+  int iVar8;
+  int *puVar9;
+  short *psVar10;
+  int uVar11;
+  int *piVar12;
+  unsigned int *puVar13;
+  short *psVar14;
+  short *psVar15;
+  int *ppuVar16;
+  short sVar17;
+  long long lVar18;
+  long long lVar19;
+  unsigned long long uVar20;
+  int iVar21;
+  int local_6c;
+  char auStack_48 [16];
+  int local_38;
+  
+  psVar15 = psRam10117460;
+  psVar14 = psRam1011745c;
+  puVar13 = puRam1011735c;
+  piVar12 = piRam10117358;
+  uVar11 = FUN_10116698;
+  psVar10 = psRam10115d0c;
+  puVar9 = puRam10115d08;
+  ppuVar16 = 0 /* TVect base */;
+  uVar20 = (unsigned long long)param_1;
+  SetDrawColor(2,0xe0,0xff,0xf9);
+  uVar2 = psVar15[2];
+  lVar19 = ((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0x7fffffff) * 2;
+  FUN_1005f1d0(*psVar15 + ((short)uVar2 >> 1) + (unsigned short)((short)uVar2 < 0 && (uVar2 & 1) != 0) + -8,
+               psVar15[1] + 0xb,(unsigned long long)*puVar13 + lVar19 + 0x1608);
+  iVar21 = (int)lVar19 + *puVar13;
+  lVar19 = -(long long)
+            *(char *)(*puVar13 +
+                      (*(unsigned int *)(*piVar12 + *(short *)(iVar21 + 0x1606) * 0xe0 +
+                                *(short *)(iVar21 + 0x1604) * 2) >> 0x18) + 0x711);
+  lVar18 = lVar19 + 10;
+  if ((lVar18 + (-(unsigned long long)(lVar18 == 0) - (lVar19 + 9)) & 0xff) == 0) {
+    iVar21 = (int)(((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0xffffffff) << 1);
+    cVar1 = *(char *)(*puVar13 + iVar21 + 0x1619);
+    if (cVar1 < '\b') {
+      FUN_10008c0c(cVar1,3,uVar11,*psVar15 + 0x18,psVar15[1] + 10);
+      FUN_10008c0c(*(char *)(*puVar13 + iVar21 + 0x1619),3,uVar11,
+                   *psVar15 + psVar15[2] + -0x30,psVar15[1] + 10);
+    }
+    sVar17 = *psVar10;
+    sVar5 = *psVar14;
+    local_38 = CONCAT22(sVar17 + sVar5,((short)local_38));
+    sVar3 = psVar10[1];
+    sVar4 = psVar14[1];
+    FUN_1004602c(8,*puVar9,puVar9[1],local_38,0x24,0xf);
+    iVar21 = (int)(((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0xffffffff) << 1);
+    DrawNumber(auStack_48,ZEXT48((*(int*)((char*)ppuVar16 - 0x6e8))) + 8,*(short *)(*puVar13 + iVar21 + 0x162e)
+                );
+    FUN_1005f1a0(sVar17 + sVar5 + 0x20,sVar3 + sVar4 + -3,auStack_48);
+    sVar17 = psVar10[2];
+    sVar5 = *psVar14;
+    local_38 = CONCAT22(sVar17 + sVar5,((short)local_38));
+    FUN_1004602c(8,puVar9[2],puVar9[3],local_38,0x24,0xf);
+    DrawNumber(auStack_48,(unsigned long long)*(unsigned int *)(local_6c + -0x1ba0) + 0xc,
+                 *(char *)(iVar21 + *puVar13 + 0x1618));
+    FUN_1005f1a0(sVar17 + sVar5 + 0x20,((short)local_38) + -3,auStack_48);
+  }
+  else {
+    uVar2 = psVar15[2];
+    FUN_1005f1d0(*psVar15 + ((short)uVar2 >> 1) + (unsigned short)((short)uVar2 < 0 && (uVar2 & 1) != 0) +
+                 -8,psVar15[1] + 0x23,(*(int*)((char*)ppuVar16 - 0x6e8)));
+  }
+  iVar21 = 0;
+  while( true ) {
+    uVar6 = *puVar13;
+    iVar7 = uVar6 + (int)(((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0xffffffff) << 1);
+    sVar17 = *(short *)(iVar7 + 0x1604);
+    iVar8 = uVar6 + iVar21 * 0x14;
+    if ((*(short *)(iVar8 + 0x194) == sVar17) &&
+       (sVar5 = *(short *)(iVar7 + 0x1606), *(short *)(iVar8 + 0x196) == sVar5)) break;
+    sVar17 = (short)iVar21 + 1;
+    iVar21 = (int)sVar17;
+    if (7 < sVar17) {
+      return;
+    }
+  }
+  lVar19 = -(long long)
+            *(char *)(uVar6 + (*(unsigned int *)(*piVar12 + sVar5 * 0xe0 + sVar17 * 2) >> 0x18) + 0x711);
+  lVar18 = lVar19 + 10;
+  if ((lVar18 + (-(unsigned long long)(lVar18 == 0) - (lVar19 + 9)) & 0xff) != 0) {
+    FUN_10008c0c(iVar21,4,uVar11,*psVar15 + 0x10,psVar15[1] + 10);
+    FUN_10008c0c(iVar21,4,uVar11,*psVar15 + psVar15[2] + -0x38,psVar15[1] + 10);
+    return;
+  }
+  uVar2 = psVar15[2];
+  FUN_10008c0c(iVar21,4,uVar11,
+               *psVar15 + ((short)uVar2 >> 1) + (unsigned short)((short)uVar2 < 0 && (uVar2 & 1) != 0) +
+               -0x18,psVar15[1] + 0x22);
   return;
+
 }
 
 
@@ -9168,7 +9499,45 @@ void FUN_1000acac()
 /* Address: 0x1000b0c0 Size: 440 bytes */
 void FUN_1000b0c0()
 {
+  short param_1 = 0;
+
+  unsigned short uVar1;
+  int *piVar2;
+  short *psVar3;
+  int *ppuVar4;
+  int iVar5;
+  
+  psVar3 = psRam10117460;
+  piVar2 = piRam1011735c;
+  ppuVar4 = 0 /* TVect base */;
+  iVar5 = *piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 2;
+  SetDrawColor(2,*(short *)(iVar5 + 0xa0),*(short *)(iVar5 + 0xb0),0xf9);
+  uVar1 = psVar3[2];
+  iVar5 = param_1 * 0x20;
+  FUN_1005f1d0(*psVar3 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) + -8,
+               psVar3[1] + 0xb,*piVar2 + iVar5 + 0x816);
+  SetDrawColor(2,0xe0,0xff,0xf9);
+  if (*(char *)(iVar5 + *piVar2 + 0x82a) == '\x01') {
+    uVar1 = psVar3[2];
+    FUN_1005f1d0(*psVar3 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) + -8
+                 ,psVar3[1] + 0x23,ZEXT48((*(int*)((char*)ppuVar4 - 0x6e8))) + 0x10);
+  }
+  else {
+    iVar5 = *piVar2 + param_1 * 0x20;
+    if ((*(unsigned int *)(*(int *)(*(int*)((char*)ppuVar4 - 0x152)) + *(short *)(iVar5 + 0x814) * 0xe0 +
+                  *(short *)(iVar5 + 0x812) * 2) >> 0x16 & 1) == 0) {
+      uVar1 = psVar3[2];
+      FUN_1005f1d0(*psVar3 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) +
+                   -8,psVar3[1] + 0x23,ZEXT48((*(int*)((char*)ppuVar4 - 0x6e8))) + 0x24);
+    }
+    else {
+      uVar1 = psVar3[2];
+      FUN_1005f1d0(*psVar3 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) +
+                   -8,psVar3[1] + 0x21,ZEXT48((*(int*)((char*)ppuVar4 - 0x6e8))) + 0x30);
+    }
+  }
   return;
+
 }
 
 /* Address: 0x1000b278 Size: 352 bytes */
@@ -9195,12 +9564,12 @@ void FUN_1000b278(short param_1,short param_2)
   FUN_1000a958(auStack_38,auStack_30,auStack_28,param_1,param_2,1);
   puVar3[1] = 0;
   *puVar3 = 0;
-  FUN_100226b0(psVar4,0,0,local_34,local_32);
-  FUN_100462c8(0x24);
-  FUN_10009b48((*(int*)((char*)ppuVar5 - 0x78)),*puVar2,puVar2[1],puVar2[2],puVar2[3],(*(int*)((char*)ppuVar5 - 0x482)),*puVar3,
+  SetRect4(psVar4,0,0,local_34,local_32);
+  EnsureSpriteLoaded(0x24);
+  BlitSpriteNormal((*(int*)((char*)ppuVar5 - 0x78)),*puVar2,puVar2[1],puVar2[2],puVar2[3],(*(int*)((char*)ppuVar5 - 0x482)),*puVar3,
                puVar3[1]);
   FUN_1005ba1c(param_1,param_2,auStack_70,auStack_a8);
-  FUN_1003206c(2,0xe0,0xff,0xf9);
+  SetDrawColor(2,0xe0,0xff,0xf9);
   uVar1 = psVar4[2];
   FUN_1005f1d0(*psVar4 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) + -8,
                psVar4[1] + 0xb,auStack_70);
@@ -9443,14 +9812,14 @@ void FUN_1000b3d8(short param_1,short param_2,short param_3,char param_4)
       iVar9 = (int)lVar10;
       if (iVar9 == 10) {
         FUN_1000a9e4(uVar12,uVar11,1);
-        FUN_1002be50(uVar12,uVar11);
+        LookupCityAtPos(uVar12,uVar11);
         FUN_1000acac();
       }
       else if (iVar9 == 0xb) {
-        uVar6 = FUN_1002be50(uVar12,uVar11);
+        uVar6 = LookupCityAtPos(uVar12,uVar11);
         if ((int)uVar6 < 0) {
           FUN_1000a9e4(uVar12,uVar11,1);
-          FUN_1002bef8(uVar12,uVar11);
+          LookupRuinAtPos(uVar12,uVar11);
           FUN_1000b0c0();
         }
         else {
@@ -10000,8 +10369,8 @@ void FUN_1000b940(long long param_1,short param_2,short param_3)
   if (sVar3 < 0x19e) {
     sVar2 = sVar3;
   }
-  FUN_100226b0(param_1,sVar1 + -0x78,sVar2 + -0x40,0xf0,0x80);
-  FUN_100226b0(param_1,0,0,0xf0,0x80);
+  SetRect4(param_1,sVar1 + -0x78,sVar2 + -0x40,0xf0,0x80);
+  SetRect4(param_1,0,0,0xf0,0x80);
   return;
 }
 
@@ -10036,41 +10405,41 @@ void FUN_1000ba58(short param_1,short param_2,short param_3,short param_4,
   FUN_1000b940(auStack_70,param_6,param_7);
   psVar5[1] = 0;
   *psVar5 = 0;
-  FUN_100226b0((*(int*)((char*)ppuVar6 - 0x110)),0,0,local_6c,local_6a);
-  FUN_100462c8(0x28);
-  FUN_10009d38((*(int*)((char*)ppuVar6 - 0x78)),*puVar1,puVar1[1],puVar1[2],puVar1[3],uVar2,*psVar5,psVar5[1]);
-  FUN_1003206c(2,0xe0,0xff,0xf9);
+  SetRect4((*(int*)((char*)ppuVar6 - 0x110)),0,0,local_6c,local_6a);
+  EnsureSpriteLoaded(0x28);
+  BlitSpriteWithMask((*(int*)((char*)ppuVar6 - 0x78)),*puVar1,puVar1[1],puVar1[2],puVar1[3],uVar2,*psVar5,psVar5[1]);
+  SetDrawColor(2,0xe0,0xff,0xf9);
   uVar8 = FUN_1004a21c(uVar9);
   FUN_1005f1d0(*psVar5 + 0x70,psVar5[1] + 8,uVar8);
   FUN_1000873c(uVar9,*(short *)(*(int *)(*(int*)((char*)ppuVar6 - 0x151)) + 0x110),uVar2,*psVar5 + 0x60,
                psVar5[1] + 0x1f,0,0);
-  FUN_10001dd0(auStack_68,ZEXT48((*(int*)((char*)ppuVar6 - 0x6e8))) + 100,param_3);
+  DrawNumber(auStack_68,ZEXT48((*(int*)((char*)ppuVar6 - 0x6e8))) + 100,param_3);
   iVar7 = local_a4;
   FUN_1005f200(*psVar5 + 0x68,psVar5[1] + 0x42,auStack_68);
-  FUN_10001dd0(auStack_68,(unsigned long long)*(unsigned int *)(iVar7 + -0x1ba0) + 0x74,param_5);
+  DrawNumber(auStack_68,(unsigned long long)*(unsigned int *)(iVar7 + -0x1ba0) + 0x74,param_5);
   iVar7 = local_a4;
   FUN_1005f1a0(*psVar5 + 0x78,psVar5[1] + 0x42,auStack_68);
-  FUN_10001dd0(auStack_68,(unsigned long long)*(unsigned int *)(iVar7 + -0x1ba0) + 0x84,param_2);
+  DrawNumber(auStack_68,(unsigned long long)*(unsigned int *)(iVar7 + -0x1ba0) + 0x84,param_2);
   FUN_1005f200(*psVar5 + 0x68,psVar5[1] + 0x56,auStack_68);
-  FUN_10001dd0(auStack_68,(unsigned long long)*(unsigned int *)(local_a4 + -0x1ba0) + 0x90,param_4);
+  DrawNumber(auStack_68,(unsigned long long)*(unsigned int *)(local_a4 + -0x1ba0) + 0x90,param_4);
   FUN_1005f1a0(*psVar5 + 0x78,psVar5[1] + 0x56,auStack_68);
   if (*(char *)(*piVar3 + (int)(((uVar9 & 0x3fffffff) * 4 - uVar9 & 0xffffffff) << 1)) == '\0') {
     iVar7 = *piVar3 + (int)(((uVar9 & 0x3fffffff) * 4 - uVar9 & 0xffffffff) << 1);
     if (*(char *)(iVar7 + 1) == '\0') {
       if (*(char *)(*piVar3 + (int)(((uVar9 & 0x3fffffff) * 4 - uVar9 & 0xffffffff) << 1) + 2) !=
           '\0') {
-        FUN_10009b48(uVar4,0x98,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
+        BlitSpriteNormal(uVar4,0x98,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
       }
     }
     else if (*(char *)(iVar7 + 2) == '\0') {
-      FUN_10009b48(uVar4,0xf8,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
+      BlitSpriteNormal(uVar4,0xf8,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
     }
     else {
-      FUN_10009b48(uVar4,0xd8,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
+      BlitSpriteNormal(uVar4,0xd8,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
     }
   }
   else {
-    FUN_10009b48(uVar4,0xb8,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
+    BlitSpriteNormal(uVar4,0xb8,0x1e,0x20,10,uVar2,*psVar5 + 0x60,psVar5[1] + 0x67);
   }
   return;
 }
@@ -10446,10 +10815,10 @@ void FUN_1000be58(short param_1,short param_2,short param_3,short param_4,
     FUN_1000b940(auStack_80,param_7,param_8);
     psVar8[1] = 0;
     *psVar8 = 0;
-    FUN_100226b0((*(int*)((char*)ppuVar9 - 0x110)),0,0,local_7c,local_7a);
-    FUN_100462c8(0x28);
-    FUN_10009d38((*(int*)((char*)ppuVar9 - 0x78)),*puVar2,puVar2[1],puVar2[2],puVar2[3],uVar4,*psVar8,psVar8[1]);
-    FUN_1003206c(2,0xe0,0xff,0xf9);
+    SetRect4((*(int*)((char*)ppuVar9 - 0x110)),0,0,local_7c,local_7a);
+    EnsureSpriteLoaded(0x28);
+    BlitSpriteWithMask((*(int*)((char*)ppuVar9 - 0x78)),*puVar2,puVar2[1],puVar2[2],puVar2[3],uVar4,*psVar8,psVar8[1]);
+    SetDrawColor(2,0xe0,0xff,0xf9);
     if (param_1 == 0x1c) {
       FUN_1005f1d0(*psVar8 + 0x70,psVar8[1] + 8,
                    (unsigned long long)*puVar5 +
@@ -10462,30 +10831,30 @@ void FUN_1000be58(short param_1,short param_2,short param_3,short param_4,
     }
     FUN_1000873c(uVar11,*(short *)(*puVar5 + 0x110),uVar4,*psVar8 + 0x60,psVar8[1] + 0x1f,0,0);
     if ((param_1 != 0x1c) && (0 < param_6)) {
-      FUN_10009b48(uVar7,*puVar3,puVar3[1],puVar3[2],puVar3[3],uVar4,*psVar8 + 0x80,psVar8[1] + 0x24
+      BlitSpriteNormal(uVar7,*puVar3,puVar3[1],puVar3[2],puVar3[3],uVar4,*psVar8 + 0x80,psVar8[1] + 0x24
                   );
       if (1 < param_6) {
-        FUN_10009b48(uVar7,puVar3[4],puVar3[5],puVar3[6],puVar3[7],uVar4,*psVar8 + 0x58,
+        BlitSpriteNormal(uVar7,puVar3[4],puVar3[5],puVar3[6],puVar3[7],uVar4,*psVar8 + 0x58,
                      psVar8[1] + 0x24);
       }
       if (2 < param_6) {
-        FUN_10009b48(uVar7,puVar3[8],puVar3[9],puVar3[10],puVar3[0xb],uVar4,*psVar8 + 0x80,
+        BlitSpriteNormal(uVar7,puVar3[8],puVar3[9],puVar3[10],puVar3[0xb],uVar4,*psVar8 + 0x80,
                      psVar8[1] + 0x2d);
       }
       if (3 < param_6) {
-        FUN_10009b48(uVar7,puVar3[0xc],puVar3[0xd],puVar3[0xe],puVar3[0xf],uVar4,*psVar8 + 0x58,
+        BlitSpriteNormal(uVar7,puVar3[0xc],puVar3[0xd],puVar3[0xe],puVar3[0xf],uVar4,*psVar8 + 0x58,
                      psVar8[1] + 0x2d);
       }
     }
-    FUN_1003206c(2,0xe0,0xff,0xf9);
+    SetDrawColor(2,0xe0,0xff,0xf9);
     uVar12 = ZEXT48((*(int*)((char*)ppuVar9 - 0x6e8)));
-    FUN_10001dd0(auStack_78,uVar12 + 0x9c,param_3);
+    DrawNumber(auStack_78,uVar12 + 0x9c,param_3);
     FUN_1005f200(*psVar8 + 0x68,psVar8[1] + 0x42,auStack_78);
-    FUN_10001dd0(auStack_78,uVar12 + 0xac,param_2);
+    DrawNumber(auStack_78,uVar12 + 0xac,param_2);
     FUN_1005f1a0(*psVar8 + 0x78,psVar8[1] + 0x42,auStack_78);
-    FUN_10001dd0(auStack_78,uVar12 + 0xbc,param_5);
+    DrawNumber(auStack_78,uVar12 + 0xbc,param_5);
     FUN_1005f200(*psVar8 + 0x68,psVar8[1] + 0x56,auStack_78);
-    FUN_10001dd0(auStack_78,uVar12 + 200,param_4);
+    DrawNumber(auStack_78,uVar12 + 200,param_4);
     FUN_1005f1a0(*psVar8 + 0x78,psVar8[1] + 0x56,auStack_78);
     if (*(char *)(*piVar6 + (int)(((uVar11 & 0x3fffffff) * 4 - uVar11 & 0xffffffff) << 1)) == '\0')
     {
@@ -10493,18 +10862,18 @@ void FUN_1000be58(short param_1,short param_2,short param_3,short param_4,
       if (*(char *)(iVar1 + 1) == '\0') {
         if (*(char *)(*piVar6 + (int)(((uVar11 & 0x3fffffff) * 4 - uVar11 & 0xffffffff) << 1) + 2)
             != '\0') {
-          FUN_10009b48(uVar7,0x98,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
+          BlitSpriteNormal(uVar7,0x98,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
         }
       }
       else if (*(char *)(iVar1 + 2) == '\0') {
-        FUN_10009b48(uVar7,0xf8,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
+        BlitSpriteNormal(uVar7,0xf8,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
       }
       else {
-        FUN_10009b48(uVar7,0xd8,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
+        BlitSpriteNormal(uVar7,0xd8,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
       }
     }
     else {
-      FUN_10009b48(uVar7,0xb8,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
+      BlitSpriteNormal(uVar7,0xb8,0x1e,0x20,10,uVar4,*psVar8 + 0x60,psVar8[1] + 0x67);
     }
   }
   return;
@@ -11003,11 +11372,11 @@ void FUN_1000c3fc(long long param_1,long long param_2)
   short *psVar2;
   
   psVar2 = psRam10117460;
-  FUN_1003206c(2,7,0xff,0xf9);
+  SetDrawColor(2,7,0xff,0xf9);
   uVar1 = psVar2[2];
   FUN_1005f1d0(*psVar2 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) + -8,
                psVar2[1] + 0xb,param_1);
-  FUN_1003206c(2,0xe0,0xff,0xf9);
+  SetDrawColor(2,0xe0,0xff,0xf9);
   uVar1 = psVar2[2];
   FUN_1005f1d0(*psVar2 + ((short)uVar1 >> 1) + (unsigned short)((short)uVar1 < 0 && (uVar1 & 1) != 0) + -8,
                psVar2[1] + 0x23,param_2);
@@ -11053,17 +11422,17 @@ void FUN_1000c4c4(short param_1,short param_2,int *param_3)
          (((unsigned short)(uVar1 >> 0x10) & 0xf) != *(unsigned short *)(iVar7 + 0x110))) &&
         ((uVar2 >> 0x15 & 1) == 0)))) {
       if ((cVar8 == '\n') || (cVar8 == '\v')) {
-        FUN_100462c8(0x1d);
+        EnsureSpriteLoaded(0x1d);
       }
       else if (cVar8 == '\t') {
-        FUN_100462c8(0x24);
+        EnsureSpriteLoaded(0x24);
       }
       else {
-        FUN_100462c8(0x1d);
+        EnsureSpriteLoaded(0x1d);
       }
     }
     else {
-      FUN_100462c8(0x1d);
+      EnsureSpriteLoaded(0x1d);
     }
     local_28 = CONCAT22(*(short *)(iVar5 + 6),*(short *)(iVar5 + 4));
     *param_3 = local_28;
@@ -11077,7 +11446,7 @@ void FUN_1000c4c4(short param_1,short param_2,int *param_3)
 void FUN_1000c648()
 
 {
-  FUN_1007c714(*(int *)(*piRam1011734c + 0x88),0x3fc);
+  DispatchNextPhase(*(int *)(*piRam1011734c + 0x88),0x3fc);
   return;
 }
 
@@ -11106,13 +11475,13 @@ int FUN_1000db10(short param_1)
       if ((int)*(char *)(*piVar2 + sVar1 * 0x42 + 0x1619) == (int)*(short *)(*piVar2 + 0x110)) {
         iVar5 = 0;
         if (*(char *)(*piVar3 + (int)sVar1 + 0x56) == '\a') {
-          iVar5 = FUN_1005f230(1,100,100);
+          iVar5 = RandomRange(1,100,100);
         }
         else if (*(char *)(*piVar3 + (int)sVar1 + 0x56) == '\x02') {
-          iVar5 = FUN_1005f230(1,100,0x32);
+          iVar5 = RandomRange(1,100,0x32);
         }
         else if (*(char *)(*piVar3 + (int)sVar1 + 0x56) == '\x03') {
-          iVar5 = FUN_1005f230(1,100,0);
+          iVar5 = RandomRange(1,100,0);
         }
         if (iVar6 < iVar5) {
           iVar4 = (int)sVar1;
@@ -11191,7 +11560,7 @@ LAB_1000dd4c:
       *(short *)(iVar8 + 0x3fc) = *(short *)(iVar8 + 0x3fc) + 1;
       *(unsigned short *)(iVar8 + 0x40c) = *(short *)(iVar8 + 0x40c) + (unsigned short)(iVar13 == cVar3);
     }
-    FUN_1000d9ac(uVar4);
+    ReleaseCityData(uVar4);
   }
   return;
 }
@@ -11244,7 +11613,7 @@ unsigned long long FUN_1000df58(short param_1)
   piVar6 = piRam1011735c;
   iVar12 = *piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 0x14;
   uStack0000001a = param_1;
-  uVar8 = FUN_1002be50(*(short *)(iVar12 + 0x194),*(short *)(iVar12 + 0x196));
+  uVar8 = LookupCityAtPos(*(short *)(iVar12 + 0x194),*(short *)(iVar12 + 0x196));
   sVar19 = *(short *)(*piVar6 + *(short *)(*piVar6 + 0x110) * 2 + 0x1122);
   uVar20 = 0xffffffffffffffff;
   iVar12 = 7;
@@ -11256,7 +11625,7 @@ unsigned long long FUN_1000df58(short param_1)
     asStack_80[iVar12] = 0;
     asStack_e8[iVar12] = 0;
     asStack_c8[iVar12] = 0;
-    sVar13 = FUN_1005f230(1,10);
+    sVar13 = RandomRange(1,10);
     asStack_108[iVar12] = sVar13;
     asStack_118[iVar12] = (short)iVar12;
     bVar1 = iVar12 != 0;
@@ -11279,7 +11648,7 @@ unsigned long long FUN_1000df58(short param_1)
         if (bVar4 != 0xf) {
           asStack_e8[bVar4] = asStack_e8[bVar4] + 1;
         }
-        FUN_1000da14(uVar21,0,abStack_a8,auStack_70);
+        GetAdjacentArmies(uVar21,0,abStack_a8,auStack_70);
         iVar12 = 5;
         do {
           bVar4 = abStack_a8[iVar12];
@@ -11329,7 +11698,7 @@ unsigned long long FUN_1000df58(short param_1)
         sVar13 = sVar13 + 1;
       }
       iVar9 = *piVar6 + (int)(((uVar21 & 0x3fffffff) * 4 + uVar21 & 0xffffffff) << 2);
-      iVar9 = FUN_1002be50(*(short *)(iVar9 + 0x194),*(short *)(iVar9 + 0x196));
+      iVar9 = LookupCityAtPos(*(short *)(iVar9 + 0x194),*(short *)(iVar9 + 0x196));
       if ((int)*(char *)(*piVar6 + iVar9 * 0x42 + 0x1619) == (int)*(short *)(*piVar6 + 0x110)) {
         *(short *)((int)asStack_f8 + (int)((uVar21 & 0xffffffff) << 1)) = 1;
       }
@@ -11367,9 +11736,9 @@ unsigned long long FUN_1000df58(short param_1)
       asStack_90[iVar12] = asStack_90[iVar12] + *(short *)(*piVar7 + 0x1c);
     }
     iVar9 = iVar12 * 2;
-    uVar10 = FUN_10003768((long long)sVar19 - (long long)*(short *)(iVar9 + *piVar6 + 0x1122));
+    uVar10 = AbsShort((long long)sVar19 - (long long)*(short *)(iVar9 + *piVar6 + 0x1122));
     sVar16 = *(short *)((int)asStack_90 + iVar9);
-    uVar11 = FUN_10003768((long long)(short)auStack_b8[*(short *)(*piVar6 + 0x110)] -
+    uVar11 = AbsShort((long long)(short)auStack_b8[*(short *)(*piVar6 + 0x110)] -
                           (long long)*(short *)((int)auStack_b8 + iVar9));
     *(unsigned short *)((int)asStack_90 + iVar9) =
          (short)((int)uVar11 >> 2) + (unsigned short)((int)uVar11 < 0 && (uVar11 & 3) != 0) +
@@ -11551,7 +11920,7 @@ void FUN_1000f064(short param_1)
   *(short *)(*piRam10117468 + iVar6 * 0x5c + 0x2a6) = 0;
   if (*(short *)(*piVar3 + 0x26) != 0) {
     iVar5 = *piVar3;
-    iVar4 = FUN_1005f230(1,1000,0);
+    iVar4 = RandomRange(1,1000,0);
     if (iVar4 < *(short *)(iVar5 + 0x26) + iVar7) {
       iVar5 = iVar6 * 0x5c + iVar5;
       *(unsigned short *)(iVar5 + 0x2a6) = *(unsigned short *)(iVar5 + 0x2a6) | 1;
@@ -11563,7 +11932,7 @@ void FUN_1000f064(short param_1)
   }
   if (*(short *)(*piVar3 + 0x28) != 0) {
     iVar5 = *piVar3;
-    iVar4 = FUN_1005f230(1,1000,0);
+    iVar4 = RandomRange(1,1000,0);
     if (iVar4 < *(short *)(iVar5 + 0x28) + iVar7) {
       iVar5 = iVar5 + iVar6 * 0x5c;
       *(unsigned short *)(iVar5 + 0x2a6) = *(unsigned short *)(iVar5 + 0x2a6) | 2;
@@ -11572,7 +11941,7 @@ void FUN_1000f064(short param_1)
   }
   if (*(short *)(*piVar3 + 0x2a) != 0) {
     iVar5 = *piVar3;
-    iVar4 = FUN_1005f230(1,1000,0);
+    iVar4 = RandomRange(1,1000,0);
     if (iVar4 < *(short *)(iVar5 + 0x2a) + iVar7) {
       iVar5 = iVar5 + iVar6 * 0x5c;
       *(unsigned short *)(iVar5 + 0x2a6) = *(unsigned short *)(iVar5 + 0x2a6) | 4;
@@ -11599,7 +11968,7 @@ void FUN_1000fc38(short param_1,short param_2)
   }
   FUN_100214e8(*piVar3 + param_1 * 0x16);
   if (param_2 != 0) {
-    FUN_1000fba8(uVar1,uVar2);
+    RefreshMapAfterCombat(uVar1,uVar2);
   }
   return;
 }
@@ -11626,13 +11995,13 @@ void FUN_1000fde4(int param_1,short param_2)
       iVar4 = sVar2 * 0x16;
       lVar6 = (long long)*(short *)(*piVar3 + iVar4);
       uVar5 = *(short *)(*piVar3 + iVar4 + 2);
-      FUN_1000fc38((int)sVar2,0);
+      DisbandUnit((int)sVar2,0);
     }
     bVar1 = iVar7 != 0;
     iVar7 = (int)(short)((short)iVar7 + -1);
   } while (bVar1);
   if ((param_2 != 0) && ((int)lVar6 != -1)) {
-    FUN_1000fba8(lVar6,uVar5);
+    RefreshMapAfterCombat(lVar6,uVar5);
   }
   FUN_1002b91c();
   return;

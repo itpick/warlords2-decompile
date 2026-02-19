@@ -25,85 +25,85 @@
 /* ===== External references used by AI but defined elsewhere ===== */
 
 /* Cross-file functions used by AI */
-extern int   CalcArmyStrength(short armyIdx);       /* FUN_1000fe90 in combat.c - actually DetermineIdealCombatSize */
+extern int   CalcArmyStrength(short armyIdx);       /* CalcArmyStrength in combat.c - actually DetermineIdealCombatSize */
 extern int   AI_SelectUnitsForArmy(short armyIdx, short unitCount, int unitBuf, int outputBuf);
-extern void  RefreshMapAfterCombat(short x, short y); /* FUN_1000fba8 in combat.c */
+extern void  RefreshMapAfterCombat(short x, short y); /* RefreshMapAfterCombat in combat.c */
 
 /* Progress bar / event loop */
-extern void  UpdateProgressBar(short progress);     /* FUN_1004039c */
-extern void  YieldToEventLoop(void);                /* FUN_100929a0 */
-extern void  DispatchNextPhase(long appObj, short cmd); /* FUN_1007c714 */
+extern void  UpdateProgressBar(short progress);     /* UpdateProgressBar */
+extern void  YieldToEventLoop(void);                /* YieldToEventLoop */
+extern void  DispatchNextPhase(long appObj, short cmd); /* DispatchNextPhase */
 
 /* Unit management */
-extern void  GetUnitStats(unsigned char typeId, char *buffer); /* FUN_10049628 */
-extern void  LockUnitData(void);                    /* FUN_10048ccc */
-extern void  UnlockUnitData(void);                  /* FUN_10049010 */
-extern void  DisbandUnit(short unitIdx, short mode); /* FUN_1000fc38 */
-extern void  SortArmyUnits(short armyIdx);          /* FUN_100496c8 */
-extern void  FilterEnemyUnits(short *unitList);     /* FUN_1001ec20 */
-extern void  ReleaseUnits(short *unitList, short mode); /* FUN_1000fde4 */
+extern void  GetUnitStats(unsigned char typeId, char *buffer); /* GetUnitStats */
+extern void  LockUnitData(void);                    /* LockUnitData */
+extern void  UnlockUnitData(void);                  /* UnlockUnitData */
+extern void  DisbandUnit(short unitIdx, short mode); /* DisbandUnit */
+extern void  SortArmyUnits(short armyIdx);          /* SortArmyUnits */
+extern void  FilterEnemyUnits(short *unitList);     /* FilterEnemyUnits */
+extern void  ReleaseUnits(short *unitList, short mode); /* ReleaseUnits */
 
 /* Pathfinding / movement */
 extern int   FindPath(short x, short y, char *pathBuf,
-                      short terrainBonus, short orderType, short flags); /* FUN_1001ee88 */
-extern int   FindUnitsInRange(short x, short y, short *outList, short range); /* FUN_1001ed3c */
-extern int   EvaluatePosition(short x, short y);    /* FUN_1001eff8 */
-extern int   IsPositionReachable(short x, short y); /* FUN_1001f174 */
+                      short terrainBonus, short orderType, short flags); /* FindPath */
+extern int   FindUnitsInRange(short x, short y, short *outList, short range); /* FindUnitsInRange */
+extern int   EvaluatePosition(short x, short y);    /* EvaluatePosition */
+extern int   IsPositionReachable(short x, short y); /* IsPositionReachable */
 extern void  MoveArmyToTarget(short *unitList, short orderType,
-                               long targetIdx, short flags); /* FUN_1001e160 */
-extern void  MoveUnitToTarget(int unitPtr, short mode, long targetIdx); /* FUN_1001e014 */
-extern int   ExecuteArmyMove(short x, short y, short flags); /* FUN_10018180 */
-extern int   GetArmyInfo(short armyIdx, short *outBuf); /* FUN_1001f648 */
+                               long targetIdx, short flags); /* MoveArmyToTarget */
+extern void  MoveUnitToTarget(int unitPtr, short mode, long targetIdx); /* MoveUnitToTarget */
+extern int   ExecuteArmyMove(short x, short y, short flags); /* ExecuteArmyMove */
+extern int   GetArmyInfo(short armyIdx, short *outBuf); /* GetArmyInfo */
 extern int   GetNeighborArmies(short armyIdx, unsigned char *neighbors,
-                                unsigned char *extra); /* FUN_10018574 */
+                                unsigned char *extra); /* GetNeighborArmies */
 extern void  GetAdjacentArmies(long armyIdx, short mode,
                                 unsigned char *neighbors,
-                                unsigned char *extra); /* FUN_1000da14 */
-extern int   FindNearestEnemy(short x, short y, long filterPlayer); /* FUN_100186cc */
-extern short FindPrimaryThreat(short mode);          /* FUN_1000df58 */
-extern int   AdvanceGroupToTarget(int groupIdx);     /* FUN_1001cd68 */
+                                unsigned char *extra); /* GetAdjacentArmies */
+extern int   FindNearestEnemy(short x, short y, long filterPlayer); /* FindNearestEnemy */
+extern short FindPrimaryThreat(short mode);          /* FindPrimaryThreat */
+extern int   AdvanceGroupToTarget(int groupIdx);     /* AdvanceGroupToTarget */
 extern short FindBestTarget(short armyIdx, short *outCoords,
                              char *buf, long influenceMap,
-                             short extended);          /* FUN_10020d88 */
-extern short ScoreUnitForHire(short isExpensive);    /* FUN_10020f94 */
-extern void  HeroSpecialActions(void);               /* FUN_10020ec4 */
-extern void  EndOfTurnCleanup(void);                 /* FUN_1000f410 -> HandleSiege */
-extern int   CanArmyEnterCity(long armyIdx, short mode); /* FUN_1000f708 */
+                             short extended);          /* FindBestTarget */
+extern short ScoreUnitForHire(short isExpensive);    /* ScoreUnitForHire */
+extern void  HeroSpecialActions(void);               /* HeroSpecialActions */
+extern void  EndOfTurnCleanup(void);                 /* EndOfTurnCleanup -> HandleSiege */
+extern int   CanArmyEnterCity(long armyIdx, short mode); /* CanArmyEnterCity */
 
 /* UI / map */
-extern short LookupCityAtPos(short x, short y);     /* FUN_1002be50 */
-extern short LookupRuinAtPos(short x, short y);     /* FUN_1002bef8 */
-extern void  CenterMapOnArmy(short playerIdx);       /* FUN_100635e0 */
-extern void  RefreshDisplay(short a, short b, short c); /* FUN_10060608 */
+extern short LookupCityAtPos(short x, short y);     /* LookupCityAtPos */
+extern short LookupRuinAtPos(short x, short y);     /* LookupRuinAtPos */
+extern void  CenterMapOnArmy(short playerIdx);       /* CenterMapOnArmy */
+extern void  RefreshDisplay(short a, short b, short c); /* RefreshDisplay */
 extern void  SetupInfluenceMap(short range, short x, short y,
-                                short a, short b);   /* FUN_100448e4 */
-extern long  AllocInfluenceMap(void);                /* FUN_10044950 */
-extern void  FreeInfluenceMap(void);                 /* FUN_100449bc */
-extern void  PrepareUnitDisplay(void);               /* FUN_10041de8 */
-extern int   GetNextDefender(void);                  /* FUN_1005619c */
-extern void  PrepareDefender(int unitPtr);           /* FUN_10055c64 */
+                                short a, short b);   /* SetupInfluenceMap */
+extern long  AllocInfluenceMap(void);                /* AllocInfluenceMap */
+extern void  FreeInfluenceMap(void);                 /* FreeInfluenceMap */
+extern void  PrepareUnitDisplay(void);               /* PrepareUnitDisplay */
+extern int   GetNextDefender(void);                  /* GetNextDefender */
+extern void  PrepareDefender(int unitPtr);           /* PrepareDefender */
 
 /* Quest / alliance */
-extern void  LaunchAllianceAttack(long armyIdx, short mode); /* FUN_1001bbf0 */
-extern void  LaunchAllianceDefense(long armyIdx);    /* FUN_1001ba60 */
-extern int   CheckQuestCondition(long unitIdx);      /* FUN_1004639c */
-extern long  ProcessQuestEvent(short type, short a, short b, short c); /* FUN_1004e384 */
-extern void  AssignToDefense(long unitIdx, long targetIdx); /* FUN_1001a348 */
-extern int   ProcessSingleAssignment(short round, char *followerCount); /* FUN_1001a864 */
-extern int   CheckArmyEscort(short armyIdx);         /* FUN_1001e4b0 */
-extern void  ActivateAttackEvent(void);              /* FUN_1000de24 */
-extern int   CheckHeroQuest(int unitPtr);            /* FUN_10039e24 */
-extern void  SetArmyDestination(short playerIdx, short x, short y); /* FUN_1000931c */
-extern void  UpdateArmyDisplay(short playerIdx);     /* FUN_10039ec8 */
-extern void  SpawnNeutralArmy(long x, long y);       /* FUN_10054af4 */
-extern void  ProcessQuestReward(short mode);         /* FUN_1004b11c */
-extern void  ScanDefenseGrid(void);                  /* FUN_1005447c */
+extern void  LaunchAllianceAttack(long armyIdx, short mode); /* LaunchAllianceAttack */
+extern void  LaunchAllianceDefense(long armyIdx);    /* LaunchAllianceDefense */
+extern int   CheckQuestCondition(long unitIdx);      /* CheckQuestCondition */
+extern long  ProcessQuestEvent(short type, short a, short b, short c); /* ProcessQuestEvent */
+extern void  AssignToDefense(long unitIdx, long targetIdx); /* AssignToDefense */
+extern int   ProcessSingleAssignment(short round, char *followerCount); /* ProcessSingleAssignment */
+extern int   CheckArmyEscort(short armyIdx);         /* CheckArmyEscort */
+extern void  ActivateAttackEvent(void);              /* ActivateAttackEvent */
+extern int   CheckHeroQuest(int unitPtr);            /* CheckHeroQuest */
+extern void  SetArmyDestination(short playerIdx, short x, short y); /* SetArmyDestination */
+extern void  UpdateArmyDisplay(short playerIdx);     /* UpdateArmyDisplay */
+extern void  SpawnNeutralArmy(long x, long y);       /* SpawnNeutralArmy */
+extern void  ProcessQuestReward(short mode);         /* ProcessQuestReward */
+extern void  ScanDefenseGrid(void);                  /* ScanDefenseGrid */
 
 /* Unit creation */
 extern long  CreateUnitTemplate(short typeId, char *a, short *b,
-                                 char *c, short *d, char *e); /* FUN_1004a0c4 */
-extern long  FindArmySlot(short armyIdx);            /* FUN_1001e9d0 */
-extern void  PlaceUnitInArmy(short armyIdx, long slot, long tmpl); /* FUN_10049fa8 */
+                                 char *c, short *d, char *e); /* CreateUnitTemplate */
+extern long  FindArmySlot(short armyIdx);            /* FindArmySlot */
+extern void  PlaceUnitInArmy(short armyIdx, long slot, long tmpl); /* PlaceUnitInArmy */
 
 /* Global variables used in AI (some from other modules) */
 /* iRam1011762c/iRam10117630 now aliased via #define in wl2_globals.h */

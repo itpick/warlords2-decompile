@@ -207,20 +207,20 @@ extern int      *piRam1011758c;
 
 /* Mac OS Memory Manager wrappers */
 extern int      FUN_100f15e0(int size, int flags, ...);    /* NewHandle / memory alloc */
-extern void     FUN_10002598(void *handle);                 /* HLock - lock handle */
-extern void     FUN_10002ad8(int handle);                   /* HUnlock - unlock handle */
+extern void     DetachResource(void *handle);                 /* HLock - lock handle */
+extern void     DisposeHandle_Thunk(int handle);                   /* HUnlock - unlock handle */
 extern void     FUN_10000048(int handle);                   /* SetHandleSize or similar */
 extern void     FUN_100004e0(void *handle, int size);       /* SetHandleSize */
 extern void     FUN_100db1ec(void);                         /* error check / MemError */
-extern void     FUN_10001f50(int handle);                   /* DisposeHandle */
+extern void     FUN_10001f50(int handle);                   /* DisposeHandle_Thunk */
 
 /* abs() - wraps through a function pointer table */
-/* FUN_10003768 at 10003768 */
-extern short    FUN_10003768(short value);
+/* AbsShort at 10003768 */
+extern short    AbsShort(short value);
 
 /* Manhattan distance approximation (uses sqrt for diagonal) */
-/* FUN_1000a884 at 1000a884 */
-extern short    FUN_1000a884(short x1, short y1, short x2, short y2);
+/* CalcDistance at 1000a884 */
+extern short    CalcDistance(short x1, short y1, short x2, short y2);
 
 /* Apply direction offset to coordinates, returns 1 if valid, 0 if out of bounds */
 /* FUN_10017170 at 10017170 */
@@ -271,7 +271,7 @@ static void ClearPathCacheEntry(short entryIndex)
 
     /* Lock the handle if non-null */
     if (handleData != (int *)0) {
-        FUN_10002598(handleData);       /* HLock */
+        DetachResource(handleData);       /* HLock */
     }
     *cachePtr = *handleData;
 
@@ -294,14 +294,14 @@ static void ClearPathCacheEntry(short entryIndex)
 
     /* Unlock */
     if (*cacheHandle != 0) {
-        FUN_10002ad8(*cacheHandle);     /* HUnlock */
+        DisposeHandle_Thunk(*cacheHandle);     /* HUnlock */
     }
 }
 
 
 /* ======================================================================
  * ClearAllPathCache - Clear all 20 path cache entries
- * FUN_1004248c at 1004248c (Size: 88 bytes)
+ * PostLoadCityInit at 1004248c (Size: 88 bytes)
  * ====================================================================== */
 static void ClearAllPathCache(void)
 {
@@ -497,7 +497,7 @@ static int TryCachedPaths(PathRequest *req, short searchAll)
     /* Lock cache handle */
     handleData = (void *)*cacheHandlePtr;
     if (handleData != (void *)0) {
-        FUN_10002598(handleData);
+        DetachResource(handleData);
     }
     /* Dereference: *piRam1011758c = **piRam10117588 */
     *piRam1011758c = *(int *)handleData;
@@ -505,7 +505,7 @@ static int TryCachedPaths(PathRequest *req, short searchAll)
     /* Lock distance grid handle */
     handleData = (void *)*distHandlePtr;
     if (handleData != (void *)0) {
-        FUN_10002598(handleData);
+        DetachResource(handleData);
     }
     *puRam10117598 = *(unsigned int *)handleData;
     /* Set up dereferenced pointer chain */
@@ -530,10 +530,10 @@ static int TryCachedPaths(PathRequest *req, short searchAll)
 
     /* Unlock handles */
     if (*distHandlePtr != 0) {
-        FUN_10002ad8(*distHandlePtr);
+        DisposeHandle_Thunk(*distHandlePtr);
     }
     if (*cacheHandlePtr != 0) {
-        FUN_10002ad8(*cacheHandlePtr);
+        DisposeHandle_Thunk(*cacheHandlePtr);
     }
 
     return result;
@@ -1337,7 +1337,7 @@ static void ReconstructPath(PathRequest *req)
     aiModePtr         = psRam10115eb4;
 
     /* Get the distance value at the source (starting point for reconstruction) */
-    bestDist = FUN_10003768(
+    bestDist = AbsShort(
         *(unsigned short *)(*(int *)*distGridHandlePtr +
             p[0] * DIST_ROW_STRIDE + p[1] * 2));
 
@@ -1439,7 +1439,7 @@ static void ReconstructPath(PathRequest *req)
 do_evaluate:
             /* Compute absolute distance at neighbor */
             {
-                short absDist = FUN_10003768(
+                short absDist = AbsShort(
                     *(unsigned short *)(*(int *)*distGridHandlePtr +
                         (int)nx * DIST_ROW_STRIDE + (int)ny * 2));
 
@@ -1511,7 +1511,7 @@ static void StorePathInCache(short distance, PathRequest *req, short searchAll)
     /* Lock cache handle */
     handleData = (int *)*cacheHandlePtr;
     if (handleData != (int *)0) {
-        FUN_10002598(handleData);
+        DetachResource(handleData);
     }
     *cachePtr = *handleData;
 
@@ -1528,7 +1528,7 @@ static void StorePathInCache(short distance, PathRequest *req, short searchAll)
 
             /* Compute distance of this cached path */
             entryBase = *cachePtr + entry * PATH_CACHE_ENTRY_SIZE;
-            entryDist = FUN_1000a884(
+            entryDist = CalcDistance(
                 *(unsigned short *)(entryBase + 10),
                 *(unsigned short *)(entryBase + 12),
                 *(unsigned short *)(entryBase + 6),
@@ -1579,7 +1579,7 @@ static void StorePathInCache(short distance, PathRequest *req, short searchAll)
 
     /* Unlock */
     if (*cacheHandlePtr != 0) {
-        FUN_10002ad8(*cacheHandlePtr);
+        DisposeHandle_Thunk(*cacheHandlePtr);
     }
 }
 
@@ -1613,7 +1613,7 @@ static int PathFind_Execute(PathRequest *req)
     int  *costHandle        = piRam10117590;
 
     /* Compute estimated distance between source and destination */
-    distance = (int)(short)FUN_1000a884(p[2], p[3], p[0], p[1]);
+    distance = (int)(short)CalcDistance(p[2], p[3], p[0], p[1]);
 
     /* Bounds check: destination must be within map */
     if (p[2] < 0 || p[3] < 0 || p[2] > MAP_MAX_X || p[3] > MAP_MAX_Y) {
@@ -1656,7 +1656,7 @@ static int PathFind_Execute(PathRequest *req)
     {
         void *hData = (void *)*distHandle;
         if (hData != (void *)0) {
-            FUN_10002598(hData);
+            DetachResource(hData);
         }
         *distGridStorage = *(unsigned int *)hData;
         *distGridHandlePtr = (unsigned int)distGridStorage;
@@ -1666,7 +1666,7 @@ static int PathFind_Execute(PathRequest *req)
     {
         int *hData = (int *)*costHandle;
         if (hData != (int *)0) {
-            FUN_10002598(hData);
+            DetachResource(hData);
         }
         *costMapBase = *(int *)hData;
     }
@@ -1710,10 +1710,10 @@ static int PathFind_Execute(PathRequest *req)
     ApplyZoneOfControl((int)p, 0);
 
     if (*distHandle != 0) {
-        FUN_10002ad8(*distHandle);
+        DisposeHandle_Thunk(*distHandle);
     }
     if (*costHandle != 0) {
-        FUN_10002ad8(*costHandle);
+        DisposeHandle_Thunk(*costHandle);
     }
 
     return result;
@@ -1778,7 +1778,7 @@ static void BuildMovementCostMap(short armyType, short forceRebuild)
     {
         void *hData = (void *)*distHandle;
         if (hData != (void *)0) {
-            FUN_10002598(hData);
+            DetachResource(hData);
         }
         *distGridStorage = *(unsigned int *)hData;
         *puRam1011759c = (unsigned int)distGridStorage;
@@ -1788,7 +1788,7 @@ static void BuildMovementCostMap(short armyType, short forceRebuild)
     {
         int *hData = (int *)*costHandle;
         if (hData != (int *)0) {
-            FUN_10002598(hData);
+            DetachResource(hData);
         }
         *costMapBase = *(int *)hData;
     }
@@ -1893,10 +1893,10 @@ static void BuildMovementCostMap(short armyType, short forceRebuild)
 
     /* --- Unlock handles --- */
     if (*distHandle != 0) {
-        FUN_10002ad8(*distHandle);
+        DisposeHandle_Thunk(*distHandle);
     }
     if (*costHandle != 0) {
-        FUN_10002ad8(*costHandle);
+        DisposeHandle_Thunk(*costHandle);
     }
 }
 
@@ -2058,7 +2058,7 @@ static short CalcPathCost(PathRequest *req, short movePoints, int costBuffer)
     {
         void *hData = (void *)*piRam10117594;
         if (hData != (void *)0) {
-            FUN_10002598(hData);
+            DetachResource(hData);
         }
         *puRam10117598 = *(unsigned int *)hData;
         *puRam1011759c = (unsigned int)puRam10117598;
@@ -2066,7 +2066,7 @@ static short CalcPathCost(PathRequest *req, short movePoints, int costBuffer)
     {
         void *hData = (void *)*piRam10117590;
         if (hData != (void *)0) {
-            FUN_10002598(hData);
+            DetachResource(hData);
         }
         *piRam101175a0 = *(int *)hData;
     }
@@ -2105,10 +2105,10 @@ static short CalcPathCost(PathRequest *req, short movePoints, int costBuffer)
 
     /* --- Unlock handles --- */
     if (*piRam10117594 != 0) {
-        FUN_10002ad8(*piRam10117594);
+        DisposeHandle_Thunk(*piRam10117594);
     }
     if (*piRam10117590 != 0) {
-        FUN_10002ad8(*piRam10117590);
+        DisposeHandle_Thunk(*piRam10117590);
     }
 
     return reachableSteps;
@@ -2117,7 +2117,7 @@ static short CalcPathCost(PathRequest *req, short movePoints, int costBuffer)
 
 /* ======================================================================
  * FloodFillLimitedRange - Run flood fill within a limited range
- * FUN_100448e4 at 100448e4 (Size: 108 bytes)
+ * SetupInfluenceMap at 100448e4 (Size: 108 bytes)
  *
  * Sets up a limited-range pathfinding request (source == destination) and
  * runs PathFind_Execute. Used for computing reachable tiles from a position,
@@ -2152,7 +2152,7 @@ static void FloodFillLimitedRange(short maxRange, short centerX, short centerY,
 
 /* ======================================================================
  * GetDistanceGridPtr - Lock and return the distance grid pointer
- * FUN_10044950 at 10044950 (Size: 108 bytes)
+ * AllocInfluenceMap at 10044950 (Size: 108 bytes)
  *
  * Ensures pathfinding buffers are allocated, locks the distance grid
  * handle, and returns the dereferenced pointer.
@@ -2170,7 +2170,7 @@ static unsigned int *GetDistanceGridPtr(void)
     {
         void *hData = (void *)*piRam10117594;
         if (hData != (void *)0) {
-            FUN_10002598(hData);
+            DetachResource(hData);
         }
         *distGridStorage = *(unsigned int *)hData;
         *puRam1011759c = (unsigned int)distGridStorage;
@@ -2182,14 +2182,14 @@ static unsigned int *GetDistanceGridPtr(void)
 
 /* ======================================================================
  * FreePathfindingBuffers - Deallocate pathfinding resources
- * FUN_100449bc at 100449bc (Size: 84 bytes)
+ * FreeInfluenceMap at 100449bc (Size: 84 bytes)
  *
  * Unlocks and disposes the distance grid handle, resets initialized flag.
  * ====================================================================== */
 static void FreePathfindingBuffers(void)
 {
     if (*piRam10117594 != 0) {
-        FUN_10002ad8(*piRam10117594);
+        DisposeHandle_Thunk(*piRam10117594);
     }
     FUN_10001f50(*piRam10117594);
 
@@ -2240,7 +2240,7 @@ static void FreePathfindingBuffers(void)
 /*
  * ======================================================================
  * CalcDistance - Compute approximate distance between two points
- * FUN_1000a884 at 1000a884 (Size: 212 bytes)
+ * CalcDistance at 1000a884 (Size: 212 bytes)
  *
  * Computes abs(dx) and abs(dy), then uses a distance formula:
  *   if dx^2 + dy^2 <= threshold: return 10000 (very close / same area)
@@ -2257,7 +2257,7 @@ static void FreePathfindingBuffers(void)
  * Function Cross-Reference (Ghidra address -> Reconstructed name):
  *
  *   FUN_100423a0 -> ClearPathCacheEntry
- *   FUN_1004248c -> ClearAllPathCache
+ *   PostLoadCityInit -> ClearAllPathCache
  *   FUN_100424e4 -> AllocatePathfindingBuffers
  *   FUN_100425c0 -> FindCachedPathStep
  *   FUN_100426b4 -> LookupCachedPath
@@ -2275,13 +2275,13 @@ static void FreePathfindingBuffers(void)
  *   FUN_100445a8 -> FillPathRequest
  *   FUN_100445fc -> CalcMoveCost
  *   FUN_10044728 -> CalcPathCost
- *   FUN_100448e4 -> FloodFillLimitedRange
- *   FUN_10044950 -> GetDistanceGridPtr
- *   FUN_100449bc -> FreePathfindingBuffers
+ *   SetupInfluenceMap -> FloodFillLimitedRange
+ *   AllocInfluenceMap -> GetDistanceGridPtr
+ *   FreeInfluenceMap -> FreePathfindingBuffers
  *
  *   FUN_100184dc -> GetDirection             (external)
  *   FUN_10017170 -> ApplyDirectionOffset     (external)
- *   FUN_1000a884 -> CalcDistance             (external)
- *   FUN_10003768 -> abs()                    (external)
+ *   CalcDistance -> CalcDistance             (external)
+ *   AbsShort -> abs()                    (external)
  *
  * ====================================================================== */

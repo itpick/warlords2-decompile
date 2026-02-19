@@ -14,7 +14,7 @@
  *   7. Window toggle/panel management   - side/info/main panel visibility
  *   8. Resource stream helpers for W2SC/W2TE/W2AR file types
  *
- * All virtual method calls route through FUN_10117884 (vtable dispatch).
+ * All virtual method calls route through ResourceRead_Dispatch (vtable dispatch).
  * The game document (TDocumentWarlords) is the central hub for all game
  * state and UI management.
  *
@@ -36,13 +36,13 @@
  * ========================================================================= */
 
 /* MacApp virtual dispatch trampoline (20 bytes at 0x10117884) */
-extern int  FUN_10117884(int method_ptr, ...);
+extern int  ResourceRead_Dispatch(int method_ptr, ...);
 
 /* MacApp object constructors */
 extern void FUN_100c3d2c(void *cmd);                     /* TCommand base ctor (48B) */
 extern void FUN_100c3df8(void *cmd, int cmdID,           /* TCommand::ICommand */
                           void *target, int a, int b, void *doc);
-extern void *FUN_100f56e4(int size);                      /* NewObject / malloc */
+extern void *NewPtr_Thunk(int size);                      /* NewObject / malloc */
 extern void  FUN_100f57c8(void *ptr);                     /* DisposeObject / free */
 extern void  FUN_100d568c(void *obj);                     /* TBehavior ctor */
 extern void  FUN_100bf518(void *obj);                     /* Simple object ctor (0x20B) */
@@ -54,9 +54,9 @@ extern void  FUN_10073310(void *obj);                     /* Document helper cto
 
 /* MacApp handle/memory management */
 extern void  FUN_100db158(int hi, int lo);                /* Lock handle */
-extern void  FUN_100db26c(void);                          /* Unlock handle */
-extern void  FUN_100db2f4(void);                          /* Get handle state */
-extern void  FUN_100db328(void);                          /* Set handle state */
+extern void  FocusObject(void);                          /* Unlock handle */
+extern void  EndFocus(void);                          /* Get handle state */
+extern void  MarkChanged(void);                          /* Set handle state */
 extern void *FUN_100db3c8(int mode);                      /* New resource handle */
 extern void  FUN_100db49c(void *h, unsigned long type,    /* Write resource */
                            int a, int b, int c, int d, int e);
@@ -77,7 +77,7 @@ extern void  FUN_100982e8(void *buf);                     /* Close resource stre
 /* MacApp utility functions */
 extern int   FUN_100f1640(int size);                      /* Allocate heap block */
 extern void *FUN_100f15e0(int count);                     /* Allocate small block */
-extern void  FUN_100b19f4(void *dst, int src);            /* Pascal string copy */
+extern void  BuildPascalString(void *dst, int src);            /* Pascal string copy */
 extern int   FUN_100b1c84(int val);                       /* String conversion */
 extern void  FUN_100ed640(void);                          /* Framework init 1 */
 extern int   FUN_100ed6d8(void *param);                   /* Framework init 2 */
@@ -92,8 +92,8 @@ extern void  FUN_100e8cec(int param);                     /* Framework setup 7 *
 extern void  FUN_100d8e3c(int errCode);                   /* Show error alert */
 extern void  FUN_100d8e68(short code, int detail);        /* Show error with detail */
 extern void  FUN_100d8c9c(int cmd, int param);            /* Post command */
-extern void  FUN_100ef510(int param);                     /* Release resource */
-extern void  FUN_100ef580(int param);                     /* Release resource variant */
+extern void  ReleaseHandle_Mapgen(int param);                     /* Release resource */
+extern void  FreeBlock(int param);                     /* Release resource variant */
 extern void  FUN_100b08d4(short *rect, int param);        /* Get screen size */
 extern int   FUN_100f27d0(int menuID, int enabled);       /* Enable/disable menu item */
 extern int   FUN_100f0538(int param);                     /* List iteration */
@@ -101,19 +101,19 @@ extern int   FUN_100f0538(int param);                     /* List iteration */
 /* MacApp error handling / exception */
 extern int   FUN_10000090(void *exception_buf);           /* Try (setjmp) */
 extern void  FUN_10000150(void);                          /* Throw (longjmp) */
-extern void  FUN_100002a0(void *handle);                  /* Dispose handle */
+extern void  ReleaseResource_Thunk(void *handle);                  /* Dispose handle */
 extern char  FUN_10000360(void *handle);                  /* Get handle flags */
 extern int   FUN_10001a88(void);                          /* Get tick count */
-extern int   FUN_10001bd8(int offset, void *buf);         /* Read from offset */
+extern int   GetString(int offset, void *buf);         /* Read from offset */
 extern int   FUN_10001c20(void *handle);                  /* Get handle size */
-extern void  FUN_10001c98(void *handle);                  /* Release handle */
+extern void  ReleaseHandle_Sound(void *handle);                  /* Release handle */
 extern void  FUN_10001b60(void *handle, char flags);      /* Restore handle flags */
 extern void  FUN_10001f98(int handle, void *out, int sz); /* Copy handle data */
 extern int   FUN_10002a60(int handle);                    /* Get handle data size */
 extern void  FUN_10002340(int data, int buf, int sz);     /* Copy data to buffer */
-extern void  FUN_10002568(void *h, unsigned long type,    /* Add resource */
+extern void  AddResource(void *h, unsigned long type,    /* Add resource */
                            short id, int data);
-extern void  FUN_10002598(void *h);                       /* Lock resource handle */
+extern void  DetachResource(void *h);                       /* Lock resource handle */
 extern void *FUN_10003558(unsigned long type, short id);  /* Get named resource */
 
 /* =========================================================================
@@ -175,14 +175,14 @@ extern void  FUN_1004d0d0(void);                          /* Items Dialog */
 extern void  FUN_100950a4(void);                          /* Scenario Select */
 extern void  FUN_10033e7c(void);                          /* New Game */
 extern void  FUN_100351ec(void);                          /* Random Map */
-extern void  FUN_1005447c(void);                          /* About Box */
+extern void  ScanDefenseGrid(void);                          /* About Box */
 extern void  FUN_1005ef84(void);                          /* Map Zoom/View Mode */
 extern void  FUN_1003a5fc(void);                          /* Save Game */
 extern void  FUN_1007c6d8(void *self, int direction);     /* Scroll Map */
 extern void  FUN_1005e858(void);                          /* Toggle Sound */
 extern void  FUN_10037fe4(short offset);                  /* Player Next/Prev */
 extern void  FUN_1007b218(void *self);                    /* Hero Inspect */
-extern void  FUN_1007c714(void *self, int cmdID);         /* Post-command utility */
+extern void  DispatchNextPhase(void *self, int cmdID);         /* Post-command utility */
 extern void  FUN_10040fb8(void);                          /* Display refresh after menus */
 extern void  FUN_100657bc(void);                          /* Restore display state */
 extern void  FUN_10075570(int viewState, int panelID, int visible); /* Panel visibility */
@@ -196,7 +196,7 @@ extern void  FUN_1009d3fc(void);
 extern void  FUN_10073250(void);
 extern void  FUN_10078fa4(void);
 extern void  FUN_10078fb4(int param);
-extern void  FUN_10093b00(void);
+extern void  GetSoundActiveFlag(void);
 extern void  FUN_10093b10(int param);
 extern void  FUN_10093f1c(void);
 extern void  FUN_1007a748(void);
@@ -344,7 +344,7 @@ void DoMenuCommand(int *self, int cmdNumber)
             *(char *)((int)self + 0x1e9) = 1;
             *(char *)((int)self + 0x16f) = 1;
             /* vtable+0x110: call DoMenuCommand with sub-cmd 0x1E */
-            FUN_10117884((int)self + (int)*(short *)(*self + 0x110), 0x1e);
+            ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x110), 0x1e);
             return;
         }
         *(char *)((int)self + 0x16f) = 0;
@@ -384,12 +384,12 @@ void DoMenuCommand(int *self, int cmdNumber)
     /* ---- Create View (cmd 0x3F3, view ID 3000) ---- */
     case 0x3F3: {
         /* viewServer->FindSubView(3000, self) via vtable +0xC8 */
-        int *newView = (int *)FUN_10117884(
+        int *newView = (int *)ResourceRead_Dispatch(
             *piRam101176bc + (int)*(short *)(*(int *)*piRam101176bc + 200),
             3000, self);
-        FUN_100db26c();  /* Unlock handle */
+        FocusObject();  /* Unlock handle */
         /* newView->Open() via vtable +0x320 (800 decimal) */
-        FUN_10117884((int)newView + (int)*(short *)(*newView + 800));
+        ResourceRead_Dispatch((int)newView + (int)*(short *)(*newView + 800));
         return;
     }
 
@@ -428,10 +428,10 @@ void DoMenuCommand(int *self, int cmdNumber)
     /* ---- Refresh All Views (cmd 0x3FA) ---- */
     case 0x3FA:
         /* ForceRedraw on all four main windows (vtable +0x4C8) */
-        FUN_10117884(*piRam10116208 + (int)*(short *)(*(int *)*piRam10116208 + 0x4c8));
-        FUN_10117884(*sidePanelWin  + (int)*(short *)(*(int *)*sidePanelWin  + 0x4c8));
-        FUN_10117884(*overviewWin   + (int)*(short *)(*(int *)*overviewWin   + 0x4c8));
-        FUN_10117884(*infoWin2      + (int)*(short *)(*(int *)*infoWin2      + 0x4c8));
+        ResourceRead_Dispatch(*piRam10116208 + (int)*(short *)(*(int *)*piRam10116208 + 0x4c8));
+        ResourceRead_Dispatch(*sidePanelWin  + (int)*(short *)(*(int *)*sidePanelWin  + 0x4c8));
+        ResourceRead_Dispatch(*overviewWin   + (int)*(short *)(*(int *)*overviewWin   + 0x4c8));
+        ResourceRead_Dispatch(*infoWin2      + (int)*(short *)(*(int *)*infoWin2      + 0x4c8));
         return;
 
     /* ---- Search Ruins/Temples (cmd 0x3FB) ---- */
@@ -468,7 +468,7 @@ void DoMenuCommand(int *self, int cmdNumber)
     case 0x578:
     case 0x579:
         /* Allocate TMoveArmyCommand (0xB4 = 180 bytes) */
-        newCmd = FUN_100f56e4(0xB4);
+        newCmd = NewPtr_Thunk(0xB4);
         if (newCmd != NULL) {
             FUN_100c3d2c(newCmd);                 /* TCommand base ctor */
             *(int *)newCmd = (int)((void **)tvect)[-0x437];  /* Set vtable */
@@ -477,7 +477,7 @@ void DoMenuCommand(int *self, int cmdNumber)
         FUN_100c3df8(newCmd, cmdNumber, self, 1, 1, self);
         *(short *)((char *)newCmd + 0xB0) = 0;
         /* PerformCommand(cmd) via vtable +0x200 */
-        FUN_10117884((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
+        ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
         return;
 
     /* ---- Move to Overview Target (cmd 0x57A) ---- */
@@ -495,7 +495,7 @@ void DoMenuCommand(int *self, int cmdNumber)
     /* ---- Keyboard Army Move (cmd 0x57C) ---- */
     case 0x57C:
         /* Allocate TMoveArmyByKeyCommand (0x108 = 264 bytes) */
-        newCmd = FUN_100f56e4(0x108);
+        newCmd = NewPtr_Thunk(0x108);
         if (newCmd != NULL) {
             FUN_100c3d2c(newCmd);                 /* TCommand base ctor */
             *(int *)newCmd = (int)((void **)tvect)[-0x43a];  /* Set vtable */
@@ -505,7 +505,7 @@ void DoMenuCommand(int *self, int cmdNumber)
         }
         FUN_100c3df8(newCmd, 0x57C, self, 1, 1, self);
         /* PerformCommand(cmd) via vtable +0x200 */
-        FUN_10117884((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
+        ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
         return;
 
     /* ---- Army Move variants (cmds 0x57D, 0x57E, 0x57F, 0x580) ---- */
@@ -515,7 +515,7 @@ void DoMenuCommand(int *self, int cmdNumber)
     case 0x57F:
     case 0x580:
         /* Allocate TMoveArmyCommand full data (0x1E0 bytes) */
-        newCmd = FUN_100f56e4(0x1E0);
+        newCmd = NewPtr_Thunk(0x1E0);
         if (newCmd != NULL) {
             FUN_100c3d2c(newCmd);                 /* TCommand base ctor */
             *(int *)newCmd = (int)((void **)tvect)[-0x43c];  /* Set vtable */
@@ -530,7 +530,7 @@ void DoMenuCommand(int *self, int cmdNumber)
         *(short *)((char *)newCmd + 0x1DA) = 0xFFFF;
         *(short *)((char *)newCmd + 0x1DC) = 0xFFFF;
         /* PerformCommand(cmd) via vtable +0x200 */
-        FUN_10117884((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
+        ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
         return;
 
     /* ---- Toggle Fog of War (cmd 0x581) ---- */
@@ -610,7 +610,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- About Box (cmd 0x643) ---- */
     case 0x643:
-        FUN_1005447c();
+        ScanDefenseGrid();
         return;
 
     /* ---- Map Zoom/View Mode (cmd 0x6A4) ---- */
@@ -654,9 +654,9 @@ void DoMenuCommand(int *self, int cmdNumber)
     /* ---- Menu command: Refresh Menus (cmd 0x76C) ---- */
     case 0x76C:
         /* DoSetupMenus via vtable +0x228 */
-        FUN_10117884((int)self + (int)*(short *)(*self + 0x228));
+        ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x228));
         /* SetTarget via vtable +0x38 with (0x76C, 0) */
-        FUN_10117884((int)self + (int)*(short *)(*self + 0x38), 0x76C, 0);
+        ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x38), 0x76C, 0);
         FUN_10040fb8();
         return;
 
@@ -670,21 +670,21 @@ void DoMenuCommand(int *self, int cmdNumber)
         int *winObj = (int *)*piRam1011639c;
         if (winObj == NULL) return;
         /* IsActive via vtable +0x668 */
-        int isActive = FUN_10117884(
+        int isActive = ResourceRead_Dispatch(
             (int)*(short *)(*winObj + 0x668) + (int)winObj);
         if (isActive != 0) {
             /* Close via vtable +0x328 */
-            FUN_10117884(*sidePanelWin + (int)*(short *)(*(int *)*sidePanelWin + 0x328));
+            ResourceRead_Dispatch(*sidePanelWin + (int)*(short *)(*(int *)*sidePanelWin + 0x328));
             return;
         }
         /* Open via vtable +0x320 (800 decimal) */
-        FUN_10117884(*sidePanelWin + (int)*(short *)(*(int *)*sidePanelWin + 800));
+        ResourceRead_Dispatch(*sidePanelWin + (int)*(short *)(*(int *)*sidePanelWin + 800));
         winObj = (int *)*infoWin;
         if (winObj == NULL) return;
         /* UpdateMapDisplay via vtable +0x780 */
-        FUN_10117884((int)winObj + (int)*(short *)(*winObj + 0x780));
+        ResourceRead_Dispatch((int)winObj + (int)*(short *)(*winObj + 0x780));
         /* SetTarget via vtable +0x338 on app with saved window state */
-        FUN_10117884(*appObj + (int)*(short *)(*(int *)*appObj + 0x338),
+        ResourceRead_Dispatch(*appObj + (int)*(short *)(*(int *)*appObj + 0x338),
                      *(int *)(*infoWin + 0x98));
         return;
     }
@@ -693,17 +693,17 @@ void DoMenuCommand(int *self, int cmdNumber)
     case 0x770: {
         int *winObj = (int *)*piRam10116200;
         if (winObj == NULL) return;
-        int isActive = FUN_10117884(
+        int isActive = ResourceRead_Dispatch(
             (int)*(short *)(*winObj + 0x668) + (int)winObj);
         if (isActive != 0) {
-            FUN_10117884(*infoWin2 + (int)*(short *)(*(int *)*infoWin2 + 0x328));
+            ResourceRead_Dispatch(*infoWin2 + (int)*(short *)(*(int *)*infoWin2 + 0x328));
             return;
         }
-        FUN_10117884(*infoWin2 + (int)*(short *)(*(int *)*infoWin2 + 800));
+        ResourceRead_Dispatch(*infoWin2 + (int)*(short *)(*(int *)*infoWin2 + 800));
         winObj = (int *)*infoWin;
         if (winObj == NULL) return;
-        FUN_10117884((int)*(short *)(*winObj + 0x780) + (int)winObj);
-        FUN_10117884(*appObj + (int)*(short *)(*(int *)*appObj + 0x338),
+        ResourceRead_Dispatch((int)*(short *)(*winObj + 0x780) + (int)winObj);
+        ResourceRead_Dispatch(*appObj + (int)*(short *)(*(int *)*appObj + 0x338),
                      *(int *)(*infoWin + 0x98));
         return;
     }
@@ -712,17 +712,17 @@ void DoMenuCommand(int *self, int cmdNumber)
     case 0x771: {
         int *winObj = (int *)*piRam10115fa4;
         if (winObj == NULL) return;
-        int isActive = FUN_10117884(
+        int isActive = ResourceRead_Dispatch(
             (int)*(short *)(*winObj + 0x668) + (int)winObj);
         if (isActive != 0) {
-            FUN_10117884(*overviewWin + (int)*(short *)(*(int *)*overviewWin + 0x328));
+            ResourceRead_Dispatch(*overviewWin + (int)*(short *)(*(int *)*overviewWin + 0x328));
             return;
         }
-        FUN_10117884(*overviewWin + (int)*(short *)(*(int *)*overviewWin + 800));
+        ResourceRead_Dispatch(*overviewWin + (int)*(short *)(*(int *)*overviewWin + 800));
         winObj = (int *)*infoWin;
         if (winObj == NULL) return;
-        FUN_10117884((int)winObj + (int)*(short *)(*winObj + 0x780));
-        FUN_10117884(*appObj + (int)*(short *)(*(int *)*appObj + 0x338),
+        ResourceRead_Dispatch((int)winObj + (int)*(short *)(*winObj + 0x780));
+        ResourceRead_Dispatch(*appObj + (int)*(short *)(*(int *)*appObj + 0x338),
                      *(int *)(*infoWin + 0x98));
         return;
     }
@@ -735,13 +735,13 @@ void DoMenuCommand(int *self, int cmdNumber)
     /* ---- Test if changed, then refresh menus (cmd 0x773) ---- */
     case 0x773: {
         /* HasChanged via vtable +0x298 */
-        int changed = FUN_10117884(
+        int changed = ResourceRead_Dispatch(
             (int)self + (int)*(short *)(*self + 0x298));
         if (changed != 0) {
             /* DoMenuCommand with sub-cmd 0x1E via vtable +0x110 */
-            FUN_10117884((int)self + (int)*(short *)(*self + 0x110), 0x1e);
+            ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x110), 0x1e);
         }
-        FUN_1007c714(self, 0x76c);
+        DispatchNextPhase(self, 0x76c);
         return;
     }
 
@@ -815,11 +815,11 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
                 FUN_100d8c9c(0x3FC, 0);           /* Post setup command */
                 FUN_100db158(0, 0x820000);         /* Lock handle */
             }
-            FUN_10001c98(typeRes);                 /* Release handle */
+            ReleaseHandle_Sound(typeRes);                 /* Release handle */
         }
 
         /* CalcMinSize via vtable +0x2B8 */
-        FUN_10117884((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
+        ResourceRead_Dispatch((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
 
         /* Read "Turn" resource (ID 1000) -- turn state indicator */
         typeRes = FUN_10003558(0x5475726E, 1000);  /* 'Turn' */
@@ -833,12 +833,12 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
                 *(char *)(viewState + 0x9a) = 1;
                 *(int *)(viewState + 0x9c) = FUN_10001a88();
             }
-            FUN_10001c98(typeRes);
+            ReleaseHandle_Sound(typeRes);
             uVar14 = 0;
         }
 
         /* CalcMinSize again */
-        FUN_10117884((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
+        ResourceRead_Dispatch((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
 
         /* Read per-player "Mail" resources (IDs 1000-1007) */
         /* Stub — FUN_1007ded4: reads Mail resources with exception handling */
@@ -898,41 +898,41 @@ void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
     FUN_100de320(docSelf, fileSpec, isNew);
 
     /* Copy application name string */
-    FUN_100b19f4(auStack_250, 0 /* string source omitted */);
+    BuildPascalString(auStack_250, 0 /* string source omitted */);
 
     if (*(char *)(docSelf + 0x16c) == '\0') {
         /* Cross-format write for new/export */
-        FUN_1002a864(fileSpec);   /* WriteGameStateCrossFormat */
+        WriteGameStateCrossFormat(fileSpec);   /* WriteGameStateCrossFormat */
     }
     else {
         /* Standard format write for saved game */
-        FUN_10029e84(fileSpec);   /* WriteGameState */
+        WriteGameState(fileSpec);   /* WriteGameState */
 
         /* Write "Type" resource (ID 1000) -- marks file as saved game */
         /* Exception-safe block: setjmp + resource write + longjmp on error */
         {
             void *typeHandle = FUN_100f15e0(2);
             *(short *)*(int *)typeHandle = 1;
-            /* FUN_10002568(typeHandle, 'Type', 1000, ...) */
+            /* AddResource(typeHandle, 'Type', 1000, ...) */
             /* ... resource write with error handling ... */
         }
 
         /* Write per-player "Mail" resources if multiplayer data present */
         if (*(char *)(docSelf + 0x16e) != '\0') {
-            FUN_10117884((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
+            ResourceRead_Dispatch((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
 
             /* Write 8 player mail resources: 'Mail', IDs 1000-1007 */
             /* Stub — mail resource write loop omitted */
             /* for (i = 0; i < 8; i++) {
              *     mailData = *(int*)(docSelf + i*4 + 0x170);
              *     if (mailData != 0) {
-             *         FUN_10002568(mailData, 'Mail', i+1000, ...);
+             *         AddResource(mailData, 'Mail', i+1000, ...);
              *     }
              * } */
 
             /* Write "MKik" resource if multiplayer kick active */
             if (*(char *)(docSelf + 0x16f) != '\0') {
-                /* FUN_10002568(handle, 'MKik', 1000, ...) */
+                /* AddResource(handle, 'MKik', 1000, ...) */
                 *(char *)(docSelf + 0x16f) = 0;
             }
         }
@@ -996,7 +996,7 @@ void DoSetupMenus(int docSelf)
         if (sideWinObj == NULL) {
             bSideHidden = 1;
         } else {
-            int isActive = FUN_10117884(
+            int isActive = ResourceRead_Dispatch(
                 (int)*(short *)(*sideWinObj + 0x668) + (int)sideWinObj);
             bSideHidden = (isActive == 0);
         }
@@ -1039,7 +1039,7 @@ void DoMakeWindows(int docSelf, short param_2)
      * This function is extremely large and complex. Key operations:
      *
      * 1. Read application global data (piRam101169c4 + 0x32)
-     * 2. Check available memory (FUN_100db2f4)
+     * 2. Check available memory (EndFocus)
      *    - If < 3MB, limit screen to 640x480
      * 3. Get screen bounds (FUN_100b08d4)
      * 4. Open resource stream for "Wind" resource (ID 1000)
@@ -1082,7 +1082,7 @@ void DoMakeWindows(int docSelf, short param_2)
  * Behavior creation pattern (repeated ~30 times):
  *   1. Check failure flag at *(local_54 - 0x528)
  *   2. Call behavior-specific init function (e.g., FUN_10078fa4)
- *   3. Allocate behavior object (FUN_100f56e4 with size)
+ *   3. Allocate behavior object (NewPtr_Thunk with size)
  *   4. Call base constructor (FUN_100d568c for TBehavior,
  *      FUN_100c6b2c for extended, etc.)
  *   5. Set vtable pointer from TVect table
@@ -1168,7 +1168,7 @@ void DoPostCreate(void)
     FUN_10078fb4(0);
 
     /* Behavior 5: Sound handler */
-    FUN_10093b00();
+    GetSoundActiveFlag();
     FUN_10093b10(0);
 
     /* Behavior 6: Simple object (0x20 bytes) */
@@ -1326,7 +1326,7 @@ void DoPostCreate(void)
     }
 
     /* Create document helper object (0x1B4 bytes) */
-    piVar14 = (int *)FUN_100f56e4(0x1B4);
+    piVar14 = (int *)NewPtr_Thunk(0x1B4);
     if (piVar14 != NULL) {
         FUN_10073310(piVar14);
         /* Set vtable from TVect table */
@@ -1338,7 +1338,7 @@ void DoPostCreate(void)
     *(int *)puVar1 = (int)piVar14;
 
     /* Call document open method via vtable +0x538 */
-    FUN_10117884((int)piVar14 + (int)*(short *)(*piVar14 + 0x538));
+    ResourceRead_Dispatch((int)piVar14 + (int)*(short *)(*piVar14 + 0x538));
 
     /* Register document with application */
     FUN_100bd55c(*(void **)puVar1);
@@ -1375,7 +1375,7 @@ void OpenW2SCStream(int docSelf, int param_2)
 
     /* Call stream read/open method via vtable +0xA8 */
     int *streamObj = *(int **)(docSelf + 0x148);
-    FUN_10117884((int)streamObj + (int)*(short *)(*streamObj + 0xA8), param_2);
+    ResourceRead_Dispatch((int)streamObj + (int)*(short *)(*streamObj + 0xA8), param_2);
 }
 
 
@@ -1398,7 +1398,7 @@ void OpenW2TEStream(int docSelf, int param_2)
                  0 /* app file ref */, 0, 0, 0, 1);
 
     int *streamObj = *(int **)(docSelf + 0x14C);
-    FUN_10117884((int)streamObj + (int)*(short *)(*streamObj + 0xA8), param_2);
+    ResourceRead_Dispatch((int)streamObj + (int)*(short *)(*streamObj + 0xA8), param_2);
 }
 
 
@@ -1420,7 +1420,7 @@ void OpenW2ARStream(int docSelf, int param_2)
                  0 /* app file ref */, 0, 0, 0, 1);
 
     int *streamObj = *(int **)(docSelf + 0x150);
-    FUN_10117884((int)streamObj + (int)*(short *)(*streamObj + 0xA8), param_2);
+    ResourceRead_Dispatch((int)streamObj + (int)*(short *)(*streamObj + 0xA8), param_2);
 }
 
 
@@ -1451,7 +1451,7 @@ void SaveWindowPositions(void *self)
      *    - Bytes 0x18-0x24: overview window rect
      *    - Byte  0x28: main window visible flag
      *    - Bytes 0x2C-0x38: info window rect
-     * 4. Write "Wind" resource (ID 1000) via FUN_10002568
+     * 4. Write "Wind" resource (ID 1000) via AddResource
      * 5. Write "Turn" resource with current turn state
      * 6. Dispose temporary handles
      *

@@ -1694,3 +1694,5 @@ char *pbRam101161f4 = 0;
 char *pbRam101161f8 = 0;
 int *piRam101165f4 = 0;
 int *piRam101165f8 = 0;
+unsigned int *puRam101165f0 = 0;
+unsigned int uRam10115ed8 = 0;

@@ -72,9 +72,9 @@ extern void *FUN_10115ad0;
 int FUN_10007e10(short, short, int);
 void FUN_10091338(void);
 void FUN_10007dd4(void);
-int FUN_10117884();
-void FUN_100226b0(int, int, int, short, short);
-void FUN_10047a64(int, void *, int, int);
+int ResourceRead_Dispatch();
+void SetRect4(int, int, int, short, short);
+void BlitToScreen(int, void *, int, int);
 void FUN_1002c8e8(short, short);
 void FUN_1002c92c(short, short);
 void FUN_10082260(int);
@@ -82,28 +82,28 @@ void FUN_10082f24(int, short, short);
 void FUN_100836dc(int, short, short);
 void FUN_1003dc28(void);
 void FUN_100032b8(int);
-void FUN_10003108(void *, int, int, short, short);
-void FUN_10003198(int, char, void *, int, int, int);
+void SetMacRect(void *, int, int, short, short);
+void NewGWorld_Wrapper(int, char, void *, int, int, int);
 int FUN_100f1574(int);
-void FUN_10000870(void *, void *);
-void FUN_10000888(int, int);
-int FUN_10001290(int);
-void FUN_10003468(int);
+void GetGWorld_Wrapper(void *, void *);
+void SetGWorld_Wrapper(int, int);
+int HLock_Thunk_Sound(int);
+void HUnlock_Thunk(int);
 void FUN_100ec3d4(void *, int, int);
 int FUN_100ec4b8(void *);
 int FUN_100ec540(void *);
 void FUN_100ec44c(void *, int);
-void FUN_100479f4(short);
-void FUN_10000270(short, short);
-void FUN_10000288(short, short);
+void SetDrawingColor(short);
+void MoveTo_Thunk(short, short);
+void LineTo_Thunk(short, short);
 void FUN_1000c724(int);
-void FUN_1000c7b4(void);
+void FlushCityCache(void);
 void FUN_1000c844(void);
-void FUN_10002598(void *);
+void DetachResource(void *);
 void FUN_10064850(int, int);
-void FUN_1004039c(int);
-void FUN_100929a0(void);
-void FUN_1007c714(int, int);
+void UpdateProgressBar(int);
+void YieldToEventLoop(void);
+void DispatchNextPhase(int, int);
 void FUN_10011804(void);
 void FUN_100164e4(void);
 void FUN_10013774(void);
@@ -115,39 +115,39 @@ void FUN_1001f9e4(short);
 void FUN_100114d4(void);
 void FUN_1001aa9c(void);
 void FUN_10013040(void);
-void FUN_10020ec4(void);
-void FUN_1000f410(void);
+void HeroSpecialActions(void);
+void EndOfTurnCleanup(void);
 void FUN_10014d14(void);
 void FUN_1000d1a4(void);
 void FUN_10014bcc(void);
 int FUN_1000d384(void);
 void FUN_1000d6a0(void);
 void FUN_10027448(void);
-void FUN_10002ad8(int);
+void DisposeHandle_Thunk(int);
 void FUN_1002c85c(void);
 void FUN_10008f70(void);
 void FUN_1003d4dc(void);
 void FUN_1000fac4(void);
 void FUN_1001ab94(void);
-int FUN_1001e4b0(int);
+int CheckArmyEscort(int);
 int FUN_1001e794(int, int, long long, int);
 void FUN_1001e564(short, int);
-int FUN_1005f230(int, int, ...);
-int FUN_1002be50(short, short);
-int FUN_10020f94(int);
-int FUN_1004a0c4(short, void *, void *, void *, void *, void *);
-void FUN_10048ccc(void);
-int FUN_1001e9d0(int);
-void FUN_10049fa8(int, int, int);
-void FUN_100496c8(int);
-void FUN_10049010(void);
-int FUN_1001f648(int, void *);
+int RandomRange(int, int, ...);
+int LookupCityAtPos(short, short);
+int ScoreUnitForHire(int);
+int CreateUnitTemplate(short, void *, void *, void *, void *, void *);
+void LockUnitData(void);
+int FindArmySlot(int);
+void PlaceUnitInArmy(int, int, int);
+void SortArmyUnits(int);
+void UnlockUnitData(void);
+int GetArmyInfo(int, void *);
 int FUN_100f15e0(int);
-void FUN_100ef510(int);
+void ReleaseHandle_Mapgen(int);
 int FUN_1000e938(short);
 void FUN_1000ea7c(int, ...);
 int FUN_1000ec04(int, short, void *, void *);
-int FUN_1000a884(short, short, short, short);
+int CalcDistance(short, short, short, short);
 int FUN_100ead08(int);
 void FUN_100ead98(void);
 int FUN_11011734(int);
@@ -242,7 +242,7 @@ void FUN_10001c20(void)
 
 // Address: 0x10001c98 | Size: 24 bytes
 // TVect trampoline -> puRam10115848 (Mac OS Toolbox call)
-void FUN_10001c98(void)
+void ReleaseHandle_Sound(void)
 {
     /* TVect: indirect jump via puRam10115848 */
     return;
@@ -283,7 +283,7 @@ void FUN_10003558(void)
 // Address: 0x10003768 | Size: 24 bytes
 // TVect trampoline -> puRam101152f0 (Mac OS Toolbox call)
 // FUNCTION_MAP.txt identifies this as abs()
-int FUN_10003768(long long param_1)
+int AbsShort(long long param_1)
 {
     /* TVect: abs() - mapped from puRam101152f0 */
     int val = (int)param_1;
@@ -354,10 +354,10 @@ void FUN_1000c9c8(void)
     uVar1 = *(unsigned int *)(iVar3 + 0x1582);
     *(unsigned int *)(iVar3 + 0x1582) = (uVar1 >> 0x1c & 3) << 0x1a | uVar1 & 0xf3ffffff;
     FUN_10064850(0, 0);
-    FUN_1000c7b4();
-    FUN_1004039c(10);
+    FlushCityCache();
+    UpdateProgressBar(10);
     FUN_1000c844();
-    FUN_100929a0();
+    YieldToEventLoop();
     return;
 }
 
@@ -367,8 +367,8 @@ void FUN_1000cafc(void)
 {
     FUN_10011804();
     FUN_100164e4();
-    FUN_1004039c(0xf);
-    FUN_100929a0();
+    UpdateProgressBar(0xf);
+    YieldToEventLoop();
     return;
 }
 
@@ -379,8 +379,8 @@ void FUN_1000cb54(void)
     if (*(short *)(*piRam1011735c + 0x124) != 0) {
         FUN_10013774();
     }
-    FUN_1004039c(0x14);
-    FUN_100929a0();
+    UpdateProgressBar(0x14);
+    YieldToEventLoop();
     return;
 }
 
@@ -389,8 +389,8 @@ void FUN_1000cb54(void)
 void FUN_1000cbb8(void)
 {
     FUN_10014214();
-    FUN_1004039c(0x19);
-    FUN_100929a0();
+    UpdateProgressBar(0x19);
+    YieldToEventLoop();
     return;
 }
 
@@ -399,8 +399,8 @@ void FUN_1000cbb8(void)
 void FUN_1000cc08(void)
 {
     FUN_1001d014();
-    FUN_1004039c(0x1e);
-    FUN_100929a0();
+    UpdateProgressBar(0x1e);
+    YieldToEventLoop();
     return;
 }
 
@@ -409,8 +409,8 @@ void FUN_1000cc08(void)
 void FUN_1000cc58(void)
 {
     FUN_10013484();
-    FUN_1004039c(0x28);
-    FUN_100929a0();
+    UpdateProgressBar(0x28);
+    YieldToEventLoop();
     return;
 }
 
@@ -419,8 +419,8 @@ void FUN_1000cc58(void)
 void FUN_1000cca8(void)
 {
     FUN_1001497c();
-    FUN_1004039c(0x2d);
-    FUN_100929a0();
+    UpdateProgressBar(0x2d);
+    YieldToEventLoop();
     return;
 }
 
@@ -429,8 +429,8 @@ void FUN_1000cca8(void)
 void FUN_1000ccf8(void)
 {
     FUN_1001f9e4(*(short *)(*piRam1011735c + 0x110));
-    FUN_1004039c(0x32);
-    FUN_100929a0();
+    UpdateProgressBar(0x32);
+    YieldToEventLoop();
     return;
 }
 
@@ -439,8 +439,8 @@ void FUN_1000ccf8(void)
 void FUN_1000cd54(void)
 {
     FUN_100114d4();
-    FUN_1004039c(0x37);
-    FUN_100929a0();
+    UpdateProgressBar(0x37);
+    YieldToEventLoop();
     return;
 }
 
@@ -449,8 +449,8 @@ void FUN_1000cd54(void)
 void FUN_1000cda4(void)
 {
     FUN_1001aa9c();
-    FUN_1004039c(0x3c);
-    FUN_100929a0();
+    UpdateProgressBar(0x3c);
+    YieldToEventLoop();
     return;
 }
 
@@ -459,8 +459,8 @@ void FUN_1000cda4(void)
 void FUN_1000cdf4(void)
 {
     FUN_10013484();
-    FUN_1004039c(0x41);
-    FUN_100929a0();
+    UpdateProgressBar(0x41);
+    YieldToEventLoop();
     return;
 }
 
@@ -469,7 +469,7 @@ void FUN_1000cdf4(void)
 void FUN_1000ce44(void)
 {
     FUN_10013040();
-    FUN_100929a0();
+    YieldToEventLoop();
     return;
 }
 
@@ -478,7 +478,7 @@ void FUN_1000ce44(void)
 void FUN_1000ce88(void)
 {
     if (*(short *)(*piRam1011735c + 0x124) != 0) {
-        FUN_10020ec4();
+        HeroSpecialActions();
     }
     return;
 }
@@ -487,9 +487,9 @@ void FUN_1000ce88(void)
 // Turn phase: process siege
 void FUN_1000ced8(void)
 {
-    FUN_1000f410();
-    FUN_1004039c(0x46);
-    FUN_100929a0();
+    EndOfTurnCleanup();
+    UpdateProgressBar(0x46);
+    YieldToEventLoop();
     return;
 }
 
@@ -498,8 +498,8 @@ void FUN_1000ced8(void)
 void FUN_1000cf28(void)
 {
     FUN_10014d14();
-    FUN_1004039c(0x4b);
-    FUN_100929a0();
+    UpdateProgressBar(0x4b);
+    YieldToEventLoop();
     return;
 }
 
@@ -508,8 +508,8 @@ void FUN_1000cf28(void)
 void FUN_1000d2e8(void)
 {
     FUN_1000d1a4();
-    FUN_1004039c(0x50);
-    FUN_100929a0();
+    UpdateProgressBar(0x50);
+    YieldToEventLoop();
     return;
 }
 
@@ -518,8 +518,8 @@ void FUN_1000d2e8(void)
 void FUN_1000d334(void)
 {
     FUN_10014bcc();
-    FUN_1004039c(0x55);
-    FUN_100929a0();
+    UpdateProgressBar(0x55);
+    YieldToEventLoop();
     return;
 }
 
@@ -528,8 +528,8 @@ void FUN_1000d334(void)
 void FUN_1000d654(void)
 {
     FUN_1000d384();
-    FUN_1004039c(0x5a);
-    FUN_100929a0();
+    UpdateProgressBar(0x5a);
+    YieldToEventLoop();
     return;
 }
 
@@ -538,8 +538,8 @@ void FUN_1000d654(void)
 void FUN_1000d7bc(void)
 {
     FUN_1000d6a0();
-    FUN_1004039c(0x5f);
-    FUN_100929a0();
+    UpdateProgressBar(0x5f);
+    YieldToEventLoop();
     return;
 }
 
@@ -555,7 +555,7 @@ void FUN_1000d808(void)
 
     iVar2 = (int)iRam101176e8;
     piVar3 = piRam1011735c;
-    FUN_1004039c(100);
+    UpdateProgressBar(100);
     /* Reset turn-started flag */
     FUN_10027448();
     iVar6 = 7;
@@ -576,7 +576,7 @@ void FUN_1000d808(void)
 // Address: 0x1000da14 | Size: 252 bytes
 // Queries neighbor army data for a given army index, copying adjacency
 // and distance info into caller-provided buffers.
-int FUN_1000da14(short param_1, unsigned short param_2, int param_3, int param_4)
+int GetAdjacentArmies(short param_1, unsigned short param_2, int param_3, int param_4)
 {
     int bVar1;
     int *piVar2;
@@ -586,7 +586,7 @@ int FUN_1000da14(short param_1, unsigned short param_2, int param_3, int param_4
 
     piVar2 = piRam10117470;
     uVar6 = (long long)param_1;
-    FUN_1000c7b4();
+    FlushCityCache();
     uVar5 = 0;
     iVar4 = 5;
     do {
@@ -613,7 +613,7 @@ int FUN_1000da14(short param_1, unsigned short param_2, int param_3, int param_4
 // Address: 0x1000de24 | Size: 308 bytes
 // Clears/resets a city record by index - sets all production slots,
 // build queues, and vectoring data to default values.
-void FUN_1000de24(short param_1)
+void ActivateAttackEvent(short param_1)
 {
     int bVar1;
     int *piVar2;
@@ -709,7 +709,7 @@ long long FUN_1000ed34(long long param_1, short param_2, short *param_3, short *
     else {
         piVar3 = (int *)*piVar12;
         if (piVar3 != (int *)0x0) {
-            FUN_10002598(piVar3);
+            DetachResource(piVar3);
         }
         *piVar11 = *piVar3;
         iVar13 = FUN_1000e938(param_2);
@@ -768,7 +768,7 @@ long long FUN_1000ed34(long long param_1, short param_2, short *param_3, short *
                             if (bVar16) {
                                 iVar14 = *piVar9 + (int)(((uVar19 & 0x7ffffff) * 0x20 + uVar19 & 0xffffffff) << 1);
                                 iVar5 = *piVar9 + iVar13 * 0x42;
-                                iVar14 = FUN_1000a884(*(short *)(iVar14 + 0x1604),
+                                iVar14 = CalcDistance(*(short *)(iVar14 + 0x1604),
                                                       *(short *)(iVar14 + 0x1606),
                                                       *(short *)(iVar5 + 0x1604),
                                                       *(short *)(iVar5 + 0x1606));
@@ -793,7 +793,7 @@ long long FUN_1000ed34(long long param_1, short param_2, short *param_3, short *
                 }
             }
         }
-        FUN_100ef510(*piVar12);
+        ReleaseHandle_Mapgen(*piVar12);
     }
     return uVar17;
 }
@@ -855,7 +855,7 @@ void FUN_1000f308(short param_1)
     do {
         sVar7 = *(short *)(*piVar5 + param_1 * 0x5c + iVar8 * 2 + 0x25a);
         if (sVar7 != -1) {
-            FUN_1000da14(sVar7, 0, (int)abStack_28, (int)auStack_30);
+            GetAdjacentArmies(sVar7, 0, (int)abStack_28, (int)auStack_30);
             sVar7 = 0;
             iVar6 = 5;
             do {

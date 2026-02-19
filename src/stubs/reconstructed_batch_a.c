@@ -13,38 +13,38 @@
 /* ===== Forward declarations for called functions ===== */
 void FUN_10004c54(void);
 void FUN_10005b68(void);
-void FUN_10005f90(void);
+void DrawFullMapView(void);
 void FUN_10007c50(void);
-int FUN_10003768(int);
+int AbsShort(int);
 void FUN_10082430(int, short, short);
 void FUN_1000848c(short, short);
 void FUN_1003d734(void);
 void FUN_10011590(void);
-short FUN_1000df58(int);
+short FindPrimaryThreat(int);
 void FUN_1001ab94(void);
 void FUN_1000fac4(void);
-int FUN_1001e4b0(int);
+int CheckArmyEscort(int);
 int FUN_1001e794(int, int, long long, int);
 void FUN_1001e564(short, int);
-int FUN_1000da14(int, int, void *, void *);
-int FUN_1005f230(int, int, int);
-int FUN_10020d88(int, short *, void *, long long, int);
+int GetAdjacentArmies(int, int, void *, void *);
+int RandomRange(int, int, int);
+int FindBestTarget(int, short *, void *, long long, int);
 int FUN_10010b30(int, int);
-void FUN_1000de24(int);
+void ActivateAttackEvent(int);
 int FUN_1000ed34(int, int, int, int);
 void FUN_1000f064(int);
 void FUN_1000f258(int);
 void FUN_1000f308(int);
-int FUN_1001f174(int, int);
+int IsPositionReachable(int, int);
 int FUN_1001acdc(short, short, short);
-int FUN_1001eff8(short, short);
+int EvaluatePosition(short, short);
 int FUN_10012cc8(int);
-void FUN_1001e160(void *, int, long long, int);
-void FUN_10018180(short, short, int);
-int FUN_1001ee88(short, short, void *, int, int, int);
+void MoveArmyToTarget(void *, int, long long, int);
+void ExecuteArmyMove(short, short, int);
+int FindPath(short, short, void *, int, int, int);
 int FUN_10013d0c(void *);
 int FUN_100145c8(int);
-int FUN_1001a348(int, long long);
+int AssignToDefense(int, long long);
 void FUN_10014e44(void *);
 void FUN_100151e8(int);
 int FUN_10015324(int, void *);
@@ -54,10 +54,10 @@ void FUN_100159c8(int, void *);
 void FUN_10015dc8(int, void *);
 void FUN_10015f98(int, void *);
 int FUN_100161fc(int, void *);
-int FUN_1005619c(void);
-void FUN_10055c64(int);
+int GetNextDefender(void);
+void PrepareDefender(int);
 int FUN_10013150(void);
-int FUN_1000f708(long long, int);
+int CanArmyEnterCity(long long, int);
 void FUN_1001ae14(long long, int);
 int FUN_10011734(int);
 int FUN_100f15e0(int);
@@ -65,50 +65,50 @@ void FUN_1000c67c(void);
 int FUN_100f1640(int);
 void FUN_1001f758(void);
 void FUN_1001f958(void);
-int FUN_10018574(int, void *, int);
-int FUN_1001cd68(int);
+int GetNeighborArmies(int, void *, int);
+int AdvanceGroupToTarget(int);
 void FUN_10039c58(int);
-void FUN_100db26c(int);
-int FUN_10020f94(int);
-void FUN_1004a0c4(long long, void *, short *, void *, short *, void *);
+void FocusObject(int);
+int ScoreUnitForHire(int);
+void CreateUnitTemplate(long long, void *, short *, void *, short *, void *);
 int FUN_1000cf78(long long);
 void FUN_1000d0c0(long long, long long);
-void FUN_100ef580(void *);
-void FUN_10002598(void *);
-void FUN_10002ad8(int);
-void FUN_1001ed3c(short, short, void *, int);
-void FUN_1000fc38(int, int);
-int FUN_10044950(void);
-void FUN_100449bc(void);
-void FUN_100448e4(short, short, short, short, short);
-void FUN_1000fde4(void *, int);
-void FUN_10041de8(void);
-void FUN_1001ec20(void *);
+void FreeBlock(void *);
+void DetachResource(void *);
+void DisposeHandle_Thunk(int);
+void FindUnitsInRange(short, short, void *, int);
+void DisbandUnit(int, int);
+int AllocInfluenceMap(void);
+void FreeInfluenceMap(void);
+void SetupInfluenceMap(short, short, short, short, short);
+void ReleaseUnits(void *, int);
+void PrepareUnitDisplay(void);
+void FilterEnemyUnits(void *);
 void FUN_10009630(int, short, short);
 void FUN_1003c838(void);
 void FUN_1003cb84(void);
 void FUN_1003d094(void);
 void FUN_10025f94(void);
 void FUN_1002ce38(void);
-void FUN_10038890(void);
-int FUN_10039e24(int);
-int FUN_1004639c(int);
-void FUN_1001bbf0(long long, int);
-void FUN_1001ba60(long long);
-void FUN_10054af4(long long, long long);
-void FUN_100635e0(short);
-void FUN_10060608(int, int, int);
-void FUN_1000931c(short, short, short);
-void FUN_10039ec8(short);
-void FUN_1004b11c(int);
+void SaveTurnState(void);
+int CheckHeroQuest(int);
+int CheckQuestCondition(int);
+void LaunchAllianceAttack(long long, int);
+void LaunchAllianceDefense(long long);
+void SpawnNeutralArmy(long long, long long);
+void CenterMapOnArmy(short);
+void RefreshDisplay(int, int, int);
+void SetArmyDestination(short, short, short);
+void UpdateArmyDisplay(short);
+void ProcessQuestReward(int);
 void FUN_10056534(void);
 void FUN_10092c5c(int);
-int FUN_100525a0(short);
-void FUN_10001e78(int, int);
-void FUN_10000b70(int);
+int ByteSwap16(short);
+void BlockMoveData_Thunk(int, int);
+void HLock_Thunk_Sound(int);
 int FUN_10051f98(int, long long, int);
-void FUN_10052490(void *, void *, short);
-void FUN_100523a8(void *, int);
+void StreamRead(void *, void *, short);
+void CloseStream(void *, int);
 void FUN_100219a8(int, int, int);
 
 
@@ -157,7 +157,7 @@ int FUN_10000a08() { return 0; }
 int FUN_10000a98() { return 0; }
 
 /* addr=100012c0 size=24  TVect trampoline -> puRam10115334 */
-int FUN_100012c0() { return 0; }
+int StringLength() { return 0; }
 
 /* addr=10001338 size=24  TVect trampoline -> puRam10115530 */
 int FUN_10001338() { return 0; }
@@ -166,7 +166,7 @@ int FUN_10001338() { return 0; }
 int FUN_100014a0() { return 0; }
 
 /* addr=10001728 size=24  TVect trampoline -> puRam10115834 */
-int FUN_10001728() { return 0; }
+int GetResource_Thunk() { return 0; }
 
 /* addr=10001ad0 size=24  TVect trampoline -> puRam101157a0 */
 int FUN_10001ad0() { return 0; }
@@ -184,13 +184,13 @@ int FUN_10001b60() { return 0; }
 int FUN_10001d28() { return 0; }
 
 /* addr=100021c0 size=24  TVect trampoline -> puRam10115790 */
-int FUN_100021c0() { return 0; }
+int SetForeColor_Thunk() { return 0; }
 
 /* addr=10002358 size=24  TVect trampoline -> puRam101155c4 */
 int FUN_10002358() { return 0; }
 
 /* addr=10002598 size=24  TVect trampoline -> puRam10115538 (HLock) */
-void FUN_10002598(void *param_1) { (void)param_1; }
+void DetachResource(void *param_1) { (void)param_1; }
 
 /* addr=100025b0 size=24  TVect trampoline -> puRam10115560 */
 int FUN_100025b0() { return 0; }
@@ -234,7 +234,7 @@ void FUN_10007dd4(void)
     FUN_10005b68();
 
     /* Main game display update */
-    FUN_10005f90();
+    DrawFullMapView();
 
     /* UI overlay / scroll region update */
     FUN_10007c50();
@@ -283,8 +283,8 @@ short FUN_1000a884(short param_1, short param_2, short param_3, short param_4)
 {
     int dx, dy;
 
-    dx = FUN_10003768((int)param_1 - (int)param_3);
-    dy = FUN_10003768((int)param_2 - (int)param_4);
+    dx = AbsShort((int)param_1 - (int)param_3);
+    dy = AbsShort((int)param_2 - (int)param_4);
 
     /* Simplified distance: Manhattan-like metric */
     /* Original uses floating-point comparison with a table lookup.
@@ -307,7 +307,7 @@ void FUN_1000c724(short param_1)
     for (i = 7; i >= 0; i--) {
         int ptr = FUN_100f15e0(0x42c);
         if (ptr == 0) {
-            FUN_100db26c(0);
+            FocusObject(0);
         }
     }
     if (param_1 != 0) {
@@ -320,7 +320,7 @@ void FUN_1000c724(short param_1)
  * Allocate or refresh a shared game data buffer (0x4b0 bytes).
  * Locks the handle and copies the base pointer to a global.
  */
-void FUN_1000c7b4(void)
+void FlushCityCache(void)
 {
     /* Allocates 0x4b0 bytes if not already allocated,
        locks the handle and copies base pointer.
@@ -406,12 +406,12 @@ void FUN_1000d1a4(void)
     if (*(short *)(*gExtState + 0xe) == 0) return;
 
     if (*(short *)(*gGameState + *(short *)(*gGameState + 0x110) * 0x14 + 0x186) > 399) {
-        iVar5 = FUN_1005f230(1, 10, 0);
-        long long uVar3 = FUN_10020f94(7 < iVar5);
+        iVar5 = RandomRange(1, 10, 0);
+        long long uVar3 = ScoreUnitForHire(7 < iVar5);
         *(short *)(*gExtState + 0x10) = (short)uVar3;
 
         if ((int)uVar3 != -1) {
-            FUN_1004a0c4(uVar3, auStack_1c, &local_1e, auStack_1a, &local_20, auStack_18);
+            CreateUnitTemplate(uVar3, auStack_1c, &local_1e, auStack_1a, &local_20, auStack_18);
             if (local_1e > 2 &&
                 local_20 + 100 <= (int)*(short *)(*gGameState +
                     *(short *)(*gGameState + 0x110) * 0x14 + 0x186)) {
@@ -461,7 +461,7 @@ int FUN_1000d384(void)
             *(short *)(iVar2 + 0x1636) = 0;
             *(short *)(*gGameState + iVar12 * 0x42 + 0x1638) = -1;
             *(short *)(*gGameState + iVar12 * 0x42 + 0x163a) = -1;
-            iVar8 = FUN_1001e4b0(iVar12);
+            iVar8 = CheckArmyEscort(iVar12);
         } while (iVar8 != 0);
 
         /* Check gold situation */
@@ -550,7 +550,7 @@ int FUN_1000e938(short param_1)
         int iVar9 = (int)sVar3;
 
         if ((int)*(char *)(*gGameState + iVar9 * 0x42 + 0x1619) == (int)param_1) {
-            FUN_1000da14(iVar9, 0, abStack_28, auStack_30);
+            GetAdjacentArmies(iVar9, 0, abStack_28, auStack_30);
             short sVar6 = 1;
 
             for (int i = 5; i >= 0; i--) {
@@ -563,7 +563,7 @@ int FUN_1000e938(short param_1)
             }
 
             if (sVar8 < sVar6 ||
-                (sVar6 == sVar8 && FUN_1005f230(1, 2, 0) != 0)) {
+                (sVar6 == sVar8 && RandomRange(1, 2, 0) != 0)) {
                 sVar8 = sVar6;
                 iVar7 = iVar9;
             }
@@ -613,12 +613,12 @@ int FUN_1000ec04(short param_1, short param_2, short *param_3, short *param_4)
  * Finds an empty production slot, determines what to build,
  * assigns armies to the plan, and starts production.
  */
-void FUN_1000f410(void)
+void EndOfTurnCleanup(void)
 {
     /* Complex AI production planning.
        Checks if production is needed (active cities vs slots),
-       finds empty slots, calls FUN_1000de24 to init,
-       FUN_1000df58/FUN_1000ed34 for unit selection,
+       finds empty slots, calls ActivateAttackEvent to init,
+       FindPrimaryThreat/FUN_1000ed34 for unit selection,
        sets up production queue.
        In modern build: no-op (AI logic). */
 }
@@ -688,7 +688,7 @@ void FUN_10013040(void)
 int FUN_10013484(void)
 {
     /* Complex AI unit dispatch logic.
-       Iterates unit types, calls FUN_1005619c,
+       Iterates unit types, calls GetNextDefender,
        evaluates movement categories, dispatches units.
        Returns 1 on completion. */
     return 1;
@@ -705,7 +705,7 @@ void FUN_10013774(void)
     /* Two-phase production assignment loop.
        Phase 0: hero units (type == 0x1c)
        Phase 1: regular units
-       Calls FUN_1001a348 for assignment,
+       Calls AssignToDefense for assignment,
        tracks ground/special unit counts.
        In modern build: no-op. */
 }
@@ -719,7 +719,7 @@ void FUN_10014214(void)
 {
     /* Iterates unit types belonging to current player with
        quest flag set (bit 0x100). For hero types (0x1c),
-       repeatedly calls FUN_1001ee88 and FUN_10013d0c
+       repeatedly calls FindPath and FUN_10013d0c
        until the quest is resolved or the hero is too weak.
        In modern build: no-op. */
 }
@@ -763,9 +763,9 @@ void FUN_10014d14(void)
 {
     /* Iterates armies of current player.
        For armies with port flag (0x20) that aren't garrisoned:
-       calls FUN_1001ee88 for pathfinding,
+       calls FindPath for pathfinding,
        FUN_10013d0c for hero dispatch,
-       FUN_1001e4b0 for movement.
+       CheckArmyEscort for movement.
        Sets army state to 0x0d on failure.
        In modern build: no-op. */
 }
@@ -792,7 +792,7 @@ void FUN_100164e4(void)
  * addr=1001aa9c size=248
  * AI: Validate army tracking assignments.
  * Counts how many units are tracking each army and calls
- * FUN_1001a864 to rebalance if needed.
+ * ProcessSingleAssignment to rebalance if needed.
  */
 void FUN_1001aa9c(void)
 {
@@ -826,7 +826,7 @@ void FUN_1001aa9c(void)
     /* Rebalance */
     sVar6 = 0;
     do {
-        iVar5 = FUN_1001a864(sVar6, acStack_70);
+        iVar5 = ProcessSingleAssignment(sVar6, acStack_70);
         if (iVar5 == 0) {
             return;
         }
@@ -839,7 +839,7 @@ void FUN_1001aa9c(void)
  * AI: Update city production and garrison states at start of turn.
  * Calls FUN_1001fcc0 for unit capability analysis,
  * transitions garrisoned armies from state 7->8,
- * and processes city production via FUN_1001cd68.
+ * and processes city production via AdvanceGroupToTarget.
  */
 void FUN_1001d014(void)
 {
@@ -871,7 +871,7 @@ void FUN_1001d014(void)
                 if (*(short *)(iVar3 + 0x24c) != 0) {
                     /* Set garrison army to guarding */
                     *(char *)((int)*(short *)(iVar3 + 0x250) + *gExtState + 0x56) = 7;
-                    iVar3 = FUN_1001cd68(iVar5);
+                    iVar3 = AdvanceGroupToTarget(iVar5);
                     if (iVar3 != 0) {
                         iVar3 = iVar5 * 0x5c + *gExtState;
                         *(short *)(iVar3 + 0x24c) = *(short *)(iVar3 + 0x24c) + 1;
@@ -935,7 +935,7 @@ void FUN_1001f9e4(short param_1)
         while (sVar1 != 0) {
             sVar1 = sVar1 - 1;
             if (*(char *)(*gExtState + (int)sVar1 + 0x56) == '\x01') {
-                iVar6 = FUN_10018574((int)sVar1, 0, 0);
+                iVar6 = GetNeighborArmies((int)sVar1, 0, 0);
                 if (iVar6 == 0) {
                     *(char *)(*gExtState + (int)sVar1 + 0x56) = 5;
                 } else {
@@ -953,7 +953,7 @@ void FUN_1001f9e4(short param_1)
  * For each army in state 2, check if adjacent enemies are unmoved,
  * and transition to state 3 (attack) if so.
  */
-void FUN_10020ec4(void)
+void HeroSpecialActions(void)
 {
     short sVar3;
     int iVar7;
@@ -968,7 +968,7 @@ void FUN_10020ec4(void)
             sVar3 = sVar3 - 1;
         } while (*(char *)(*gExtState + (int)sVar3 + 0x56) != '\x02');
 
-        FUN_10018574(sVar3, abStack_18, 0);
+        GetNeighborArmies(sVar3, abStack_18, 0);
 
         for (iVar7 = 5; iVar7 >= 0; iVar7--) {
             unsigned char bVar2 = abStack_18[iVar7];
@@ -986,7 +986,7 @@ void FUN_10020ec4(void)
  * Set rectangle fields: param_1[0]=top, [1]=left, [2]=bottom, [3]=right.
  * Simple 4-field initializer used throughout the codebase.
  */
-void FUN_100226b0(short *param_1, short param_2, short param_3, short param_4,
+void SetRect4(short *param_1, short param_2, short param_3, short param_4,
                   short param_5)
 {
     param_1[0] = param_2;
@@ -1023,11 +1023,11 @@ void FUN_10027448(void)
             if (uVar3 < (*(unsigned int *)(iVar8 * 0x10 + iVar2 + iVar5 + 0x1582) >> 0x1c & 3)) {
                 if (uVar3 == 0) {
                     if (uVar4 == 1) {
-                        short sVar7 = FUN_1005f230(1, 2, 0);
+                        short sVar7 = RandomRange(1, 2, 0);
                         *(short *)(*gGameState + iVar5 + 0x1122) =
                             *(short *)(iVar5 + iVar2 + 0x1122) + sVar7 + 1;
                     } else if ((*(unsigned int *)(iVar2 + iVar9 * 0x10 + iVar8 * 2 + 0x1582) >> 0x1a & 3) == 2) {
-                        short sVar7 = FUN_1005f230(1, 10, 0);
+                        short sVar7 = RandomRange(1, 10, 0);
                         *(short *)(iVar9 * 2 + *gGameState + 0x1122) =
                             *(short *)(iVar2 + iVar9 * 2 + 0x1122) + sVar7 + 10;
                     }
@@ -1035,7 +1035,7 @@ void FUN_10027448(void)
                     iVar2 = *gGameState;
                     uVar3 = *(unsigned int *)(iVar2 + iVar9 * 0x10 + iVar8 * 2 + 0x1582);
                     if (((uVar3 >> 0x1c & 3) == 1) && ((uVar3 >> 0x1a & 3) == 2)) {
-                        short sVar7 = FUN_1005f230(1, 2, 0);
+                        short sVar7 = RandomRange(1, 2, 0);
                         *(short *)(iVar9 * 2 + *gGameState + 0x1122) =
                             *(short *)(iVar2 + iVar9 * 2 + 0x1122) + sVar7 + 1;
                     }
@@ -1139,7 +1139,7 @@ void FUN_1003d4dc(void)
             FUN_1003d094();
             FUN_10025f94();
             FUN_1002ce38();
-            FUN_10038890();
+            SaveTurnState();
             FUN_10064850(1, 0);
         }
 

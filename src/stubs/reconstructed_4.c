@@ -83,20 +83,20 @@ extern void  FUN_100cda40(void *obj);       /* CDA object ctor */
 extern void  FUN_100cdbe4(void *obj);       /* CDB object ctor */
 extern void  FUN_100f6b8c(void *obj);       /* F6B object ctor */
 
-extern void *FUN_100f56e4(int size);        /* NewObject / malloc */
+extern void *NewPtr_Thunk(int size);        /* NewObject / malloc */
 extern int   FUN_100b0368(void *dst, int src); /* Pascal string copy/init */
 
 /* MacApp vtable dispatch */
-extern int   FUN_10117884(int method_ptr, ...);
+extern int   ResourceRead_Dispatch(int method_ptr, ...);
 
 /* MacApp handle/memory management */
 extern void  FUN_100db158(int hi, int lo);  /* Lock handle */
-extern void  FUN_100db26c(int param);       /* Unlock handle */
+extern void  FocusObject(int param);       /* Unlock handle */
 extern int   FUN_100f1640(int size);        /* Allocate heap block */
 
 /* Game functions called by FUN_10095330 */
 extern void  FUN_1002bcd8(void);
-extern int   FUN_1004e384(int a, int b, int c, int d);
+extern int   ProcessQuestEvent(int a, int b, int c, int d);
 
 /* Game functions called by FUN_100ae86c */
 extern int   FUN_10000090(void);
@@ -283,7 +283,7 @@ int FUN_10091090(void)
     return FUN_101165c4;
 }
 
-// Function: FUN_10093b00 at 10093b00
+// Function: GetSoundActiveFlag at 10093b00
 // Size: 8 bytes
 // MacApp class descriptor accessor
 int FUN_10093b00(void)
@@ -440,7 +440,7 @@ int FUN_100a18e8(void)
 int *FUN_10081e48(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xc4),
+       (param_1 = (int *)NewPtr_Thunk(0xc4),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = (int)TVECT_BASE[-0x546];
@@ -466,7 +466,7 @@ int *FUN_10081e48(int *param_1)
 int *FUN_10086324(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xa8),
+       (param_1 = (int *)NewPtr_Thunk(0xa8),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *param_1 = (int)TVECT_BASE[-0x52a];
@@ -480,7 +480,7 @@ int *FUN_10086324(int *param_1)
 int *FUN_100863e8(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb8),
+       (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
         FUN_100e1f44(param_1);
         *param_1 = (int)TVECT_BASE[-0x528];
@@ -494,7 +494,7 @@ int *FUN_100863e8(int *param_1)
 int *FUN_10086708(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x40),
+       (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -511,7 +511,7 @@ int *FUN_10086708(int *param_1)
 int *FUN_1008a058(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x40),
+       (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -528,7 +528,7 @@ int *FUN_1008a058(int *param_1)
 int *FUN_1008ad74(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x44),
+       (param_1 = (int *)NewPtr_Thunk(0x44),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -545,7 +545,7 @@ int *FUN_1008ad74(int *param_1)
 int *FUN_1008bed8(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x5c),
+       (param_1 = (int *)NewPtr_Thunk(0x5c),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -563,7 +563,7 @@ int *FUN_1008bed8(int *param_1)
 int *FUN_1008d9dc(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x40),
+       (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -580,7 +580,7 @@ int *FUN_1008d9dc(int *param_1)
 int *FUN_1008dbbc(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb8),
+       (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
         FUN_100e1f44(param_1);
         *param_1 = (int)TVECT_BASE[-0x4f4];
@@ -594,7 +594,7 @@ int *FUN_1008dbbc(int *param_1)
 int *FUN_10090b28(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb4),
+       (param_1 = (int *)NewPtr_Thunk(0xb4),
        param_1 != (int *)0x0)) {
         FUN_100cdbe4(param_1);
         *param_1 = (int)TVECT_BASE[-0x4bc];
@@ -608,7 +608,7 @@ int *FUN_10090b28(int *param_1)
 int *FUN_100910a0(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xc0),
+       (param_1 = (int *)NewPtr_Thunk(0xc0),
        param_1 != (int *)0x0)) {
         FUN_100f6b8c(param_1);
         *param_1 = (int)TVECT_BASE[-0x4b5];
@@ -622,7 +622,7 @@ int *FUN_100910a0(int *param_1)
 int *FUN_10093b10(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x28),
+       (param_1 = (int *)NewPtr_Thunk(0x28),
        param_1 != (int *)0x0)) {
         FUN_100bf518(param_1);
         *param_1 = (int)TVECT_BASE[-0x4a6];
@@ -640,7 +640,7 @@ int *FUN_10093b10(int *param_1)
 int *FUN_100965e4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x40),
+       (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -657,7 +657,7 @@ int *FUN_100965e4(int *param_1)
 int *FUN_10096bcc(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb8),
+       (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
         FUN_100e1f44(param_1);
         *param_1 = (int)TVECT_BASE[-0x488];
@@ -671,7 +671,7 @@ int *FUN_10096bcc(int *param_1)
 int *FUN_1009769c(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xbc),
+       (param_1 = (int *)NewPtr_Thunk(0xbc),
        param_1 != (int *)0x0)) {
         FUN_100cda40(param_1);
         *(short *)(param_1 + 0x2c) = 0;
@@ -692,7 +692,7 @@ int *FUN_1009769c(int *param_1)
 int *FUN_10097974(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xa0),
+       (param_1 = (int *)NewPtr_Thunk(0xa0),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = (int)TVECT_BASE[-0x472];
@@ -706,7 +706,7 @@ int *FUN_10097974(int *param_1)
 int *FUN_10097a84(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x40),
+       (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -723,7 +723,7 @@ int *FUN_10097a84(int *param_1)
 int *FUN_1009ddc0(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xbc),
+       (param_1 = (int *)NewPtr_Thunk(0xbc),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *(short *)(param_1 + 0x2a) = 0;
@@ -746,7 +746,7 @@ int *FUN_1009ddc0(int *param_1)
 int *FUN_1009e690(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x40),
+       (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -763,7 +763,7 @@ int *FUN_1009e690(int *param_1)
 int *FUN_100a18f8(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x48),
+       (param_1 = (int *)NewPtr_Thunk(0x48),
        param_1 != (int *)0x0)) {
         FUN_100d568c(param_1);
         param_1[0xd] = 0x20202020;
@@ -803,7 +803,7 @@ void FUN_1008455c(void)
 
 // Function: FUN_10095330 at 10095330
 // Size: 112 bytes
-// Check if current player has score > 0, if so invoke FUN_1004e384
+// Check if current player has score > 0, if so invoke ProcessQuestEvent
 long long FUN_10095330(void)
 {
     long long uVar2;
@@ -814,7 +814,7 @@ long long FUN_10095330(void)
         uVar2 = 0;
     }
     else {
-        uVar2 = FUN_1004e384(3, 0, 0, 0);
+        uVar2 = ProcessQuestEvent(3, 0, 0, 0);
     }
     return uVar2;
 }
@@ -848,13 +848,13 @@ void FUN_100ae86c(void)
     char *local_4;
 
     if (*piRam1011684c == 0) {
-        uVar4 = FUN_10117884(*((int *)gWindowResource) +
+        uVar4 = ResourceRead_Dispatch(*((int *)gWindowResource) +
                     (int)*(short *)(*(int *)*((int *)gWindowResource) + 200),
                     0x11f8,
                     *(int *)(*(int *)((pint *)gResourcePtr) + 0x88));
         puVar2 = (int *)piRam1011684c;  /* approximate - uses tvect offset */
         *puVar2 = uVar4;
-        FUN_100db26c(*puVar2);
+        FocusObject(*puVar2);
     }
     /* Initialize unit type selection to -1 (0xFFFF) */
     *(short *)((char *)piRam1011684c + 4) = (short)0xffff;
@@ -886,7 +886,7 @@ void FUN_100ae86c(void)
     iVar5 = FUN_10000090();
     if (iVar5 == 0) {
         if (*piRam1011684c != 0) {
-            local_c = FUN_10117884(*piRam1011684c +
+            local_c = ResourceRead_Dispatch(*piRam1011684c +
                          (int)*(short *)(*(int *)*piRam1011684c + 0x810));
             if (local_c == 0x646f6e65) {  /* 'done' */
                 FUN_100ae77c();
@@ -894,7 +894,7 @@ void FUN_100ae86c(void)
             else {
                 FUN_100ae7c4();
             }
-            FUN_10117884(*piRam1011684c +
+            ResourceRead_Dispatch(*piRam1011684c +
                          (int)*(short *)(*(int *)*piRam1011684c + 0x738));
         }
         *piRam1011684c = 0;
@@ -902,7 +902,7 @@ void FUN_100ae86c(void)
     }
     else {
         if (*piRam1011684c != 0) {
-            FUN_10117884(*piRam1011684c +
+            ResourceRead_Dispatch(*piRam1011684c +
                          (int)*(short *)(*(int *)*piRam1011684c + 0x738));
         }
         *piRam1011684c = 0;

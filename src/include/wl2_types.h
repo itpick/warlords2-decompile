@@ -96,7 +96,7 @@ typedef struct UnitClassDef {
 
 /*
  * Unit Instance Template - 0x3E (62) bytes
- * Used by GetUnitTypeInfo (FUN_10049628)
+ * Used by GetUnitTypeInfo (GetUnitStats)
  * Base: *gUnitInstanceTable + index * 0x3E
  */
 typedef struct UnitInstance {

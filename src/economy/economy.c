@@ -38,14 +38,14 @@ extern int  CalcPathCost(short armyIdx, short destX, short destY);
  * Copies the 62-byte (0x3E) unit instance record matching the given
  * type ID into the caller's buffer. Locks/unlocks the unit data resource.
  *
- * Original: FUN_10049628 at 0x10049628 (160 bytes)
+ * Original: GetUnitStats at 0x10049628 (160 bytes)
  */
 void GetUnitTypeInfo(short typeId, char *buffer)
 {
     int i;
     UnitInstance *src;
 
-    LockUnitData();   /* FUN_10048ccc */
+    LockUnitData();   /* LockUnitData */
 
     for (i = 0; i < MAX_UNIT_TYPES; i++) {
         src = (UnitInstance *)((char *)*(&gUnitInstanceTable) + i * 0x3E);
@@ -63,7 +63,7 @@ void GetUnitTypeInfo(short typeId, char *buffer)
         }
     }
 
-    UnlockUnitData();  /* FUN_10049010 */
+    UnlockUnitData();  /* UnlockUnitData */
 }
 
 /*
@@ -72,7 +72,7 @@ void GetUnitTypeInfo(short typeId, char *buffer)
  * Searches the unit instance table for a matching type ID and returns
  * individual stat fields via output pointers.
  *
- * Original: FUN_1004a0c4 at 0x1004a0c4 (180 bytes)
+ * Original: CreateUnitTemplate at 0x1004a0c4 (180 bytes)
  */
 int GetItemStats(short itemID, short *cost, short *strength,
                  short *movement, short *upkeep, short *hitPoints)
@@ -118,7 +118,7 @@ char *GetItemName(short itemTypeID)
         base = (int)(*(&gUnitInstanceTable)) + i * 0x3E;
         if (*(short *)base == itemTypeID) {
             /* Copy name from offset +2, 20 bytes (HERO_NAME_LEN) */
-            BlockMoveData((Ptr)(base + 2), nameBuffer, HERO_NAME_LEN);
+            BlockMoveData_Thunk((Ptr)(base + 2), nameBuffer, HERO_NAME_LEN);
             nameBuffer[HERO_NAME_LEN] = '\0';
             break;
         }
@@ -198,7 +198,7 @@ short GetUnitSlotInArmy(short armyIdx, short unitType)
  * Swaps all parallel arrays: unit_types, unit_strength, unit_upkeep,
  * unit_hitpoints, unit_moves.
  *
- * Original: FUN_100496c8 at 0x100496c8 (564 bytes)
+ * Original: SortArmyUnits at 0x100496c8 (564 bytes)
  */
 void SortArmyUnits(short armyIdx)
 {
@@ -314,7 +314,7 @@ void RemoveArmyFromCities(short armyIdx)
  * (states 8=searching or 5=razed), or if entering an existing garrison
  * (state 6) when param_2 is nonzero.
  *
- * Original: FUN_1000f708 at 0x1000f708 (180 bytes)
+ * Original: CanArmyEnterCity at 0x1000f708 (180 bytes)
  */
 Boolean CanArmyEnterCity(short armyIdx, short allowGarrison)
 {
@@ -362,7 +362,7 @@ Boolean CanArmyEnterCity(short armyIdx, short allowGarrison)
  * parsing whitespace-terminated name strings, and populating the
  * gUnitInstanceTable with 29 entries of 0x3E bytes each.
  *
- * Original: FUN_10048ccc at 0x10048ccc (836 bytes)
+ * Original: LockUnitData at 0x10048ccc (836 bytes)
  *
  * NOTE: The actual resource loading logic is complex and involves Mac
  * Toolbox calls. Simplified reconstruction below.
@@ -390,7 +390,7 @@ void LockUnitData(void)
 /*
  * UnlockUnitData - Unlock the unit data resource handle
  *
- * Original: FUN_10049010 at 0x10049010 (56 bytes)
+ * Original: UnlockUnitData at 0x10049010 (56 bytes)
  */
 void UnlockUnitData(void)
 {
@@ -415,7 +415,7 @@ void UnlockUnitData(void)
  * Expensive heroes: max cost 1500, min strength 5
  * Budget expansion: +500 per retry, min strength decremented
  *
- * Original: FUN_10020f94 at 0x10020f94 (620 bytes)
+ * Original: ScoreUnitForHire at 0x10020f94 (620 bytes)
  */
 short AISelectHero(Boolean needsStrong)
 {
@@ -606,7 +606,7 @@ void ProcessCityProduction(short cityIdx, long param_2, short ownerPlayer,
     long prodResult;
     char statBuf[62];
 
-    /* FUN_10044950 - prepare production context */
+    /* AllocInfluenceMap - prepare production context */
     /* prodResult = PrepareProductionContext(); -- omitted external call */
 
     armyCount = *(short *)(gs + 0x1602);
@@ -617,7 +617,7 @@ void ProcessCityProduction(short cityIdx, long param_2, short ownerPlayer,
     while (armyCount != 0) {
         armyCount--;
         if ((int)*(char *)(gs + armyCount * 0x42 + 0x1619) == (int)ownerPlayer) {
-            /* FUN_10020d88 - calculate distance/priority for army */
+            /* FindBestTarget - calculate distance/priority for army */
             dist = CalcDistance(
                 *(short *)(gs + armyCount * 0x42 + 0x1604),
                 *(short *)(gs + armyCount * 0x42 + 0x1606),
@@ -648,7 +648,7 @@ void ProcessCityProduction(short cityIdx, long param_2, short ownerPlayer,
      * }
      */
 
-    /* FUN_100449bc - cleanup production context */
+    /* FreeInfluenceMap - cleanup production context */
 }
 
 /* ======================================================================
@@ -936,9 +936,9 @@ void ArmyTurnUpdate(void)
  *      - Converts city to neutral via FUN_1004f438
  *      - Awards hero score: RandomRange(1, 15, 0) + 10
  *      - Refreshes map display
- *   3. Otherwise calls FUN_1001ba60 for alternate handling
+ *   3. Otherwise calls LaunchAllianceDefense for alternate handling
  *
- * Original: FUN_1001bbf0 at 0x1001bbf0 (472 bytes)
+ * Original: LaunchAllianceAttack at 0x1001bbf0 (472 bytes)
  */
 long LiberateCity(short armyIdx, short param_2)
 {
@@ -952,12 +952,12 @@ long LiberateCity(short armyIdx, short param_2)
 
     currentPlayer = *(short *)(gs + 0x110);
 
-    victoryScore = 0;   /* FUN_1004639c result */
+    victoryScore = 0;   /* CheckQuestCondition result */
     /* victoryScore = CalcVictoryScore(armyIdx); */
 
     if (param_2 == 0) {
         /* Check nearby friendly army count */
-        /* FUN_1000da14 - get nearby armies
+        /* GetAdjacentArmies - get nearby armies
          * If count > 2, bail out (city too well defended for liberation) */
         short nearbyCount = 0;
         /* ... (distance/count check omitted, see decompiled) ... */
@@ -969,7 +969,7 @@ long LiberateCity(short armyIdx, short param_2)
     if (victoryScore < 900 && *(short *)(gs + 0x114) != 0) {
         /* Format liberation message */
         heroBase = gs + armyIdx * 0x42;
-        /* FUN_10001dd0 - format string with hero name */
+        /* DrawNumber - format string with hero name */
         /* FUN_10030454 - display message */
 
         /* Convert city at hero's location to neutral */
@@ -981,14 +981,14 @@ long LiberateCity(short armyIdx, short param_2)
             *(short *)(gs + currentPlayer * 2 + 0x1122) + bonus + 10;
 
         /* Refresh map display at hero location */
-        /* FUN_1000fba8(hero.x, hero.y) */
+        /* RefreshMapAfterCombat(hero.x, hero.y) */
 
         /* Return movement result */
         /* return FUN_1001f5e8(hero.x, hero.y); */
         return 0;
     } else {
         /* Alternate handling for high-score or non-named heroes */
-        /* FUN_1001ba60(armyIdx); */
+        /* LaunchAllianceDefense(armyIdx); */
         return -1;
     }
 }
@@ -1015,7 +1015,7 @@ void ProcessHeroHireReward(void)
         *(short *)(gs + currentPlayer * 2 + 0x1122) + bonus + 100;
 
     /* FUN_1004f620 - place hero on map */
-    /* FUN_1002bdc4 - refresh data */
+    /* GetAIStateSnapshot - refresh data */
     /* FUN_1002bbd4 - update display */
     /* FUN_1002bcd8 - finalize */
 }
@@ -1088,7 +1088,7 @@ long CheckQuestCompletion(short cityOrArmyIndex, short param_2)
         return cityOrArmyIndex;
 
     /* Find city at the target location */
-    /* result = FUN_1002be50(cityOrArmyIndex, param_2); */
+    /* result = LookupCityAtPos(cityOrArmyIndex, param_2); */
     result = cityOrArmyIndex;  /* Simplified */
 
     /* Check if target matches quest */
@@ -1131,7 +1131,7 @@ long CheckQuestCompletion(short cityOrArmyIndex, short param_2)
  *
  * Returns the reward type (0-5) if quest succeeded, 0 otherwise.
  *
- * Original: FUN_1004e384 at 0x1004e384 (496 bytes)
+ * Original: ProcessQuestEvent at 0x1004e384 (496 bytes)
  */
 long ShowQuestReward(short rewardType, short param_2, short param_3)
 {
@@ -1340,7 +1340,7 @@ void ProcessRuinsSearch(int locData, short mapX, short mapY)
 
         if (!isAutoMode) {
             /* FUN_1005f678(0x36, 0) - format gold message */
-            /* FUN_10001dd0 - format with hero name and gold amount */
+            /* DrawNumber - format with hero name and gold amount */
             /* FUN_10052f6c - display message */
             /* FUN_100534c8(0) - update search display */
         }
@@ -1365,12 +1365,12 @@ void ProcessRuinsSearch(int locData, short mapX, short mapY)
             /* Single item: display name */
             char *itemName = GetItemName(*(char *)(locData + 0x1A));
             /* FUN_1005f678(0x37, 0) - "found a <item>" */
-            /* FUN_10001dd0 - format with item name and hero name */
+            /* DrawNumber - format with item name and hero name */
         } else {
             /* Multiple items: display count and name */
             char *itemName = GetItemName(*(char *)(locData + 0x1A));
             /* FUN_1005f678(0x37, 1) - "found <count> <items>" */
-            /* FUN_10001dd0 - format with count, item name, hero name */
+            /* DrawNumber - format with count, item name, hero name */
         }
 
         if (!isAutoMode) {
@@ -1474,7 +1474,7 @@ void CheckVictoryConditions(void)
     int p, i;
     int armyBase;
 
-    /* FUN_1002bdc4 - refresh army count data */
+    /* GetAIStateSnapshot - refresh army count data */
 
     /* Count total alive armies on the map */
     totalArmies = 0;
@@ -1622,7 +1622,7 @@ void CheckPlayerElimination(void)
     short armyCount;
     Boolean someoneStillAlive = false;
 
-    /* FUN_1002bdc4 - refresh counts */
+    /* GetAIStateSnapshot - refresh counts */
 
     /* First pass: find if any human player is still alive */
     for (p = 0; p < MAX_PLAYERS; p++) {
@@ -1667,7 +1667,7 @@ void CheckPlayerElimination(void)
 
         /* Display elimination message */
         /* FUN_1005f678(0x0C, -1) - format elimination text */
-        /* FUN_10001dd0 - format with player name */
+        /* DrawNumber - format with player name */
         /* Different display for human vs AI (FUN_1003c938 vs FUN_1003cac4) */
 
         /* Mark player as dead */
@@ -1740,7 +1740,7 @@ void AdvanceToNextPlayer(void)
             CheckVictoryConditions();        /* FUN_1003d094 */
             /* FUN_10025f94 - stub/minimal processing */
             ProcessNeutralCityGrowth();      /* FUN_1002ce38 */
-            /* FUN_10038890 - save game state */
+            /* SaveTurnState - save game state */
             /* FUN_10064850(1, 0) - process map events */
         }
 
@@ -1784,7 +1784,7 @@ void StartOfTurnProcessing(void)
     int gs = (int)gGameState;
     int i;
 
-    /* FUN_1004039c(100) - set game phase to 100 */
+    /* UpdateProgressBar(100) - set game phase to 100 */
     /* clearReportFlag = 0 */
 
     /* Free old resources if they exist */
@@ -1826,7 +1826,7 @@ void StartOfTurnProcessing(void)
  * GameInit - Initialize all game state for a new game
  *
  * Performs complete game initialization:
- *   1. FUN_10049e68, FUN_10025f98 - initialize subsystems
+ *   1. InitArmyProduction, InitPlayerData - initialize subsystems
  *   2. Validate each player's capital city exists; eliminate players without one
  *   3. Set initial flags: turnAdvanceFlag=0, dominationFlag=0,
  *      turnNumber=1, maxArmies=10, introFlag=0
@@ -1857,8 +1857,8 @@ void GameInit(void)
     short humanCount;
 
     /* Initialize subsystems */
-    /* FUN_10049e68(); */
-    /* FUN_10025f98(); */
+    /* InitArmyProduction(); */
+    /* InitPlayerData(); */
 
     /* Validate capitals - players without a city are eliminated */
     for (p = 0; p < MAX_PLAYERS; p++) {
@@ -1866,8 +1866,8 @@ void GameInit(void)
         short capX = *(short *)(capitalAddr);
         short capY = *(short *)(capitalAddr + 2);
 
-        /* FUN_1002be50 - find city at capital coordinates */
-        int cityIdx = -1;  /* = FUN_1002be50(capX, capY); */
+        /* LookupCityAtPos - find city at capital coordinates */
+        int cityIdx = -1;  /* = LookupCityAtPos(capX, capY); */
         if (cityIdx < 0) {
             /* No city at capital - eliminate player */
             *(short *)(gs + p * 2 + 0xD0) = 1;   /* type = AI (eliminated) */
@@ -1943,7 +1943,7 @@ void GameInit(void)
                     break;
                 }
             }
-            /* FUN_100635e0(currentPlayer) - setup fog for this player */
+            /* CenterMapOnArmy(currentPlayer) - setup fog for this player */
         }
 
         /* Center viewport on capital */
@@ -2114,7 +2114,7 @@ void ProcessAllyGold(void)
     *(short *)goldAddr = newGold;
 
     /* Display gold found message if human player */
-    /* FUN_1005f678, FUN_10001dd0, FUN_10052f6c */
+    /* FUN_1005f678, DrawNumber, FUN_10052f6c */
 }
 
 /* ======================================================================

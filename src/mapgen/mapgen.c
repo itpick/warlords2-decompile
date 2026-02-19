@@ -92,22 +92,22 @@
 #define CITY_REC_ALLY_BASE  0x08    /* allied city indices (short[]) */
 
 /* Forward declarations - external functions */
-extern short DiceRoll(short numDice, short dieSize, short bonus); /* FUN_1005f230 */
-extern void  UpdateProgressBar(int dialogHandle, short percent);  /* FUN_100514d8 */
-extern void  NotifyTileChanged(short x, short y);                 /* FUN_10051d60 (NOP) */
-extern void  NotifyAllTilesChanged(void);                         /* FUN_10051d64 */
-extern void  InitArmyProduction(void);                            /* FUN_10049e68 */
-extern void  InitPlayerData(void);                                /* FUN_10025f98 */
+extern short DiceRoll(short numDice, short dieSize, short bonus); /* RandomRange */
+extern void  UpdateProgressBar(int dialogHandle, short percent);  /* ProgressUpdate */
+extern void  NotifyTileChanged(short x, short y);                 /* NotifyTileChanged (NOP) */
+extern void  NotifyAllTilesChanged(void);                         /* NotifyAllTilesChanged */
+extern void  InitArmyProduction(void);                            /* InitArmyProduction */
+extern void  InitPlayerData(void);                                /* InitPlayerData */
 extern void *AllocateMemory(long size);                           /* FUN_100f1640 */
 extern void *AllocateHandle(long size);                           /* FUN_100f15e0 */
-extern void  ReleaseHandle(void *handle);                         /* FUN_100ef510 */
-extern short AbsShort(long value);                                /* FUN_10003768 */
-extern void  StoreCoords(void *dest, short x, short y);          /* FUN_1002269c */
-extern short ReadShortFromStream(void);                           /* FUN_100525a0 */
-extern void  CloseStream(void *stream, short flag);               /* FUN_100523a8 */
-extern void  VTableDispatch(int targetAddr, ...);                 /* FUN_10117884 */
+extern void  ReleaseHandle_Mapgen(void *handle);                         /* ReleaseHandle_Mapgen */
+extern short AbsShort(long value);                                /* AbsShort */
+extern void  StoreCoords(void *dest, short x, short y);          /* StoreCoords */
+extern short ReadShortFromStream(void);                           /* ByteSwap16 */
+extern void  CloseStream(void *stream, short flag);               /* CloseStream */
+extern void  VTableDispatch(int targetAddr, ...);                 /* ResourceRead_Dispatch */
 extern void *OpenDATResource(long resType, long resID, short flags); /* FUN_10051f98 */
-extern short CheckLandConnectivity(void);                         /* FUN_1002b83c */
+extern short CheckLandConnectivity(void);                         /* CheckLandConnectivity */
 
 /* Map generation global pointers (from wl2_globals.h) */
 /* piRam101175f4 -> gMapGenConfig: scenario config/template data */
@@ -178,12 +178,12 @@ static void SetConfigShort(int offset, short value)
 }
 
 /* ----------------------------------------------------------------
- * FUN_10051dc8 - ClampToMapBounds
+ * ClampToMapBounds - ClampToMapBounds
  * Address: 0x10051dc8 | Size: 84 bytes
  *
  * Clamps x to [0, 111] and y to [0, 155].
  * ---------------------------------------------------------------- */
-void ClampToMapBounds(short *x, short *y)   /* FUN_10051dc8 */
+void ClampToMapBounds(short *x, short *y)   /* ClampToMapBounds */
 {
     if (*x < 1) {
         *x = 0;
@@ -200,13 +200,13 @@ void ClampToMapBounds(short *x, short *y)   /* FUN_10051dc8 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_10051e1c - RandomScatter
+ * RandomScatter - RandomScatter
  * Address: 0x10051e1c | Size: 380 bytes
  *
  * Randomly offsets x and y by dice(1, range, 0) * dice(1, 3, -2).
  * If snapToEdge is set and dice(1,100,0) < 30, snaps to nearest edge.
  * ---------------------------------------------------------------- */
-void RandomScatter(short *x, short *y, short range, short snapToEdge) /* FUN_10051e1c */
+void RandomScatter(short *x, short *y, short range, short snapToEdge) /* RandomScatter */
 {
     short offsetMag, offsetDir;
     int edgeRoll;
@@ -249,13 +249,13 @@ void RandomScatter(short *x, short *y, short range, short snapToEdge) /* FUN_100
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009eb70 - ChebyshevDistance
+ * ChebyshevDistance - ChebyshevDistance
  * Address: 0x1009eb70 | Size: 124 bytes
  *
  * Returns max(|x1-x2|, |y1-y2|) -- chessboard distance.
  * Coordinates are packed as (x << 16 | y) in 32-bit params.
  * ---------------------------------------------------------------- */
-short ChebyshevDistance(long packed1, long packed2) /* FUN_1009eb70 */
+short ChebyshevDistance(long packed1, long packed2) /* ChebyshevDistance */
 {
     short x1, y1, x2, y2;
     short dx, dy;
@@ -272,14 +272,14 @@ short ChebyshevDistance(long packed1, long packed2) /* FUN_1009eb70 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009ebec - CalculateDirectionVector
+ * CalculateDirectionVector - CalculateDirectionVector
  * Address: 0x1009ebec | Size: 780 bytes
  *
  * Given two packed coordinate pairs, returns a unit direction vector
  * (dx, dy) where each component is -1, 0, or 1.
  * Uses atan-like ratio comparison with precomputed thresholds.
  * ---------------------------------------------------------------- */
-void CalculateDirectionVector(long packedFrom, long packedTo, short *outDx, short *outDy) /* FUN_1009ebec */
+void CalculateDirectionVector(long packedFrom, long packedTo, short *outDx, short *outDy) /* CalculateDirectionVector */
 {
     short x1, y1, x2, y2;
     double ratio;
@@ -348,12 +348,12 @@ void CalculateDirectionVector(long packedFrom, long packedTo, short *outDx, shor
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009ff14 - HasNeighborOnLand
+ * HasNeighborOnLand - HasNeighborOnLand
  * Address: 0x1009ff14 | Size: 144 bytes
  *
  * Returns 1 if any of 8 neighbors of (x,y) is open land (terrain 7).
  * ---------------------------------------------------------------- */
-short HasNeighborOnLand(short x, short y) /* FUN_1009ff14 */
+short HasNeighborOnLand(short x, short y) /* HasNeighborOnLand */
 {
     int dir;
     short nx, ny;
@@ -371,12 +371,12 @@ short HasNeighborOnLand(short x, short y) /* FUN_1009ff14 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009ffa4 - HasNeighborWithTerrain
+ * HasNeighborWithTerrain - HasNeighborWithTerrain
  * Address: 0x1009ffa4 | Size: 148 bytes
  *
  * Returns 1 if any of 8 neighbors of (x,y) has the specified terrain code.
  * ---------------------------------------------------------------- */
-short HasNeighborWithTerrain(short x, short y, short terrainCode) /* FUN_1009ffa4 */
+short HasNeighborWithTerrain(short x, short y, short terrainCode) /* HasNeighborWithTerrain */
 {
     int dir;
     short nx, ny;
@@ -398,14 +398,14 @@ short HasNeighborWithTerrain(short x, short y, short terrainCode) /* FUN_1009ffa
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100a6298 - LoadScenarioTemplate
+ * LoadScenarioTemplate - LoadScenarioTemplate
  * Address: 0x100a6298 | Size: 204 bytes
  *
  * Loads the 'SCN ' (scenario) resource template (30,000 bytes).
  * Allocates a 0x2FCC-byte buffer for scenario data if not already
  * allocated. Copies template data into the active scenario structure.
  * ---------------------------------------------------------------- */
-static int LoadScenarioTemplate(void) /* FUN_100a6298 */
+static int LoadScenarioTemplate(void) /* LoadScenarioTemplate */
 {
     int *scenRes;
     int *gameState = piRam1011735c;
@@ -429,7 +429,7 @@ static int LoadScenarioTemplate(void) /* FUN_100a6298 */
     }
 
     /* Copy scenario template into active game state */
-    /* FUN_1005668c copies resource data to game state */
+    /* ReadSCNResource copies resource data to game state */
     extern void CopyScenarioData(void *src, int dest);
     CopyScenarioData(scenRes, *gameState);
 
@@ -440,14 +440,14 @@ static int LoadScenarioTemplate(void) /* FUN_100a6298 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100515f4 - InitializeMapToOcean
+ * InitializeMapToOcean - InitializeMapToOcean
  * Address: 0x100515f4 | Size: 204 bytes
  *
  * Fills the entire 112x156 map with ocean (terrain code 2).
  * Allocates tile graphics buffer (0x8880) and overlay buffer (0x4440)
  * if they haven't been allocated yet.
  * ---------------------------------------------------------------- */
-static void InitializeMapToOcean(void) /* FUN_100515f4 */
+static void InitializeMapToOcean(void) /* InitializeMapToOcean */
 {
     int x, y;
 
@@ -480,14 +480,14 @@ static void InitializeMapToOcean(void) /* FUN_100515f4 */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_1009e81c - PlacePlayerSeedPoint
+ * PlacePlayerSeedPoint - PlacePlayerSeedPoint
  * Address: 0x1009e81c | Size: 516 bytes
  *
  * For each player, determines two seed points based on difficulty:
  *   - difficulty < 3: uses template start positions directly
  *   - difficulty >= 3: offsets by -10 * direction vector, then scatters
  * ---------------------------------------------------------------- */
-static void PlacePlayerSeedPoint(short playerIndex) /* FUN_1009e81c */
+static void PlacePlayerSeedPoint(short playerIndex) /* PlacePlayerSeedPoint */
 {
     int config = *piRam101175f4;
     int pIdx = (int)playerIndex;
@@ -541,14 +541,14 @@ static void PlacePlayerSeedPoint(short playerIndex) /* FUN_1009e81c */
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009ea20 - SortStartPointsByAngle
+ * SortStartPointsByAngle - SortStartPointsByAngle
  * Address: 0x1009ea20 | Size: 336 bytes
  *
  * Sorts the 4 player start zones by angle ratio (x-ratio vs y-ratio
  * from center), ensuring players are spread around the map.
  * Uses floating-point comparison.
  * ---------------------------------------------------------------- */
-static void SortStartPointsByAngle(void) /* FUN_1009ea20 */
+static void SortStartPointsByAngle(void) /* SortStartPointsByAngle */
 {
     int config;
     int i;
@@ -582,7 +582,7 @@ static void SortStartPointsByAngle(void) /* FUN_1009ea20 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009eef8 - ExpandPlayerZone
+ * ExpandPlayerZone - ExpandPlayerZone
  * Address: 0x1009eef8 | Size: 844 bytes
  *
  * Expands from player seed points outward. If difficulty >= 3:
@@ -590,7 +590,7 @@ static void SortStartPointsByAngle(void) /* FUN_1009ea20 */
  * 2. Divides by (difficulty - 1) for spacing
  * 3. Places waypoints along path, marking as open land
  * ---------------------------------------------------------------- */
-static void ExpandPlayerZone(short playerIndex) /* FUN_1009eef8 */
+static void ExpandPlayerZone(short playerIndex) /* ExpandPlayerZone */
 {
     int config = *piRam101175f4;
     int pIdx = (int)playerIndex;
@@ -685,13 +685,13 @@ static void ExpandPlayerZone(short playerIndex) /* FUN_1009eef8 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009fad4 - ShouldBeCoastal
+ * ShouldBeCoastal - ShouldBeCoastal
  * Address: 0x1009fad4 | Size: 388 bytes
  *
  * Checks if tile at (x,y) should become coastal water (terrain 2).
  * Returns 1 if tile should be converted, 0 otherwise.
  * ---------------------------------------------------------------- */
-static int ShouldBeCoastal(short x, short y) /* FUN_1009fad4 */
+static int ShouldBeCoastal(short x, short y) /* ShouldBeCoastal */
 {
     char t = GetTerrainAt(x, y);
 
@@ -713,7 +713,7 @@ static int ShouldBeCoastal(short x, short y) /* FUN_1009fad4 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009fc58 - ConvertToTerrainCodes
+ * ConvertToTerrainCodes - ConvertToTerrainCodes
  * Address: 0x1009fc58 | Size: 700 bytes
  *
  * After player zones are marked as terrain 7 (open land):
@@ -721,7 +721,7 @@ static int ShouldBeCoastal(short x, short y) /* FUN_1009fad4 */
  * 2. Runs 4 directional passes twice to spread coastal (terrain 2)
  * 3. Final pass: remaining 2 -> ocean, everything else -> open land
  * ---------------------------------------------------------------- */
-static void ConvertToTerrainCodes(void) /* FUN_1009fc58 */
+static void ConvertToTerrainCodes(void) /* ConvertToTerrainCodes */
 {
     int x, y;
     short pass;
@@ -793,13 +793,13 @@ static void ConvertToTerrainCodes(void) /* FUN_1009fc58 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a0038 - ExpandCoastalTiles
+ * ExpandCoastalTiles - ExpandCoastalTiles
  * Address: 0x100a0038 | Size: 336 bytes
  *
  * Creates coastal fringe: ocean tiles adjacent to land/forest/mountain
  * become shore tiles.
  * ---------------------------------------------------------------- */
-static void ExpandCoastalTiles(void) /* FUN_100a0038 */
+static void ExpandCoastalTiles(void) /* ExpandCoastalTiles */
 {
     int x, y;
 
@@ -827,16 +827,16 @@ static void ExpandCoastalTiles(void) /* FUN_100a0038 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a018c - AddExtraLandPatches
+ * AddExtraLandPatches - AddExtraLandPatches
  * Address: 0x100a018c | Size: 92 bytes
  *
  * Adds extra land patches by cutting water channels with wide width,
  * then eroding.
  * ---------------------------------------------------------------- */
-extern void CutWaterChannel(short channelWidth, short stopAtOcean, short extraWidth); /* FUN_100a8d88 */
-extern void ErodeLandTiles(void); /* FUN_100a9628 */
+extern void CutWaterChannel(short channelWidth, short stopAtOcean, short extraWidth); /* CutWaterChannel */
+extern void ErodeLandTiles(void); /* ErodeLandTiles */
 
-static void AddExtraLandPatches(short count) /* FUN_100a018c */
+static void AddExtraLandPatches(short count) /* AddExtraLandPatches */
 {
     short i;
 
@@ -847,16 +847,16 @@ static void AddExtraLandPatches(short count) /* FUN_100a018c */
 }
 
 /* ----------------------------------------------------------------
- * FUN_1009f864 - ConnectAdjacentZones
+ * ConnectAdjacentZones - ConnectAdjacentZones
  * Address: 0x1009f864 | Size: 620 bytes
  *
  * Connects adjacent player zones by drawing land paths between
  * their waypoints.
  * ---------------------------------------------------------------- */
-extern void ConnectWaypoints(long packedFrom, long packedTo);      /* FUN_1009f350 */
-extern void ConnectWaypointsViaEdge(long packedFrom, long packedTo); /* FUN_1009f524 */
+extern void ConnectWaypoints(long packedFrom, long packedTo);      /* ConnectWaypoints */
+extern void ConnectWaypointsViaEdge(long packedFrom, long packedTo); /* ConnectWaypointsViaEdge */
 
-static void ConnectAdjacentZones(void) /* FUN_1009f864 */
+static void ConnectAdjacentZones(void) /* ConnectAdjacentZones */
 {
     int config;
     int i, j;
@@ -910,10 +910,10 @@ static void ConnectAdjacentZones(void) /* FUN_1009f864 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a01e8 - PlacePlayerStartZones (Phase 2 Orchestrator)
+ * PlacePlayerStartZones - PlacePlayerStartZones (Phase 2 Orchestrator)
  * Address: 0x100a01e8 | Size: 172 bytes
  * ---------------------------------------------------------------- */
-static void PlacePlayerStartZones(void) /* FUN_100a01e8 */
+static void PlacePlayerStartZones(void) /* PlacePlayerStartZones */
 {
     int extraRoll;
 
@@ -957,13 +957,13 @@ static void PlacePlayerStartZones(void) /* FUN_100a01e8 */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100a2760 - PlacePlayerCities
+ * PlacePlayerCities - PlacePlayerCities
  * Address: 0x100a2760 | Size: 380 bytes
  *
  * Places player-controlled cities on random open land tiles.
  * Count read from config offset 0x34.
  * ---------------------------------------------------------------- */
-static void PlacePlayerCities(void) /* FUN_100a2760 */
+static void PlacePlayerCities(void) /* PlacePlayerCities */
 {
     short cityCount = GetConfigShort(CFG_PLAYER_CITIES);
     short i;
@@ -999,7 +999,7 @@ static void PlacePlayerCities(void) /* FUN_100a2760 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a28dc - PlaceNeutralCities
+ * PlaceNeutralCities - PlaceNeutralCities
  * Address: 0x100a28dc | Size: 380 bytes
  *
  * Identical structure to PlacePlayerCities but:
@@ -1007,7 +1007,7 @@ static void PlacePlayerCities(void) /* FUN_100a2760 */
  * - Sets city.type = 1 (neutral)
  * - Sets terrain to 5 (forest) instead of 6
  * ---------------------------------------------------------------- */
-static void PlaceNeutralCities(void) /* FUN_100a28dc */
+static void PlaceNeutralCities(void) /* PlaceNeutralCities */
 {
     short cityCount = GetConfigShort(CFG_NEUTRAL_CITIES);
     short i;
@@ -1040,7 +1040,7 @@ static void PlaceNeutralCities(void) /* FUN_100a28dc */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a2a58 - AssignCityAlliances
+ * AssignCityAlliances - AssignCityAlliances
  * Address: 0x100a2a58 | Size: 616 bytes
  *
  * For each city, assigns allied/nearby cities:
@@ -1048,7 +1048,7 @@ static void PlaceNeutralCities(void) /* FUN_100a28dc */
  * - Player (type 2): allies = dice(1,4,-1) -> 0 to 3
  * Each ally is the closest unlinked city (Chebyshev distance).
  * ---------------------------------------------------------------- */
-static void AssignCityAlliances(void) /* FUN_100a2a58 */
+static void AssignCityAlliances(void) /* AssignCityAlliances */
 {
     int mapData = *piRam101175f0;
     short totalCities = *(short *)(mapData + CFG_CITY_COUNTER);
@@ -1112,16 +1112,16 @@ static void AssignCityAlliances(void) /* FUN_100a2a58 */
 }
 
 /* Forward declarations for road-building sub-functions */
-extern void DrawRoadFromCity(long packedCityPos);                /* FUN_100a31d8 */
-extern void DrawRoadBetweenNeutral(long from, long to);          /* FUN_100a3280 */
-extern void DrawRoadBetweenPlayer(long from, long to);           /* FUN_100a32b8 */
-extern void DrawStandaloneRoad(long packedCityPos);              /* FUN_100a3304 */
+extern void DrawRoadFromCity(long packedCityPos);                /* DrawRoadFromCity */
+extern void DrawRoadBetweenNeutral(long from, long to);          /* DrawRoadBetweenNeutral */
+extern void DrawRoadBetweenPlayer(long from, long to);           /* DrawRoadBetweenPlayer */
+extern void DrawStandaloneRoad(long packedCityPos);              /* DrawStandaloneRoad */
 
 /* ----------------------------------------------------------------
- * FUN_100a33ac - GenerateRoadsBetweenCities
+ * GenerateRoadsBetweenCities - GenerateRoadsBetweenCities
  * Address: 0x100a33ac | Size: 544 bytes
  * ---------------------------------------------------------------- */
-static void GenerateRoadsBetweenCities(void) /* FUN_100a33ac */
+static void GenerateRoadsBetweenCities(void) /* GenerateRoadsBetweenCities */
 {
     int mapData = *piRam101175f0;
     short totalCities = *(short *)(mapData + CFG_CITY_COUNTER);
@@ -1171,14 +1171,14 @@ static void GenerateRoadsBetweenCities(void) /* FUN_100a33ac */
 }
 
 /* Forward declarations for terrain smoothing */
-extern void SmoothTerrainAroundCities(void);  /* FUN_100a35cc */
-extern void EnsureCityCoastalAccess(void);     /* FUN_100a39ac */
+extern void SmoothTerrainAroundCities(void);  /* SmoothTerrainAroundCities */
+extern void EnsureCityCoastalAccess(void);     /* EnsureCityCoastalAccess */
 
 /* ----------------------------------------------------------------
- * FUN_100a3a80 - PlaceCitiesAndRoads (Phase 3 Orchestrator)
+ * PlaceCitiesAndRoads - PlaceCitiesAndRoads (Phase 3 Orchestrator)
  * Address: 0x100a3a80 | Size: 76 bytes
  * ---------------------------------------------------------------- */
-static void PlaceCitiesAndRoads(void) /* FUN_100a3a80 */
+static void PlaceCitiesAndRoads(void) /* PlaceCitiesAndRoads */
 {
     /* Reset city counter */
     *(short *)(*piRam101175f0 + CFG_CITY_COUNTER) = 0;
@@ -1196,15 +1196,15 @@ static void PlaceCitiesAndRoads(void) /* FUN_100a3a80 */
  * ============================================================ */
 
 /* Forward declarations */
-extern void DrawTerrainChain(short chainType);   /* FUN_100ab368 */
-extern void SmoothMountainRegions(void);          /* FUN_100ab9e4 */
-extern void SmoothForestRegions(void);            /* FUN_100abb68 */
+extern void DrawTerrainChain(short chainType);   /* DrawTerrainChain */
+extern void SmoothMountainRegions(void);          /* SmoothMountainRegions */
+extern void SmoothForestRegions(void);            /* SmoothForestRegions */
 
 /* ----------------------------------------------------------------
- * FUN_100abcec - PlaceMountainForestChains (Phase 4 Orchestrator)
+ * PlaceMountainForestChains - PlaceMountainForestChains (Phase 4 Orchestrator)
  * Address: 0x100abcec | Size: 160 bytes
  * ---------------------------------------------------------------- */
-static void PlaceMountainForestChains(void) /* FUN_100abcec */
+static void PlaceMountainForestChains(void) /* PlaceMountainForestChains */
 {
     short i;
 
@@ -1228,10 +1228,10 @@ static void PlaceMountainForestChains(void) /* FUN_100abcec */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100a9c08 - PlaceRiverWaterChannels (Phase 5 Orchestrator)
+ * PlaceRiverWaterChannels - PlaceRiverWaterChannels (Phase 5 Orchestrator)
  * Address: 0x100a9c08 | Size: 216 bytes
  * ---------------------------------------------------------------- */
-static void PlaceRiverWaterChannels(void) /* FUN_100a9c08 */
+static void PlaceRiverWaterChannels(void) /* PlaceRiverWaterChannels */
 {
     short i;
 
@@ -1259,12 +1259,12 @@ static void PlaceRiverWaterChannels(void) /* FUN_100a9c08 */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100a1d8c - CalculateLandTarget
+ * CalculateLandTarget - CalculateLandTarget
  * Address: 0x100a1d8c | Size: 156 bytes
  *
  * Counts existing land tiles and calculates target based on water %.
  * ---------------------------------------------------------------- */
-static void CalculateLandTarget(void) /* FUN_100a1d8c */
+static void CalculateLandTarget(void) /* CalculateLandTarget */
 {
     int x, y;
     int landCount = 0;
@@ -1286,12 +1286,12 @@ static void CalculateLandTarget(void) /* FUN_100a1d8c */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a1e28 - CheckLandTarget
+ * CheckLandTarget - CheckLandTarget
  * Address: 0x100a1e28 | Size: 40 bytes
  *
  * Returns 1 if currentLandCount >= targetLand, else 0.
  * ---------------------------------------------------------------- */
-static short CheckLandTarget(void) /* FUN_100a1e28 */
+static short CheckLandTarget(void) /* CheckLandTarget */
 {
     unsigned short current = (unsigned short)GetConfigShort(CFG_LAND_COUNT);
     unsigned short target  = (unsigned short)GetConfigShort(CFG_LAND_TARGET);
@@ -1300,14 +1300,14 @@ static short CheckLandTarget(void) /* FUN_100a1e28 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a1e50 - GrowLandBlob
+ * GrowLandBlob - GrowLandBlob
  * Address: 0x100a1e50 | Size: 1216 bytes
  *
  * Core land generation: places a randomly-shaped "continent blob".
  * 64% chance of small blob (branches 2-9), 36% large (5-14).
  * Grows 8 branches outward with perpendicular sub-branches.
  * ---------------------------------------------------------------- */
-static void GrowLandBlob(void) /* FUN_100a1e50 */
+static void GrowLandBlob(void) /* GrowLandBlob */
 {
     int centerX, centerY;
     short branchLength[8];
@@ -1419,14 +1419,14 @@ static void GrowLandBlob(void) /* FUN_100a1e50 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a2310 - FillEnclosedWater
+ * FillEnclosedWater - FillEnclosedWater
  * Address: 0x100a2310 | Size: 1036 bytes
  *
  * Two passes:
  * 1. Fill open-land tiles with 3+ grassland neighbors
  * 2. Fix diagonal gaps in grassland (randomized)
  * ---------------------------------------------------------------- */
-static void FillEnclosedWater(void) /* FUN_100a2310 */
+static void FillEnclosedWater(void) /* FillEnclosedWater */
 {
     int x, y;
     int grassCount;
@@ -1503,10 +1503,10 @@ static void FillEnclosedWater(void) /* FUN_100a2310 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a271c - GenerateLandMasses (Phase 6 Orchestrator)
+ * GenerateLandMasses - GenerateLandMasses (Phase 6 Orchestrator)
  * Address: 0x100a271c | Size: 68 bytes
  * ---------------------------------------------------------------- */
-static void GenerateLandMasses(void) /* FUN_100a271c */
+static void GenerateLandMasses(void) /* GenerateLandMasses */
 {
     CalculateLandTarget();
 
@@ -1521,10 +1521,10 @@ static void GenerateLandMasses(void) /* FUN_100a271c */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100a6364 - ScatterSwampTiles
+ * ScatterSwampTiles - ScatterSwampTiles
  * Address: 0x100a6364 | Size: 348 bytes
  * ---------------------------------------------------------------- */
-static void ScatterSwampTiles(short centerX, short centerY) /* FUN_100a6364 */
+static void ScatterSwampTiles(short centerX, short centerY) /* ScatterSwampTiles */
 {
     short numTiles = DiceRoll(1, 5, 3);  /* 3-7 tiles */
     short i;
@@ -1553,10 +1553,10 @@ static void ScatterSwampTiles(short centerX, short centerY) /* FUN_100a6364 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a64c0 - PlaceSwampCluster
+ * PlaceSwampCluster - PlaceSwampCluster
  * Address: 0x100a64c0 | Size: 488 bytes
  * ---------------------------------------------------------------- */
-static void PlaceSwampCluster(void) /* FUN_100a64c0 */
+static void PlaceSwampCluster(void) /* PlaceSwampCluster */
 {
     int x, y;
     short attempts = 0;
@@ -1594,10 +1594,10 @@ static void PlaceSwampCluster(void) /* FUN_100a64c0 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a66a8 - PlaceSwampClusters (Phase 7 Orchestrator)
+ * PlaceSwampClusters - PlaceSwampClusters (Phase 7 Orchestrator)
  * Address: 0x100a66a8 | Size: 96 bytes
  * ---------------------------------------------------------------- */
-static void PlaceSwampClusters(void) /* FUN_100a66a8 */
+static void PlaceSwampClusters(void) /* PlaceSwampClusters */
 {
     short numSwamps = DiceRoll(1, 3, 0);  /* 0-2 swamp clusters */
     short i;
@@ -1612,13 +1612,13 @@ static void PlaceSwampClusters(void) /* FUN_100a66a8 */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100a6708 - ScanForExistingCities
+ * ScanForExistingCities - ScanForExistingCities
  * Address: 0x100a6708 | Size: 216 bytes
  *
  * Scans all tiles for terrain code 10 (city), avoiding double-counting
  * of 2x2 city footprints by checking N and W neighbors.
  * ---------------------------------------------------------------- */
-static void ScanForExistingCities(void) /* FUN_100a6708 */
+static void ScanForExistingCities(void) /* ScanForExistingCities */
 {
     int x, y;
     int gameState = *piRam1011735c;
@@ -1644,7 +1644,7 @@ static void ScanForExistingCities(void) /* FUN_100a6708 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a67e0 - PlaceNeutralCityOnLand
+ * PlaceNeutralCityOnLand - PlaceNeutralCityOnLand
  * Address: 0x100a67e0 | Size: 776 bytes
  *
  * Places a 2x2 city footprint on valid land (no water/city/mountain
@@ -1653,7 +1653,7 @@ static void ScanForExistingCities(void) /* FUN_100a6708 */
 extern int  iRam1011681c; /* city quadrant X offsets */
 extern int  iRam101176e8; /* city quadrant Y offsets - reused as FUN_10116820 */
 
-static void PlaceNeutralCityOnLand(void) /* FUN_100a67e0 */
+static void PlaceNeutralCityOnLand(void) /* PlaceNeutralCityOnLand */
 {
     int x, y;
     short attempts = 0;
@@ -1721,10 +1721,10 @@ static void PlaceNeutralCityOnLand(void) /* FUN_100a67e0 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a6ae8 - RegisterCitiesAndAddNeutral (Phase 8 Orchestrator)
+ * RegisterCitiesAndAddNeutral - RegisterCitiesAndAddNeutral (Phase 8 Orchestrator)
  * Address: 0x100a6ae8 | Size: 128 bytes
  * ---------------------------------------------------------------- */
-static void RegisterCitiesAndAddNeutral(void) /* FUN_100a6ae8 */
+static void RegisterCitiesAndAddNeutral(void) /* RegisterCitiesAndAddNeutral */
 {
     short startCity;
     short totalTarget;
@@ -1751,7 +1751,7 @@ static void RegisterCitiesAndAddNeutral(void) /* FUN_100a6ae8 */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100a6b68 - FindRuinsLocation
+ * FindRuinsLocation - FindRuinsLocation
  * Address: 0x100a6b68 | Size: 976 bytes
  *
  * Uses rotating sector system (16 sectors) to distribute ruins evenly.
@@ -1759,7 +1759,7 @@ static void RegisterCitiesAndAddNeutral(void) /* FUN_100a6ae8 */
  * ---------------------------------------------------------------- */
 extern unsigned short *FUN_10116820; /* sector counter storage (reused) */
 
-static void FindRuinsLocation(short terrainType, short *outX, short *outY) /* FUN_100a6b68 */
+static void FindRuinsLocation(short terrainType, short *outX, short *outY) /* FindRuinsLocation */
 {
     unsigned short sectorIdx;
     unsigned int sectorInt;
@@ -1838,16 +1838,16 @@ static void FindRuinsLocation(short terrainType, short *outX, short *outY) /* FU
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a6f38 - PlaceRuins (Phase 9 Orchestrator)
+ * PlaceRuins - PlaceRuins (Phase 9 Orchestrator)
  * Address: 0x100a6f38 | Size: 784 bytes
  *
  * Places 40 ruins across the map, generates names from templates.
  * ---------------------------------------------------------------- */
-extern void FormatString(char *dest, ...);    /* FUN_10001dd0 */
-extern void CopyString(void *dest, char *src); /* FUN_10001e78 */
-extern short StringLength(char *str);          /* FUN_100012c0 */
+extern void FormatString(char *dest, ...);    /* DrawNumber */
+extern void CopyString(void *dest, char *src); /* BlockMoveData_Thunk */
+extern short StringLength(char *str);          /* StringLength */
 
-static void PlaceRuins(void) /* FUN_100a6f38 */
+static void PlaceRuins(void) /* PlaceRuins */
 {
     int gameState = *piRam1011735c;
     int config = *piRam101175f4;
@@ -1931,15 +1931,15 @@ static void PlaceRuins(void) /* FUN_100a6f38 */
  * ============================================================ */
 
 /* Forward declarations for road network functions */
-extern void  BuildRoadConnectivityGraph(void);                      /* FUN_100a49cc */
-extern int   FindNextRoadSegment(void *buf, void *endpoints, void *len); /* FUN_100a9d34 */
-extern void  BuildRoadSegment(void *buf, int ep1, int ep2);        /* FUN_100a9f78 */
+extern void  BuildRoadConnectivityGraph(void);                      /* BuildRoadConnectivityGraph */
+extern int   FindNextRoadSegment(void *buf, void *endpoints, void *len); /* FindNextRoadSegment */
+extern void  BuildRoadSegment(void *buf, int ep1, int ep2);        /* BuildRoadSegment */
 
 /* ----------------------------------------------------------------
- * FUN_100aafb8 - GenerateRoadNetwork (Phase 10 Orchestrator)
+ * GenerateRoadNetwork - GenerateRoadNetwork (Phase 10 Orchestrator)
  * Address: 0x100aafb8 | Size: 628 bytes
  * ---------------------------------------------------------------- */
-static void GenerateRoadNetwork(void) /* FUN_100aafb8 */
+static void GenerateRoadNetwork(void) /* GenerateRoadNetwork */
 {
     void *pathBuf;
     int progressStep;
@@ -1998,16 +1998,16 @@ static void GenerateRoadNetwork(void) /* FUN_100aafb8 */
  * ============================================================ */
 
 /* Forward declarations for Phase 11 sub-functions */
-extern void AssignTerrainGraphics(void);      /* FUN_100a4ae8 */
-extern void RegisterCities(void);              /* FUN_100a7248 */
-extern void AssignPlayerStartPositions(void);  /* FUN_100ab334 */
-extern void AssignPlayerHomeCities(void);      /* FUN_100a88d0 - FAILED decompile */
-extern void PlaceHeroesOnMap(void);            /* FUN_100a4e0c */
-extern void SaveMapToResources(void);          /* FUN_100a52b8 */
-extern void SaveScenarioData(void);            /* FUN_100a6060 */
+extern void AssignTerrainGraphics(void);      /* AssignTerrainGraphics */
+extern void RegisterCities(void);              /* RegisterCities */
+extern void AssignPlayerStartPositions(void);  /* AssignPlayerStartPositions */
+extern void AssignPlayerHomeCities(void);      /* AssignPlayerHomeCities - FAILED decompile */
+extern void PlaceHeroesOnMap(void);            /* PlaceHeroesOnMap */
+extern void SaveMapToResources(void);          /* SaveMapToResources */
+extern void SaveScenarioData(void);            /* SaveScenarioData */
 
 /* ----------------------------------------------------------------
- * FUN_100ab334 - AssignPlayerStartPositions (helper)
+ * AssignPlayerStartPositions - AssignPlayerStartPositions (helper)
  * Address: 0x100ab334 | Size: 52 bytes
  *
  * Calls: AssignStartingArmies, AssignPlayerColors, RollPlayerGold
@@ -2015,12 +2015,12 @@ extern void SaveScenarioData(void);            /* FUN_100a6060 */
 /* (Implemented as extern; dispatches to sub-functions) */
 
 /* ----------------------------------------------------------------
- * FUN_100ab2c4 - RollPlayerGold
+ * RollPlayerGold - RollPlayerGold
  * Address: 0x100ab2c4 | Size: 108 bytes
  *
  * For each player: gold = dice(3, 50, 20) = 23 to 170 gold
  * ---------------------------------------------------------------- */
-void RollPlayerGold(void) /* FUN_100ab2c4 */
+void RollPlayerGold(void) /* RollPlayerGold */
 {
     int player;
 
@@ -2032,12 +2032,12 @@ void RollPlayerGold(void) /* FUN_100ab2c4 */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100ab22c - AssignPlayerColors
+ * AssignPlayerColors - AssignPlayerColors
  * Address: 0x100ab22c | Size: 148 bytes
  *
  * For each player: colorIndex = dice(1, 5, -1) (random from 5 sets)
  * ---------------------------------------------------------------- */
-void AssignPlayerColors(void) /* FUN_100ab22c */
+void AssignPlayerColors(void) /* AssignPlayerColors */
 {
     int player;
     int config = *piRam101175f4;
@@ -2051,10 +2051,10 @@ void AssignPlayerColors(void) /* FUN_100ab22c */
 }
 
 /* ----------------------------------------------------------------
- * FUN_100a6204 - FinalizeAndSave (Phase 11 Orchestrator)
+ * FinalizeAndSave - FinalizeAndSave (Phase 11 Orchestrator)
  * Address: 0x100a6204 | Size: 148 bytes
  * ---------------------------------------------------------------- */
-static void FinalizeAndSave(void) /* FUN_100a6204 */
+static void FinalizeAndSave(void) /* FinalizeAndSave */
 {
     int progressDialog = *(int *)puRam10115f7c;
 
@@ -2080,59 +2080,59 @@ static void FinalizeAndSave(void) /* FUN_100a6204 */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100516c0 - GenerateRandomMap
+ * GenerateRandomMap - GenerateRandomMap
  * Address: 0x100516c0 | Size: 312 bytes
  *
  * The master 11-phase pipeline orchestrator.
  * Each phase is followed by a progress bar update.
  * ---------------------------------------------------------------- */
-void GenerateRandomMap(void) /* FUN_100516c0 */
+void GenerateRandomMap(void) /* GenerateRandomMap */
 {
     int progressDialog = *(int *)puRam10115f7c;
 
     /* Phase 1: Initialize map to all ocean */
     UpdateProgressBar(progressDialog, 0);
-    LoadScenarioTemplate();               /* FUN_100a6298 */
-    InitializeMapToOcean();               /* FUN_100515f4 */
+    LoadScenarioTemplate();               /* LoadScenarioTemplate */
+    InitializeMapToOcean();               /* InitializeMapToOcean */
 
     /* Phase 2: Place player start zones */
-    PlacePlayerStartZones();              /* FUN_100a01e8 */
+    PlacePlayerStartZones();              /* PlacePlayerStartZones */
     UpdateProgressBar(progressDialog, 10);
 
     /* Phase 3: Place cities and roads */
-    PlaceCitiesAndRoads();                /* FUN_100a3a80 */
+    PlaceCitiesAndRoads();                /* PlaceCitiesAndRoads */
     UpdateProgressBar(progressDialog, 20);
 
     /* Phase 4: Mountain/forest chains */
-    PlaceMountainForestChains();          /* FUN_100abcec */
+    PlaceMountainForestChains();          /* PlaceMountainForestChains */
     UpdateProgressBar(progressDialog, 30);
 
     /* Phase 5: River/water channels */
-    PlaceRiverWaterChannels();            /* FUN_100a9c08 */
+    PlaceRiverWaterChannels();            /* PlaceRiverWaterChannels */
     UpdateProgressBar(progressDialog, 40);
 
     /* Phase 6: Land mass generation */
-    GenerateLandMasses();                 /* FUN_100a271c */
+    GenerateLandMasses();                 /* GenerateLandMasses */
     UpdateProgressBar(progressDialog, 50);
 
     /* Phase 7: Swamp clusters */
-    PlaceSwampClusters();                 /* FUN_100a66a8 */
+    PlaceSwampClusters();                 /* PlaceSwampClusters */
     UpdateProgressBar(progressDialog, 60);
 
     /* Phase 8: Register cities, add neutrals */
-    RegisterCitiesAndAddNeutral();        /* FUN_100a6ae8 */
+    RegisterCitiesAndAddNeutral();        /* RegisterCitiesAndAddNeutral */
     UpdateProgressBar(progressDialog, 70);
 
     /* Phase 9: Ruins placement */
-    PlaceRuins();                         /* FUN_100a6f38 */
+    PlaceRuins();                         /* PlaceRuins */
     UpdateProgressBar(progressDialog, 80);
 
     /* Phase 10: Road network */
-    GenerateRoadNetwork();                /* FUN_100aafb8 */
+    GenerateRoadNetwork();                /* GenerateRoadNetwork */
     UpdateProgressBar(progressDialog, 90);
 
     /* Phase 11: Finalize and save */
-    FinalizeAndSave();                    /* FUN_100a6204 */
+    FinalizeAndSave();                    /* FinalizeAndSave */
     UpdateProgressBar(progressDialog, 100);
 }
 
@@ -2141,7 +2141,7 @@ void GenerateRandomMap(void) /* FUN_100516c0 */
  * ============================================================ */
 
 /* ----------------------------------------------------------------
- * FUN_100517f8 - SetupAndGenerateRandomMap
+ * SetupAndGenerateRandomMap - SetupAndGenerateRandomMap
  * Address: 0x100517f8 | Size: 1384 bytes
  *
  * Entry point from dialog. Allocates buffers, loads template data
@@ -2155,7 +2155,7 @@ void GenerateRandomMap(void) /* FUN_100516c0 */
  *   playerCount  - number of players (0-6, 7=random)
  * ---------------------------------------------------------------- */
 void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
-                                short terrainStyle, short playerCount) /* FUN_100517f8 */
+                                short terrainStyle, short playerCount) /* SetupAndGenerateRandomMap */
 {
     void *scenHandle;
     void *mapHandle;
@@ -2166,7 +2166,7 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
 
     /* Show progress dialog (202 x 60 pixels) */
     extern void ShowProgressDialog(int dialog, void *dims, int resID);
-    /* FUN_100513b4(*puRam10115f7c, &dims, 0x3F3) */
+    /* ProgressCreate(*puRam10115f7c, &dims, 0x3F3) */
 
     /* Allocate scenario data buffer (24,022 bytes) */
     scenHandle = AllocateHandle(SCENARIO_DATA_SIZE);
@@ -2323,13 +2323,13 @@ void SetupAndGenerateRandomMap(short waterStyle, short cityCount,
         extern void UnlockHandle2(void *handle);
         UnlockHandle2(scenHandle);
     }
-    ReleaseHandle(scenHandle);
+    ReleaseHandle_Mapgen(scenHandle);
 
     if (mapHandle != NULL) {
         extern void UnlockHandle2(void *handle);
         UnlockHandle2(mapHandle);
     }
-    ReleaseHandle(mapHandle);
+    ReleaseHandle_Mapgen(mapHandle);
 
     /* Update document after generation */
     {

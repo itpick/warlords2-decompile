@@ -8,8 +8,8 @@
 #include "warlords2.h"
 
 /* Forward declarations for called functions not in this file */
-int FUN_100f56e4(int size);
-int FUN_100012c0(void);
+int NewPtr_Thunk(int size);
+int StringLength(void);
 void FUN_100012d8(void);
 void FUN_100f12a8(void);
 void FUN_100d9034(int *param_1);
@@ -20,7 +20,7 @@ void FUN_100c6178(int, int);
 void FUN_100ef088(int, int, int);
 int FUN_100efc78(int);
 void FUN_100014a0(int);
-int FUN_10001728(int, int);
+int GetResource_Thunk(int, int);
 void FUN_10001b00(int);
 void FUN_100eef18(void);
 int FUN_10000a98(int, int, int);
@@ -110,10 +110,10 @@ void FUN_10002d60(int, int);
 int FUN_100efa80(int);
 void FUN_100028c8(int);
 int FUN_100b22b0(int, short *);
-void FUN_100b2268(short *);
+void RGBForeColor_Thunk(short *);
 void FUN_100008b8(void);
 void FUN_10000708(int);
-void FUN_100021c0(void);
+void SetForeColor_Thunk(void);
 void FUN_100ef8c8(void);
 void FUN_100026d0(int);
 void FUN_10002d48(int);
@@ -121,7 +121,7 @@ void FUN_10002eb0(int);
 void FUN_100fff18(void);
 void FUN_100fff20(int);
 void FUN_10115ad0(int, int);
-void FUN_100f5708(int);
+void DisposePtr_Thunk(int);
 int FUN_10001338(int);
 void FUN_100ef284(int, char *);
 char FUN_100ef9b8(int *);
@@ -140,10 +140,10 @@ extern int iRam1011788c;
 extern int *piRam10117834;
 
 /* =====================================================================
- * FUN_100b19f4 - Pascal string builder / CopyCStringToPascal
+ * BuildPascalString - Pascal string builder / CopyCStringToPascal
  * Original: 100b19f4, 188 bytes
  * ===================================================================== */
-char * FUN_100b19f4(char *param_1, int param_2)
+char * BuildPascalString(char *param_1, int param_2)
 {
     int *piVar1;
     char uVar2;
@@ -152,12 +152,12 @@ char * FUN_100b19f4(char *param_1, int param_2)
 
     piVar1 = &local_18;
     if ((param_1 != (char *)0x0) ||
-       (param_1 = (char *)FUN_100f56e4(0x100), param_1 != (char *)0x0)) {
+       (param_1 = (char *)NewPtr_Thunk(0x100), param_1 != (char *)0x0)) {
         if (param_2 == 0) {
             uVar2 = 0;
         }
         else {
-            local_14[0] = FUN_100012c0();
+            local_14[0] = StringLength();
             local_18 = 0xff;
             if (local_14[0] < 0xff) {
                 piVar1 = local_14;
@@ -178,11 +178,11 @@ char * FUN_100b19f4(char *param_1, int param_2)
 void FUN_100bd55c(int *param_1)
 {
     FUN_100f12a8();
-    FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x4b0));
-    FUN_10117884((int)*(short *)(*param_1 + 0x350) + (int)param_1);
+    ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x4b0));
+    ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x350) + (int)param_1);
     *(short *)(param_1 + 0x1c) = 0;
-    FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 600));
-    FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x4c0), 1);
+    ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 600));
+    ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x4c0), 1);
     return;
 }
 
@@ -256,35 +256,35 @@ void FUN_100cdf9c(void)
         FUN_100cde80(); FUN_100cde88(0);
 
         /* Register resource type identifiers ('gold','cntl','butn',...) */
-        FUN_100b19f4(auStack_140, 0xa0);
+        BuildPascalString(auStack_140, 0xa0);
         FUN_100ed954(auStack_140, 0x646c6f67); /* 'dlog' */
-        FUN_100b19f4(auStack_240, 0xac);
+        BuildPascalString(auStack_240, 0xac);
         FUN_100ed954(auStack_240, 0x636e746c); /* 'cntl' */
-        FUN_100b19f4(auStack_340, 0xb8);
+        BuildPascalString(auStack_340, 0xb8);
         FUN_100ed954(auStack_340, 0x6275746e); /* 'butn' */
-        FUN_100b19f4(auStack_440, 0xc0);
+        BuildPascalString(auStack_440, 0xc0);
         FUN_100ed954(auStack_440, 0x63686b62); /* 'chkb' */
-        FUN_100b19f4(auStack_540, 0xcc);
+        BuildPascalString(auStack_540, 0xcc);
         FUN_100ed954(auStack_540, 0x72616462); /* 'radb' */
-        FUN_100b19f4(auStack_640, 0xd4);
+        BuildPascalString(auStack_640, 0xd4);
         FUN_100ed954(auStack_640, 0x636c7573); /* 'clus' */
-        FUN_100b19f4(auStack_740, 0xe0);
+        BuildPascalString(auStack_740, 0xe0);
         FUN_100ed954(auStack_740, 0x69636f6e); /* 'icon' */
-        FUN_100b19f4(auStack_840, 0xe8);
+        BuildPascalString(auStack_840, 0xe8);
         FUN_100ed954(auStack_840, 0x7369636e); /* 'sicn' */
-        FUN_100b19f4(auStack_940, 0xf4);
+        BuildPascalString(auStack_940, 0xf4);
         FUN_100ed954(auStack_940, 0x70696374); /* 'pict' */
-        FUN_100b19f4(auStack_a40, 0x100);
+        BuildPascalString(auStack_a40, 0x100);
         FUN_100ed954(auStack_a40, 0x706f7070); /* 'popp' */
-        FUN_100b19f4(auStack_b40, 0x108);
+        BuildPascalString(auStack_b40, 0x108);
         FUN_100ed954(auStack_b40, 0x73746174); /* 'stat' */
-        FUN_100b19f4(auStack_c40, 0x114);
+        BuildPascalString(auStack_c40, 0x114);
         FUN_100ed954(auStack_c40, 0x65646974); /* 'edit' */
-        FUN_100b19f4(auStack_d40, 0x120);
+        BuildPascalString(auStack_d40, 0x120);
         FUN_100ed954(auStack_d40, 0x6e6d6272); /* 'nmbr' */
-        FUN_100b19f4(auStack_e40, 300);
+        BuildPascalString(auStack_e40, 300);
         FUN_100ed954(auStack_e40, 0x7061746e); /* 'patn' */
-        FUN_100b19f4(auStack_f40, 0x138);
+        BuildPascalString(auStack_f40, 0x138);
         FUN_100ed954(auStack_f40, 0x74626f72); /* 'tbor' */
 
         /* Initialize dialog/behavior sub-objects */
@@ -325,7 +325,7 @@ void FUN_100d6dd0(int *param_1)
     FUN_100da394(param_1);
     FUN_100f27d0(0x20, 1);
     FUN_100f27d0(0x21, 1);
-    iVar1 = FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x298));
+    iVar1 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x298));
     if (iVar1 != 0) {
         FUN_100f27d0(0x1e, 1);
         FUN_100f27d0(0x22, 1);
@@ -352,14 +352,14 @@ int FUN_100d8c9c(short param_1, int param_2)
     FUN_100ef088(-2, 0, 0);
     uVar2 = FUN_100efc78(0);
     FUN_100014a0(0x5e);
-    puVar6 = (unsigned int *)FUN_10001728(0x414c5254, param_1);
+    puVar6 = (unsigned int *)GetResource_Thunk(0x414c5254, param_1);
     if (puVar6 == (unsigned int *)0x0) {
         FUN_10001b00(2);
         FUN_100efc78(uVar2);
         uVar3 = 2;
     }
     else {
-        iVar7 = FUN_10001728(0x4449544c, *(short *)((int)*puVar6 + 8));
+        iVar7 = GetResource_Thunk(0x4449544c, *(short *)((int)*puVar6 + 8));
         if (iVar7 == 0) {
             FUN_10001b00(2);
             FUN_100efc78(uVar2);
@@ -411,7 +411,7 @@ void FUN_100d8e68(short param_1, int param_2)
     short uStack_126;
     char local_120[288];
 
-    FUN_100b19f4(local_120, 4);
+    BuildPascalString(local_120, 4);
     local_228[0] = 0;
     local_328[0] = 0;
     local_128 = (short)((unsigned int)param_2 >> 0x10);
@@ -457,7 +457,7 @@ void FUN_100db158(short param_1, int param_2)
                 FUN_10001d28(iVar2, 0);
             }
             else {
-                FUN_10117884(*(int *)(iVar2 + 0x110));
+                ResourceRead_Dispatch(*(int *)(iVar2 + 0x110));
             }
             iVar2 = *piVar1;
         } while (iVar2 != 0);
@@ -467,10 +467,10 @@ void FUN_100db158(short param_1, int param_2)
 
 
 /* =====================================================================
- * FUN_100db26c - Focus/unlock handler (conditional event dispatch)
+ * FocusObject - Focus/unlock handler (conditional event dispatch)
  * Original: 100db26c, 56 bytes
  * ===================================================================== */
-void FUN_100db26c(int param_1)
+void FocusObject(int param_1)
 {
     if (param_1 == 0) {
         FUN_100db158(0xff94, 0);
@@ -480,10 +480,10 @@ void FUN_100db26c(int param_1)
 
 
 /* =====================================================================
- * FUN_100db2f4 - Conditional event dispatch (non-zero param)
+ * EndFocus - Conditional event dispatch (non-zero param)
  * Original: 100db2f4, 52 bytes
  * ===================================================================== */
-void FUN_100db2f4(short param_1)
+void EndFocus(short param_1)
 {
     if (param_1 != 0) {
         FUN_100db158(param_1, 0);
@@ -493,10 +493,10 @@ void FUN_100db2f4(short param_1)
 
 
 /* =====================================================================
- * FUN_100db328 - Get key event and dispatch
+ * MarkChanged - Get key event and dispatch
  * Original: 100db328, 64 bytes
  * ===================================================================== */
-void FUN_100db328(void)
+void MarkChanged(void)
 {
     int uVar1;
 
@@ -515,7 +515,7 @@ void FUN_100db328(void)
 int * FUN_100db3c8(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x68),
+       (param_1 = (int *)NewPtr_Thunk(0x68),
        param_1 != (int *)0x0)) {
         FUN_100f4dc8(param_1);
         *(short *)(param_1 + 1) = 0;
@@ -564,10 +564,10 @@ void FUN_100db49c(int param_1, int param_2, int param_3,
 void FUN_100ddfa8(int *param_1, int param_2, char param_3)
 {
     if (*(char *)(param_1 + 0x4b) != '\0') {
-        FUN_10117884((int)*(short *)(*param_1 + 0x370) + (int)param_1, param_2, (int)param_3);
+        ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x370) + (int)param_1, param_2, (int)param_3);
     }
     if (*(char *)((int)param_1 + 0x12d) != '\0') {
-        FUN_10117884((int)*(short *)(*param_1 + 0x378) + (int)param_1, param_2, (int)param_3);
+        ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x378) + (int)param_1, param_2, (int)param_3);
     }
     return;
 }
@@ -579,12 +579,12 @@ void FUN_100ddfa8(int *param_1, int param_2, char param_3)
  * ===================================================================== */
 void FUN_100de320(int *param_1, int param_2, char param_3)
 {
-    FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x388), param_2, (int)param_3);
+    ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x388), param_2, (int)param_3);
     if ((*(char *)(param_1 + 0x4b) != '\0') && (param_1[0x4c] != 0)) {
-        FUN_10117884((int)*(short *)(*param_1 + 0x390) + (int)param_1, param_2, (int)param_3);
+        ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x390) + (int)param_1, param_2, (int)param_3);
     }
     if (*(char *)((int)param_1 + 0x12d) != '\0') {
-        FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x398), param_2, (int)param_3);
+        ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x398), param_2, (int)param_3);
     }
     return;
 }
@@ -605,7 +605,7 @@ void FUN_100e0ea8(void)
             FUN_100e0c90();
             FUN_100e0ca0(0);
         }
-        FUN_100b19f4(auStack_108, 0x10);
+        BuildPascalString(auStack_108, 0x10);
         FUN_100ed954(auStack_108, 0x66776e64);  /* 'fwnd' */
         *pcVar1 = '\x01';
     }
@@ -633,11 +633,11 @@ void FUN_100e1fac(void)
     FUN_100e1f3c();
     FUN_100e1f44(0);
 
-    FUN_100b19f4(auStack_110, 0x8c);
+    BuildPascalString(auStack_110, 0x8c);
     FUN_100ed954(auStack_110, 0x67726964);  /* 'grid' */
-    FUN_100b19f4(auStack_210, 0x98);
+    BuildPascalString(auStack_210, 0x98);
     FUN_100ed954(auStack_210, 0x74787467);  /* 'txtg' */
-    FUN_100b19f4(auStack_310, 0xa8);
+    BuildPascalString(auStack_310, 0xa8);
     FUN_100ed954(auStack_310, 0x6c737467);  /* 'lstg' */
 
     uVar2 = FUN_100ed918();
@@ -657,7 +657,7 @@ void FUN_100e1fac(void)
 int * FUN_100eab4c(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x20),
+       (param_1 = (int *)NewPtr_Thunk(0x20),
        param_1 != (int *)0x0)) {
         FUN_100ea428(param_1);
     }
@@ -683,7 +683,7 @@ void FUN_100eabdc(void)
 int * FUN_100ead08(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x20),
+       (param_1 = (int *)NewPtr_Thunk(0x20),
        param_1 != (int *)0x0)) {
         FUN_100d8824(param_1);
     }
@@ -752,13 +752,13 @@ int FUN_100ec2c4(int *param_1)
     int iVar2;
     int uVar1;
 
-    FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x10));
-    iVar2 = FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 8));
+    ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x10));
+    iVar2 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 8));
     if (iVar2 == 0) {
         uVar1 = 0;
     }
     else {
-        uVar1 = FUN_10117884(param_1[4] + (int)*(short *)(*(int *)param_1[4] + 0x128), param_1[1]);
+        uVar1 = ResourceRead_Dispatch(param_1[4] + (int)*(short *)(*(int *)param_1[4] + 0x128), param_1[1]);
     }
     return uVar1;
 }
@@ -773,13 +773,13 @@ int FUN_100ec34c(int *param_1)
     int iVar2;
     int uVar1;
 
-    FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x18));
-    iVar2 = FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 8));
+    ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x18));
+    iVar2 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 8));
     if (iVar2 == 0) {
         uVar1 = 0;
     }
     else {
-        uVar1 = FUN_10117884(param_1[4] + (int)*(short *)(*(int *)param_1[4] + 0x128), param_1[1]);
+        uVar1 = ResourceRead_Dispatch(param_1[4] + (int)*(short *)(*(int *)param_1[4] + 0x128), param_1[1]);
     }
     return uVar1;
 }
@@ -896,10 +896,10 @@ void FUN_100ee070(short param_1)
 
 
 /* =====================================================================
- * FUN_100ef580 - Release resource (DisposePtr wrapper)
+ * FreeBlock - Release resource (DisposePtr wrapper)
  * Original: 100ef580, 56 bytes
  * ===================================================================== */
-int FUN_100ef580(int param_1)
+int FreeBlock(int param_1)
 {
     if (param_1 != 0) {
         FUN_100025b0();
@@ -987,7 +987,7 @@ void FUN_100f03e8(unsigned short *param_1)
     else {
         iVar2 = FUN_100b22b0((int)(*(unsigned int *)(iVar2 + 0xca)) + 0x2a, (short *)param_1);
         if (iVar2 != 0) {
-            FUN_100b2268((short *)param_1);
+            RGBForeColor_Thunk((short *)param_1);
             FUN_100008b8();
         }
     }
@@ -1026,8 +1026,8 @@ void FUN_100f0538(unsigned short *param_1)
     else {
         iVar2 = FUN_100b22b0((int)(*(unsigned int *)(iVar2 + 0xca)) + 0x24, (short *)param_1);
         if (iVar2 != 0) {
-            FUN_100b2268((short *)param_1);
-            FUN_100021c0();
+            RGBForeColor_Thunk((short *)param_1);
+            SetForeColor_Thunk();
         }
     }
     return;
@@ -1097,7 +1097,7 @@ int FUN_100f1640(int param_1)
 
     uVar2 = FUN_100f1574(1);
     uVar1 = FUN_10001338(param_1);
-    FUN_100db26c(0);
+    FocusObject(0);
     return uVar1;
 }
 
@@ -1126,7 +1126,7 @@ void FUN_100f27d0(int param_1, char param_2)
 
 
 /* =====================================================================
- * FUN_100f56e4 - NewObject / malloc (memory allocator)
+ * NewPtr_Thunk - NewObject / malloc (memory allocator)
  * Original: 100f56e4, 36 bytes (thin wrapper)
  * ===================================================================== */
 /* Already declared as forward reference above, defined in framework */
@@ -1139,7 +1139,7 @@ void FUN_100f27d0(int param_1, char param_2)
 int FUN_100f57c8(int *param_1)
 {
     if (param_1 != (int *)0x0) {
-        FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x90));
+        ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
     }
     return 0;
 }
@@ -1159,10 +1159,10 @@ void FUN_1010003c(void)
         FUN_100fff18();
         FUN_100fff20(0);
     }
-    FUN_100b19f4(auStack_108, 8);
+    BuildPascalString(auStack_108, 8);
     FUN_100ed954(auStack_108, 0x74657677);  /* 'tevw' */
     uVar2 = FUN_10000a98(0, 0xf812, 1);
-    FUN_100db26c(0);
+    FocusObject(0);
     return;
 }
 
@@ -1179,7 +1179,7 @@ void FUN_10116820(int *param_1, int param_2)
             FUN_10115ad0(param_1[1], 0);
         }
         if ((param_1 != (int *)0x0) && ((param_2 & 1) != 0)) {
-            FUN_100f5708((int)param_1);
+            DisposePtr_Thunk((int)param_1);
         }
     }
     return;
@@ -1187,9 +1187,9 @@ void FUN_10116820(int *param_1, int param_2)
 
 
 /* =====================================================================
- * FUN_10117884 - Virtual method dispatch / vtable call trampoline
+ * ResourceRead_Dispatch - Virtual method dispatch / vtable call trampoline
  * Original: 10117884, 20 bytes
  * This is the universal vtable dispatch function, called ~5700 times.
  * It loads r12 and jumps through a function pointer.
  * ===================================================================== */
-/* Already defined in core/utils.c as ResourceRead */
+/* Already defined in core/utils.c as ResourceRead_Dispatch */

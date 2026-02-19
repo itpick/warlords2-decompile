@@ -90,7 +90,7 @@ extern struct PEF_Debug_struct PEF_Debug_0x7_10117864;
 /* MacApp framework / vtable dispatch - varargs trampoline.
  * In the original PPC binary this is an indirect call through r12.
  * Declared with no prototype so callers can pass any number of args. */
-int FUN_10117884();
+int ResourceRead_Dispatch();
 
 /* Object constructors / base class initializers */
 int *FUN_100c604c(int *param_1);
@@ -99,7 +99,7 @@ int *FUN_100d7adc(int *param_1);
 int *FUN_1010f054(int *param_1);
 
 /* Memory allocation */
-int  FUN_100f56e4(int size);
+int  NewPtr_Thunk(int size);
 int  FUN_100f56c0(int size);
 void FUN_100f5274();
 int *FUN_100f4dc8(int *param_1);
@@ -121,8 +121,8 @@ int  FUN_100ed918(void);
 void FUN_100ed954(char *param_1, int param_2);
 void FUN_100d88b4(int param_1, int param_2, short param_3);
 int  FUN_100f5640(int param_1);
-int  FUN_100f56e4(int param_1);
-void FUN_100f5708(int param_1);
+int  NewPtr_Thunk(int param_1);
+void DisposePtr_Thunk(int param_1);
 
 /* Object framework helpers */
 int  FUN_100b057c(int *param_1, int param_2);
@@ -133,10 +133,10 @@ int  FUN_100b1134(int, int, int, int, int);
 void FUN_100b1210(void);
 int  FUN_100b1058(int, int, int, int);
 void FUN_100afb5c(int, int, int);
-void FUN_100b19f4(char *param_1, char *param_2);
+void BuildPascalString(char *param_1, char *param_2);
 void FUN_100b1d90(int param_1, int param_2);
 int  FUN_100b1c84(int param_1);
-int  FUN_100b0578(int param_1);
+int  GetBitMapPtr(int param_1);
 void FUN_100b06d4(int *param_1, short *param_2);
 void FUN_100b08d4(short *param_1, int *param_2);
 void FUN_100b2e74(void);
@@ -155,9 +155,9 @@ void FUN_100f5814(void);
 int  FUN_100f1264(void);
 
 /* Draw/render helpers */
-void FUN_1003206c(int, int, int, int);
+void SetDrawColor(int, int, int, int);
 int  FUN_1005f678(int, int);
-void FUN_10001dd0(char *, int, int);
+void DrawNumber(char *, int, int);
 void FUN_10090e0c(int, int, char *, int);
 void FUN_10079ee8(int, int, int, int);
 void FUN_1007a018(int, short, int, int, int);
@@ -179,13 +179,13 @@ int  FUN_10000090(char *param_1);
 int  FUN_100beb7c(int param_1);
 void FUN_100becb8(void);
 void FUN_100db158(long long, int);
-void FUN_100db26c(void);
-void FUN_100db2f4(void);
+void FocusObject(void);
+void EndFocus(void);
 int  FUN_10001590(void);
 void FUN_100015a8(void);
 int  FUN_10001680(int, int, int, int, int, int, int, int);
 int  FUN_100016b0(void);
-int  FUN_100ef580(int);
+int  FreeBlock(int);
 
 /* Event dispatch */
 void FUN_100013b0(int);
@@ -204,7 +204,7 @@ void FUN_100014d0(long long, char *);
 void FUN_10000150(void);
 int  FUN_100019f8(void);
 int  FUN_10000300(void);
-void FUN_10000318(int);
+void DisposeGeneric(int);
 void FUN_10000390(void);
 void FUN_10000960(void);
 void FUN_100019c8(void);
@@ -281,32 +281,32 @@ void FUN_100ae1a8(short param_1)
         local_270 = 0;
         while (local_270 < 2) {
             piVar4 = (int *)*piRam1011684c;
-            piVar4 = (int *)FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 0x308),
+            piVar4 = (int *)ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x308),
                                          (long long)local_270 + 0x73696431);
             if (piVar4 != (int *)0x0) {
                 if (*(short *)((int)piVar4 + 0x82) != 0) {
                     *(short *)((int)piVar4 + 0x82) = 0;
-                    FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 0x488));
+                    ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x488));
                 }
                 if (*(short *)(*piRam1011735c + 0x110) != *(short *)(piVar4 + 0x20)) {
                     *(short *)(piVar4 + 0x20) = *(short *)(*piRam1011735c + 0x110);
-                    FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 0x4d0));
+                    ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x4d0));
                 }
             }
             local_270 = local_270 + 1;
         }
-        FUN_1003206c(2, 0xe0, 0xff, 0xf9);
+        SetDrawColor(2, 0xe0, 0xff, 0xf9);
         {
             int uVar3 = FUN_1005f678(0x80, 1);
             int uVar5 = *(short *)(*piRam1011735c + 0x110);
-            FUN_10001dd0(auStack_264, uVar3,
+            DrawNumber(auStack_264, uVar3,
                          (int)*piRam1011735c +
                          ((uVar5 & 0x3fffffff) * 4 + uVar5 & 0x3fffffff) * 4);
         }
-        FUN_100b19f4(auStack_214, auStack_264);
+        BuildPascalString(auStack_214, auStack_264);
         FUN_10090e0c(**(int **)((int)piRam1011684c), 0x73756274, auStack_214, 1);
     }
-    FUN_1003206c(2, 0xe0, 0xff, 0xf9);
+    SetDrawColor(2, 0xe0, 0xff, 0xf9);
     local_270 = 0;
     while (local_270 < 0x1b) {
         local_114 = 0;
@@ -319,7 +319,7 @@ void FUN_100ae1a8(short param_1)
             local_114 = local_114 + 1;
         }
         piVar4 = (int *)*piRam1011684c;
-        local_110 = FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 0x308),
+        local_110 = ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x308),
                                  (long long)local_270 + 0x61726d30);
         if (local_110 != 0) {
             FUN_10079ee8(local_110, local_114, *(short *)(*piRam1011735c + 0x110), 1);
@@ -332,8 +332,8 @@ void FUN_100ae1a8(short param_1)
             FUN_1007a018(local_110, (short)local_10c, 0, 0, 1);
         }
         if (param_1 == 0) {
-            FUN_10001dd0(auStack_264, 0, (long long)local_270 + 1);
-            FUN_100b19f4(auStack_108, auStack_264);
+            DrawNumber(auStack_264, 0, (long long)local_270 + 1);
+            BuildPascalString(auStack_108, auStack_264);
             FUN_10090e0c(**(int **)piRam1011684c, (long long)local_270 + 0x73747230,
                          auStack_108, 1);
         }
@@ -352,27 +352,27 @@ void FUN_100ae550(void)
     int *piVar1;
     int *piVar2;
 
-    piVar1 = (int *)FUN_10117884(*piRam1011684c + (int)*(short *)(*(int *)*piRam1011684c + 0x308),
+    piVar1 = (int *)ResourceRead_Dispatch(*piRam1011684c + (int)*(short *)(*(int *)*piRam1011684c + 0x308),
                                  0x6c656674);
-    piVar2 = (int *)FUN_10117884(*piRam1011684c + (int)*(short *)(*(int *)*piRam1011684c + 0x308),
+    piVar2 = (int *)ResourceRead_Dispatch(*piRam1011684c + (int)*(short *)(*(int *)*piRam1011684c + 0x308),
                                  0x72696768);
     if ((piVar1 != (int *)0x0) && (piVar2 != (int *)0x0)) {
         short sel = *(short *)piRam1011684c;
         if (sel < 0) {
-            FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 1, 1);
-            FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 1, 1);
+            ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 1, 1);
+            ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 1, 1);
         }
         else if (sel == 0) {
-            FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 1, 1);
-            FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 0, 1);
+            ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 1, 1);
+            ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 0, 1);
         }
         else if (sel == 0x1a) {
-            FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 0, 1);
-            FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 1, 1);
+            ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 0, 1);
+            ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 1, 1);
         }
         else {
-            FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 0, 1);
-            FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 0, 1);
+            ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738), 0, 1);
+            ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x738), 0, 1);
         }
     }
     return;
@@ -386,9 +386,9 @@ void FUN_100ae550(void)
 void FUN_100ae77c(void)
 {
     int uVar3;
-    uVar3 = FUN_100ef580(*puRam10116854);
+    uVar3 = FreeBlock(*puRam10116854);
     *piRam1011684c = uVar3;
-    uVar3 = FUN_100ef580(*piRam1011684c);
+    uVar3 = FreeBlock(*piRam1011684c);
     *(int *)((char *)piRam1011684c + 4) = uVar3;
     return;
 }
@@ -410,9 +410,9 @@ void FUN_100ae7c4(void)
              *(char *)(*puRam10116854 + (int)local_8);
         local_8 = local_8 + 1;
     } while (local_8 < 0x1d);
-    uVar3 = FUN_100ef580(*puRam10116854);
+    uVar3 = FreeBlock(*puRam10116854);
     *piRam1011684c = uVar3;
-    uVar3 = FUN_100ef580(*piRam1011684c);
+    uVar3 = FreeBlock(*piRam1011684c);
     *(int *)((char *)piRam1011684c + 4) = uVar3;
     return;
 }
@@ -440,10 +440,10 @@ void FUN_100b2264(void)
 
 
 /* =========================================================================
- *  FUN_100b2268 - No-op (empty function, 4 bytes)
+ *  RGBForeColor_Thunk - No-op (empty function, 4 bytes)
  *  Address: 0x100b2268, Size: 4 bytes
  * ========================================================================= */
-void FUN_100b2268(void)
+void RGBForeColor_Thunk(void)
 {
     return;
 }
@@ -469,7 +469,7 @@ int FUN_100b22b0(void)
 int *FUN_100bece4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(8),
+       (param_1 = (int *)NewPtr_Thunk(8),
        param_1 != (int *)0x0)) {
         FUN_100f4dc8(param_1);
         /* vtable class descriptor is stored indirectly; simplified for modern build */
@@ -511,7 +511,7 @@ void FUN_100bed7c(int *param_1)
         *puVar1 = local_20;
     }
     else {
-        FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x90));
+        ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
         FUN_100db158(local_28, local_24);
     }
     return;
@@ -525,7 +525,7 @@ void FUN_100bed7c(int *param_1)
 int *FUN_100bf518(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x20),
+       (param_1 = (int *)NewPtr_Thunk(0x20),
        param_1 != (int *)0x0)) {
         FUN_100f4dc8(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -551,7 +551,7 @@ void FUN_100c6178(int *param_1, int param_2)
     int iVar3;
 
     if (param_2 == 0x65) {
-        iVar3 = FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x230));
+        iVar3 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x230));
         if ((iVar3 == 0) || (*(int *)(iVar3 + 0x18) != (int)param_1)) {
             FUN_100da260(param_1, param_2);
         }
@@ -560,7 +560,7 @@ void FUN_100c6178(int *param_1, int param_2)
             int uVar2 = FUN_100c5dcc(0);
             FUN_100f5754(uVar1);
             FUN_100c6014(uVar2, param_2, param_1);
-            FUN_10117884((int)*(short *)(*param_1 + 0x208) + (int)param_1, uVar2);
+            ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x208) + (int)param_1, uVar2);
         }
     }
     else {
@@ -589,7 +589,7 @@ int *FUN_100c6b2c(int *param_1)
     int *puVar4;
 
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xa8),
+       (param_1 = (int *)NewPtr_Thunk(0xa8),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -630,7 +630,7 @@ int FUN_100cd91c(void)
 int *FUN_100cd924(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x88),
+       (param_1 = (int *)NewPtr_Thunk(0x88),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -658,7 +658,7 @@ int FUN_100cd99c(void)
 int *FUN_100cd9a4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb4),
+       (param_1 = (int *)NewPtr_Thunk(0xb4),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -689,7 +689,7 @@ int FUN_100cda38(void)
 int *FUN_100cda40(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb0),
+       (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -720,7 +720,7 @@ int FUN_100cdacc(void)
 int *FUN_100cdad4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb0),
+       (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -749,7 +749,7 @@ int FUN_100cdb54(void)
 int *FUN_100cdb5c(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb0),
+       (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -778,7 +778,7 @@ int FUN_100cdbdc(void)
 int *FUN_100cdbe4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb4),
+       (param_1 = (int *)NewPtr_Thunk(0xb4),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -811,7 +811,7 @@ int FUN_100cdc80(void)
 int *FUN_100cdc88(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xc0), param_1 != (int *)0x0)) {
+       (param_1 = (int *)NewPtr_Thunk(0xc0), param_1 != (int *)0x0)) {
         FUN_100cdbe4(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x2e] = 0;
@@ -821,7 +821,7 @@ int *FUN_100cdc88(int *param_1)
         param_1[0x26] = 0;
         param_1[0x27] = 0;
         param_1[0x28] = 0;
-        FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x770), 0x10001);
+        ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x770), 0x10001);
         *(char *)((int)param_1 + 0x53) = 1;
         param_1[0x20] = 6;
         *(short *)(param_1 + 0x13) = 1;
@@ -848,7 +848,7 @@ int FUN_100cdd68(void)
 int *FUN_100cdd70(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(200),
+       (param_1 = (int *)NewPtr_Thunk(200),
        param_1 != (int *)0x0)) {
         FUN_100cdc88(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -876,7 +876,7 @@ int FUN_100cddec(void)
 int *FUN_100cddf4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb0),
+       (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
         FUN_100c6b2c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -907,7 +907,7 @@ int FUN_100cde80(void)
 int *FUN_100cde88(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x84),
+       (param_1 = (int *)NewPtr_Thunk(0x84),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -926,7 +926,7 @@ int *FUN_100cde88(int *param_1)
 int *FUN_100cdf08(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(8),
+       (param_1 = (int *)NewPtr_Thunk(8),
        param_1 != (int *)0x0)) {
         FUN_100f4dc8(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -953,7 +953,7 @@ int FUN_100d450c(void)
 int *FUN_100d451c(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xc4),
+       (param_1 = (int *)NewPtr_Thunk(0xc4),
        param_1 != (int *)0x0)) {
         FUN_100c7d84(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -982,7 +982,7 @@ int FUN_100d48f8(void)
 int *FUN_100d4908(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xc4),
+       (param_1 = (int *)NewPtr_Thunk(0xc4),
        param_1 != (int *)0x0)) {
         FUN_100c7d84(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1011,7 +1011,7 @@ int FUN_100d4e94(void)
 int *FUN_100d4ea4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xc4),
+       (param_1 = (int *)NewPtr_Thunk(0xc4),
        param_1 != (int *)0x0)) {
         FUN_100c7d84(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1030,7 +1030,7 @@ int *FUN_100d4ea4(int *param_1)
 int *FUN_100d568c(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x34),
+       (param_1 = (int *)NewPtr_Thunk(0x34),
        param_1 != (int *)0x0)) {
         FUN_100bf518(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1051,7 +1051,7 @@ int *FUN_100d568c(int *param_1)
 int *FUN_100d8824(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x20),
+       (param_1 = (int *)NewPtr_Thunk(0x20),
        param_1 != (int *)0x0)) {
         FUN_100d7adc(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1098,7 +1098,7 @@ int FUN_100d8c30(short param_1, short param_2, int param_3)
 int *FUN_100d9034(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x14),
+       (param_1 = (int *)NewPtr_Thunk(0x14),
        param_1 != (int *)0x0)) {
         FUN_100f4dc8(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1134,9 +1134,9 @@ void FUN_100da394(int *param_1)
 {
     int *piVar1;
 
-    piVar1 = (int *)FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0xb0));
+    piVar1 = (int *)ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xb0));
     if (piVar1 != (int *)0x0) {
-        FUN_10117884((int)*(short *)(*piVar1 + 0x120) + (int)piVar1);
+        ResourceRead_Dispatch((int)*(short *)(*piVar1 + 0x120) + (int)piVar1);
     }
     return;
 }
@@ -1161,7 +1161,7 @@ int *FUN_100e0ca0(int *param_1)
     int *puVar3;
 
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(200),
+       (param_1 = (int *)NewPtr_Thunk(200),
        param_1 != (int *)0x0)) {
         FUN_1010f054(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1195,7 +1195,7 @@ int FUN_100e1dec(void)
 int *FUN_100e1df4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xa0),
+       (param_1 = (int *)NewPtr_Thunk(0xa0),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1233,7 +1233,7 @@ int FUN_100e1e9c(void)
 int *FUN_100e1ea4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb8),
+       (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
         FUN_100e1df4(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1268,7 +1268,7 @@ int FUN_100e1f3c(void)
 int *FUN_100e1f44(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xb8),
+       (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
         FUN_100e1ea4(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1284,7 +1284,7 @@ int *FUN_100e1f44(int *param_1)
 int *FUN_100ea428(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x20),
+       (param_1 = (int *)NewPtr_Thunk(0x20),
        param_1 != (int *)0x0)) {
         FUN_100d8824(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1345,7 +1345,7 @@ int *FUN_100ebaf8(int *param_1, int *param_2, char param_3)
             FUN_100eb91c(param_1, 0, 0, 0, param_3);
         }
         else {
-            uVar2 = FUN_10117884((int)param_2 + (int)*(short *)(*param_2 + 0xa8));
+            uVar2 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0xa8));
             FUN_100eb91c(param_1, param_2, 1, uVar2, param_3);
         }
     }
@@ -1431,7 +1431,7 @@ int FUN_100ed918(void)
     int uVar1;
 
     uVar1 = FUN_100019f8();
-    FUN_100db26c();
+    FocusObject();
     return uVar1;
 }
 
@@ -1457,13 +1457,13 @@ void FUN_100ed954(char *param_1, int param_2)
     if (local_154 == 0) {
         FUN_100db158((long long)-0x8000, 0);
     }
-    FUN_10117884((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
+    ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
     iVar1 = local_150[1];
     iVar3 = FUN_100ebf44(local_150);
     while ((iVar3 != 0 &&
-           (piVar4 = (int *)FUN_10117884(*piVar5 + (int)*(short *)(*(int *)*piVar5 + 0xe0), iVar1),
+           (piVar4 = (int *)ResourceRead_Dispatch(*piVar5 + (int)*(short *)(*(int *)*piVar5 + 0xe0), iVar1),
            *piVar4 != param_2))) {
-        FUN_10117884((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
+        ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
         iVar1 = local_150[1];
         iVar3 = FUN_100ebf44(local_150);
     }
@@ -1471,11 +1471,11 @@ void FUN_100ed954(char *param_1, int param_2)
     if (iVar3 == 0) {
         piVar5 = (int *)*piVar5;
         iVar1 = *piVar5;
-        int lVar2 = FUN_10117884((int)piVar5 + (int)*(short *)(iVar1 + 0xa8));
-        FUN_10117884((int)piVar5 + (int)*(short *)(iVar1 + 0xb8), lVar2 + 1, &local_158, 1);
+        int lVar2 = ResourceRead_Dispatch((int)piVar5 + (int)*(short *)(iVar1 + 0xa8));
+        ResourceRead_Dispatch((int)piVar5 + (int)*(short *)(iVar1 + 0xb8), lVar2 + 1, &local_158, 1);
     }
     else {
-        piVar5 = (int *)FUN_10117884(*piVar5 + (int)*(short *)(*(int *)*piVar5 + 0xe0), iVar1);
+        piVar5 = (int *)ResourceRead_Dispatch(*piVar5 + (int)*(short *)(*(int *)*piVar5 + 0xe0), iVar1);
         *piVar5 = local_158;
         piVar5[1] = local_154;
     }
@@ -1530,7 +1530,7 @@ void FUN_100edaf8(void)
     uVar10 = FUN_100ed918();
     /* Store uVar10 */
     uVar8 = FUN_100b1c84(uRam10116a54);
-    uVar9 = FUN_100b0578(uRam10116da0);
+    uVar9 = GetBitMapPtr(uRam10116da0);
     uVar11 = FUN_10001680(0, uVar9, uVar8, 0, 0, 0, 0, 0);
     *puRam10117808 = uVar11;
     piVar12 = (int *)FUN_100016b0();
@@ -1576,23 +1576,23 @@ void FUN_100edaf8(void)
     FUN_100e90bc(0);
 
     /* Register command handlers */
-    FUN_100b19f4(auStack_880, (char *)0 + 8);
+    BuildPascalString(auStack_880, (char *)0 + 8);
     FUN_100ed954(auStack_880, 0x76696577);
-    FUN_100b19f4(auStack_980, (char *)0 + 0x10);
+    BuildPascalString(auStack_980, (char *)0 + 0x10);
     FUN_100ed954(auStack_980, 0x64666c74);
-    FUN_100b19f4(auStack_748, (char *)0 + 0x18);
+    BuildPascalString(auStack_748, (char *)0 + 0x18);
     FUN_100ed954(auStack_748, 0x696e6340);
-    FUN_100b19f4(auStack_648, (char *)0 + 0x28);
+    BuildPascalString(auStack_648, (char *)0 + 0x28);
     FUN_100ed954(auStack_648, 0x77696e64);
-    FUN_100b19f4(auStack_548, (char *)0 + 0x30);
+    BuildPascalString(auStack_548, (char *)0 + 0x30);
     FUN_100ed954(auStack_548, 0x73626172);
-    FUN_100b19f4(auStack_448, (char *)0 + 0x3c);
+    BuildPascalString(auStack_448, (char *)0 + 0x3c);
     FUN_100ed954(auStack_448, 0x73736272);
-    FUN_100b19f4(auStack_348, (char *)0 + 0x50);
+    BuildPascalString(auStack_348, (char *)0 + 0x50);
     FUN_100ed954(auStack_348, 0x7363726c);
-    FUN_100b19f4(auStack_248, (char *)0 + 0x5c);
+    BuildPascalString(auStack_248, (char *)0 + 0x5c);
     FUN_100ed954(auStack_248, 0x7472616b);
-    FUN_100b19f4(auStack_148, (char *)0 + 0x68);
+    BuildPascalString(auStack_148, (char *)0 + 0x68);
     FUN_100ed954(auStack_148, 0x6c697374);
     FUN_100b2e74();
     FUN_100f2a54();
@@ -1601,7 +1601,7 @@ void FUN_100edaf8(void)
     local_780 = 0;
     local_77c = 2;
     FUN_100018f0(0x70736e20, &local_780, 8, 0);
-    FUN_100db2f4();
+    EndFocus();
     FUN_10001908(local_48);
     FUN_10001920(local_48[0]);
     return;
@@ -1645,10 +1645,10 @@ int FUN_100ef088(void)
 
 
 /* =========================================================================
- *  FUN_100ef510 - Conditional call to FUN_10000960
+ *  ReleaseHandle_Mapgen - Conditional call to FUN_10000960
  *  Address: 0x100ef510, Size: 56 bytes
  * ========================================================================= */
-int FUN_100ef510(int param_1)
+int ReleaseHandle_Mapgen(int param_1)
 {
     if (param_1 != 0) {
         FUN_10000960();
@@ -1694,7 +1694,7 @@ int FUN_100efc78(short param_1)
     int uVar1;
 
     uVar1 = FUN_100014b8();
-    FUN_10000318(param_1);
+    DisposeGeneric(param_1);
     return uVar1;
 }
 
@@ -1813,7 +1813,7 @@ int FUN_100f262c(int param_1, short *param_2)
 int *FUN_100f4dc8(int *param_1)
 {
     if (param_1 == (int *)0x0) {
-        param_1 = (int *)FUN_100f56e4(4);
+        param_1 = (int *)NewPtr_Thunk(4);
         if (param_1 != (int *)0x0) {
             *param_1 = uRam10117160;
         }
@@ -1836,10 +1836,10 @@ void FUN_100f5274()
 
 
 /* =========================================================================
- *  FUN_100f56e4 - Allocate memory (thin wrapper around FUN_100f5640)
+ *  NewPtr_Thunk - Allocate memory (thin wrapper around FUN_100f5640)
  *  Address: 0x100f56e4, Size: 36 bytes
  * ========================================================================= */
-int FUN_100f56e4(int param_1)
+int NewPtr_Thunk(int param_1)
 {
     return FUN_100f5640(param_1);
 }
@@ -1859,16 +1859,16 @@ int FUN_100f5640(int param_1)
         FUN_100b1210();
     }
     uVar2 = FUN_100b0960(*(int *)PEF_Debug_0x7_10117864.name, param_1);
-    FUN_100db26c();
+    FocusObject();
     return uVar2;
 }
 
 
 /* =========================================================================
- *  FUN_100f5708 - Free memory block back to pool
+ *  DisposePtr_Thunk - Free memory block back to pool
  *  Address: 0x100f5708, Size: 64 bytes
  * ========================================================================= */
-void FUN_100f5708(int param_1)
+void DisposePtr_Thunk(int param_1)
 {
     if (*(int *)PEF_Debug_0x7_10117864.name != 0) {
         FUN_100b0a18(*(int *)PEF_Debug_0x7_10117864.name, param_1);
@@ -1894,7 +1894,7 @@ int FUN_100f5894(void)
 int *FUN_100f58a4(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xd8),
+       (param_1 = (int *)NewPtr_Thunk(0xd8),
        param_1 != (int *)0x0)) {
         FUN_100c7d84(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1921,7 +1921,7 @@ int *FUN_100f6b8c(int *param_1)
     int *puVar5 = puRam10116bc0;
 
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xc0),
+       (param_1 = (int *)NewPtr_Thunk(0xc0),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -1971,7 +1971,7 @@ int FUN_100fff18(void)
 int *FUN_100fff20(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0xd8),
+       (param_1 = (int *)NewPtr_Thunk(0xd8),
        param_1 != (int *)0x0)) {
         FUN_1010598c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -2022,7 +2022,7 @@ int *FUN_1010598c(int *param_1)
     int *puVar4 = puRam10116bc0;
 
     if ((param_1 != (int *)0x0) ||
-       (param_1 = (int *)FUN_100f56e4(0x80),
+       (param_1 = (int *)NewPtr_Thunk(0x80),
        param_1 != (int *)0x0)) {
         FUN_100c604c(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
@@ -2089,10 +2089,10 @@ void FUN_10115ad0(int param_1, int param_2)
     if (param_1 != 0) {
         *(int *)(param_1 + 0x38) = uRam101173c8;
         if ((*(int *)(param_1 + 0x20) == 1) && (iVar1 = *(int *)(param_1 + 8), iVar1 != 0)) {
-            FUN_10117884(*(short *)(*(int *)(iVar1 + 0x24) + 0x58) + iVar1, 3);
+            ResourceRead_Dispatch(*(short *)(*(int *)(iVar1 + 0x24) + 0x58) + iVar1, 3);
         }
         if ((param_1 != 0) && ((param_2 & 1) != 0)) {
-            FUN_100f5708(param_1);
+            DisposePtr_Thunk(param_1);
         }
     }
     return;
@@ -2135,7 +2135,7 @@ int FUN_10116698(int param_1, int param_2)
 
 
 /* =========================================================================
- *  FUN_10117884 - Virtual method dispatch (indirect call via r12)
+ *  ResourceRead_Dispatch - Virtual method dispatch (indirect call via r12)
  *  Address: 0x10117884, Size: 20 bytes
  *
  *  This is a trampoline / thunk that performs an indirect function call

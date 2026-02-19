@@ -11,7 +11,7 @@
 /* =====================================================================
  * Random Number Generator
  *
- * FUN_1005f230 - The dice function used throughout the game.
+ * RandomRange - The dice function used throughout the game.
  * RandomRange(numDice, dieSize, bonus)
  *   Rolls numDice dice, each with dieSize sides (1..dieSize), adds bonus.
  *   Returns total.
@@ -21,7 +21,7 @@
  * the unsigned Random() output to [1..dieSize] range.
  * ===================================================================== */
 
-/* Original: FUN_1005f230 at 0x1005f230, 252 bytes */
+/* Original: RandomRange at 0x1005f230, 252 bytes */
 short RandomRange(short numDice, short dieSize, short bonus)
 {
     short total;
@@ -62,15 +62,15 @@ short RandomRange(short numDice, short dieSize, short bonus)
 /* =====================================================================
  * Distance Calculation
  *
- * FUN_1000a884 - Calculates distance between two map points.
+ * CalcDistance - Calculates distance between two map points.
  * Uses Euclidean distance (sqrt via FPU), returns as short.
  * Returns 10000 if within some threshold (used for "adjacent" check).
  * ===================================================================== */
 
-/* FUN_10003768 = abs() - Mac OS Toolbox trampoline */
+/* AbsShort = abs() - Mac OS Toolbox trampoline */
 /* Using standard abs() instead */
 
-/* Original: FUN_1000a884 at 0x1000a884, 212 bytes */
+/* Original: CalcDistance at 0x1000a884, 212 bytes */
 short CalcDistance(short x1, short y1, short x2, short y2)
 {
     long dx, dy;
@@ -148,7 +148,7 @@ static void DrawTextInternal(short x, short y, char *text, short alignment)
     descent = fInfo.descent;
 
     /* Convert C string to Pascal string */
-    /* FUN_100b19f4 = CopyCStringToPascal equivalent */
+    /* BuildPascalString = CopyCStringToPascal equivalent */
     CopyCStringToPascal(text, pascalStr);
 
     /* Get string width */
@@ -186,11 +186,11 @@ static void DrawTextInternal(short x, short y, char *text, short alignment)
 /* =====================================================================
  * Number Drawing
  *
- * FUN_10001dd0 = NumToString trampoline
+ * DrawNumber = NumToString trampoline
  * Renders a numeric value as text on screen.
  * ===================================================================== */
 
-/* Original: FUN_10001dd0 at 0x10001dd0, 24 bytes (TVect trampoline) */
+/* Original: DrawNumber at 0x10001dd0, 24 bytes (TVect trampoline) */
 void DrawNumber(int value)
 {
     Str255 numStr;
@@ -203,10 +203,10 @@ void DrawNumber(int value)
 /* =====================================================================
  * Color Setting
  *
- * FUN_1003206c - Sets the current drawing color from player palette.
+ * SetDrawColor - Sets the current drawing color from player palette.
  * ===================================================================== */
 
-/* Original: FUN_1003206c at 0x1003206c */
+/* Original: SetDrawColor at 0x1003206c */
 void SetDrawColor(short colorIndex)
 {
     RGBColor color;
@@ -217,7 +217,7 @@ void SetDrawColor(short colorIndex)
     /* Original calls: GetCTable, then indexes by colorIndex */
 
     /* Placeholder: set foreground color */
-    /* FUN_1003206c internally calls RGBForeColor after lookup */
+    /* SetDrawColor internally calls RGBForeColor after lookup */
     RGBForeColor(&color);
 }
 
@@ -225,13 +225,13 @@ void SetDrawColor(short colorIndex)
 /* =====================================================================
  * Resource Reading
  *
- * FUN_10117884 - The "virtual method dispatch" / resource reader.
+ * ResourceRead_Dispatch - The "virtual method dispatch" / resource reader.
  * Called 5,724 times throughout the binary.
  * Actually a generic memory read/copy with offset.
  * ===================================================================== */
 
-/* Original: FUN_10117884 at 0x10117884 */
-void ResourceRead(void *handle, long offset)
+/* Original: ResourceRead_Dispatch at 0x10117884 */
+void ResourceRead_Dispatch(void *handle, long offset)
 {
     /*
      * This function is heavily overloaded in the original.

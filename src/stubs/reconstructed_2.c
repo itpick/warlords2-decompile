@@ -95,8 +95,8 @@ extern short *_FUN_10115e4c;
 
 /* Forward declarations for functions defined in this file */
 void FUN_1002b91c(void);
-unsigned long long FUN_1002be50(short param_1,short param_2);
-void FUN_1001ba60(short param_1);
+unsigned long long LookupCityAtPos(short param_1,short param_2);
+void LaunchAllianceDefense(short param_1);
 void FUN_1003dc28(void);
 
 
@@ -122,7 +122,7 @@ void FUN_10011590(void)
   piVar8 = piRam1011735c;
   piVar7 = piRam10117358;
   iVar3 = *piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 0x14;
-  iVar9 = FUN_1002be50(*(short *)(iVar3 + 0x194),*(short *)(iVar3 + 0x196));
+  iVar9 = LookupCityAtPos(*(short *)(iVar3 + 0x194),*(short *)(iVar3 + 0x196));
   sVar2 = *(short *)(*piVar8 + 0x1602);
   uVar6 = 0xffffffffffffffff;
   iVar3 = 10000;
@@ -141,7 +141,7 @@ void FUN_10011590(void)
          ((bVar1 == 0xf || (*(short *)((unsigned int)bVar1 * 2 + iVar10 + 0x138) == 0)))) {
         iVar10 = *piVar8 + (int)(((uVar12 & 0x7ffffff) * 0x20 + uVar12 & 0xffffffff) << 1);
         iVar4 = *piVar8 + iVar9 * 0x42;
-        iVar10 = FUN_1000a884(*(short *)(iVar10 + 0x1604),*(short *)(iVar10 + 0x1606),
+        iVar10 = CalcDistance(*(short *)(iVar10 + 0x1604),*(short *)(iVar10 + 0x1606),
                               *(short *)(iVar4 + 0x1604),*(short *)(iVar4 + 0x1606));
         if ((iVar10 < 0x28) && (iVar10 < iVar3)) {
           uVar6 = uVar12;
@@ -224,7 +224,7 @@ void FUN_100169c0(int param_1,short param_2)
              (unsigned short)(9 < uVar11 && (unsigned long long)(10 < uVar11) <= uVar11 - 10);
     if (*(char *)(*piRam101174b0 + 4) == '\x1c') {
       if (sVar12 != 0) {
-        param_1 = FUN_1002be50((int)sVar7,(int)param_2);
+        param_1 = LookupCityAtPos((int)sVar7,(int)param_2);
       }
       uVar11 = 0x15;
       do {
@@ -398,10 +398,10 @@ void FUN_10016df0(int param_1)
 
 
 /* ======================================================================
- * FUN_100186cc - Distance calculation to armies
+ * FindNearestEnemy - Distance calculation to armies
  * Address: 0x100186cc, Size: 308 bytes
  * ====================================================================== */
-long long FUN_100186cc(short param_1,short param_2,short param_3)
+long long FindNearestEnemy(short param_1,short param_2,short param_3)
 {
   char cVar1;
   short sVar2;
@@ -434,8 +434,8 @@ long long FUN_100186cc(short param_1,short param_2,short param_3)
           if (cVar1 != (char)*(short *)(*piVar5 + 0x110)) {
 LAB_10018784:
             if (((*(short *)(*piVar5 + 0x124) == 0) ||
-                (iVar9 = FUN_1001f174(uVar4,uVar3), iVar9 != 0)) &&
-               (uVar8 = FUN_1000a884(param_1,param_2,uVar4,uVar3), (int)uVar8 < (int)uVar7)) {
+                (iVar9 = IsPositionReachable(uVar4,uVar3), iVar9 != 0)) &&
+               (uVar8 = CalcDistance(param_1,param_2,uVar4,uVar3), (int)uVar8 < (int)uVar7)) {
               uVar7 = uVar8;
             }
           }
@@ -449,10 +449,10 @@ LAB_10018784:
 
 
 /* ======================================================================
- * FUN_1001a348 - Army movement
+ * AssignToDefense - Army movement
  * Address: 0x1001a348, Size: 296 bytes
  * ====================================================================== */
-void FUN_1001a348(short param_1,short param_2)
+void AssignToDefense(short param_1,short param_2)
 {
   int bVar1;
   char cVar2;
@@ -473,7 +473,7 @@ void FUN_1001a348(short param_1,short param_2)
     iVar7 = (int)(short)((short)iVar7 + -1);
   } while (bVar1);
   local_30[0] = param_1;
-  FUN_1001e160(local_30,4,0,0x20);
+  MoveArmyToTarget(local_30,4,0,0x20);
   cVar2 = *(char *)(*piVar5 + param_1 * 0x16 + 7);
   sVar6 = (short)cVar2 / 5 + 1;
   if ('\x01' < cVar2) {
@@ -528,16 +528,16 @@ void FUN_1001ae14(short param_1)
     bVar1 = iVar4 != 0;
     iVar4 = (int)(short)((short)iVar4 + -1);
   } while (bVar1);
-  FUN_1000de24();
+  ActivateAttackEvent();
   return;
 }
 
 
 /* ======================================================================
- * FUN_1001ba60 - City strength evaluation
+ * LaunchAllianceDefense - City strength evaluation
  * Address: 0x1001ba60, Size: 400 bytes
  * ====================================================================== */
-void FUN_1001ba60(short param_1)
+void LaunchAllianceDefense(short param_1)
 {
   int bVar1;
   unsigned char bVar2;
@@ -553,13 +553,13 @@ void FUN_1001ba60(short param_1)
   piVar3 = piRam1011735c;
   ppuVar5 = DOT_TVECT;
   iVar9 = (int)param_1;
-  iVar6 = FUN_1004639c(iVar9);
+  iVar6 = CheckQuestCondition(iVar9);
   bVar1 = *(short *)(*piVar3 + *(short *)(*piVar3 + 0x110) * 2 + 0xc0) != 2;
   bVar2 = *(unsigned char *)(*piVar3 + iVar9 * 0x42 + 0x1633);
   if ((bVar2 != 0xf) && (*(short *)((unsigned int)bVar2 * 2 + *piVar3 + 0xd0) == 0)) {
     bVar1 = 1;
   }
-  iVar7 = FUN_1005f230(1,2,0xffffffffffffffff);
+  iVar7 = RandomRange(1,2,0xffffffffffffffff);
   if ((iVar7 != 0) && (899 < iVar6)) {
     bVar1 = 1;
   }
@@ -568,10 +568,10 @@ void FUN_1001ba60(short param_1)
       FUN_1001b8e0(iVar9);
     }
     else {
-      FUN_10001dd0(uVar4,ZEXT48(ppuVar5[-0x6d4]) + 0x18,*piVar3 + iVar9 * 0x42 + 0x1608);
+      DrawNumber(uVar4,ZEXT48(ppuVar5[-0x6d4]) + 0x18,*piVar3 + iVar9 * 0x42 + 0x1608);
       FUN_10030454(uVar4);
       FUN_10046edc(iVar9);
-      sVar8 = FUN_1005f230(1,10,0);
+      sVar8 = RandomRange(1,10,0);
       *(short *)(*piVar3 + *(short *)(*piVar3 + 0x110) * 2 + 0x1122) =
            *(short *)(*piVar3 + *(short *)(*piVar3 + 0x110) * 2 + 0x1122) + sVar8 + 5;
       iVar9 = *piVar3 + *(short *)(*piVar3 + 0x110) * 0x14;
@@ -583,10 +583,10 @@ void FUN_1001ba60(short param_1)
 
 
 /* ======================================================================
- * FUN_1001bbf0 - Army evaluation
+ * LaunchAllianceAttack - Army evaluation
  * Address: 0x1001bbf0, Size: 472 bytes
  * ====================================================================== */
-long long FUN_1001bbf0(short param_1,short param_2)
+long long LaunchAllianceAttack(short param_1,short param_2)
 {
   int bVar1;
   unsigned char bVar2;
@@ -605,9 +605,9 @@ long long FUN_1001bbf0(short param_1,short param_2)
   piVar3 = piRam1011735c;
   ppuVar5 = DOT_TVECT;
   iVar10 = (int)param_1;
-  iVar7 = FUN_1004639c(iVar10);
+  iVar7 = CheckQuestCondition(iVar10);
   if (param_2 == 0) {
-    FUN_1000da14(iVar10,0,(char *)abStack_28,(char *)abStack_30);
+    GetAdjacentArmies(iVar10,0,(char *)abStack_28,(char *)abStack_30);
     sVar9 = 0;
     iVar8 = 5;
     do {
@@ -626,20 +626,20 @@ long long FUN_1001bbf0(short param_1,short param_2)
   }
   if ((iVar7 < 900) && (*(short *)(*piVar3 + 0x114) != 0)) {
     iVar10 = iVar10 * 0x42;
-    FUN_10001dd0(uVar4,ZEXT48(ppuVar5[-0x6d4]) + 0x2c,*piVar3 + iVar10 + 0x1608);
+    DrawNumber(uVar4,ZEXT48(ppuVar5[-0x6d4]) + 0x2c,*piVar3 + iVar10 + 0x1608);
     FUN_10030454(uVar4);
     FUN_1004f438(*(short *)(iVar10 + *piVar3 + 0x1604),
                  *(short *)(iVar10 + *piVar3 + 0x1606),1);
-    sVar9 = FUN_1005f230(1,0xf,0);
+    sVar9 = RandomRange(1,0xf,0);
     *(short *)(*piVar3 + *(short *)(*piVar3 + 0x110) * 2 + 0x1122) =
          *(short *)(*piVar3 + *(short *)(*piVar3 + 0x110) * 2 + 0x1122) + sVar9 + 10;
-    FUN_1000fba8(*(short *)(iVar10 + *piVar3 + 0x1604),
+    RefreshMapAfterCombat(*(short *)(iVar10 + *piVar3 + 0x1604),
                  *(short *)(iVar10 + *piVar3 + 0x1606));
     uVar6 = FUN_1001f5e8(*(short *)(iVar10 + *piVar3 + 0x1604),
                          *(short *)(iVar10 + *piVar3 + 0x1606));
   }
   else {
-    FUN_1001ba60(iVar10);
+    LaunchAllianceDefense(iVar10);
     uVar6 = 0xffffffffffffffff;
   }
   return uVar6;
@@ -706,7 +706,7 @@ int FUN_1001fcc0(void)
     if ((((int)*(char *)(*piVar7 + iVar11 + 0x1619) == (int)*(short *)(*piVar7 + 0x110)) &&
         (*(unsigned char *)(*piVar9 + (int)sVar16 + 0x11e) = *(unsigned char *)(*piVar9 + (int)sVar16 + 0x11e) & 0x37,
         *(char *)(*piVar9 + (int)sVar16 + 0x56) != '\a')) &&
-       (iVar10 = FUN_1001f648((int)sVar16,local_40), iVar10 != 0)) {
+       (iVar10 = GetArmyInfo((int)sVar16,local_40), iVar10 != 0)) {
       iVar11 = iVar11 + *piVar7 + (int)local_40[0];
       cVar3 = *(char *)(iVar11 + 0x1622);
       iVar10 = (int)cVar3;
@@ -756,7 +756,7 @@ int FUN_1001fcc0(void)
       uVar19 = (unsigned long long)sVar16;
       if ((((int)*(char *)(*piVar7 + (int)(((uVar19 & 0x7ffffff) * 0x20 + uVar19 & 0xffffffff) << 1)
                           + 0x1619) == (int)*(short *)(*piVar7 + 0x110)) &&
-          (iVar11 = FUN_1000f708(uVar19,1), iVar11 != 0)) &&
+          (iVar11 = CanArmyEnterCity(uVar19,1), iVar11 != 0)) &&
          ((*(unsigned char *)((int)sVar16 + *piVar9 + 0x11e) & 2) != 0)) {
         bVar1 = 0;
         iVar11 = 3;
@@ -793,7 +793,7 @@ joined_r0x100200ac:
       uVar19 = (unsigned long long)sVar5;
       if (((int)*(char *)(*piVar7 + (int)(((uVar19 & 0x7ffffff) * 0x20 + uVar19 & 0xffffffff) << 1)
                          + 0x1619) == (int)*(short *)(*piVar7 + 0x110)) &&
-         (iVar11 = FUN_1000f708(uVar19,1), iVar11 != 0)) {
+         (iVar11 = CanArmyEnterCity(uVar19,1), iVar11 != 0)) {
         bVar4 = *(unsigned char *)(*piVar9 + (int)sVar5 + 0x11e);
         if ((bVar4 & 0x40) != 0) {
           if (sVar16 == 0) goto joined_r0x100200ac;
@@ -842,7 +842,7 @@ joined_r0x1002026c:
       uVar20 = (unsigned long long)sVar15;
       if (((int)*(char *)(*piVar7 + (int)(((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0xffffffff) << 1)
                          + 0x1619) == (int)*(short *)(*piVar7 + 0x110)) &&
-         (iVar11 = FUN_1000f708(uVar20,1), iVar11 != 0)) {
+         (iVar11 = CanArmyEnterCity(uVar20,1), iVar11 != 0)) {
         bVar4 = *(unsigned char *)(*piVar9 + (int)sVar15 + 0x11e);
         if ((bVar4 & 0x40) == 0) {
           if ((bVar4 & 0x80) != 0) {
@@ -958,7 +958,7 @@ void FUN_1002171c(void)
   piVar3 = piRam101176e0;
   if (*piRam101176e0 != 0) {
     bVar2 = 0;
-    FUN_10117884((int)*(int **)(*piRam1011734c + 0x88) +
+    ResourceRead_Dispatch((int)*(int **)(*piRam1011734c + 0x88) +
                  (int)*(short *)(**(int **)(*piRam1011734c + 0x88) + 0x228));
     if (**(short **)(local_74 + -0x154c) == 0) {
       if (*(char *)(*piVar3 + 4) == '\x1c') {
@@ -1034,10 +1034,10 @@ void FUN_10025758(short param_1,short param_2,short param_3)
   piVar3 = (pint *)piRam10115d88;
   psVar2 = psRam10115d80;
   piVar1 = (pint *)*(int *)(*piRam1011734c + 0x88);
-  FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x228));
+  ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x228));
   iVar13 = *piVar3;
   if (iVar13 == 0) {
-    iVar11 = FUN_10117884(**(int **)(local_174 + -0x1e4) +
+    iVar11 = ResourceRead_Dispatch(**(int **)(local_174 + -0x1e4) +
                           (int)*(short *)(*(int *)**(int **)(local_174 + -0x1e4) + 200),0xce4,piVar1
                          );
     *piVar3 = iVar11;
@@ -1049,7 +1049,7 @@ void FUN_10025758(short param_1,short param_2,short param_3)
        (iVar11 = *piVar8 + (int)((uVar10 & 0xffffffff) << 5),
        iVar11 = FUN_10009630(1,*(short *)(iVar11 + 0x812),*(short *)(iVar11 + 0x814)),
        iVar11 == 0)) {
-      FUN_10117884(*piVar3 + (int)*(short *)(*(int *)*piVar3 + 0x738));
+      ResourceRead_Dispatch(*piVar3 + (int)*(short *)(*(int *)*piVar3 + 0x738));
       *piVar3 = 0;
       return;
     }
@@ -1128,7 +1128,7 @@ void FUN_10025758(short param_1,short param_2,short param_3)
     if (iVar13 == 0) {
       piVar1 = (pint *)*piVar3;
       if (piVar1 != (pint *)0x0) {
-        FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x810));
+        ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x810));
       }
       local_50 = 0;
       local_4c = 0;
@@ -1144,7 +1144,7 @@ void FUN_10025758(short param_1,short param_2,short param_3)
       else {
         piVar1 = (pint *)*piVar3;
         if (piVar1 != (pint *)0x0) {
-          FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
+          ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
         }
         *piVar3 = 0;
         FUN_100db158(local_50,local_4c);
@@ -1176,12 +1176,12 @@ void FUN_1002656c(void)
   piVar2 = piRam10115dc4;
   if (*(short *)(*piRam1011735c + 0x11c) != 0) {
     if (*piRam10115dc4 == 0) {
-      iVar4 = FUN_10117884(*piRam101176bc + (int)*(short *)(*(int *)*piRam101176bc + 200),0x10cc,
+      iVar4 = ResourceRead_Dispatch(*piRam101176bc + (int)*(short *)(*(int *)*piRam101176bc + 200),0x10cc,
                            *(int *)(*piRam1011734c + 0x88));
       *piVar2 = iVar4;
-      FUN_100db26c();
+      FocusObject();
     }
-    FUN_10117884(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 800));
+    ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 800));
     FUN_10026310();
     FUN_10026568();
     local_28 = 0;
@@ -1192,15 +1192,15 @@ void FUN_1002656c(void)
     *puVar3 = (int)auStack_128;
     iVar4 = FUN_10000090(auStack_128);
     if (iVar4 == 0) {
-      FUN_10117884(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x810));
-      FUN_10117884(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x738));
+      ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x810));
+      ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x738));
       *piVar2 = 0;
       *puVar3 = local_20;
     }
     else {
       piVar1 = (pint *)*piVar2;
       if (piVar1 != (pint *)0x0) {
-        FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
+        ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
       }
       *piVar2 = 0;
       FUN_100db158(local_28,local_24);
@@ -1244,19 +1244,19 @@ void FUN_10029ac0(long long param_1,short param_2,char param_3,char param_4)
   else {
     iVar10 = FUN_10028b30(param_1,*(short *)(param_2 * 2 + iRam1011773c),1,0);
   }
-  FUN_10049e68();
-  FUN_10025f98();
+  InitArmyProduction();
+  InitPlayerData();
   if ((*psVar3 != 0) && (iVar10 != 0)) {
     FUN_1003d5d4();
-    FUN_1009142c();
+    ShowMinimapCursor();
   }
   if ((*psVar6 != 0) || (*psVar3 == 0)) {
     FUN_10091334();
   }
-  FUN_1002bdc4();
+  GetAIStateSnapshot();
   FUN_1002bbd4();
   FUN_1002bcd8();
-  FUN_10039ec8(*(short *)(*piVar8 + 0x110));
+  UpdateArmyDisplay(*(short *)(*piVar8 + 0x110));
   FUN_1002b91c();
   FUN_10044110(*(short *)(*piVar8 + 0x110),1);
   FUN_1003e13c(*psVar6,0);
@@ -1265,11 +1265,11 @@ void FUN_10029ac0(long long param_1,short param_2,char param_3,char param_4)
     FUN_1000848c(*puVar4,*puVar5);
   }
   piVar1 = (pint *)*piVar2;
-  FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x4d0));
+  ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x4d0));
   piVar2 = (pint *)*piVar2;
-  FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x4c8));
+  ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x4c8));
   if (*(short *)(*piVar8 + 0x124) == 0) {
-    FUN_10060608(1,1,0);
+    RefreshDisplay(1,1,0);
   }
   FUN_10064850(1,0);
   FUN_10064850(0,0);
@@ -1288,24 +1288,24 @@ void FUN_10029ac0(long long param_1,short param_2,char param_3,char param_4)
   }
   else if ((*(char *)(*piVar7 + 0x9a) == '\0') && (param_4 != '\0')) {
     uVar9 = FUN_1005f678(0x30,1);
-    FUN_10001dd0((int)auStack_78,uVar9,*piVar8 + *(short *)(*piVar8 + 0x110) * 0x14);
+    DrawNumber((int)auStack_78,uVar9,*piVar8 + *(short *)(*piVar8 + 0x110) * 0x14);
     FUN_1003c938(auStack_78);
-    FUN_10117884(**(int **)(local_9c + -0x1698) +
+    ResourceRead_Dispatch(**(int **)(local_9c + -0x1698) +
                  (int)*(short *)(*(int *)**(int **)(local_9c + -0x1698) + 0x4c8));
     if (*(short *)(*piVar8 + 0x124) != 0) {
       FUN_1000848c(*puVar4,*puVar5);
-      FUN_10060608(1,1,0);
+      RefreshDisplay(1,1,0);
     }
     FUN_1005cc8c();
   }
   FUN_1002c85c();
-  FUN_10092484(1);
+  SelectMusic(1);
   return;
 }
 
 
 /* ======================================================================
- * FUN_10029e84 - Game save function
+ * WriteGameState - Game save function
  * Address: 0x10029e84, Size: 2160 bytes
  * ====================================================================== */
 void FUN_10029e84(int *param_1)
@@ -1344,158 +1344,158 @@ void FUN_10029e84(int *param_1)
   *(short *)(*piRam1011735c + 0x120) = 0;
   piVar9 = (int *)FUN_100522dc((int)param_1,6,1);
   if (piVar9 != (int *)0x0) {
-    FUN_100524d4(piVar9,(int)ppuVar6[-0xa7],0x54);
-    FUN_100524d4(piVar9,*piVar5,0x2fcc);
-    FUN_100524d4(piVar9,*(int *)ppuVar6[-0x152],0x8880);
-    FUN_100524d4(piVar9,*(int *)ppuVar6[-0x150],22000);
-    FUN_100524d4(piVar9,*(int *)ppuVar6[-0x153],0x4440);
+    StreamWrite(piVar9,(int)ppuVar6[-0xa7],0x54);
+    StreamWrite(piVar9,*piVar5,0x2fcc);
+    StreamWrite(piVar9,*(int *)ppuVar6[-0x152],0x8880);
+    StreamWrite(piVar9,*(int *)ppuVar6[-0x150],22000);
+    StreamWrite(piVar9,*(int *)ppuVar6[-0x153],0x4440);
     puVar2 = (int *)*piVar10;
     if (puVar2 != (int *)0x0) {
-      FUN_10002598(puVar2);
+      DetachResource(puVar2);
       ppuVar6 = local_47c;
     }
     uVar3 = *puVar2;
     *(int *)ppuVar6[-0x6eb] = uVar3;
-    FUN_100524d4(piVar9,uVar3,0x4440);
+    StreamWrite(piVar9,uVar3,0x4440);
     iVar4 = *piVar10;
     if (iVar4 != 0) {
-      FUN_10002ad8(iVar4);
+      DisposeHandle_Thunk(iVar4);
     }
     piVar10 = (int *)FUN_100522dc(*(int *)(iVar1 + 0x15c),1,0);
-    local_238[0] = FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0xb8));
+    local_238[0] = ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0xb8));
     uVar7 = FUN_100f1640();
-    FUN_10052490(piVar10,uVar7,local_238[0]);
-    FUN_100524d4(piVar9,local_238,4);
-    FUN_100524d4(piVar9,uVar7,local_238[0]);
-    FUN_100523a8(piVar10,1);
-    FUN_100ef580(uVar7);
+    StreamRead(piVar10,uVar7,local_238[0]);
+    StreamWrite(piVar9,local_238,4);
+    StreamWrite(piVar9,uVar7,local_238[0]);
+    CloseStream(piVar10,1);
+    FreeBlock(uVar7);
     piVar10 = (int *)FUN_100522dc(*(int *)(iVar1 + 0x160),1,0);
-    local_238[0] = FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0xb8));
+    local_238[0] = ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0xb8));
     uVar7 = FUN_100f1640();
-    FUN_10052490(piVar10,uVar7,local_238[0]);
-    FUN_100524d4(piVar9,local_238,4);
-    FUN_100524d4(piVar9,uVar7,local_238[0]);
-    FUN_100523a8(piVar10,1);
-    FUN_100ef580(uVar7);
-    FUN_1001e330(piVar9);
+    StreamRead(piVar10,uVar7,local_238[0]);
+    StreamWrite(piVar9,local_238,4);
+    StreamWrite(piVar9,uVar7,local_238[0]);
+    CloseStream(piVar10,1);
+    FreeBlock(uVar7);
+    WriteCityRecords(piVar9);
     if (*(short *)(*piVar5 + 0x120) == 0) {
-      uVar7 = FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
+      uVar7 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
       local_338[0] = 0;
       local_3c8 = 0x3c;
       local_3c4 = local_338;
       local_390 = auStack_380;
-      FUN_10001bd8((unsigned long long)*(unsigned int *)local_47c[-0x3b7] + 0x32,&local_3c8);
-      FUN_100db2f4();
+      GetString((unsigned long long)*(unsigned int *)local_47c[-0x3b7] + 0x32,&local_3c8);
+      EndFocus();
       local_228[0] = 0;
       piVar10 = *(int **)(iVar1 + 0x148);
-      FUN_100db26c(piVar10);
-      FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
+      FocusObject(piVar10);
+      ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
       uVar8 = FUN_10003558(0x4e414d45,10000);
       if ((int)uVar8 != 0) {
-        FUN_10029dcc(param_1,uVar8);
-        FUN_10001758(uVar8,auStack_384,auStack_388,local_228);
+        CopyResourceToDoc(param_1,uVar8);
+        ResolveAlias(uVar8,auStack_384,auStack_388,local_228);
       }
-      FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
-      FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x178),auStack_410);
-      FUN_100006d8(auStack_380,auStack_410,&local_22c);
+      ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
+      ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x178),auStack_410);
+      MakeAlias(auStack_380,auStack_410,&local_22c);
       iVar4 = local_22c;
       if (local_22c != 0) {
         uVar8 = FUN_100b1c84(local_228);
-        FUN_10002568(iVar4,0x616c6973,1000,uVar8);
-        FUN_100db328();
-        FUN_100002a0(local_22c);
-        FUN_10002ce8(local_22c);
+        AddResource(iVar4,0x616c6973,1000,uVar8);
+        MarkChanged();
+        ReleaseResource_Thunk(local_22c);
+        DisposeHandleFull(local_22c);
       }
       piVar10 = *(int **)(iVar1 + 0x14c);
-      FUN_100db26c(piVar10);
-      FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
+      FocusObject(piVar10);
+      ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
       uVar8 = FUN_10003558(0x4e414d45,30000);
       if ((int)uVar8 == 0) {
         local_228[0] = 0;
       }
       else {
-        FUN_10029dcc(param_1,uVar8);
-        FUN_10001758(uVar8,auStack_384,auStack_388,local_228);
+        CopyResourceToDoc(param_1,uVar8);
+        ResolveAlias(uVar8,auStack_384,auStack_388,local_228);
       }
-      FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
-      FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x178),auStack_458);
-      FUN_100006d8(auStack_380,auStack_458,&local_22c);
+      ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
+      ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x178),auStack_458);
+      MakeAlias(auStack_380,auStack_458,&local_22c);
       iVar4 = local_22c;
       if (local_22c != 0) {
         uVar8 = FUN_100b1c84(local_228);
-        FUN_10002568(iVar4,0x616c6973,0x3e9,uVar8);
-        FUN_100db328();
-        FUN_100002a0(local_22c);
+        AddResource(iVar4,0x616c6973,0x3e9,uVar8);
+        MarkChanged();
+        ReleaseResource_Thunk(local_22c);
       }
       piVar10 = *(int **)(iVar1 + 0x150);
       if (piVar10 != (int *)0x0) {
-        FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
+        ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
         uVar8 = FUN_10003558(0x4e414d45,20000);
         if ((int)uVar8 == 0) {
           local_228[0] = 0;
         }
         else {
-          FUN_10029dcc(param_1,uVar8);
-          FUN_10001758(uVar8,auStack_384,auStack_388,local_228);
+          CopyResourceToDoc(param_1,uVar8);
+          ResolveAlias(uVar8,auStack_384,auStack_388,local_228);
         }
-        FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
-        FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x178));
-        FUN_100006d8(auStack_380,auStack_128,&local_22c);
+        ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
+        ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x178));
+        MakeAlias(auStack_380,auStack_128,&local_22c);
         iVar4 = local_22c;
         if (local_22c != 0) {
           uVar8 = FUN_100b1c84(local_228);
-          FUN_10002568(iVar4,0x616c6973,0x3ea,uVar8);
-          FUN_100db328();
-          FUN_100002a0(local_22c);
+          AddResource(iVar4,0x616c6973,0x3ea,uVar8);
+          MarkChanged();
+          ReleaseResource_Thunk(local_22c);
         }
       }
       piVar10 = *(int **)(iVar1 + 0x154);
       if (piVar10 != (int *)0x0) {
-        FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
+        ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
         uVar8 = FUN_10003558(0x4e414d45,25000);
         if ((int)uVar8 == 0) {
           local_228[0] = 0;
         }
         else {
-          FUN_10029dcc(param_1,uVar8);
-          FUN_10001758(uVar8,auStack_384,auStack_388,local_228);
+          CopyResourceToDoc(param_1,uVar8);
+          ResolveAlias(uVar8,auStack_384,auStack_388,local_228);
         }
-        FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
-        FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x178));
-        FUN_100006d8(auStack_380,auStack_e0,&local_22c);
+        ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
+        ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x178));
+        MakeAlias(auStack_380,auStack_e0,&local_22c);
         iVar4 = local_22c;
         if (local_22c != 0) {
           uVar8 = FUN_100b1c84(local_228);
-          FUN_10002568(iVar4,0x616c6973,0x3eb,uVar8);
-          FUN_100db328();
-          FUN_100002a0(local_22c);
+          AddResource(iVar4,0x616c6973,0x3eb,uVar8);
+          MarkChanged();
+          ReleaseResource_Thunk(local_22c);
         }
       }
       piVar10 = *(int **)(iVar1 + 0x158);
       if (piVar10 != (int *)0x0) {
-        FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
+        ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x2b8));
         uVar8 = FUN_10003558(0x4e414d45,15000);
         if ((int)uVar8 == 0) {
           local_228[0] = 0;
         }
         else {
-          FUN_10029dcc(param_1,uVar8);
-          FUN_10001758(uVar8,auStack_384,auStack_388,local_228);
+          CopyResourceToDoc(param_1,uVar8);
+          ResolveAlias(uVar8,auStack_384,auStack_388,local_228);
         }
-        FUN_10117884((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
-        FUN_10117884((int)piVar10 + (int)*(short *)(*piVar10 + 0x178));
-        FUN_100006d8(auStack_380,auStack_98,&local_22c);
+        ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2b8));
+        ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0x178));
+        MakeAlias(auStack_380,auStack_98,&local_22c);
         iVar1 = local_22c;
         if (local_22c != 0) {
           uVar8 = FUN_100b1c84(local_228);
-          FUN_10002568(iVar1,0x616c6973,0x3ec,uVar8);
-          FUN_100db328();
-          FUN_100002a0(local_22c);
+          AddResource(iVar1,0x616c6973,0x3ec,uVar8);
+          MarkChanged();
+          ReleaseResource_Thunk(local_22c);
         }
       }
-      FUN_10000318(uVar7);
+      DisposeGeneric(uVar7);
     }
-    FUN_10117884((int)piVar9 + (int)*(short *)(*piVar9 + 0x90));
+    ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0x90));
   }
   return;
 }
@@ -1529,19 +1529,19 @@ void FUN_1002b4e0(void)
     *(int *)piRam10117370 = (int)auStack_12c;
     iVar3 = FUN_10000090(auStack_12c);
     if (iVar3 == 0) {
-      piVar4 = (int *)FUN_10117884(**(int **)(local_154 + -0x1e4) +
+      piVar4 = (int *)ResourceRead_Dispatch(**(int **)(local_154 + -0x1e4) +
                                    (int)*(short *)(*(int *)**(int **)(local_154 + -0x1e4) + 200),
                                    0xd5c,*(int *)(**(int **)(local_154 + -0x554) + 0x88));
-      FUN_100db26c();
-      FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 800));
-      uVar2 = FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 0x810));
-      FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 0x328));
+      FocusObject();
+      ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 800));
+      uVar2 = ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x810));
+      ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x328));
       if ((uVar2 & 0xffffffff) != 0x706c6179) {
         FUN_1002b230((0x6772 - ((0x756e6772 < uVar2) + 0x6772)) +
                      (unsigned short)(0x756e6771 < uVar2 &&
                              (unsigned long long)(0x756e6772 < uVar2) <= uVar2 - 0x756e6772));
       }
-      FUN_10117884((int)piVar4 + (int)*(short *)(*piVar4 + 0x90));
+      ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x90));
       *puVar1 = local_24;
     }
     else {
@@ -1651,10 +1651,10 @@ void FUN_1002b91c(void)
 
 
 /* ======================================================================
- * FUN_1002be50 - Find city at coords
+ * LookupCityAtPos - Find city at coords
  * Address: 0x1002be50, Size: 164 bytes
  * ====================================================================== */
-unsigned long long FUN_1002be50(short param_1,short param_2)
+unsigned long long LookupCityAtPos(short param_1,short param_2)
 {
   short sVar1;
   int iVar2;
@@ -1707,7 +1707,7 @@ void FUN_1002e5c0(int param_1,short param_2,short param_3)
   if (0 < *psVar2) {
     if (*(char *)(*piVar1 + (*(unsigned int *)(*(int *)ppuVar4[-0x152] + param_3 * 0xe0 + param_2 * 2) >>
                             0x18) + 0x711) == '\x02') {
-      FUN_10092be0();
+      PlayNotificationSound();
       uVar7 = 0;
     }
   }
@@ -1785,10 +1785,10 @@ void FUN_1002f97c(short param_1,short param_2,short param_3,short param_4)
         uVar9 = (unsigned long long)*(char *)(*piVar1 + 10);
         lVar10 = (unsigned long long)*puVar4 + ((uVar9 & 0x3fffffff) * 4 + uVar9 & 0x3fffffff) * 4 + 0x224;
       }
-      FUN_10001e78((int)ppuVar5[-0xe8],lVar10);
+      BlockMoveData_Thunk((int)ppuVar5[-0xe8],lVar10);
       iVar6 = local_4c;
-      uVar9 = FUN_1002be50(iVar11,iVar12);
-      FUN_10001e78(*(int *)(iVar6 + -0x39c),
+      uVar9 = LookupCityAtPos(iVar11,iVar12);
+      BlockMoveData_Thunk(*(int *)(iVar6 + -0x39c),
                    (unsigned long long)*puVar4 + ((uVar9 & 0x7ffffff) * 0x20 + uVar9 & 0x7fffffff) * 2 +
                    0x1608);
       if (*piVar1 == 0) {
@@ -1797,7 +1797,7 @@ void FUN_1002f97c(short param_1,short param_2,short param_3,short param_4)
       }
       else {
         uVar7 = FUN_1005f678(0x8f,0);
-        FUN_10001dd0(uVar8,uVar7,
+        DrawNumber(uVar8,uVar7,
                      (unsigned long long)*puVar4 +
                      (((long long)*(char *)(*piVar1 + 10) & 0x3fffffffU) * 4 +
                       (long long)*(char *)(*piVar1 + 10) & 0x3fffffff) * 4 + 0x224);
@@ -1810,7 +1810,7 @@ void FUN_1002f97c(short param_1,short param_2,short param_3,short param_4)
     }
     else {
       uVar7 = FUN_1005f678(0x91,0);
-      FUN_10001dd0(uVar8,uVar7,
+      DrawNumber(uVar8,uVar7,
                    (unsigned long long)*puVar4 +
                    (((long long)*(char *)(*piVar1 + 10) & 0x3fffffffU) * 4 +
                     (long long)*(char *)(*piVar1 + 10) & 0x3fffffff) * 4 + 0x224);
@@ -1825,34 +1825,34 @@ void FUN_1002f97c(short param_1,short param_2,short param_3,short param_4)
   }
   uVar9 = FUN_1002e7d4(param_1,iVar11,iVar12);
   piVar1 = (pint *)*piVar2;
-  FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x4d0));
+  ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x4d0));
   FUN_10031fc4();
   piVar2 = (pint *)*piVar2;
-  FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x4d0));
-  FUN_10117884(**(int **)(local_4c + -0x1698) +
+  ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x4d0));
+  ResourceRead_Dispatch(**(int **)(local_4c + -0x1698) +
                (int)*(short *)(*(int *)**(int **)(local_4c + -0x1698) + 0x4c8));
-  FUN_10117884(**(int **)(local_4c + -0x1504) +
+  ResourceRead_Dispatch(**(int **)(local_4c + -0x1504) +
                (int)*(short *)(*(int *)**(int **)(local_4c + -0x1504) + 0x4c8));
-  FUN_10117884(**(int **)(local_4c + -0x16a0) +
+  ResourceRead_Dispatch(**(int **)(local_4c + -0x16a0) +
                (int)*(short *)(*(int *)**(int **)(local_4c + -0x16a0) + 0x4c8));
-  FUN_10117884(**(int **)(local_4c + -0x18fc) +
+  ResourceRead_Dispatch(**(int **)(local_4c + -0x18fc) +
                (int)*(short *)(*(int *)**(int **)(local_4c + -0x18fc) + 0x4c8));
-  FUN_10060608(1,1,0);
+  RefreshDisplay(1,1,0);
   if (param_1 == 1) {
     iVar6 = **(int **)(local_4c + -0x548) + iVar12 * 0xe0;
     *(unsigned int *)(iVar6 + iVar11 * 2) = *(unsigned int *)(iVar6 + iVar11 * 2) | 0x100000;
     uVar8 = FUN_1002122c(iVar11,iVar12,auStack_28);
     **(int **)(local_4c + -0x1c0) = uVar8;
-    FUN_10055c64();
+    PrepareDefender();
   }
   FUN_1002f194(param_1);
   FUN_1003f674(1,1,1);
   piVar2 = *(pint **)(*piVar3 + 0x88);
-  FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x38),0,0);
+  ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x38),0,0);
   iVar11 = *(int *)(*piVar3 + 0x88);
   *(char *)(iVar11 + 0x1e8) =
        ('!' - ((0x21 < uVar9) + '!')) + (0x20 < uVar9 && (unsigned long long)(0x21 < uVar9) <= uVar9 - 0x21);
-  FUN_1007c714(iVar11,0x3f7);
+  DispatchNextPhase(iVar11,0x3f7);
   return;
 }
 
@@ -1872,7 +1872,7 @@ void FUN_1002fd74(char param_1)
       iVar2 = 0;
     }
     else {
-      iVar2 = FUN_1004e384(0,0,0,0);
+      iVar2 = ProcessQuestEvent(0,0,0,0);
     }
     if (iVar2 == 0) {
       FUN_1005cc8c();
@@ -1882,9 +1882,9 @@ void FUN_1002fd74(char param_1)
   else {
     if (*(short *)(*piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 0xc + 0x1142) != 0) {
       ppuVar1 = DOT_TVECT;
-      FUN_1004e384(0,0,0,0);
+      ProcessQuestEvent(0,0,0,0);
     }
-    FUN_1007c714(*(int *)(*(int *)ppuVar1[-0x155] + 0x88),0x3f4);
+    DispatchNextPhase(*(int *)(*(int *)ppuVar1[-0x155] + 0x88),0x3f4);
   }
   return;
 }
@@ -1900,7 +1900,7 @@ void FUN_1002fe68(void)
   long long uVar2;
 
   ppuVar1 = (char **)DOT_TVECT;
-  uVar2 = FUN_1002be50(*puRam101174f4,*puRam101174f8);
+  uVar2 = LookupCityAtPos(*puRam101174f4,*puRam101174f8);
   FUN_100472f4((int)ppuVar1[-0xe8],(int)ppuVar1[-0xe7],(int)*ppuVar1[-0x4c],uVar2);
   return;
 }
@@ -2000,10 +2000,10 @@ void FUN_100351ec(void)
 
   piVar5 = piRam10117360;
   piVar4 = piRam1011735c;
-  piVar7 = (int *)FUN_10117884(*piRam101176bc + (int)*(short *)(*(int *)*piRam101176bc + 200),0xfaa,
+  piVar7 = (int *)ResourceRead_Dispatch(*piRam101176bc + (int)*(short *)(*(int *)*piRam101176bc + 200),0xfaa,
                                *(int *)(*piRam1011734c + 0x88));
   iVar8 = local_89c;
-  FUN_100db26c();
+  FocusObject();
   local_5c = 0;
   local_50 = 0;
   local_4c = 0;
@@ -2031,47 +2031,47 @@ void FUN_100351ec(void)
                 else {
                   sVar10 = 1;
                 }
-                uVar6 = FUN_10117884((int)piVar7 + (int)*(short *)(*piVar7 + 0x308),
+                uVar6 = ResourceRead_Dispatch((int)piVar7 + (int)*(short *)(*piVar7 + 0x308),
                                      lVar13 + 0x61726d30);
                 iVar8 = local_89c;
                 if ((int)uVar6 != 0) {
                   FUN_10079ee8(uVar6,0x1c,*(short *)(*piVar4 + 0x110),1);
                   FUN_1007a018(uVar6,sVar10,0,0,1);
                 }
-                FUN_100b19f4(auStack_278,*piVar4 + cVar2 * 0x14 + 0x224);
+                BuildPascalString(auStack_278,*piVar4 + cVar2 * 0x14 + 0x224);
                 FUN_10090e0c(piVar7,lVar13 + 0x6e616d30,auStack_278,1);
                 if (*(short *)(*piVar4 + cVar2 * 2 + 0x594) == 0) {
                   uVar6 = FUN_1005f678(100,(unsigned char)((unsigned int)*(int *)
                                                          (*piVar4 + (int)cVar2 + 0x5e4) >> 0x18) & 3
                                       );
-                  FUN_100b19f4(auStack_478,(int)uVar6);
+                  BuildPascalString(auStack_478,(int)uVar6);
                   FUN_10090e0c(piVar7,lVar13 + 0x6c657630,auStack_478,1);
                 }
                 else {
                   uVar6 = FUN_1005f678(0x65,(unsigned char)((unsigned int)*(int *)
                                                           (*piVar4 + (int)cVar2 + 0x5e4) >> 0x18) &
                                             3);
-                  FUN_100b19f4(auStack_378,(int)uVar6);
+                  BuildPascalString(auStack_378,(int)uVar6);
                   FUN_10090e0c(piVar7,lVar13 + 0x6c657630,auStack_378,1);
                 }
-                FUN_10001dd0((int)auStack_174,(unsigned long long)*(unsigned int *)(iVar8 + -0x1a7c) + 0x14,
+                DrawNumber((int)auStack_174,(unsigned long long)*(unsigned int *)(iVar8 + -0x1a7c) + 0x14,
                              *(unsigned int *)(*piVar4 + (int)cVar2 + 0x5e4) >> 0x1a);
                 iVar8 = local_89c;
-                FUN_100b19f4(auStack_578,(int)auStack_174);
+                BuildPascalString(auStack_578,(int)auStack_174);
                 FUN_10090e0c(piVar7,lVar13 + 0x65787030,auStack_578,1);
                 if ((*(unsigned int *)((int)cVar2 + *piVar4 + 0x5e4) >> 0x18 & 3) < 4) {
                   return;
                 }
-                FUN_100b19f4(auStack_678,(int)auStack_174);
+                BuildPascalString(auStack_678,(int)auStack_174);
                 FUN_10090e0c(piVar7,lVar13 + 0x6e656530,auStack_678,1);
                 uVar3 = *(unsigned int *)(iVar8 + -0x1a7c);
-                FUN_10001dd0((int)auStack_174,(unsigned long long)uVar3 + 0x28,
+                DrawNumber((int)auStack_174,(unsigned long long)uVar3 + 0x28,
                              *(char *)(*piVar5 + iVar12 * 0x16 + 8));
-                FUN_100b19f4(auStack_778,(int)auStack_174);
+                BuildPascalString(auStack_778,(int)auStack_174);
                 FUN_10090e0c(piVar7,lVar13 + 0x73747230,auStack_778,1);
-                FUN_10001dd0((int)auStack_174,(unsigned long long)uVar3 + 0x2c,
+                DrawNumber((int)auStack_174,(unsigned long long)uVar3 + 0x2c,
                              *(char *)(iVar12 * 0x16 + *piVar5 + 6));
-                FUN_100b19f4(auStack_878,(int)auStack_174);
+                BuildPascalString(auStack_878,(int)auStack_174);
                 FUN_10090e0c(piVar7,lVar13 + 0x6d6f7630,auStack_878,1);
                 lVar13 = (long long)(short)((short)lVar13 + 1);
               }
@@ -2084,7 +2084,7 @@ void FUN_100351ec(void)
     } while (bVar1);
     if ((int)lVar13 < 6) {
       do {
-        uVar6 = FUN_10117884((int)piVar7 + (int)*(short *)(*piVar7 + 0x308),lVar13 + 0x61726d30);
+        uVar6 = ResourceRead_Dispatch((int)piVar7 + (int)*(short *)(*piVar7 + 0x308),lVar13 + 0x61726d30);
         if ((int)uVar6 != 0) {
           FUN_10079ee8(uVar6,0xffffffffffffffff,*(short *)(*piVar4 + 0x110),1);
           FUN_1007a018(uVar6,1,0,0,1);
@@ -2093,13 +2093,13 @@ void FUN_100351ec(void)
         lVar13 = (long long)sVar9;
       } while (sVar9 < 6);
     }
-    FUN_10117884((int)piVar7 + (int)*(short *)(*piVar7 + 0x810));
-    FUN_10117884((int)piVar7 + (int)*(short *)(*piVar7 + 0x738));
+    ResourceRead_Dispatch((int)piVar7 + (int)*(short *)(*piVar7 + 0x810));
+    ResourceRead_Dispatch((int)piVar7 + (int)*(short *)(*piVar7 + 0x738));
     **(int **)(local_89c + -0x530) = local_54;
   }
   else {
     if (piVar7 != (int *)0x0) {
-      FUN_10117884((int)piVar7 + (int)*(short *)(*piVar7 + 0x738));
+      ResourceRead_Dispatch((int)piVar7 + (int)*(short *)(*piVar7 + 0x738));
     }
     FUN_100db158(local_5c,local_58);
   }
@@ -2175,9 +2175,9 @@ void FUN_10037fe4(short param_1)
         FUN_10037cdc();
         piVar1 = (pint *)*piVar2;
         if (piVar1 != (pint *)0x0) {
-          FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x810));
+          ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x810));
           FUN_10037fc4();
-          FUN_10117884(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x738));
+          ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x738));
           *piVar2 = 0;
         }
         *puVar3 = local_28;
@@ -2185,7 +2185,7 @@ void FUN_10037fe4(short param_1)
       else {
         piVar1 = (pint *)*piVar2;
         if (piVar1 != (pint *)0x0) {
-          FUN_10117884((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
+          ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
         }
         *piVar2 = 0;
         FUN_100db158(local_30,local_2c);
@@ -2213,9 +2213,9 @@ void FUN_1003a5fc(void)
   int local_1c;
 
   puVar1 = (int *)piRam10117370;
-  piVar2 = (int *)FUN_10117884(*piRam101176bc + (int)*(short *)(*(int *)*piRam101176bc + 200),0xe1a,
+  piVar2 = (int *)ResourceRead_Dispatch(*piRam101176bc + (int)*(short *)(*(int *)*piRam101176bc + 200),0xe1a,
                                *(int *)(*piRam1011734c + 0x88));
-  FUN_100db26c();
+  FocusObject();
   local_2c = 0;
   local_28 = 0;
   local_20 = 0;
@@ -2226,14 +2226,14 @@ void FUN_1003a5fc(void)
   if (iVar3 == 0) {
     FUN_1003a230(piVar2);
     FUN_1003a5f8();
-    FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 800));
-    FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x810));
-    FUN_10117884((int)piVar2 + (int)*(short *)(*piVar2 + 0x738));
+    ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 800));
+    ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x810));
+    ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x738));
     *puVar1 = local_24;
   }
   else {
     if (piVar2 != (int *)0x0) {
-      FUN_10117884((int)*(short *)(*piVar2 + 0x738) + (int)piVar2);
+      ResourceRead_Dispatch((int)*(short *)(*piVar2 + 0x738) + (int)piVar2);
     }
     FUN_100db158(local_2c,local_28);
   }
@@ -2251,9 +2251,9 @@ void FUN_1003dc28(void)
 
   piVar1 = piRam10116200;
   if (*piRam10116200 != 0) {
-    FUN_10117884(*piRam10116200 + (int)*(short *)(*(int *)*piRam10116200 + 0x308),0x6c62616b);
+    ResourceRead_Dispatch(*piRam10116200 + (int)*(short *)(*(int *)*piRam10116200 + 0x308),0x6c62616b);
     FUN_1003d734();
-    FUN_10117884(*piVar1 + (int)*(short *)(*(int *)*piVar1 + 0x308),0x7362616b);
+    ResourceRead_Dispatch(*piVar1 + (int)*(short *)(*(int *)*piVar1 + 0x308),0x7362616b);
     FUN_1003d734();
   }
   return;
@@ -2275,7 +2275,7 @@ void FUN_1003fe04(void)
 
 
 /* ======================================================================
- * FUN_1002a864 - Game load function
+ * WriteGameStateCrossFormat - Game load function
  * Address: 0x1002a864, Size: 2508 bytes
  * ====================================================================== */
 void FUN_1002a864(long long param_1)
@@ -2312,87 +2312,87 @@ void FUN_1002a864(long long param_1)
   *(short *)(*piRam1011735c + 0x120) = 0;
   piVar8 = (int *)FUN_100522dc(param_1,6,0);
   if (piVar8 != (int *)0x0) {
-    FUN_10117884((int)*(short *)(*piVar8 + 0x170) + (int)piVar8,iVar17,0x3a);
+    ResourceRead_Dispatch((int)*(short *)(*piVar8 + 0x170) + (int)piVar8,iVar17,0x3a);
     iVar1 = *piVar8;
-    uVar6 = FUN_100525a0(*(short *)(iVar17 + 0x3a));
-    FUN_10117884((int)*(short *)(iVar1 + 400) + (int)piVar8,uVar6);
-    FUN_10117884((int)*(short *)(*piVar8 + 0x170) + (int)piVar8,iVar17 + 0x3c,0x10);
+    uVar6 = ByteSwap16(*(short *)(iVar17 + 0x3a));
+    ResourceRead_Dispatch((int)*(short *)(iVar1 + 400) + (int)piVar8,uVar6);
+    ResourceRead_Dispatch((int)*(short *)(*piVar8 + 0x170) + (int)piVar8,iVar17 + 0x3c,0x10);
     puVar18 = (short *)(iVar17 + 0x4c);
     sVar13 = 0;
     do {
       iVar17 = *piVar8;
-      uVar6 = FUN_100525a0(*puVar18);
+      uVar6 = ByteSwap16(*puVar18);
       puVar18 = puVar18 + 1;
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
       sVar13 = sVar13 + 1;
     } while (sVar13 < 4);
     iVar17 = local_dc;
-    FUN_10058c64(piVar8,*piVar4);
-    FUN_100524d4(piVar8,**(int **)(iVar17 + -0x548),0x8880);
+    WriteSCNResource(piVar8,*piVar4);
+    StreamWrite(piVar8,**(int **)(iVar17 + -0x548),0x8880);
     iVar17 = 0;
     do {
       iVar16 = *piVar5 + iVar17 * 0x16;
       iVar1 = *piVar8;
-      uVar6 = FUN_100525a0(*(short *)(*piVar5 + iVar17 * 0x16));
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+      uVar6 = ByteSwap16(*(short *)(*piVar5 + iVar17 * 0x16));
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
       iVar1 = *piVar8;
-      uVar6 = FUN_100525a0(*(short *)(iVar16 + 2));
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
-      FUN_10117884((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),iVar16 + 4,8);
+      uVar6 = ByteSwap16(*(short *)(iVar16 + 2));
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),iVar16 + 4,8);
       iVar1 = *piVar8;
-      uVar6 = FUN_100525a0(*(short *)(iVar16 + 0xc));
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+      uVar6 = ByteSwap16(*(short *)(iVar16 + 0xc));
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
       local_4c = (unsigned short)(*(unsigned int *)(iVar16 + 0xc) >> 0xc) & 0xf |
                  (unsigned short)(((*(unsigned int *)(iVar16 + 0xc) >> 9 & 7) << 0x14) >> 0x10) |
                  (unsigned short)(((*(unsigned int *)(iVar16 + 0xc) >> 7 & 3) << 0x17) >> 0x10) |
                  (unsigned short)((unsigned int)(*(int *)(iVar16 + 0xc) << 0x19) >> 0x10);
       iVar1 = *piVar8;
-      uVar6 = FUN_100525a0(local_4c);
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
-      FUN_10117884((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),iVar16 + 0x10,2);
+      uVar6 = ByteSwap16(local_4c);
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),iVar16 + 0x10,2);
       iVar1 = *piVar8;
-      uVar6 = FUN_100525a0(*(short *)(iVar16 + 0x12));
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+      uVar6 = ByteSwap16(*(short *)(iVar16 + 0x12));
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
       iVar1 = *piVar8;
-      uVar6 = FUN_100525a0(*(short *)(iVar16 + 0x14));
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+      uVar6 = ByteSwap16(*(short *)(iVar16 + 0x14));
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
       sVar13 = (short)iVar17 + 1;
       iVar17 = (int)sVar13;
     } while (sVar13 < 1000);
     iVar17 = local_dc;
-    FUN_100524d4(piVar8,**(int **)(local_dc + -0x54c),0x4440);
+    StreamWrite(piVar8,**(int **)(local_dc + -0x54c),0x4440);
     puVar2 = (int *)*piVar9;
     if (puVar2 != (int *)0x0) {
-      FUN_10002598(puVar2);
+      DetachResource(puVar2);
       iVar17 = local_dc;
     }
     uVar3 = *puVar2;
     **(int **)(iVar17 + -0x1bac) = uVar3;
-    FUN_100524d4(piVar8,uVar3,0x4440);
+    StreamWrite(piVar8,uVar3,0x4440);
     iVar1 = *piVar9;
     if (iVar1 != 0) {
-      FUN_10002ad8(iVar1);
+      DisposeHandle_Thunk(iVar1);
       iVar17 = local_dc;
     }
     iVar17 = *(int *)(**(int **)(iVar17 + -0x554) + 0x88);
     piVar9 = (int *)FUN_100522dc(*(int *)(iVar17 + 0x15c),1,0);
-    local_50 = FUN_10117884((int)piVar9 + (int)*(short *)(*piVar9 + 0xb8));
+    local_50 = ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0xb8));
     uVar6 = FUN_100f1640();
-    FUN_10052490(piVar9,uVar6,local_50);
+    StreamRead(piVar9,uVar6,local_50);
     iVar1 = *piVar8;
-    uVar7 = FUN_100525cc(local_50);
-    FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 0x198),uVar7);
-    FUN_100524d4(piVar8,uVar6,local_50);
-    FUN_100523a8(piVar9,1);
-    FUN_100ef580(uVar6);
+    uVar7 = ByteSwap32(local_50);
+    ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 0x198),uVar7);
+    StreamWrite(piVar8,uVar6,local_50);
+    CloseStream(piVar9,1);
+    FreeBlock(uVar6);
     piVar9 = (int *)FUN_100522dc(*(int *)(iVar17 + 0x160),1,0);
-    FUN_10052490(piVar9,&local_50,4);
+    StreamRead(piVar9,&local_50,4);
     iVar17 = *piVar8;
-    uVar6 = FUN_100525cc(local_50);
-    FUN_10117884((int)piVar8 + (int)*(short *)(iVar17 + 0x198),uVar6);
+    uVar6 = ByteSwap32(local_50);
+    ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar17 + 0x198),uVar6);
     iVar17 = *piVar8;
-    uVar6 = FUN_100525cc(local_50);
-    FUN_10117884((int)piVar8 + (int)*(short *)(iVar17 + 0x198),uVar6);
+    uVar6 = ByteSwap32(local_50);
+    ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar17 + 0x198),uVar6);
     local_34 = *(short *)(*piVar4 + 0x136);
     iVar17 = (int)local_34;
     if (local_34 < 2) {
@@ -2405,17 +2405,17 @@ void FUN_1002a864(long long param_1)
     if (0 < iVar17 + -1) {
       do {
         iVar1 = *piVar8;
-        FUN_10117884((int)piVar9 + (int)*(short *)(*piVar9 + 0x100));
-        uVar6 = FUN_100525a0();
-        FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+        ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0x100));
+        uVar6 = ByteSwap16();
+        ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
         sVar14 = 0;
         do {
           iVar1 = *piVar8;
           iVar16 = *piVar9;
-          FUN_10117884((int)piVar9 + (int)*(short *)(iVar16 + 0x100),iVar16,
+          ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(iVar16 + 0x100),iVar16,
                        *(int *)(iVar16 + 0x104));
-          uVar6 = FUN_100525a0();
-          FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
+          uVar6 = ByteSwap16();
+          ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar6);
           sVar14 = sVar14 + 1;
         } while (sVar14 < 0x18);
         sVar14 = *(short *)(*piVar4 + 0x1602);
@@ -2425,48 +2425,48 @@ void FUN_1002a864(long long param_1)
            ((int)uVar15 >> 1) + (unsigned int)((int)uVar15 < 0 && (uVar15 & 1) != 0))) {
           sVar14 = sVar14 + 1;
         }
-        FUN_10117884((int)piVar9 + (int)*(short *)(*piVar9 + 0xe0),auStack_b8,sVar14);
-        FUN_10117884((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),auStack_b8,sVar14);
-        uVar6 = FUN_10117884((int)piVar9 + (int)*(short *)(*piVar9 + 0x100));
+        ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0xe0),auStack_b8,sVar14);
+        ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),auStack_b8,sVar14);
+        uVar6 = ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0x100));
         iVar1 = *piVar8;
-        uVar7 = FUN_100525a0(uVar6);
-        FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar7);
+        uVar7 = ByteSwap16(uVar6);
+        ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar7);
         sVar14 = 0;
         if (0 < (int)uVar6) {
           do {
             iVar1 = *piVar8;
             iVar16 = *piVar9;
-            FUN_10117884((int)piVar9 + (int)*(short *)(iVar16 + 0xe8),iVar16,
+            ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(iVar16 + 0xe8),iVar16,
                          *(int *)(iVar16 + 0xec));
-            uVar12 = FUN_100525a0();
-            FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 0x178),uVar12);
+            uVar12 = ByteSwap16();
+            ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 0x178),uVar12);
             iVar1 = *piVar8;
             iVar16 = *piVar9;
-            FUN_10117884((int)piVar9 + (int)*(short *)(iVar16 + 0xe8),iVar16,
+            ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(iVar16 + 0xe8),iVar16,
                          *(int *)(iVar16 + 0xec));
-            uVar12 = FUN_100525a0();
-            FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 0x178),uVar12);
+            uVar12 = ByteSwap16();
+            ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 0x178),uVar12);
             iVar1 = *piVar8;
             iVar16 = *piVar9;
-            FUN_10117884((int)piVar9 + (int)*(short *)(iVar16 + 0x100),iVar16,
+            ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(iVar16 + 0x100),iVar16,
                          *(int *)(iVar16 + 0x104));
-            uVar7 = FUN_100525a0();
-            FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar7);
+            uVar7 = ByteSwap16();
+            ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar7);
             iVar1 = *piVar8;
             iVar16 = *piVar9;
-            FUN_10117884((int)piVar9 + (int)*(short *)(iVar16 + 0x100),iVar16,
+            ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(iVar16 + 0x100),iVar16,
                          *(int *)(iVar16 + 0x104));
-            uVar7 = FUN_100525a0();
-            FUN_10117884((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar7);
-            FUN_10117884((int)piVar9 + (int)*(short *)(*piVar9 + 0xe0),auStack_44,0x10);
-            FUN_10117884((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),auStack_44,0x10);
+            uVar7 = ByteSwap16();
+            ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar1 + 400),uVar7);
+            ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0xe0),auStack_44,0x10);
+            ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),auStack_44,0x10);
             sVar14 = sVar14 + 1;
           } while ((int)sVar14 < (int)uVar6);
         }
         sVar13 = sVar13 + 1;
       } while ((int)sVar13 <= iVar17 + -1);
     }
-    FUN_100523a8(piVar9,1);
+    CloseStream(piVar9,1);
     sVar13 = 0;
     do {
       puVar10 = (short *)FUN_1000d910(sVar13);
@@ -2474,43 +2474,43 @@ void FUN_1002a864(long long param_1)
       puVar18 = puVar10;
       do {
         iVar17 = *piVar8;
-        uVar6 = FUN_100525a0(*puVar18);
+        uVar6 = ByteSwap16(*puVar18);
         puVar18 = puVar18 + 1;
-        FUN_10117884((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
+        ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
         sVar14 = sVar14 + 1;
       } while (sVar14 < 0x2b);
-      FUN_10117884((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),puVar10 + 0x2b,500);
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(*piVar8 + 0x170),puVar10 + 0x2b,500);
       iVar17 = *piVar8;
-      uVar6 = FUN_100525a0(puVar10[0x125]);
-      FUN_10117884((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
+      uVar6 = ByteSwap16(puVar10[0x125]);
+      ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
       puVar18 = puVar10 + 0x126;
       uVar11 = 0;
       do {
         iVar17 = *piVar8;
-        uVar6 = FUN_100525a0(*puVar18);
+        uVar6 = ByteSwap16(*puVar18);
         puVar18 = puVar18 + 1;
-        FUN_10117884((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
+        ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
         uVar11 = uVar11 + 1;
       } while (uVar11 < 0xb8);
       puVar10 = puVar10 + 0x1de;
       uVar11 = 0;
       do {
         iVar17 = *piVar8;
-        uVar6 = FUN_100525a0(*puVar10);
+        uVar6 = ByteSwap16(*puVar10);
         puVar10 = puVar10 + 1;
-        FUN_10117884((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
+        ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(iVar17 + 400),uVar6);
         uVar11 = uVar11 + 1;
       } while (uVar11 < 0x38);
       iVar17 = local_dc;
-      FUN_1000d9ac(sVar13);
+      ReleaseCityData(sVar13);
       sVar13 = sVar13 + 1;
     } while (sVar13 < 8);
-    FUN_1000c7b4();
-    FUN_100524d4(piVar8,**(int **)(iVar17 + -0x430),0x4b0);
+    FlushCityCache();
+    StreamWrite(piVar8,**(int **)(iVar17 + -0x430),0x4b0);
     if ((**(short **)(iVar17 + -0x1a74) == 0) && (**(int **)(iVar17 + -0x3fc) != 0)) {
-      FUN_10002ad8(**(int **)(iVar17 + -0x3fc));
+      DisposeHandle_Thunk(**(int **)(iVar17 + -0x3fc));
     }
-    FUN_100523a8(piVar8,1);
+    CloseStream(piVar8,1);
   }
   return;
 }

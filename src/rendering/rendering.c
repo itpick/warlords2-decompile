@@ -56,31 +56,31 @@ extern int          gScreenSentinel;       /* _FUN_10116698 */
  * ========================================================================= */
 
 /* QuickDraw */
-extern void  CopyBits_Thunk(int src, int dst, void *srcR, void *dstR, short mode, int rgn); /* FUN_100008d0 */
-extern void  CopyMask_Thunk(int src, int mask, int dst, void *srcR, void *maskR, void *dstR); /* FUN_100012f0 */
-extern void  MoveTo_Thunk(short h, short v);          /* FUN_10000270 */
-extern void  LineTo_Thunk(short dh, short dv);        /* FUN_10000288 */
-extern void  PaintRect_Thunk(Rect *r);                /* FUN_10002148 */
-extern void  RGBForeColor_Thunk(RGBColor *color);     /* FUN_100b2268 */
-extern void  SetForeColor_Thunk(void);                /* FUN_100021c0 */
+extern void  CopyBits_Thunk(int src, int dst, void *srcR, void *dstR, short mode, int rgn); /* CopyBits_Thunk */
+extern void  CopyMask_Thunk(int src, int mask, int dst, void *srcR, void *maskR, void *dstR); /* CopyMask_Thunk */
+extern void  MoveTo_Thunk(short h, short v);          /* MoveTo_Thunk */
+extern void  LineTo_Thunk(short dh, short dv);        /* LineTo_Thunk */
+extern void  PaintRect_Thunk(Rect *r);                /* PaintRect_Thunk */
+extern void  RGBForeColor_Thunk(RGBColor *color);     /* RGBForeColor_Thunk */
+extern void  SetForeColor_Thunk(void);                /* SetForeColor_Thunk */
 extern void  DrawPicture_Thunk(void);
-extern void  SetMacRect(Rect *r, short t, short l, short b, short ri);  /* FUN_10003108 */
+extern void  SetMacRect(Rect *r, short t, short l, short b, short ri);  /* SetMacRect */
 
 /* GWorld */
-extern void  GetGWorld_Wrapper(int *port, int *gdh);  /* FUN_10000870 */
-extern void  SetGWorld_Wrapper(int port, int gdh);    /* FUN_10000888 */
-extern int   LockPixels_Wrapper(int pixMap);           /* FUN_10009a98 */
-extern void  UnlockPixels_Wrapper(int pixMap);         /* FUN_10009b00 */
+extern void  GetGWorld_Wrapper(int *port, int *gdh);  /* GetGWorld_Wrapper */
+extern void  SetGWorld_Wrapper(int port, int gdh);    /* SetGWorld_Wrapper */
+extern int   LockPixels_Wrapper(int pixMap);           /* LockPixels_Wrapper */
+extern void  UnlockPixels_Wrapper(int pixMap);         /* UnlockPixels_Wrapper */
 
 /* Memory / Handles */
-extern int   HLock_Thunk(int h);                       /* FUN_10001290 */
-extern void  HUnlock_Thunk(int h);                     /* FUN_10003468 */
+extern int   HLock_Thunk_Sound(int h);                       /* HLock_Thunk_Sound */
+extern void  HUnlock_Thunk(int h);                     /* HUnlock_Thunk */
 extern int   NewGWorld_Wrapper(int *gw, int depth, Rect *r, int cTable,
-                               int aGDevice, unsigned long flags);  /* FUN_10003198 */
+                               int aGDevice, unsigned long flags);  /* NewGWorld_Wrapper */
 
 /* Misc */
-extern void  SetRect4(void *r, short x, short y, short w, short h);  /* FUN_100226b0 */
-extern int   GetBitMapPtr(Rect *r);                    /* FUN_100b0578 */
+extern void  SetRect4(void *r, short x, short y, short w, short h);  /* SetRect4 */
+extern int   GetBitMapPtr(Rect *r);                    /* GetBitMapPtr */
 
 /* Forward declarations for functions defined later in this file */
 void HideMinimapCursor(void);
@@ -95,13 +95,13 @@ void DrawArmyIconFullMap(int targetGW, short playerColor,
  * ========================================================================= */
 
 /*
- * SaveDrawingState -- FUN_10066bf4
+ * SaveDrawingState -- SaveDrawingState
  * Address: 0x10066bf4, Size: 140 bytes
  *
  * Saves the complete QuickDraw drawing environment (pen, font, colors,
  * clipping) into a state buffer for later restoration.
  */
-void SaveDrawingState(char *stateBuffer)                        /* FUN_10066bf4 */
+void SaveDrawingState(char *stateBuffer)                        /* SaveDrawingState */
 {
     /* Save pen state */
     /* FUN_100ef8c8 -- GetPenState */
@@ -121,13 +121,13 @@ void SaveDrawingState(char *stateBuffer)                        /* FUN_10066bf4 
 }
 
 /*
- * RestoreDrawingState -- FUN_10066c80
+ * RestoreDrawingState -- RestoreDrawingState
  * Address: 0x10066c80, Size: 132 bytes
  *
  * Restores the drawing environment from a previously saved state buffer.
  * param_2 controls which aspects to restore (bitmask).
  */
-void RestoreDrawingState(char *stateBuffer, int restoreFlags)   /* FUN_10066c80 */
+void RestoreDrawingState(char *stateBuffer, int restoreFlags)   /* RestoreDrawingState */
 {
     /* Restore pen state */
     /* FUN_100f0538 -- SetPenState */
@@ -147,13 +147,13 @@ void RestoreDrawingState(char *stateBuffer, int restoreFlags)   /* FUN_10066c80 
 }
 
 /*
- * SetupDrawingEnvironment -- FUN_10067270
+ * SetupDrawingEnvironment -- SetupDrawingEnvironment
  * Address: 0x10067270, Size: 76 bytes
  *
  * Configures the drawing environment for sprite blitting operations.
  * Sets transfer mode, pen, and clipping for CopyBits/CopyMask calls.
  */
-void SetupDrawingEnvironment(void)                              /* FUN_10067270 */
+void SetupDrawingEnvironment(void)                              /* SetupDrawingEnvironment */
 {
     /* Set default foreground to black, background to white */
     RGBForeColor_Thunk((RGBColor *)(gColorPalette));
@@ -169,7 +169,7 @@ void SetupDrawingEnvironment(void)                              /* FUN_10067270 
  * ========================================================================= */
 
 /*
- * SetDrawingColor -- FUN_100479f4
+ * SetDrawingColor -- SetDrawingColor
  * Address: 0x100479f4, Size: 112 bytes
  *
  * Sets the current foreground drawing color from the game's color table.
@@ -180,7 +180,7 @@ void SetupDrawingEnvironment(void)                              /* FUN_10067270 
  *
  * Special: param_1 == -1 sets pattern draw mode flag.
  */
-int SetDrawingColor(short colorIndex)                           /* FUN_100479f4 */
+int SetDrawingColor(short colorIndex)                           /* SetDrawingColor */
 {
     if (colorIndex == -1) {
         /* Signal "use pattern" mode */
@@ -195,8 +195,8 @@ int SetDrawingColor(short colorIndex)                           /* FUN_100479f4 
             (((long)colorIndex & 0x3FFFFFFFUL) * 4 -
              (long)colorIndex & 0x7FFFFFFFL) * 2 + (unsigned long)gColorPalette;
 
-        RGBForeColor_Thunk((RGBColor *)colorAddr);             /* FUN_100b2268 */
-        SetForeColor_Thunk();                                   /* FUN_100021c0 */
+        RGBForeColor_Thunk((RGBColor *)colorAddr);             /* RGBForeColor_Thunk */
+        SetForeColor_Thunk();                                   /* SetForeColor_Thunk */
         *gPatternDrawFlag = 0;
     }
     return 0;
@@ -208,7 +208,7 @@ int SetDrawingColor(short colorIndex)                           /* FUN_100479f4 
  * ========================================================================= */
 
 /*
- * CreateOrResizeGWorld -- FUN_1000a12c
+ * CreateOrResizeGWorld -- CreateOrResizeGWorld
  * Address: 0x1000a12c, Size: 956 bytes
  *
  * Creates or resizes an offscreen GWorld buffer. This is the core
@@ -226,7 +226,7 @@ int SetDrawingColor(short colorIndex)                           /* FUN_100479f4 
  */
 int CreateOrResizeGWorld(int gwDesc, short width, short height,
                          short depth, char flags, unsigned short extraFlags)
-                                                                /* FUN_1000a12c */
+                                                                /* CreateOrResizeGWorld */
 {
     int    *gwListPtr;
     int     savedPort, savedDevice;
@@ -281,7 +281,7 @@ int CreateOrResizeGWorld(int gwDesc, short width, short height,
     }
 
     /* Save current drawing port */
-    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* FUN_10000870 */
+    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* GetGWorld_Wrapper */
 
     /* Normalize depth */
     if ((unsigned int)depth == 0) {
@@ -315,24 +315,24 @@ int CreateOrResizeGWorld(int gwDesc, short width, short height,
 
 done:
     /* Configure the new GWorld */
-    SetGWorld_Wrapper(gworldPtr, 0);                            /* FUN_10000888 */
+    SetGWorld_Wrapper(gworldPtr, 0);                            /* SetGWorld_Wrapper */
 
     /* Lock pixels to validate */
     result = FUN_10001d70(*(int *)(gworldPtr + 2));
     if (result != 0) {
         FUN_10002c58(gworldPtr + 0x10);                         /* GetPixBaseAddr */
-        HUnlock_Thunk(*(int *)(gworldPtr + 2));                 /* FUN_10003468 */
+        HUnlock_Thunk(*(int *)(gworldPtr + 2));                 /* HUnlock_Thunk */
     }
 
     /* Restore original port */
-    SetGWorld_Wrapper(savedPort, savedDevice);                  /* FUN_10000888 */
+    SetGWorld_Wrapper(savedPort, savedDevice);                  /* SetGWorld_Wrapper */
 
     /* Validate pixel map */
     result = FUN_10001d70(*(int *)(gworldPtr + 2));
 
     /* Store dimensions and flags in descriptor */
     *(char *)(gwDesc + 0x0B) = (char)depth;
-    SetRect4((void *)gwDesc, 0, 0, width, height);             /* FUN_100226b0 */
+    SetRect4((void *)gwDesc, 0, 0, width, height);             /* SetRect4 */
     *(short *)(gwDesc + 8)   = halfWidth;
     *(int *)(gwDesc + 0x10)  = gworldPtr;
     *(unsigned short *)(gwDesc + 0x0C) = extraFlags & 0xFF;
@@ -343,7 +343,7 @@ done:
         *gwListPtr = mgr;
         FUN_100ead98();
     }
-    FUN_10117884(*gwListPtr + (int)*(short *)(*(int *)*gwListPtr + 0x118),
+    ResourceRead_Dispatch(*gwListPtr + (int)*(short *)(*(int *)*gwListPtr + 0x118),
                  gwDesc);
 
     if (result != 0) {
@@ -354,12 +354,12 @@ done:
 }
 
 /*
- * EraseGWorld -- FUN_1000a008
+ * EraseGWorld -- EraseGWorld
  * Address: 0x1000a008, Size: 140 bytes
  *
  * Fills an entire GWorld with a single color (typically used for clearing).
  */
-void EraseGWorld(int gwDesc, short colorIndex)                  /* FUN_1000a008 */
+void EraseGWorld(int gwDesc, short colorIndex)                  /* EraseGWorld */
 {
     int savedPort, savedDevice;
 
@@ -367,7 +367,7 @@ void EraseGWorld(int gwDesc, short colorIndex)                  /* FUN_1000a008 
         GetGWorld_Wrapper(&savedPort, &savedDevice);
         SetGWorld_Wrapper(*(int *)(gwDesc + 0x10), 0);
 
-        SetDrawingColor(colorIndex);                            /* FUN_100479f4 */
+        SetDrawingColor(colorIndex);                            /* SetDrawingColor */
         PaintRect_Thunk((Rect *)((unsigned long)*(int *)(gwDesc + 0x10) + 0x10));
 
         SetGWorld_Wrapper(savedPort, savedDevice);
@@ -380,7 +380,7 @@ void EraseGWorld(int gwDesc, short colorIndex)                  /* FUN_1000a008 
  * ========================================================================= */
 
 /*
- * EnsureSpriteLoaded -- FUN_100462c8
+ * EnsureSpriteLoaded -- EnsureSpriteLoaded
  * Address: 0x100462c8, Size: 212 bytes
  *
  * Ensures the sprite at the given index is loaded into memory.
@@ -393,7 +393,7 @@ void EraseGWorld(int gwDesc, short colorIndex)                  /* FUN_1000a008 
  *   +0x0C: ptr  GWorld descriptor (mask)
  *   +0x10: short mask resource ID
  */
-void EnsureSpriteLoaded(short spriteID)                         /* FUN_100462c8 */
+void EnsureSpriteLoaded(short spriteID)                         /* EnsureSpriteLoaded */
 {
     unsigned long spriteAddr;
     unsigned int  flags;
@@ -434,13 +434,13 @@ void EnsureSpriteLoaded(short spriteID)                         /* FUN_100462c8 
 }
 
 /*
- * EnsureSpriteAndLock -- FUN_100451f4
+ * EnsureSpriteAndLock -- EnsureSpriteAndLock
  * Address: 0x100451f4, Size: 184 bytes
  *
  * Ensures a sprite is loaded AND its pixel data is locked for drawing.
  * Must be paired with UnlockAndReleaseSprite after drawing.
  */
-void EnsureSpriteAndLock(short spriteID)                        /* FUN_100451f4 */
+void EnsureSpriteAndLock(short spriteID)                        /* EnsureSpriteAndLock */
 {
     unsigned long spriteAddr;
 
@@ -453,26 +453,26 @@ void EnsureSpriteAndLock(short spriteID)                        /* FUN_100451f4 
 
     /* Lock the image GWorld pixels */
     if (*(int *)(spriteAddr + 0x04) != 0) {
-        HLock_Thunk(*(int *)(spriteAddr + 0x04));               /* FUN_10001290 */
+        HLock_Thunk_Sound(*(int *)(spriteAddr + 0x04));               /* HLock_Thunk_Sound */
         FUN_10001d70(*(int *)(spriteAddr + 0x04));              /* Validate pixmap */
     }
 
     /* Lock the mask GWorld pixels (if sprite has mask) */
     if (*(unsigned int *)spriteAddr >> 0x1C & 1) {
         if (*(int *)(spriteAddr + 0x0C) != 0) {
-            HLock_Thunk(*(int *)(spriteAddr + 0x0C));
+            HLock_Thunk_Sound(*(int *)(spriteAddr + 0x0C));
             FUN_10001d70(*(int *)(spriteAddr + 0x0C));
         }
     }
 }
 
 /*
- * UnlockAndReleaseSprite -- FUN_1004530c
+ * UnlockAndReleaseSprite -- UnlockAndReleaseSprite
  * Address: 0x1004530c, Size: 228 bytes
  *
  * Unlocks sprite pixel memory after drawing is complete.
  */
-void UnlockAndReleaseSprite(short spriteID)                     /* FUN_1004530c */
+void UnlockAndReleaseSprite(short spriteID)                     /* UnlockAndReleaseSprite */
 {
     unsigned long spriteAddr;
 
@@ -480,7 +480,7 @@ void UnlockAndReleaseSprite(short spriteID)                     /* FUN_1004530c 
 
     /* Unlock image GWorld */
     if (*(int *)(spriteAddr + 0x04) != 0) {
-        HUnlock_Thunk(*(int *)(spriteAddr + 0x04));             /* FUN_10003468 */
+        HUnlock_Thunk(*(int *)(spriteAddr + 0x04));             /* HUnlock_Thunk */
     }
 
     /* Unlock mask GWorld */
@@ -497,7 +497,7 @@ void UnlockAndReleaseSprite(short spriteID)                     /* FUN_1004530c 
  * ========================================================================= */
 
 /*
- * BlitSpriteWithMask -- FUN_10009d38
+ * BlitSpriteWithMask -- BlitSpriteWithMask
  * Address: 0x10009d38, Size: 624 bytes
  *
  * The core masked sprite blitting function. Draws a sprite region from
@@ -517,7 +517,7 @@ void UnlockAndReleaseSprite(short spriteID)                     /* FUN_1004530c 
  */
 void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
                          short srcW, short srcH,
-                         int dstGW, short dstX, short dstY)    /* FUN_10009d38 */
+                         int dstGW, short dstX, short dstY)    /* BlitSpriteWithMask */
 {
     int srcPixMap, maskPixMap, dstPixMap;
     int *srcPtr, *dstPtr;
@@ -530,7 +530,7 @@ void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
         return;
 
     /* Save current port */
-    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* FUN_10000870 */
+    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* GetGWorld_Wrapper */
 
     /* Resolve source GWorld pointer */
     if (srcGW != gScreenSentinel) {
@@ -557,11 +557,11 @@ void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
         return;
 
     /* Switch to destination port */
-    SetGWorld_Wrapper(dstPixMap, 0);                            /* FUN_10000888 */
-    SetupDrawingEnvironment();                                  /* FUN_10067270 */
+    SetGWorld_Wrapper(dstPixMap, 0);                            /* SetGWorld_Wrapper */
+    SetupDrawingEnvironment();                                  /* SetupDrawingEnvironment */
 
     /* Lock all three pixel maps */
-    LockPixels_Wrapper(srcPixMap);                              /* FUN_10009a98 */
+    LockPixels_Wrapper(srcPixMap);                              /* LockPixels_Wrapper */
     LockPixels_Wrapper(maskPixMap);
     LockPixels_Wrapper(dstPixMap);
 
@@ -584,7 +584,7 @@ void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
     dstRect.right  = dstX + srcW;
 
     /* Perform masked blit: CopyMask(src, mask, dst, srcRect, maskRect, dstRect) */
-    CopyMask_Thunk(                                             /* FUN_100012f0 */
+    CopyMask_Thunk(                                             /* CopyMask_Thunk */
         LockPixels_Wrapper(srcPixMap),
         LockPixels_Wrapper(maskPixMap),
         LockPixels_Wrapper(dstPixMap),
@@ -593,7 +593,7 @@ void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
         GetBitMapPtr(&dstRect));
 
     /* Unlock all pixel maps */
-    UnlockPixels_Wrapper(srcPixMap);                            /* FUN_10009b00 */
+    UnlockPixels_Wrapper(srcPixMap);                            /* UnlockPixels_Wrapper */
     UnlockPixels_Wrapper(maskPixMap);
     UnlockPixels_Wrapper(dstPixMap);
 
@@ -606,7 +606,7 @@ void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
 }
 
 /*
- * BlitSpriteNormal -- FUN_10009b48
+ * BlitSpriteNormal -- BlitSpriteNormal
  * Address: 0x10009b48, Size: 496 bytes
  *
  * Blits a sprite region without transparency (uses CopyBits, not CopyMask).
@@ -616,7 +616,7 @@ void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
  */
 void BlitSpriteNormal(int srcGW, short srcTop, short srcLeft,
                        short srcW, short srcH,
-                       int dstGW, short dstX, short dstY)      /* FUN_10009b48 */
+                       int dstGW, short dstX, short dstY)      /* BlitSpriteNormal */
 {
     int srcPixMap, dstPixMap;
     int savedPort, savedDevice;
@@ -629,7 +629,7 @@ void BlitSpriteNormal(int srcGW, short srcTop, short srcLeft,
         return;
 
     /* Save current port */
-    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* FUN_10000870 */
+    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* GetGWorld_Wrapper */
 
     /* Resolve source and dest GWorld pointers */
     if (srcGW != gScreenSentinel) {
@@ -648,10 +648,10 @@ void BlitSpriteNormal(int srcGW, short srcTop, short srcLeft,
         return;
 
     /* Switch to destination port */
-    SetGWorld_Wrapper(dstPixMap, 0);                            /* FUN_10000888 */
+    SetGWorld_Wrapper(dstPixMap, 0);                            /* SetGWorld_Wrapper */
 
     /* Lock pixel maps */
-    LockPixels_Wrapper(srcPixMap);                              /* FUN_10009a98 */
+    LockPixels_Wrapper(srcPixMap);                              /* LockPixels_Wrapper */
     LockPixels_Wrapper(dstPixMap);
 
     /* Build source rect */
@@ -667,8 +667,8 @@ void BlitSpriteNormal(int srcGW, short srcTop, short srcLeft,
     dstRect.right  = dstX + srcW;
 
     /* Save drawing state and configure */
-    SaveDrawingState(drawState);                                /* FUN_10066bf4 */
-    SetupDrawingEnvironment();                                  /* FUN_10067270 */
+    SaveDrawingState(drawState);                                /* SaveDrawingState */
+    SetupDrawingEnvironment();                                  /* SetupDrawingEnvironment */
 
     /* Set color from player color index */
     RGBForeColor_Thunk((RGBColor *)(
@@ -677,7 +677,7 @@ void BlitSpriteNormal(int srcGW, short srcTop, short srcLeft,
     FUN_100008b8();                                             /* PenNormal */
 
     /* CopyBits(src, dst, srcRect, dstRect, transferMode, maskRgn=NULL) */
-    CopyBits_Thunk(                                             /* FUN_100008d0 */
+    CopyBits_Thunk(                                             /* CopyBits_Thunk */
         LockPixels_Wrapper(srcPixMap),
         LockPixels_Wrapper(dstPixMap),
         GetBitMapPtr(&srcRect),
@@ -689,19 +689,19 @@ void BlitSpriteNormal(int srcGW, short srcTop, short srcLeft,
     UnlockPixels_Wrapper(dstPixMap);
 
     /* Restore drawing state */
-    RestoreDrawingState(drawState, 2);                          /* FUN_10066c80 */
+    RestoreDrawingState(drawState, 2);                          /* RestoreDrawingState */
     SetGWorld_Wrapper(savedPort, savedDevice);
 }
 
 /*
- * BlitTerrainPixel -- FUN_10009fa8
+ * BlitTerrainPixel -- BlitTerrainPixel
  * Address: 0x10009fa8, Size: 96 bytes
  *
  * Blits a single terrain "pixel" (2x2 block in small map view).
  * Sets the color from the palette and draws a single point.
  */
 void BlitTerrainPixel(int destGW, short x, short y, short colorIndex)
-                                                                /* FUN_10009fa8 */
+                                                                /* BlitTerrainPixel */
 {
     unsigned long colorAddr;
 
@@ -710,19 +710,19 @@ void BlitTerrainPixel(int destGW, short x, short y, short colorIndex)
                  (long)colorIndex & 0x7FFFFFFFL) * 2 +
                 (unsigned long)gColorPalette;
 
-    RGBForeColor_Thunk((RGBColor *)colorAddr);                  /* FUN_100b2268 */
+    RGBForeColor_Thunk((RGBColor *)colorAddr);                  /* RGBForeColor_Thunk */
     FUN_100008e8(x, y, 0);                                     /* DrawPixel at (x,y) */
 }
 
 /*
- * BlitToScreen -- FUN_10047a64
+ * BlitToScreen -- BlitToScreen
  * Address: 0x10047a64, Size: 88 bytes
  *
  * Blits a sprite region from a GWorld to the screen window.
  * Uses the screen sentinel value for the destination.
  */
 void BlitToScreen(int srcGW, short *srcRect, short dstX, short dstY)
-                                                                /* FUN_10047a64 */
+                                                                /* BlitToScreen */
 {
     BlitSpriteNormal(srcGW,
                      srcRect[0], srcRect[1], srcRect[2], srcRect[3],
@@ -736,40 +736,40 @@ void BlitToScreen(int srcGW, short *srcRect, short dstX, short dstY)
  * ========================================================================= */
 
 /*
- * DrawHLine -- FUN_1000a714
+ * DrawHLine -- DrawHLine
  * Address: 0x1000a714, Size: 184 bytes
  *
  * Draws a horizontal line in a GWorld.
  */
 void DrawHLine(int gwDesc, short x, short y, short length, short colorIndex)
-                                                                /* FUN_1000a714 */
+                                                                /* DrawHLine */
 {
     int savedPort, savedDevice;
 
     if (gwDesc == 0)
         return;
 
-    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* FUN_10000870 */
+    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* GetGWorld_Wrapper */
 
     if (*(int *)(gwDesc + 0x10) != 0) {
-        SetGWorld_Wrapper(*(int *)(gwDesc + 0x10), 0);          /* FUN_10000888 */
+        SetGWorld_Wrapper(*(int *)(gwDesc + 0x10), 0);          /* SetGWorld_Wrapper */
     }
 
-    SetDrawingColor(colorIndex);                                /* FUN_100479f4 */
-    MoveTo_Thunk(x, y);                                         /* FUN_10000270 */
-    LineTo_Thunk(length - 1, 0);                                /* FUN_10000288 -- horizontal */
+    SetDrawingColor(colorIndex);                                /* SetDrawingColor */
+    MoveTo_Thunk(x, y);                                         /* MoveTo_Thunk */
+    LineTo_Thunk(length - 1, 0);                                /* LineTo_Thunk -- horizontal */
 
     SetGWorld_Wrapper(savedPort, savedDevice);
 }
 
 /*
- * DrawVLine -- FUN_1000a7cc
+ * DrawVLine -- DrawVLine
  * Address: 0x1000a7cc, Size: 184 bytes
  *
  * Draws a vertical line in a GWorld.
  */
 void DrawVLine(int gwDesc, short x, short y, short length, short colorIndex)
-                                                                /* FUN_1000a7cc */
+                                                                /* DrawVLine */
 {
     int savedPort, savedDevice;
 
@@ -782,9 +782,9 @@ void DrawVLine(int gwDesc, short x, short y, short length, short colorIndex)
         SetGWorld_Wrapper(*(int *)(gwDesc + 0x10), 0);
     }
 
-    SetDrawingColor(colorIndex);                                /* FUN_100479f4 */
-    MoveTo_Thunk(x, y);                                         /* FUN_10000270 */
-    LineTo_Thunk(0, length - 1);                                /* FUN_10000288 -- vertical */
+    SetDrawingColor(colorIndex);                                /* SetDrawingColor */
+    MoveTo_Thunk(x, y);                                         /* MoveTo_Thunk */
+    LineTo_Thunk(0, length - 1);                                /* LineTo_Thunk -- vertical */
 
     SetGWorld_Wrapper(savedPort, savedDevice);
 }
@@ -795,7 +795,7 @@ void DrawVLine(int gwDesc, short x, short y, short length, short colorIndex)
  * ========================================================================= */
 
 /*
- * FillRectWithColor -- FUN_10047cbc
+ * FillRectWithColor -- FillRectWithColor
  * Address: 0x10047cbc, Size: 196 bytes
  *
  * Fills a rectangle in a GWorld with the specified color.
@@ -803,7 +803,7 @@ void DrawVLine(int gwDesc, short x, short y, short length, short colorIndex)
  * Color 0xFF is used for fog of war stipple fill.
  */
 void FillRectWithColor(int gwDesc, int *xywhRect, short colorIndex)
-                                                                /* FUN_10047cbc */
+                                                                /* FillRectWithColor */
 {
     Rect macRect;
     int  savedPort, savedDevice;
@@ -815,14 +815,14 @@ void FillRectWithColor(int gwDesc, int *xywhRect, short colorIndex)
     h = ((int *)xywhRect)[1] & 0xFFFF;
 
     if (gwDesc != 0) {
-        GetGWorld_Wrapper(&savedPort, &savedDevice);            /* FUN_10000870 */
-        SetGWorld_Wrapper(*(int *)(gwDesc + 0x10), 0);          /* FUN_10000888 */
+        GetGWorld_Wrapper(&savedPort, &savedDevice);            /* GetGWorld_Wrapper */
+        SetGWorld_Wrapper(*(int *)(gwDesc + 0x10), 0);          /* SetGWorld_Wrapper */
 
         /* Convert (x,y,w,h) to Mac Rect (top,left,bottom,right) */
-        SetMacRect(&macRect, x, y, x + w, y + h);              /* FUN_10003108 */
+        SetMacRect(&macRect, x, y, x + w, y + h);              /* SetMacRect */
 
-        SetDrawingColor(colorIndex);                            /* FUN_100479f4 */
-        PaintRect_Thunk(&macRect);                              /* FUN_10002148 */
+        SetDrawingColor(colorIndex);                            /* SetDrawingColor */
+        PaintRect_Thunk(&macRect);                              /* PaintRect_Thunk */
 
         SetGWorld_Wrapper(savedPort, savedDevice);
     }
@@ -834,7 +834,7 @@ void FillRectWithColor(int gwDesc, int *xywhRect, short colorIndex)
  * ========================================================================= */
 
 /*
- * DrawArmyOverlayOnMap -- FUN_10060078
+ * DrawArmyOverlayOnMap -- DrawArmyOverlayOnMap
  * Address: 0x10060078, Size: 1384 bytes
  *
  * Draws all army stack icons on the map viewport, on top of the terrain.
@@ -844,7 +844,7 @@ void FillRectWithColor(int gwDesc, int *xywhRect, short colorIndex)
  *   dirtyRect    - optional dirty rect to limit drawing (NULL = full viewport)
  *   selectedArmy - index of currently selected army (-1 for none)
  */
-void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* FUN_10060078 */
+void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* DrawArmyOverlayOnMap */
 {
     int   *gs = gGameState;                                     /* piRam1011735c */
     int   *roadData = (int *)gRoadData;                         /* piRam10117354 */
@@ -888,7 +888,7 @@ void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* FUN_10060078 *
     }
 
     /* Check view active state */
-    viewActive = (char)FUN_10117884(*(int *)(*activeView) +
+    viewActive = (char)ResourceRead_Dispatch(*(int *)(*activeView) +
                   (int)*(short *)(*(int *)(*activeView) + 0x3A8));
 
     if (viewActive == '\0')
@@ -1002,13 +1002,13 @@ void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* FUN_10060078 *
         if (playerColor >= 0) {
             spriteID = smallViewport ? 0x50 : 9;
 
-            EnsureSpriteLoaded(spriteID);                       /* FUN_100462c8 */
-            EnsureSpriteAndLock(spriteID);                      /* FUN_100451f4 */
+            EnsureSpriteLoaded(spriteID);                       /* EnsureSpriteLoaded */
+            EnsureSpriteAndLock(spriteID);                      /* EnsureSpriteAndLock */
 
             /* Look up sprite rect from player color table */
             spriteRectAddr = playerColor * 8 + playerColorBase;
 
-            BlitSpriteWithMask(                                 /* FUN_10009d38 */
+            BlitSpriteWithMask(                                 /* BlitSpriteWithMask */
                 *(int *)(gBackBuffer - 0x238),       /* army sprite sheet */
                 *(short *)(spriteRectAddr),           /* srcTop */
                 *(short *)(spriteRectAddr + 2),       /* srcLeft */
@@ -1017,7 +1017,7 @@ void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* FUN_10060078 *
                 drawTarget,                           /* destination */
                 screenX, screenY);
 
-            UnlockAndReleaseSprite(spriteID);                   /* FUN_1004530c */
+            UnlockAndReleaseSprite(spriteID);                   /* UnlockAndReleaseSprite */
         }
 
         /* --- DRAW SELECTION HIGHLIGHT --- */
@@ -1039,7 +1039,7 @@ void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* FUN_10060078 *
  * ========================================================================= */
 
 /*
- * DrawMapViewport -- FUN_10060608
+ * DrawMapViewport -- RefreshDisplay
  * Address: 0x10060608, Size: 3404 bytes
  *
  * The primary map rendering function. Draws the terrain viewport with
@@ -1051,7 +1051,7 @@ void DrawArmyOverlayOnMap(int *dirtyRect, short selectedArmy)  /* FUN_10060078 *
  *   dirtyRect   - optional dirty rect in tile coordinates (NULL = full)
  */
 void DrawMapViewport(short redrawMode, short forceRedraw, short *dirtyRect)
-                                                                /* FUN_10060608 */
+                                                                /* RefreshDisplay */
 {
     int    *gs = gGameState;
     int     gameStatePtr;
@@ -1093,36 +1093,36 @@ void DrawMapViewport(short redrawMode, short forceRedraw, short *dirtyRect)
     }
 
     /* --- STEP 4: Load terrain sprite sheet --- */
-    EnsureSpriteLoaded(7);                                      /* FUN_100462c8(7) */
-    EnsureSpriteAndLock(7);                                     /* FUN_100451f4(7) */
+    EnsureSpriteLoaded(7);                                      /* EnsureSpriteLoaded(7) */
+    EnsureSpriteAndLock(7);                                     /* EnsureSpriteAndLock(7) */
 
     /* --- STEP 5: Set up drawing environment --- */
-    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* FUN_10000870 */
-    SetGWorld_Wrapper(*(int *)(gBackBuffer + 0x10), 0);         /* FUN_10000888 */
-    SetupDrawingEnvironment();                                  /* FUN_10067270 */
+    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* GetGWorld_Wrapper */
+    SetGWorld_Wrapper(*(int *)(gBackBuffer + 0x10), 0);         /* SetGWorld_Wrapper */
+    SetupDrawingEnvironment();                                  /* SetupDrawingEnvironment */
 
     /* --- STEP 6: Draw terrain tiles --- */
     if (!fogEnabled) {
         /* No fog -- direct CopyBits blit of terrain to back buffer */
-        terrainPixMap = LockPixels_Wrapper(                     /* FUN_10009a98 */
+        terrainPixMap = LockPixels_Wrapper(                     /* LockPixels_Wrapper */
             *(int *)(7 * 0x14 + gSpriteTable + 0x04 + 0x10));  /* terrain GWorld pixmap */
         backBufPixMap = LockPixels_Wrapper(
             *(int *)(gBackBuffer + 0x10));
 
         /* CopyBits: terrain sheet -> back buffer */
-        /* FUN_100008d0 -- CopyBits call */
+        /* CopyBits_Thunk -- CopyBits call */
         /* (Actual rect setup and CopyBits call omitted for brevity;
-         *  exact logic matches decompiled FUN_10060608 terrain pass) */
+         *  exact logic matches decompiled RefreshDisplay terrain pass) */
 
         UnlockPixels_Wrapper(terrainPixMap);
         UnlockPixels_Wrapper(backBufPixMap);
     }
     else if (dirtyRect == NULL) {
         /* Fog mode, full redraw: fill viewport with fog, then CopyMask visible */
-        FillRectWithColor(gBackBuffer, (int *)gViewportRect, 0xFF);  /* FUN_10047cbc */
+        FillRectWithColor(gBackBuffer, (int *)gViewportRect, 0xFF);  /* FillRectWithColor */
 
         /* CopyMask visible terrain tiles through fog mask */
-        /* FUN_100012f0 -- CopyMask call */
+        /* CopyMask_Thunk -- CopyMask call */
     }
     else {
         /* Fog mode, partial redraw: use small temp buffer */
@@ -1135,17 +1135,17 @@ void DrawMapViewport(short redrawMode, short forceRedraw, short *dirtyRect)
     }
 
     /* --- STEP 7: Draw army overlay --- */
-    DrawArmyOverlayOnMap((int *)dirtyRect, -1);                 /* FUN_10060078 */
+    DrawArmyOverlayOnMap((int *)dirtyRect, -1);                 /* DrawArmyOverlayOnMap */
 
     /* --- STEP 8: Unlock terrain and restore port --- */
-    UnlockAndReleaseSprite(7);                                  /* FUN_1004530c(7) */
-    SetGWorld_Wrapper(savedPort, savedDevice);                  /* FUN_10000888 */
+    UnlockAndReleaseSprite(7);                                  /* UnlockAndReleaseSprite(7) */
+    SetGWorld_Wrapper(savedPort, savedDevice);                  /* SetGWorld_Wrapper */
 
     /* --- STEP 9: Invalidate minimap area --- */
     if (dirtyRect != NULL) {
-        HideMinimapCursor();                                    /* FUN_100913cc */
+        HideMinimapCursor();                                    /* HideMinimapCursor */
         /* ... update minimap region ... */
-        ShowMinimapCursor();                                    /* FUN_1009142c */
+        ShowMinimapCursor();                                    /* ShowMinimapCursor */
     }
 
     /* --- STEP 10: Handle selection blink --- */
@@ -1158,14 +1158,14 @@ void DrawMapViewport(short redrawMode, short forceRedraw, short *dirtyRect)
  * ========================================================================= */
 
 /*
- * DrawMinimapFogOverlay -- FUN_100635e0
+ * DrawMinimapFogOverlay -- CenterMapOnArmy
  * Address: 0x100635e0, Size: 420 bytes
  *
  * Draws the fog-of-war overlay on the minimap.
  * Each map tile is represented as a 2x2 pixel block.
  * Map dimensions: 112 x 156 tiles (0x70 x 0x9C).
  */
-void DrawMinimapFogOverlay(void)                                /* FUN_100635e0 */
+void DrawMinimapFogOverlay(void)                                /* CenterMapOnArmy */
 {
     int     gameStatePtr = *(int *)gGameState;
     int     savedPort, savedDevice;
@@ -1182,7 +1182,7 @@ void DrawMinimapFogOverlay(void)                                /* FUN_100635e0 
     SetGWorld_Wrapper(*(int *)(gMinimapGWorld + 0x10), 0);
 
     /* Clear minimap */
-    EraseGWorld(gMinimapGWorld, 0);                             /* FUN_1000a008 */
+    EraseGWorld(gMinimapGWorld, 0);                             /* EraseGWorld */
 
     /* Iterate over entire map: 0x70 columns x 0x9C rows */
     for (y = 0; y < 0x70; y++) {
@@ -1193,7 +1193,7 @@ void DrawMinimapFogOverlay(void)                                /* FUN_100635e0 
             if ((tileData >> 0x1D) & 1) {
                 /* Tile is visible to current player -- draw colored 2x2 pixel */
                 SetRect(&pixelRect, x * 2, y * 2, x * 2 + 2, y * 2 + 2);
-                PaintRect_Thunk(&pixelRect);                    /* FUN_10002148 */
+                PaintRect_Thunk(&pixelRect);                    /* PaintRect_Thunk */
             }
             /* Advance to next tile */
         }
@@ -1204,14 +1204,14 @@ void DrawMinimapFogOverlay(void)                                /* FUN_100635e0 
 }
 
 /*
- * UpdateMinimapAroundTile -- FUN_100632a0
+ * UpdateMinimapAroundTile -- UpdateMinimapAroundTile
  * Address: 0x100632a0, Size: 832 bytes
  *
  * Incrementally updates the minimap around a changed tile (army moved,
  * city captured, etc.).
  */
 void UpdateMinimapAroundTile(short tileX, short tileY, short redrawMode)
-                                                                /* FUN_100632a0 */
+                                                                /* UpdateMinimapAroundTile */
 {
     int     gameStatePtr = *(int *)gGameState;
     int     savedPort, savedDevice;
@@ -1260,42 +1260,42 @@ void UpdateMinimapAroundTile(short tileX, short tileY, short redrawMode)
     SetGWorld_Wrapper(savedPort, savedDevice);
 
     /* Update the main map display for the affected region */
-    HideMinimapCursor();                                        /* FUN_100913cc */
+    HideMinimapCursor();                                        /* HideMinimapCursor */
 
     updateRect[0] = startX;
     updateRect[1] = startY;
     updateRect[2] = endX - startX + 1;
     updateRect[3] = endY - startY + 1;
 
-    DrawMapViewport(redrawMode, 1, updateRect);                 /* FUN_10060608 */
+    DrawMapViewport(redrawMode, 1, updateRect);                 /* RefreshDisplay */
 
-    ShowMinimapCursor();                                        /* FUN_1009142c */
+    ShowMinimapCursor();                                        /* ShowMinimapCursor */
 }
 
 /*
- * HideMinimapCursor -- FUN_100913cc
+ * HideMinimapCursor -- HideMinimapCursor
  * Address: 0x100913cc, Size: 96 bytes
  */
-void HideMinimapCursor(void)                                    /* FUN_100913cc */
+void HideMinimapCursor(void)                                    /* HideMinimapCursor */
 {
     int *minimapView = (int *)FUN_1008455c();                   /* GetMinimapView */
     if (minimapView != NULL) {
         *(char *)((int)minimapView + 0x95) = 0;
-        FUN_10117884((int)minimapView +
+        ResourceRead_Dispatch((int)minimapView +
                      (int)*(short *)(*(int *)minimapView + 0x4D0));
     }
 }
 
 /*
- * ShowMinimapCursor -- FUN_1009142c
+ * ShowMinimapCursor -- ShowMinimapCursor
  * Address: 0x1009142c, Size: 92 bytes
  */
-void ShowMinimapCursor(void)                                    /* FUN_1009142c */
+void ShowMinimapCursor(void)                                    /* ShowMinimapCursor */
 {
     int *minimapView = (int *)FUN_1008455c();
     if (minimapView != NULL) {
         *(char *)((int)minimapView + 0x95) = 1;
-        FUN_10117884((int)minimapView +
+        ResourceRead_Dispatch((int)minimapView +
                      (int)*(short *)(*(int *)minimapView + 0x4D0));
     }
 }
@@ -1306,7 +1306,7 @@ void ShowMinimapCursor(void)                                    /* FUN_1009142c 
  * ========================================================================= */
 
 /*
- * DrawMovementPathArrow -- FUN_10061980
+ * DrawMovementPathArrow -- DrawMovementPathArrow
  * Address: 0x10061980, Size: 280 bytes
  *
  * Draws a directional arrow on the map showing an army's planned path.
@@ -1315,7 +1315,7 @@ void ShowMinimapCursor(void)                                    /* FUN_1009142c 
  * Arrow sprites are stored in sprite sheet 9.
  */
 void DrawMovementPathArrow(short mapX, short mapY, short direction)
-                                                                /* FUN_10061980 */
+                                                                /* DrawMovementPathArrow */
 {
     short   screenX, screenY;
     int     arrowRectAddr;
@@ -1330,8 +1330,8 @@ void DrawMovementPathArrow(short mapX, short mapY, short direction)
     if (screenY < 0) screenY = 0;
 
     /* Load and lock arrow sprite sheet (sprite 9) */
-    EnsureSpriteLoaded(9);                                      /* FUN_100462c8 */
-    EnsureSpriteAndLock(9);                                     /* FUN_100451f4 */
+    EnsureSpriteLoaded(9);                                      /* EnsureSpriteLoaded */
+    EnsureSpriteAndLock(9);                                     /* EnsureSpriteAndLock */
 
     /* Look up arrow sprite rect from direction table */
     arrowRectAddr = gArrowDirTable + direction * 8;
@@ -1341,13 +1341,13 @@ void DrawMovementPathArrow(short mapX, short mapY, short direction)
     srcH = *(short *)(arrowRectAddr + 6);
 
     /* Blit arrow with mask */
-    BlitSpriteWithMask(                                         /* FUN_10009d38 */
+    BlitSpriteWithMask(                                         /* BlitSpriteWithMask */
         *(int *)(9 * 0x14 + gSpriteTable + 0x04),  /* source: sprite 9 image */
         srcX, srcY, srcW, srcH,
         *(int *)gScreenGWorld,                       /* dest: screen window */
         screenX, screenY);
 
-    UnlockAndReleaseSprite(9);                                  /* FUN_1004530c */
+    UnlockAndReleaseSprite(9);                                  /* UnlockAndReleaseSprite */
 }
 
 
@@ -1356,7 +1356,7 @@ void DrawMovementPathArrow(short mapX, short mapY, short direction)
  * ========================================================================= */
 
 /*
- * DrawFullMapView -- FUN_10005f90
+ * DrawFullMapView -- DrawFullMapView
  * Address: 0x10005f90, Size: 7312 bytes
  *
  * Draws the entire strategic map at 40x40 pixels per tile (0x28).
@@ -1376,7 +1376,7 @@ void DrawMovementPathArrow(short mapX, short mapY, short direction)
  * and key layer logic is shown here. The EXACT algorithm is preserved
  * in the individual layer rendering calls.
  */
-void DrawFullMapView(void)                                      /* FUN_10005f90 */
+void DrawFullMapView(void)                                      /* DrawFullMapView */
 {
     int    *gs = gGameState;
     int     gameStatePtr = *(int *)gs;
@@ -1393,10 +1393,10 @@ void DrawFullMapView(void)                                      /* FUN_10005f90 
     coordList = (int *)FUN_100f1640(mapWidth * 4 * mapHeight);
 
     /* Step 2: Set up drawing target */
-    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* FUN_10000870 */
+    GetGWorld_Wrapper(&savedPort, &savedDevice);                /* GetGWorld_Wrapper */
     /* SetGWorld to target offscreen buffer */
 
-    SaveDrawingState(NULL);                                     /* FUN_10066bf4 */
+    SaveDrawingState(NULL);                                     /* SaveDrawingState */
 
     /* Step 3: First pass -- identify visible tiles */
     for (row = 0; row < mapHeight; row++) {
@@ -1480,18 +1480,18 @@ void DrawFullMapView(void)                                      /* FUN_10005f90 
     /* Cleanup */
     RestoreDrawingState(NULL, 2);
     SetGWorld_Wrapper(savedPort, savedDevice);
-    FUN_100ef580(coordList);                                    /* DisposePtr */
+    FreeBlock(coordList);                                    /* DisposePtr */
 }
 
 /*
- * DrawArmyIconFullMap -- FUN_10005d2c
+ * DrawArmyIconFullMap -- DrawArmyIconFullMap
  * Address: 0x10005d2c, Size: 612 bytes
  *
  * Draws a single army stack icon in the full map view (0x28 pixel tiles).
  */
 void DrawArmyIconFullMap(int targetGW, short playerColor,
                           unsigned short armyType, short stackSize,
-                          short mapRow, short mapCol)           /* FUN_10005d2c */
+                          short mapRow, short mapCol)           /* DrawArmyIconFullMap */
 {
     short dstX, dstY;
     short srcW = 0x1D;  /* 29 pixels wide */
@@ -1539,14 +1539,14 @@ void DrawArmyIconFullMap(int targetGW, short playerColor,
  * ========================================================================= */
 
 /*
- * DrawSingleMapTile -- FUN_10064498
+ * DrawSingleMapTile -- DrawSingleMapTile
  * Address: 0x10064498, Size: 952 bytes
  *
  * Draws a single terrain tile at given map coordinates.
  * Used for incremental updates after army movement.
  */
 void DrawSingleMapTile(short updateMode, short mapX, short mapY)
-                                                                /* FUN_10064498 */
+                                                                /* DrawSingleMapTile */
 {
     int     gameStatePtr = *(int *)gGameState;
     int     tileData;

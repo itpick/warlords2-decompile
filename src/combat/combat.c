@@ -39,36 +39,36 @@ extern int   iRam101176e8;   /* combatDisplayPieces[8] - int array base */
 extern void  FUN_10007f78(void);                     /* MapRefreshAndCombat */
 extern void  FUN_100169c0(short x, short y);         /* UpdateRuinState */
 extern void  FUN_10016df0(int heroArray);             /* ResolveHeroFightOrder */
-extern void  FUN_1001a348(int pieceIdx, int param2);  /* RemoveFromBattle */
+extern void  AssignToDefense(int pieceIdx, int param2);  /* RemoveFromBattle */
 extern void  FUN_100214e8(int pieceAddr);             /* RemoveBattlePiece */
 extern void  FUN_1002e5c0(void *piece, short x, short y); /* HandleHeroDefeat */
 extern void  FUN_1002b91c(void);                      /* UpdateDisplayState */
-extern int   FUN_1002be50(short x, short y);          /* FindArmyAtPosition */
-extern void  FUN_1000de24(int siegeSlot);             /* ClearSiegeSlot */
+extern int   LookupCityAtPos(short x, short y);          /* FindArmyAtPosition */
+extern void  ActivateAttackEvent(int siegeSlot);             /* ClearSiegeSlot */
 extern int   FUN_1000ed34(int slot, int target, int atkAddr, int defAddr); /* FindBestSiegeTarget */
 extern void  FUN_1000f258(short armyIdx);             /* ClearSiegeAssignments */
 extern void  FUN_1000f308(short siegeSlot);           /* UpdateSiegeStrength */
 extern void  FUN_1001fcc0(void);                      /* RecalculateSiegePaths */
 extern void  FUN_1001ae14(int siegeSlot, int penalty); /* BreakSiege */
-extern int   FUN_10003768(long value);                /* AbsoluteValue */
+extern int   AbsShort(long value);                /* AbsoluteValue */
 
 /* Forward declarations for functions defined later in this file */
-int  SelectDiplomacyTarget(short mode);               /* FUN_1000df58 */
+int  SelectDiplomacyTarget(short mode);               /* FindPrimaryThreat */
 int  CheckThirdPartyTreaty(short playerIdx);           /* FUN_10011734 */
-extern void  FUN_1000da14(short army, short mode, void *adjBuf, void *dataBuf); /* GetAdjacentArmies */
-extern int   FUN_100186cc(short x, short y, int param3); /* FindNearestFriendlyCity */
-extern void  FUN_10049628(char typeId, void *buffer);  /* GetUnitTypeInfo */
+extern void  GetAdjacentArmies(short army, short mode, void *adjBuf, void *dataBuf); /* GetAdjacentArmies */
+extern int   FindNearestEnemy(short x, short y, int param3); /* FindNearestFriendlyCity */
+extern void  GetUnitStats(char typeId, void *buffer);  /* GetUnitTypeInfo */
 extern void  FUN_10011590(void);                       /* AdoptNeutralArmy */
 extern int   FUN_10011734(short playerIdx);            /* CheckThirdPartyTreaty */
-extern int   FUN_1004639c(short armyIdx);              /* CalcArmyValue */
-extern void  FUN_1001bbf0(short army, int mode);       /* ? */
-extern void  FUN_1001ba60(short army);                 /* ? */
+extern int   CheckQuestCondition(short armyIdx);              /* CalcArmyValue */
+extern void  LaunchAllianceAttack(short army, int mode);       /* ? */
+extern void  LaunchAllianceDefense(short army);                 /* ? */
 
 
 /*
  * ==========================================================================
  *  RefreshMapAfterCombat
- *  Original: FUN_1000fba8 at 0x1000fba8
+ *  Original: RefreshMapAfterCombat at 0x1000fba8
  *  Size: 144 bytes
  *
  *  Refreshes the map display after combat if the combat location
@@ -97,7 +97,7 @@ void RefreshMapAfterCombat(short x, short y)
 /*
  * ==========================================================================
  *  RemoveDefeatedUnit
- *  Original: FUN_1000fc38 at 0x1000fc38
+ *  Original: DisbandUnit at 0x1000fc38
  *  Size: 148 bytes
  *
  *  Removes a battle piece from the combat. If the piece is a hero
@@ -199,7 +199,7 @@ void CleanupCombatUnits(short refreshFlag)
 /*
  * ==========================================================================
  *  RemoveAllFromOrder
- *  Original: FUN_1000fde4 at 0x1000fde4
+ *  Original: ReleaseUnits at 0x1000fde4
  *  Size: 172 bytes
  *
  *  Removes all battle pieces referenced in a combat order array
@@ -241,7 +241,7 @@ void RemoveAllFromOrder(int orderArray, short refreshFlag)
 /*
  * ==========================================================================
  *  DetermineIdealCombatSize  (CalcArmyStrength)
- *  Original: FUN_1000fe90 at 0x1000fe90
+ *  Original: CalcArmyStrength at 0x1000fe90
  *  Size: 336 bytes
  *
  *  Calculates the ideal combat force size for an army based on its
@@ -273,7 +273,7 @@ int DetermineIdealCombatSize(short armyIdx)
     gameBase = *gGameState;
     mapBase = *gMapTiles;
 
-    FUN_1000da14(armyIdx, 0, adjArmies, adjData);
+    GetAdjacentArmies(armyIdx, 0, adjArmies, adjData);
 
     enemyCount = 0;
     warEnemyCount = 0;
@@ -625,7 +625,7 @@ void PruneExcessArmies(short armyIndex, int combatOrder)
 
     /* Find distance to nearest friendly city */
     int armyBase = *gameState + armyIndex * 0x42;
-    distance = FUN_100186cc(
+    distance = FindNearestEnemy(
         *(short *)(armyBase + 0x1604),
         *(short *)(armyBase + 0x1606),
         -1);
@@ -706,7 +706,7 @@ void PruneExcessArmies(short armyIndex, int combatOrder)
                             short local_4e, local_4a, local_48, local_46;
 
                             int offset = pieceIdx * 0x16;
-                            FUN_10049628(*(char *)(*pieceTable + offset + 4), unitInfoBuf);
+                            GetUnitStats(*(char *)(*pieceTable + offset + 4), unitInfoBuf);
 
                             /* Calculate value score from raw strength */
                             char rawStrength = *(char *)(offset + *pieceTable + 8);
@@ -1093,7 +1093,7 @@ skip_siege_deploy:
                             /* Deploy flying unit as siege equipment */
                             *(short *)(*extState + 0x24) += 1;
                             *(unsigned short *)(*pieceTable + pOff + 0x0C) |= 0x20;
-                            FUN_1001a348((int)idx, -1);
+                            AssignToDefense((int)idx, -1);
                             *(short *)(j3 * 2 + (int)fightOrderBuf) = -1;
                             numFlyers--;
                         }
@@ -1329,7 +1329,7 @@ void CalculateSiegeProbabilities(short siegeSlot)
 /*
  * ==========================================================================
  *  HandleSiege  (InitiateSiege)
- *  Original: FUN_1000f410 at 0x1000f410
+ *  Original: EndOfTurnCleanup at 0x1000f410
  *  Size: 656 bytes
  *
  *  Initiates a new siege operation. Checks preconditions (available
@@ -1399,7 +1399,7 @@ void HandleSiege(void)
     if (emptySlot == -1) return;
 
     /* Clear the siege slot */
-    FUN_1000de24(emptySlot);
+    ActivateAttackEvent(emptySlot);
 
     /* Select target using diplomacy system */
     targetPlayer = SelectDiplomacyTarget(0);
@@ -1410,7 +1410,7 @@ void HandleSiege(void)
     bestArmy = FUN_1000ed34(emptySlot, targetPlayer,
                             siegeBase + 0x25A, siegeBase + 0x272);
     if (bestArmy == -1) {
-        FUN_1000de24(emptySlot);
+        ActivateAttackEvent(emptySlot);
         return;
     }
 
@@ -1441,7 +1441,7 @@ void HandleSiege(void)
 /*
  * ==========================================================================
  *  SelectDiplomacyTarget
- *  Original: FUN_1000df58 at 0x1000df58
+ *  Original: FindPrimaryThreat at 0x1000df58
  *  Size: 2528 bytes
  *
  *  Calculates which player should be targeted for alliance/attack.
@@ -1489,7 +1489,7 @@ int SelectDiplomacyTarget(short mode)
     /* Find army at current player's capital */
     currentPlayer = *(short *)(*gameState + 0x110);
     int playerStatsBase = *gameState + currentPlayer * 0x14;
-    capitalArmy = FUN_1002be50(*(short *)(playerStatsBase + 0x194),
+    capitalArmy = LookupCityAtPos(*(short *)(playerStatsBase + 0x194),
                                *(short *)(playerStatsBase + 0x196));
 
     currentPlayerMorale = *(short *)(*gameState + currentPlayer * 2 + 0x1122);
@@ -1538,7 +1538,7 @@ int SelectDiplomacyTarget(short mode)
                 }
 
                 /* Check adjacent units for threats */
-                FUN_1000da14(armyIter, 0, adjTracking, (void *)((char *)adjTracking + 64));
+                GetAdjacentArmies(armyIter, 0, adjTracking, (void *)((char *)adjTracking + 64));
                 int j = 5;
                 do {
                     unsigned char adjIdx = adjTracking[j];
@@ -1596,7 +1596,7 @@ int SelectDiplomacyTarget(short mode)
         /* Check if player i controls our capital */
         int pBase = *gameState + (int)(((((unsigned long)i & 0x3FFFFFFF) * 4 +
                     (unsigned long)i) & 0xFFFFFFFF) << 2);
-        int capArmy = FUN_1002be50(*(short *)(pBase + 0x194), *(short *)(pBase + 0x196));
+        int capArmy = LookupCityAtPos(*(short *)(pBase + 0x194), *(short *)(pBase + 0x196));
         if ((int)*(char *)(*gameState + capArmy * 0x42 + 0x1619) == currentPlayer) {
             attackingUs[i] = 1;
         } else {
@@ -1640,9 +1640,9 @@ int SelectDiplomacyTarget(short mode)
         }
 
         /* Morale and army count differential modifiers */
-        int moraleDiff = FUN_10003768(
+        int moraleDiff = AbsShort(
             (long)currentPlayerMorale - (long)*(short *)(*gameState + i * 2 + 0x1122));
-        int armyDiff = FUN_10003768(
+        int armyDiff = AbsShort(
             (long)(short)totalArmies[currentPlayer] - (long)(short)totalArmies[i]);
 
         diplomacyScore[i] +=
@@ -2365,11 +2365,11 @@ int TryHeroCapture(short armyIdx, short targetPlayer)
 
     /* Evaluate army value and decide capture method */
     {
-        int value = FUN_1004639c(armyIdx);
+        int value = CheckQuestCondition(armyIdx);
         if (value < 200) {
-            FUN_1001bbf0(armyIdx, 0);
+            LaunchAllianceAttack(armyIdx, 0);
         } else {
-            FUN_1001ba60(armyIdx);
+            LaunchAllianceDefense(armyIdx);
         }
     }
 
@@ -2446,7 +2446,7 @@ void UpdateSiegeStrength(short siegeSlot)
     do {
         short attackerArmy = *(short *)(*extState + siegeSlot * 0x5C + i * 2 + 0x25A);
         if (attackerArmy != -1) {
-            FUN_1000da14(attackerArmy, 0, adjArmies, adjData);
+            GetAdjacentArmies(attackerArmy, 0, adjArmies, adjData);
             adjCount = 0;
             int j = 5;
             do {
@@ -2501,7 +2501,7 @@ int IsUnitBeingSieged(short armyIdx)
 /*
  * ==========================================================================
  *  IsUnitAvailableForSiege
- *  Original: FUN_1000f708 at 0x1000f708
+ *  Original: CanArmyEnterCity at 0x1000f708
  *  Size: 180 bytes
  *
  *  Checks if an army is available for siege assignment.
