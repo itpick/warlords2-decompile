@@ -815,17 +815,22 @@ int GetGWorld_Wrapper(int *port, int *gdh)
 }
 
 
-#ifdef MODERN_BUILD
 /* =========================================================================
- * GetResourceByTypeId - Mac OS: GetResource wrapper
- * Original: GetResourceByTypeId
+ * GetResourceByTypeId - Mac OS: GetResource wrapper (TVect trampoline)
+ * Original: FUN_10003558 at 0x10003558
+ * On PPC, this calls through to the real Mac OS GetResource.
  * ========================================================================= */
 void *GetResourceByTypeId(long resType, short resID)
 {
-    /* GetResourceByTypeId - resource manager */
+#ifndef MODERN_BUILD
+    /* On PPC, call the real Mac OS GetResource */
+    return GetResource(resType, resID);
+#else
+    (void)resType;
+    (void)resID;
     return (void *)0;
-}
 #endif
+}
 
 
 /* =========================================================================

@@ -54,8 +54,10 @@ ifeq ($(PLATFORM),powerpc)
     # PowerPC Mac OS target (Retro68 GCC 12.2.0)
     CC = powerpc-apple-macos-gcc
     CFLAGS = -O2 -Wall $(WARN_SUPPRESS_COMMON) $(INCLUDES) -DTARGET_OS_MAC=1 -DTARGET_CPU_PPC=1
-    LDFLAGS = -lInterfaceLib -lMathLib
+    # --whole-archive forces all object code to be included (prevents XCOFF GC)
+    LDFLAGS = -Wl,--whole-archive -lInterfaceLib -lMathLib
     TARGET = warlords2_ppc
+    MAKEPEF = MakePEF
 else
     # Modern development/testing target (structural verification only)
     CC = cc
@@ -68,6 +70,27 @@ OBJS = $(ALL_SRCS:.c=.o)
 
 all: $(TARGET)
 
+# PEF conversion and app assembly (PPC only)
+ifeq ($(PLATFORM),powerpc)
+ORIGINAL_APP = ../Warlords\ II/Warlords\ II.app
+PEF_TARGET = warlords2.pef
+APP_TARGET = Warlords\ II
+
+pef: $(TARGET)
+	$(MAKEPEF) $(TARGET) -o $(PEF_TARGET)
+	@echo "PEF binary created: $(PEF_TARGET)"
+	@ls -la $(PEF_TARGET)
+
+app: pef
+	@echo "=== Assembling Mac OS application ==="
+	cp $(PEF_TARGET) $(APP_TARGET)
+	dd if=$(ORIGINAL_APP)/..namedfork/rsrc of=$(APP_TARGET)/..namedfork/rsrc bs=65536 2>/dev/null
+	/usr/bin/xattr -wx com.apple.FinderInfo "$$(xattr -px com.apple.FinderInfo '$(ORIGINAL_APP)')" $(APP_TARGET) 2>/dev/null || true
+	@echo "App assembled: $(APP_TARGET)"
+	@echo "  Data fork (PEF): $$(stat -f%z $(APP_TARGET)) bytes"
+	@echo "  Resource fork:   $$(stat -f%z $(APP_TARGET)/..namedfork/rsrc) bytes"
+endif
+
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o "$@" $^ $(LDFLAGS)
 
@@ -75,7 +98,7 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) "$(TARGET)"
+	rm -f $(OBJS) "$(TARGET)" warlords2.pef
 
 # Count lines of reconstructed code
 stats:
@@ -92,4 +115,4 @@ stats:
 todos:
 	@grep -rn "TODO" $(ALL_SRCS) include/ || echo "No TODOs found"
 
-.PHONY: all clean stats todos
+.PHONY: all clean stats todos pef app

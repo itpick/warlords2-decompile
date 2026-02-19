@@ -90,6 +90,22 @@ int ConstructCommand() { return 0; }
 int AllocateHandle() { return 0; }
 
 /* High-address function stubs (globals/data region) */
+int *_FUN_10117690 = 0;    /* Global data pointer referenced by reconstructed_batch_b */
+
+/* Math helper - absolute value for doubles (Ghidra decompiler artifact) */
+double ABS(double x) { return x < 0 ? -x : x; }
+
+/* CopyCStringToPascal - may not exist in classic InterfaceLib */
+#ifndef MODERN_BUILD
+void CopyCStringToPascal(const char *src, unsigned char *dst) {
+    int len = 0;
+    while (src[len] && len < 255) {
+        dst[len + 1] = src[len];
+        len++;
+    }
+    dst[0] = (unsigned char)len;
+}
+#endif
 
 /* Missing function stubs */
 
