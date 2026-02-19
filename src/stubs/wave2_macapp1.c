@@ -5999,7 +5999,7 @@ void FUN_100894b4(long long param_1)
   local_338[0] = 0;
   local_460 = 0x3c;
   local_96 = local_1a8;
-  GetString((unsigned long long)*puRam101169c4 + 0x32,&local_460);
+  Game_GetString((unsigned long long)*puRam101169c4 + 0x32,&local_460);
   EndFocus();
   local_92 = local_380;
   piVar3 = (int *)NewPtr_Thunk(0x20);
@@ -8779,7 +8779,7 @@ int FUN_1008e440(long long param_1,unsigned short param_2)
   local_488[0] = 0;
   local_510 = 0x3c;
   local_76 = local_288;
-  GetString((unsigned long long)*puRam101169c4 + 0x32,&local_510);
+  Game_GetString((unsigned long long)*puRam101169c4 + 0x32,&local_510);
   EndFocus();
   local_72 = local_4d0;
   local_388[0] = 0;
@@ -8923,7 +8923,7 @@ void FUN_1008e5d0(long long param_1,unsigned int param_2,int param_3,int *param_
   local_9e = local_13a;
   local_388[0] = 0;
   local_468 = 0x3c;
-  GetString((unsigned long long)*puRam101169c4 + 0x32,&local_468);
+  Game_GetString((unsigned long long)*puRam101169c4 + 0x32,&local_468);
   EndFocus();
   local_9a = local_4b0[0];
   if (4 < param_2) {

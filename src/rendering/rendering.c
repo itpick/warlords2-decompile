@@ -18,9 +18,13 @@
 #include "warlords2.h"
 
 #ifndef MODERN_BUILD
+#if __has_include(<QDOffscreen.h>)
 #include <QDOffscreen.h>   /* NewGWorld, LockPixels, etc. */
+#endif
 #include <Quickdraw.h>     /* CopyBits, CopyMask, MoveTo, LineTo, etc. */
+#if __has_include(<Palettes.h>)
 #include <Palettes.h>
+#endif
 #endif
 
 /* =========================================================================

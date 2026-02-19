@@ -1384,7 +1384,7 @@ void FUN_10029e84(int *param_1)
       local_3c8 = 0x3c;
       local_3c4 = local_338;
       local_390 = auStack_380;
-      GetString((unsigned long long)*(unsigned int *)local_47c[-0x3b7] + 0x32,&local_3c8);
+      Game_GetString((unsigned long long)*(unsigned int *)local_47c[-0x3b7] + 0x32,&local_3c8);
       EndFocus();
       local_228[0] = 0;
       piVar10 = *(int **)(iVar1 + 0x148);

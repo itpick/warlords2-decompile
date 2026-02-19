@@ -195,7 +195,8 @@ typedef struct SndCommand {
     long param2;
 } SndCommand;
 
-typedef void *SndCallBackUPP;
+typedef void *SndCallbackUPP;
+typedef SndCallbackUPP SndCallBackUPP; /* legacy spelling */
 typedef Handle SndListHandle;
 
 typedef struct SCStatus {

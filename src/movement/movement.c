@@ -207,7 +207,9 @@ extern int      *gPathCachePtr;
 
 /* Mac OS Memory Manager wrappers */
 extern int      FUN_100f15e0(int size, int flags, ...);    /* NewHandle / memory alloc */
+#ifdef MODERN_BUILD
 extern void     DetachResource(void *handle);                 /* HLock - lock handle */
+#endif
 extern void     DisposeHandle_Thunk(int handle);                   /* HUnlock - unlock handle */
 extern void     FUN_10000048(int handle);                   /* SetHandleSize or similar */
 extern void     FUN_100004e0(void *handle, int size);       /* SetHandleSize */

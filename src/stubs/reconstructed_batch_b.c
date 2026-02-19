@@ -2472,7 +2472,7 @@ void FUN_1007c7b4(void)
   local_348[0] = 0;
   local_170 = 0x3c;
   local_138 = auStack_130;
-  GetString((unsigned long long)*puRam101169c4 + 0x32);
+  Game_GetString((unsigned long long)*puRam101169c4 + 0x32);
   iVar2 = local_36c;
   EndFocus();
   local_e8 = local_150 < 0x300000;

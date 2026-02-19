@@ -99,7 +99,9 @@ void LineTo_Thunk(short, short);
 void FUN_1000c724(int);
 void FlushCityCache(void);
 void FUN_1000c844(void);
+#ifdef MODERN_BUILD
 void DetachResource(void *);
+#endif
 void FUN_10064850(int, int);
 void UpdateProgressBar(int);
 void YieldToEventLoop(void);

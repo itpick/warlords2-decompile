@@ -33468,7 +33468,7 @@ void FUN_10074288(int *param_1)
   local_638 = 0x3c;
   local_600 = auStack_1e4;
   local_634 = local_420;
-  GetString((unsigned long long)*(unsigned int *)(*(int*)((char*)ppuVar3 - 0x3b7)) + 0x32,&local_638);
+  Game_GetString((unsigned long long)*(unsigned int *)(*(int*)((char*)ppuVar3 - 0x3b7)) + 0x32,&local_638);
   iVar8 = local_6f4;
   EndFocus();
   if (local_618 < 0x300000) {
@@ -33507,7 +33507,7 @@ void FUN_10074288(int *param_1)
     local_688 = 0x3c;
     local_684 = local_520;
     local_650 = &local_6d0;
-    GetString((unsigned long long)**(unsigned int **)(local_6f4 + -0xedc) + 0x32,&local_688);
+    Game_GetString((unsigned long long)**(unsigned int **)(local_6f4 + -0xedc) + 0x32,&local_688);
     puVar9 = (int *)GetResource_Thunk(0x53545220,0x3e9);
     iVar8 = FUN_10000678();
     if ((iVar8 == 0) && (puVar9 != (int *)0x0)) {
@@ -38400,7 +38400,7 @@ void FUN_1007c1bc(int param_1,long long param_2,int *param_3,int *param_4)
     local_1c8 = 0x3c;
     local_1c4 = local_140;
     local_190 = auStack_188;
-    GetString((unsigned long long)**(unsigned int **)(local_354 + -0xedc) + 0x32,&local_1c8);
+    Game_GetString((unsigned long long)**(unsigned int **)(local_354 + -0xedc) + 0x32,&local_1c8);
     EndFocus();
     ResourceRead_Dispatch((int)*(int **)(param_1 + 0x148) +
                  (int)*(short *)(**(int **)(param_1 + 0x148) + 0x178),auStack_210);

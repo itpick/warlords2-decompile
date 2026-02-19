@@ -54,6 +54,7 @@ int FUN_1000de24(void)
 }
 
 
+#ifdef MODERN_BUILD
 /* =========================================================================
  * AddResource - Mac OS Resource Manager: AddResource wrapper
  * Original: AddResource, 24 bytes (TVect trampoline)
@@ -63,6 +64,7 @@ int AddResource(int handle, long resType, short resID, void *data)
     /* Mac OS Toolbox wrapper - AddResource */
     return 0;
 }
+#endif
 
 
 /* =========================================================================
@@ -424,7 +426,8 @@ int FUN_10002598(void *h)
 int DetachResource_Thunk(void *h)
 {
     /* Mac OS Toolbox wrapper - DetachResource */
-    return DetachResource(h);
+    DetachResource(h);
+    return 0;
 }
 
 
@@ -819,6 +822,7 @@ int GetGWorld_Wrapper(int *port, int *gdh)
 }
 
 
+#ifdef MODERN_BUILD
 /* =========================================================================
  * GetNamedResource - Mac OS: GetResource wrapper
  * Original: FUN_10003558
@@ -828,6 +832,7 @@ void *GetNamedResource(long resType, short resID)
     /* FUN_10003558 - resource manager */
     return (void *)0;
 }
+#endif
 
 
 /* =========================================================================
@@ -1146,10 +1151,11 @@ int MoveTo_Thunk(short h, short v)
 
 
 /* =========================================================================
- * NewAlias - Create new alias handle
+ * Game_NewAlias - Create new alias handle (game wrapper)
  * Original: FUN_100b1c84, 4 bytes (NOP)
+ * Renamed from NewAlias to avoid conflict with Mac Toolbox NewAlias
  * ========================================================================= */
-void *NewAlias(void *path)
+void *Game_NewAlias(void *path)
 {
     /* FUN_100b1c84 - returns immediately (NOP stub) */
     return (void *)0;
@@ -1435,6 +1441,7 @@ int ReleaseUnits(short *unitList, short mode)
 }
 
 
+#ifdef MODERN_BUILD
 /* =========================================================================
  * ResolveAlias - Resolve Mac OS file alias
  * Original: ResolveAlias, 24 bytes (TVect trampoline)
@@ -1444,6 +1451,7 @@ int ResolveAlias(void *res, void *a, void *b, void *path)
     /* Mac OS Toolbox wrapper - ResolveAlias */
     return 0;
 }
+#endif
 
 
 /* =========================================================================
@@ -1666,7 +1674,7 @@ int SndDoImmediate_Thunk(void *chan, void *cmd)
 int SndNewChannel_Thunk(void **chan, short synth, long init, void *proc)
 {
     /* Mac OS Toolbox wrapper - SndNewChannel */
-    return SndNewChannel((SndChannelPtr *)chan, synth, init, (SndCallBackUPP)proc);
+    return SndNewChannel((SndChannelPtr *)chan, synth, init, (SndCallbackUPP)proc);
 }
 
 

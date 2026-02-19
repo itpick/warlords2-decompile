@@ -10030,7 +10030,7 @@ void FUN_10027a58(unsigned char param_1,unsigned char *param_2,unsigned long lon
   puVar20 = ((char*)0) + -0x42c;
   puVar23 = (unsigned int *)(((char*)0) + -0x3e4);
   *puVar7 = 0x3c;
-  GetString((unsigned long long)*puRam101169c4 + 0x32,puVar7);
+  Game_GetString((unsigned long long)*puRam101169c4 + 0x32,puVar7);
   EndFocus();
   *puVar21 = 0;
   FUN_100009d8(puVar21,0x3ea,uVar3 + 1);

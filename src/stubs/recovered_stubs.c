@@ -298,12 +298,16 @@ void FUN_100015a8();
 int SndPlay_Thunk();
 void FUN_10001680();
 void FUN_100016b0();
+#ifdef MODERN_BUILD
 void ResolveAlias();
+#endif
 void FUN_100018f0();
 void FUN_10001908();
 void FUN_10001920();
 void FUN_100019f8();
+#ifdef MODERN_BUILD
 int GetString();
+#endif
 void DrawNumber();
 void BlockMoveData_Thunk();
 void FUN_10001f50();
@@ -314,7 +318,9 @@ void PaintRect_Thunk();
 void SndDoImmediate_Thunk();
 int Get1NamedResource_Thunk();
 void FUN_10002340();
+#ifdef MODERN_BUILD
 void AddResource();
+#endif
 void TuneSetVolume_Thunk();
 void FUN_10002970();
 int FUN_10002a60();
@@ -1002,7 +1008,8 @@ void FUN_100019f8()
 
 
 /* Address: 0x10001bd8 Size: 24 bytes */
-int GetString()
+/* Renamed from GetString to avoid conflict with Mac Toolbox GetString(short) */
+int Game_GetString()
 
 {
 
@@ -12462,7 +12469,7 @@ void FUN_1003e13c(long long param_1,short param_2)
   piVar36 = (int *)(((char*)0) + -0x370);
   *puVar11 = 0x3c;
   sStack0000001e = param_2;
-  GetString((unsigned long long)*puRam101169c4 + 0x32,puVar11);
+  Game_GetString((unsigned long long)*puRam101169c4 + 0x32,puVar11);
   uVar19 = local_56c;
   EndFocus();
   bVar37 = local_528 < 0x300000;
@@ -89866,7 +89873,7 @@ void FUN_100ecf88(short *param_1)
     local_58 = 0x3c;
     local_54 = 0;
     local_20 = 0;
-    iVar2 = GetString(&local_60,&local_58);
+    iVar2 = Game_GetString(&local_60,&local_58);
     if (iVar2 == 0) {
       *(int *)(param_1 + 0x14) = (local_40 & 0x400) != 0;
       *(int *)((int)param_1 + 0x29) = (local_40 & 0x40) != 0;

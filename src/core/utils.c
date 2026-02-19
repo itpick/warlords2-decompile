@@ -115,8 +115,8 @@ void DrawStringAt(char *str, short x, short y)
 }
 
 /* Original: FUN_1005f1d0 at 0x1005f1d0, 48 bytes */
-/* DrawString - draws text centered */
-void DrawString(char *str)
+/* GameDrawString - draws text centered (renamed to avoid Mac Toolbox conflict) */
+void GameDrawString(char *str)
 {
     /* Note: coordinates come from current pen position */
     DrawTextInternal(0, 0, str, 1);     /* 1 = centered */
@@ -196,7 +196,7 @@ void DrawNumber(int value)
     Str255 numStr;
 
     NumToString((long)value, numStr);
-    DrawString((char *)&numStr[1]);     /* skip length byte for C string */
+    GameDrawString((char *)&numStr[1]);     /* skip length byte for C string */
 }
 
 

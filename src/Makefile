@@ -43,21 +43,23 @@ INCLUDES = -Iinclude
 
 # Suppress warnings that are correct on PPC32 but noisy on modern 64-bit.
 # On PPC32: int = long = pointer = 4 bytes, so int-to-pointer casts are valid.
-WARN_SUPPRESS = -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast \
-                -Wno-incompatible-pointer-types -Wno-int-conversion \
-                -Wno-implicit-function-declaration \
-                -Wno-deprecated-non-prototype
+WARN_SUPPRESS_COMMON = -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast \
+                       -Wno-incompatible-pointer-types -Wno-int-conversion \
+                       -Wno-implicit-function-declaration
+
+# Clang-only flags (not supported by GCC 12)
+WARN_SUPPRESS_CLANG = -Wno-deprecated-non-prototype
 
 ifeq ($(PLATFORM),powerpc)
-    # PowerPC Mac OS target (CodeWarrior or Retro68)
+    # PowerPC Mac OS target (Retro68 GCC 12.2.0)
     CC = powerpc-apple-macos-gcc
-    CFLAGS = -O2 -Wall $(WARN_SUPPRESS) $(INCLUDES) -DTARGET_OS_MAC=1 -DTARGET_CPU_PPC=1
+    CFLAGS = -O2 -Wall $(WARN_SUPPRESS_COMMON) $(INCLUDES) -DTARGET_OS_MAC=1 -DTARGET_CPU_PPC=1
     LDFLAGS = -lInterfaceLib -lMathLib
-    TARGET = "Warlords II"
+    TARGET = warlords2_ppc
 else
     # Modern development/testing target (structural verification only)
     CC = cc
-    CFLAGS = -O2 -Wall $(WARN_SUPPRESS) $(INCLUDES) -DMODERN_BUILD=1
+    CFLAGS = -O2 -Wall $(WARN_SUPPRESS_COMMON) $(WARN_SUPPRESS_CLANG) $(INCLUDES) -DMODERN_BUILD=1
     LDFLAGS = -lm
     TARGET = warlords2
 endif
@@ -67,13 +69,13 @@ OBJS = $(ALL_SRCS:.c=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o "$@" $^ $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(OBJS) "$(TARGET)"
 
 # Count lines of reconstructed code
 stats:

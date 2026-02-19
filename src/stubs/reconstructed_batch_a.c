@@ -74,7 +74,9 @@ void CreateUnitTemplate(long long, void *, short *, void *, short *, void *);
 int FUN_1000cf78(long long);
 void FUN_1000d0c0(long long, long long);
 void FreeBlock(void *);
+#ifdef MODERN_BUILD
 void DetachResource(void *);
+#endif
 void DisposeHandle_Thunk(int);
 void FindUnitsInRange(short, short, void *, int);
 void DisbandUnit(int, int);
@@ -189,8 +191,10 @@ int SetForeColor_Thunk() { return 0; }
 /* addr=10002358 size=24  TVect trampoline -> puRam101155c4 */
 int FUN_10002358() { return 0; }
 
+#ifdef MODERN_BUILD
 /* addr=10002598 size=24  TVect trampoline -> puRam10115538 (HLock) */
 void DetachResource(void *param_1) { (void)param_1; }
+#endif
 
 /* addr=100025b0 size=24  TVect trampoline -> puRam10115560 */
 int FUN_100025b0() { return 0; }

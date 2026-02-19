@@ -104,16 +104,20 @@ extern void  FUN_10000150(void);                          /* Throw (longjmp) */
 extern void  ReleaseResource_Thunk(void *handle);                  /* Dispose handle */
 extern char  FUN_10000360(void *handle);                  /* Get handle flags */
 extern int   FUN_10001a88(void);                          /* Get tick count */
+#ifdef MODERN_BUILD
 extern int   GetString(int offset, void *buf);         /* Read from offset */
+#endif
 extern int   FUN_10001c20(void *handle);                  /* Get handle size */
 extern void  ReleaseHandle_Sound(void *handle);                  /* Release handle */
 extern void  FUN_10001b60(void *handle, char flags);      /* Restore handle flags */
 extern void  FUN_10001f98(int handle, void *out, int sz); /* Copy handle data */
 extern int   FUN_10002a60(int handle);                    /* Get handle data size */
 extern void  FUN_10002340(int data, int buf, int sz);     /* Copy data to buffer */
+#ifdef MODERN_BUILD
 extern void  AddResource(void *h, unsigned long type,    /* Add resource */
                            short id, int data);
 extern void  DetachResource(void *h);                       /* Lock resource handle */
+#endif
 extern void *FUN_10003558(unsigned long type, short id);  /* Get named resource */
 
 /* =========================================================================

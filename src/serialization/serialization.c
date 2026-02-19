@@ -44,9 +44,11 @@ extern void *NewResourceReader(int param);                   /* FUN_100fb260 */
 extern void  SetResourceType(void *reader, long resType, short resID); /* SetResourceType */
 
 /* Resource management */
+#ifdef MODERN_BUILD
 extern void *GetNamedResource(long resType, short resID);    /* FUN_10003558 */
 extern void  AddResource(int handle, long resType, short resID, void *data); /* AddResource */
 extern void  DetachResource(void *h);                        /* DetachResource */
+#endif
 #ifndef MODERN_BUILD
 extern void  DisposeHandle_Thunk(int h);                           /* DisposeHandle_Thunk */
 extern void  ReleaseResource_Thunk(int h);                         /* ReleaseResource_Thunk */
@@ -54,17 +56,21 @@ extern void  ReleaseResource_Thunk(int h);                         /* ReleaseRes
 extern void  DisposeHandleFull(int h);                       /* DisposeHandleFull */
 
 /* Alias manager */
-extern void *NewAlias(void *path);                           /* FUN_100b1c84 */
+extern void *Game_NewAlias(void *path);                      /* FUN_100b1c84 */
 extern void  MakeAlias(void *a, void *b, int *outAlias);    /* MakeAlias */
+#ifdef MODERN_BUILD
 extern void  ResolveAlias(void *res, void *a, void *b, void *path); /* ResolveAlias */
+#endif
 extern void  CopyResourceToDoc(void *doc, void *res);        /* CopyResourceToDoc */
 
 /* String/memory utilities */
 #ifndef MODERN_BUILD
-extern void  BlockMoveData_Thunk(void *dst, void *src);            /* BlockMoveData_Thunk */
+extern void  BlockMoveData_Thunk(void *src, void *dst, int size);  /* BlockMoveData_Thunk */
 #endif
 extern void  DisposeGeneric(void *param);                    /* DisposeGeneric */
+#ifdef MODERN_BUILD
 extern void  GetString(long param, void *outBuf);            /* GetString */
+#endif
 
 /* Game subsystem calls */
 extern void *GetCityByIndex(short cityIndex);                /* FUN_1000d910 */
@@ -1466,7 +1472,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
         }
         MakeAlias(NULL, NULL, &aliasHandle);
         if (aliasHandle != 0) {
-            void *aliasData = NewAlias(pathBuf);
+            void *aliasData = Game_NewAlias(pathBuf);
             AddResource(aliasHandle, 0x616C6973, 1000, aliasData); /* 'alis' */
             MarkChanged();
             ReleaseResource_Thunk(aliasHandle);
@@ -1486,7 +1492,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
         }
         MakeAlias(NULL, NULL, &aliasHandle);
         if (aliasHandle != 0) {
-            void *aliasData = NewAlias(pathBuf);
+            void *aliasData = Game_NewAlias(pathBuf);
             AddResource(aliasHandle, 0x616C6973, 0x3E9, aliasData);
             MarkChanged();
             ReleaseResource_Thunk(aliasHandle);
@@ -1505,7 +1511,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
             }
             MakeAlias(NULL, NULL, &aliasHandle);
             if (aliasHandle != 0) {
-                void *aliasData = NewAlias(pathBuf);
+                void *aliasData = Game_NewAlias(pathBuf);
                 AddResource(aliasHandle, 0x616C6973, 0x3EA, aliasData);
                 MarkChanged();
                 ReleaseResource_Thunk(aliasHandle);
@@ -1525,7 +1531,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
             }
             MakeAlias(NULL, NULL, &aliasHandle);
             if (aliasHandle != 0) {
-                void *aliasData = NewAlias(pathBuf);
+                void *aliasData = Game_NewAlias(pathBuf);
                 AddResource(aliasHandle, 0x616C6973, 0x3EB, aliasData);
                 MarkChanged();
                 ReleaseResource_Thunk(aliasHandle);
@@ -1545,7 +1551,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
             }
             MakeAlias(NULL, NULL, &aliasHandle);
             if (aliasHandle != 0) {
-                void *aliasData = NewAlias(pathBuf);
+                void *aliasData = Game_NewAlias(pathBuf);
                 AddResource(aliasHandle, 0x616C6973, 0x3EC, aliasData);
                 MarkChanged();
                 ReleaseResource_Thunk(aliasHandle);

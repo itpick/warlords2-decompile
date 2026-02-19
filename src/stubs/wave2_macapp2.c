@@ -9878,7 +9878,7 @@ void FUN_100be638(long long param_1,long long param_2)
     local_170 = 0x3c;
     local_16c = (int)param_2;
     local_138 = 0;
-    GetString(param_1 + 0x32,&local_170);
+    Game_GetString(param_1 + 0x32,&local_170);
     EndFocus();
     *puVar1 = local_28;
   }

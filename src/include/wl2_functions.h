@@ -18,7 +18,7 @@
 short   RandomRange(short numDice, short dieSize, short bonus);
 
 /* FUN_1005f1d0 - Render text string (centered) */
-void    DrawString(char *str);
+void    GameDrawString(char *str);
 
 /* FUN_1005f1a0 - Render text at specific coordinates */
 void    DrawStringAt(char *str, short x, short y);

@@ -8,7 +8,7 @@
 # ===== Core Utilities (core/utils.c) =====
 1005f230 | FUN_1005f230 | RandomRange           | core/utils.c    | DONE
 1000a884 | FUN_1000a884 | CalcDistance           | core/utils.c    | DONE
-1005f1d0 | FUN_1005f1d0 | DrawString            | core/utils.c    | DONE
+1005f1d0 | FUN_1005f1d0 | GameDrawString        | core/utils.c    | DONE
 1005f1a0 | FUN_1005f1a0 | DrawStringAt          | core/utils.c    | DONE
 1005f200 | FUN_1005f200 | DrawStringRight       | core/utils.c    | DONE
 10032860 | FUN_10032860 | DrawTextInternal      | core/utils.c    | DONE

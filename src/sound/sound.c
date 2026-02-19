@@ -21,13 +21,20 @@
 #ifndef MODERN_BUILD
 #include <Sound.h>
 #include <Resources.h>
+#if __has_include(<Components.h>)
 #include <Components.h>     /* OpenDefaultComponent */
+#endif
 #endif
 
 /* QuickTime Music Architecture types */
 /* (These are from QuickTimeMusic.h, which may not be available on all setups) */
 #ifndef MODERN_BUILD
 typedef ComponentInstance TunePlayer;
+/* Types that may be missing from multiversal headers */
+#if !__has_include(<Components.h>)
+typedef long ComponentResult;
+#endif
+typedef Handle SndListHandle;
 #else
 typedef void *TunePlayer;
 typedef void *ComponentInstance;
@@ -40,7 +47,7 @@ typedef void *ComponentInstance;
 /* Sound Manager */
 extern OSErr SndDoImmediate_Thunk(SndChannelPtr chan, SndCommand *cmd);  /* SndDoImmediate_Thunk */
 extern OSErr SndNewChannel_Thunk(SndChannelPtr *chan, short synth,
-                                  long init, SndCallBackUPP proc);       /* SndNewChannel_Thunk */
+                                  long init, SndCallbackUPP proc);       /* SndNewChannel_Thunk */
 extern OSErr SndDisposeChannel_Thunk(SndChannelPtr chan, Boolean quiet); /* SndDisposeChannel_Thunk */
 extern OSErr SndPlay_Thunk(SndChannelPtr chan, SndListHandle sndH,
                             Boolean async);                               /* SndPlay_Thunk */
