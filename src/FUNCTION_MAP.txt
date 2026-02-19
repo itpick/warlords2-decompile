@@ -83,6 +83,23 @@
 # See RE_framework_remaining.md for full function list
 # agent:a35d2a0 handles reconstruction
 
+# ===== Cross-module Utility Functions (renamed from FUN_ prefixes) =====
+100f1640 | FUN_100f1640 | AllocateBlock         | stubs/reconstructed_5.c  | DONE (NewPtr equivalent)
+100f15e0 | FUN_100f15e0 | AllocateHandle        | stubs/stubs.c            | DONE (NewHandle equivalent)
+10017170 | FUN_10017170 | ApplyDirectionOffset  | movement/movement.c      | DONE (direction->coord offset)
+100184dc | FUN_100184dc | GetDirection           | stubs/recovered_stubs.c  | DONE (coord pair->direction)
+10000090 | FUN_10000090 | TrySetjmp             | stubs/reconstructed_1.c  | DONE (setjmp exception safety)
+100f27d0 | FUN_100f27d0 | EnableMenuItem        | stubs/reconstructed_5.c  | DONE (menu enable/disable)
+100f57c8 | FUN_100f57c8 | DisposeObject         | stubs/reconstructed_5.c  | DONE (free/dispose)
+10001a88 | FUN_10001a88 | GetTickCount          | stubs/reconstructed_1.c  | DONE (Mac OS tick counter)
+100db49c | FUN_100db49c | WriteResourceData     | framework/framework.c    | DONE (write resource fork)
+100db3c8 | FUN_100db3c8 | NewResourceHandle     | framework/framework.c    | DONE (create resource handle)
+100c3df8 | FUN_100c3df8 | InitCommand           | framework/framework.c    | DONE (TCommand::ICommand)
+100c3d2c | FUN_100c3d2c | ConstructCommand      | framework/framework.c    | DONE (TCommand base ctor)
+10011734 | FUN_10011734 | CheckThirdPartyTreaty | combat/combat.c          | DONE (diplomacy/alliance check)
+10011590 | FUN_10011590 | AdoptNeutralArmy      | stubs/reconstructed_2.c  | DONE (claim neutral armies)
+1000f258 | FUN_1000f258 | RemoveArmyFromCities  | economy/economy.c        | DONE (clear city army refs)
+
 # ===== TVect Trampolines (Mac OS Toolbox calls) =====
 # These are NOT game code - they are indirect calls to shared libraries.
 # Address range: 0x10000000 - 0x10004000 approximately
@@ -92,3 +109,4 @@
 10002970 | FUN_10002970 | Random()              | (Toolbox)       | TVect
 10003768 | FUN_10003768 | abs()                 | (Toolbox)       | TVect
 10001dd0 | FUN_10001dd0 | NumToString()         | (Toolbox)       | TVect
+10003558 | FUN_10003558 | GetNamedResource()    | (Toolbox)       | TVect (kept as FUN_ to avoid Mac header collision)

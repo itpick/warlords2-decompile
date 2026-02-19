@@ -175,7 +175,7 @@ void FUN_100c3c94(void);
 int  FUN_100c2120(int param_1);
 
 /* App lifecycle */
-int  FUN_10000090(char *param_1);
+int  TrySetjmp(char *param_1);
 int  FUN_100beb7c(int param_1);
 void FUN_100becb8(void);
 void FUN_100db158(long long, int);
@@ -503,7 +503,7 @@ void FUN_100bed7c(int *param_1)
     local_18 = 0;
     local_20 = *puVar1;
     *puVar1 = (int)auStack_128;
-    iVar2 = FUN_10000090(auStack_128);
+    iVar2 = TrySetjmp(auStack_128);
     if (iVar2 == 0) {
         iVar2 = FUN_100beb7c(0);
         FUN_100becb8();

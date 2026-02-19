@@ -7331,7 +7331,7 @@ void FUN_10008de4()
   
   piVar2 = gCityOwnership;
   ppuVar3 = 0 /* TVect base */;
-  puVar4 = (int *)FUN_100f15e0(0x4440);
+  puVar4 = (int *)AllocateHandle(0x4440);
   *piVar2 = (int)puVar4;
   if (puVar4 != (int *)0x0) {
     DetachResource(puVar4);
@@ -11808,7 +11808,7 @@ unsigned long long FUN_1000df58(short param_1)
     else {
       sVar17 = 4;
     }
-    iVar12 = FUN_10011734(uVar21);
+    iVar12 = CheckThirdPartyTreaty(uVar21);
     if (iVar12 != 0) {
       *(short *)((int)asStack_90 + (int)((uVar21 & 0xffffffff) << 1)) = 0;
     }

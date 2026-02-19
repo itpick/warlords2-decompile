@@ -17,7 +17,7 @@
  * ========================================================================= */
 int ResourceRead_Dispatch();
 void FUN_10000150(void);
-int FUN_10000090(void *exception_buf);
+int TrySetjmp(void *exception_buf);
 void FUN_10000378(int);
 int FUN_10000468(void);
 void FUN_10001590(void);
@@ -92,33 +92,26 @@ int AI_SelectUnitsForArmy(short armyIdx, short unitCount, int unitBuf, int outpu
 /* =========================================================================
  * AllocateBlock - Heap block allocator (NewPtr equivalent)
  * Original: FUN_100f1640, 96 bytes
+ * Now defined in reconstructed_5.c as AllocateBlock (renamed from FUN_100f1640)
  * ========================================================================= */
-/* Implemented in reconstructed_5.c as FUN_100f1640 */
-void *AllocateBlock(long size)
-{
-    /* FUN_100f1640 - NewPtr wrapper */
-    return (void *)(long)FUN_100f1640((int)size);
-}
+/* Wrapper removed: implementation lives in reconstructed_5.c */
 
 
 /* =========================================================================
  * AllocateHandle - Handle allocator (NewHandle equivalent)
  * Original: FUN_100f15e0, 96 bytes
+ * Now defined in stubs.c (renamed from FUN_100f15e0)
  * ========================================================================= */
-void *AllocateHandle(long size)
-{
-    /* FUN_100f15e0 - NewHandle wrapper */
-    return (void *)(long)FUN_100f15e0((int)size);
-}
+/* Wrapper removed: implementation lives in stubs.c */
 
 
 /* =========================================================================
  * AllocateMemory - Memory allocator (same as AllocateBlock)
- * Original: FUN_100f1640
+ * Original: AllocateBlock
  * ========================================================================= */
 void *AllocateMemory(long size)
 {
-    /* FUN_100f1640 - alias for AllocateBlock */
+    /* AllocateBlock - alias for AllocateBlock */
     return AllocateBlock(size);
 }
 
@@ -829,7 +822,7 @@ int GetGWorld_Wrapper(int *port, int *gdh)
  * ========================================================================= */
 void *GetNamedResource(long resType, short resID)
 {
-    /* FUN_10003558 - resource manager */
+    /* GetNamedResource - resource manager */
     return (void *)0;
 }
 #endif

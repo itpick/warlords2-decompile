@@ -172,7 +172,7 @@ void FUN_10040fb8(void)
     FUN_1003d4dc();
     iVar5 = *(int *)ppuVar2[-0x155];
     *(char *)(iVar5 + 0x9a) = 1;
-    uVar3 = FUN_10001a88();
+    uVar3 = GetTickCount();
     *(int *)(iVar5 + 0x9c) = uVar3;
   }
   return;
@@ -606,7 +606,7 @@ LAB_1004bf3c:
   local_30 = 0;
   local_38 = *puVar4;
   *puVar4 = (int)auStack_140;
-  iVar8 = FUN_10000090(auStack_140);
+  iVar8 = TrySetjmp(auStack_140);
   if (iVar8 == 0) {
     iVar8 = ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x810));
     ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x738));
@@ -707,7 +707,7 @@ void FUN_1004d0d0(void)
   local_28 = 0;
   local_30 = *puVar6;
   *puVar6 = (int)auStack_138;
-  iVar8 = FUN_10000090(auStack_138);
+  iVar8 = TrySetjmp(auStack_138);
   if (iVar8 == 0) {
     ResourceRead_Dispatch(*piVar3 + (int)*(short *)(*(int *)*piVar3 + 0x810));
     ResourceRead_Dispatch(*piVar3 + (int)*(short *)(*(int *)*piVar3 + 0x738));
@@ -931,7 +931,7 @@ void FUN_10055408(unsigned short param_1)
     local_30 = 0;
     local_38 = *puVar3;
     *puVar3 = (int)auStack_140;
-    iVar5 = FUN_10000090(auStack_140);
+    iVar5 = TrySetjmp(auStack_140);
     if (iVar5 == 0) {
       ResourceRead_Dispatch(*piVar1 + (int)*(short *)(*(int *)*piVar1 + 0x738));
       *piVar1 = 0;
@@ -999,7 +999,7 @@ void FUN_1005bdb8(void)
       if (piVar8 != (pint *)0x0) {
         uVar11 = ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(*piVar8 + 0xb8));
         **(unsigned short **)(local_47c + -0x284) = uVar11;
-        uVar7 = FUN_100f1640(uVar11);
+        uVar7 = AllocateBlock(uVar11);
         *puVar4 = (int)uVar7;
         StreamRead(piVar8, uVar7, uVar11);
         CloseStream(piVar8, 1);
@@ -1024,7 +1024,7 @@ void FUN_1005bdb8(void)
             local_48 = 0;
             local_50 = *puVar3;
             *puVar3 = (int)auStack_158;
-            iVar14 = FUN_10000090(auStack_158);
+            iVar14 = TrySetjmp(auStack_158);
             if (iVar14 == 0) {
               piVar9 = (pint *)ResourceRead_Dispatch(**(int **)(local_47c + -0x1e4) +
                                            (int)*(short *)(*(int *)**(int **)(local_47c + -0x1e4) +
@@ -1142,7 +1142,7 @@ void FUN_1005e858(void)
     local_20 = 0;
     local_28 = *puVar5;
     *puVar5 = (int)auStack_130;
-    iVar13 = FUN_10000090(auStack_130);
+    iVar13 = TrySetjmp(auStack_130);
     if (iVar13 == 0) {
       iVar13 = ResourceRead_Dispatch(**(int **)(local_154 + -0x1e4) +
                             (int)*(short *)(*(int *)**(int **)(local_154 + -0x1e4) + 200), 0xe24,
@@ -1202,7 +1202,7 @@ void FUN_1005ef84(void)
   piVar2 = piRam10115fc8;
   *puRam10117730 = 0;
   if (*piVar1 == 0) {
-    iVar5 = FUN_100f1640(0x3a);
+    iVar5 = AllocateBlock(0x3a);
     *piVar1 = iVar5;
     if (iVar5 == 0) {
       return;
@@ -1221,7 +1221,7 @@ void FUN_1005ef84(void)
   local_20 = 0;
   local_28 = *puVar4;
   *puVar4 = (int)auStack_130;
-  iVar5 = FUN_10000090(auStack_130);
+  iVar5 = TrySetjmp(auStack_130);
   if (iVar5 == 0) {
     iVar5 = ResourceRead_Dispatch(**(int **)(local_154 + -0x1e4) +
                          (int)*(short *)(*(int *)**(int **)(local_154 + -0x1e4) + 200), 0xe10,
@@ -1390,27 +1390,27 @@ void FUN_10063784(void)
   uVar13 = FUN_1005f6b0(0x17, 0);
   DrawNumber(uVar15, uVar13, *(unsigned short *)(**(int **)(local_5c + -0x544) + 0x162));
   piVar14 = (int *)FUN_10051f98(0x44415420, uVar15, 1);
-  uVar15 = FUN_100f1640(0x100);
+  uVar15 = AllocateBlock(0x100);
   *puVar9 = uVar15;
-  uVar15 = FUN_100f1640(0x100);
+  uVar15 = AllocateBlock(0x100);
   *puVar8 = uVar15;
-  uVar15 = FUN_100f1640(0x100);
+  uVar15 = AllocateBlock(0x100);
   *puVar7 = uVar15;
-  uVar15 = FUN_100f1640(0x100);
+  uVar15 = AllocateBlock(0x100);
   *puVar6 = uVar15;
-  uVar15 = FUN_100f1640(0x14);
+  uVar15 = AllocateBlock(0x14);
   *puVar5 = uVar15;
-  uVar15 = FUN_100f1640(0x14);
+  uVar15 = AllocateBlock(0x14);
   *puVar4 = uVar15;
-  uVar15 = FUN_100f1640(0x14);
+  uVar15 = AllocateBlock(0x14);
   *puVar3 = uVar15;
-  uVar15 = FUN_100f1640(0x14);
+  uVar15 = AllocateBlock(0x14);
   *puVar2 = uVar15;
-  iVar16 = FUN_100f1640(0x20);
+  iVar16 = AllocateBlock(0x20);
   *piVar12 = iVar16;
-  iVar16 = FUN_100f1640(0x20);
+  iVar16 = AllocateBlock(0x20);
   *piVar11 = iVar16;
-  iVar16 = FUN_100f1640(0x20);
+  iVar16 = AllocateBlock(0x20);
   *piVar10 = iVar16;
   StreamRead(piVar14, *puVar9, 0x100);
   StreamRead(piVar14, *puVar8, 0x100);
@@ -1954,7 +1954,7 @@ void FUN_10075570(int param_1, long long param_2, char param_3)
   int iVar5;
 
   piVar2 = gInfoWindow;
-  FUN_100f27d0(param_2, param_3);
+  EnableMenuItem(param_2, param_3);
   if (*piVar2 != 0) {
     piVar1 = (int *)ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x308), 0x6c62616b);
     piVar2 = (int *)ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x308), 0x7362616b);
@@ -2092,7 +2092,7 @@ void FUN_1007b218(int *param_1)
   local_1c = 0;
   local_24 = *puVar1;
   *puVar1 = (int)auStack_12c;
-  iVar5 = FUN_10000090(auStack_12c);
+  iVar5 = TrySetjmp(auStack_12c);
   if (iVar5 == 0) {
     if ((iVar4 == 0x646f6e65) &&
        (uVar2 = ResourceRead_Dispatch((int)piVar3 + (int)*(short *)(*piVar3 + 0x7f8)), (int)uVar2 != 0)) {
@@ -2172,7 +2172,7 @@ void FUN_1007ba3c(int *param_1, char param_2, char param_3)
   local_38 = 0;
   local_40 = *puVar3;
   *puVar3 = (int)auStack_148;
-  iVar7 = FUN_10000090(auStack_148);
+  iVar7 = TrySetjmp(auStack_148);
   if (iVar7 == 0) {
     if (param_2 == '\0') {
       FUN_10057e5c(0xffffffffffffffffLL, 0, piVar6);
@@ -2295,14 +2295,14 @@ void FUN_1007c618(int *param_1, unsigned short param_2, unsigned short param_3)
   ppuVar1 = DOT_TVECT;
   puVar2 = (int *)NewPtr_Thunk(0x10c);
   if (puVar2 != (int *)0x0) {
-    FUN_100c3d2c(puVar2);
+    ConstructCommand(puVar2);
     *puVar2 = (int)ppuVar1[-0x43f];
     puVar2[0xc] = 0;
     *(unsigned short *)(puVar2 + 0xd) = 0;
     *(unsigned short *)((int)puVar2 + 0x36) = 0;
     *(unsigned short *)(puVar2 + 0x42) = 0;
   }
-  FUN_100c3df8(puVar2, 0x57a, param_1, 1, 1, param_1);
+  InitCommand(puVar2, 0x57a, param_1, 1, 1, param_1);
   puVar2[0xc] = (int)param_1;
   *(unsigned short *)(puVar2 + 0xd) = param_2;
   *(unsigned short *)((int)puVar2 + 0x36) = param_3;
@@ -2336,11 +2336,11 @@ void DispatchNextPhase(int *param_1, long long param_2)
   ppuVar1 = DOT_TVECT;
   puVar2 = (int *)NewPtr_Thunk(0x34);
   if (puVar2 != (int *)0x0) {
-    FUN_100c3d2c(puVar2);
+    ConstructCommand(puVar2);
     *puVar2 = (int)ppuVar1[-0x504];
     puVar2[0xc] = 0;
   }
-  FUN_100c3df8(puVar2, param_2, param_1, 0, 0, 0);
+  InitCommand(puVar2, param_2, param_1, 0, 0, 0);
   puVar2[0xc] = (int)param_2;
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x200), puVar2);
   return;

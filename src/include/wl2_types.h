@@ -29,9 +29,11 @@ typedef struct ArmyRecord {
     short       strength_display;       /* +0x2A: displayed army strength */
     char        active_unit_type;       /* +0x2C: leading unit type (0xFF=none) */
     char        turns_fortified;        /* +0x2D: fortification counter */
-    char        unknown_2e;             /* +0x2E: copied from turns_fortified */
+    char        fortify_state;          /* +0x2E: copied from turns_fortified during init;
+                                         * Evidence: init loop copies turns_fortified -> this -> active_unit_type (recovered_stubs.c:141396) */
     unsigned char origin_player;        /* +0x2F: original owner */
-    short       unknown_30;             /* +0x30: rarely accessed */
+    short       neutral_active;         /* +0x30: nonzero = neutral army is deployed/active;
+                                         * Evidence: set to 0 on reset; checked != 0 for neutral (owner==0xF) army processing (recovered_stubs.c:166199) */
     short       has_orders;             /* +0x32: 0=idle, 1=moving to target */
     short       target_x;              /* +0x34: move destination X (-1=none, -2=vectoring) */
     short       target_y;              /* +0x36: move destination Y */
@@ -259,7 +261,9 @@ typedef struct GameState {
     short           resource_offset_1;                      /* +0x118 */
     short           hero_questing_enabled;                  /* +0x11A */
     short           allied_victory_enabled;                 /* +0x11C */
-    short           _pad11e;                                /* +0x11E */
+    short           alliance_quest_enabled;                  /* +0x11E: nonzero enables alliance-quest processing;
+                                                             * Evidence: checked before accessing quest records for
+                                                             * alliance targets (ai.c:2126,2164) */
     short           message_pending;                        /* +0x120 */
     short           random_events_enabled;                  /* +0x122 */
     short           vectoring_enabled;                      /* +0x124 */
@@ -322,27 +326,71 @@ typedef struct GameState {
  * Pointed to by gExtState (piRam10117468)
  */
 typedef struct ExtState {
-    char            _header[0x0C];                  /* +0x00 */
-    short           unknown_0c;                     /* +0x0C */
+    short           _header_00;                      /* +0x00: unknown header field */
+    short           siege_strength_mult;             /* +0x02: siege probability strength multiplier;
+                                                      * Evidence: multiplied with siege_base_mult in CalculateSiegeProbabilities (combat.c:1269) */
+    char            _header_04[8];                   /* +0x04: remaining header */
+    short           war_permission_flags;             /* +0x0C: bitmask; bit 0 = allow attacking through friendly territory;
+                                                      * Evidence: (flags & 1) checked in CanUnitAct diplomacy logic (combat.c:2310, ai.c:3788) */
     short           hero_hiring_enabled;             /* +0x0E: hero hiring flag */
     short           last_hero_type;                  /* +0x10: last hero type created */
     char            _pad12[4];                       /* +0x12 */
     short           units_created_counter;           /* +0x16: total units created */
-    char            _pad18[8];                       /* +0x18 */
+    short           diplo_weight_human;              /* +0x18: diplomacy score bonus when target is human/open field;
+                                                      * Evidence: added to diplomacy score when player_type==0 (combat.c:1633) */
+    short           diplo_weight_fortified;          /* +0x1A: diplomacy score bonus for fortified city (type 1);
+                                                      * Evidence: added to diplomacy score when city_type==1 (combat.c:1637) */
+    short           diplo_weight_neutral;            /* +0x1C: diplomacy score bonus for neutral city (type 0);
+                                                      * Evidence: added to diplomacy score when city_type==0 (combat.c:1639) */
+    short           diplo_weight_castle;             /* +0x1E: diplomacy score bonus for castle (type 2);
+                                                      * Evidence: added to diplomacy score when city_type==2 (combat.c:1635) */
     short           search_depth;                   /* +0x20: pathfinding depth */
-    short           unknown_22;                     /* +0x22 */
-    char            _pad24[0x0C];                   /* +0x24 */
-    short           unknown_30;                     /* +0x30 */
-    short           unknown_32;                     /* +0x32 */
-    short           production_modifier;            /* +0x34 */
-    char            _pad36[2];                      /* +0x36 */
-    short           allied_victory_check;           /* +0x38 */
-    char            _pad3a[6];                      /* +0x3A */
-    short           unknown_40;                     /* +0x40 */
-    short           unknown_42;                     /* +0x42 */
-    char            _pad44[2];                      /* +0x44 */
-    short           selected_city_index;            /* +0x46: -1 = none */
-    short           ai_mode_flag;                   /* +0x48: 0=normal, nonzero=AI */
+    short           ground_defender_count;            /* +0x22: AI counter for ground-based defender armies;
+                                                      * Evidence: zeroed then incremented when non-flying defender assigned (ai.c:1236,1282) */
+    short           flyer_defender_count;             /* +0x24: AI counter for flying defender armies;
+                                                      * Evidence: zeroed then incremented when flying defender assigned;
+                                                      * capped at 5 or 7 in various checks (ai.c:1237,1270,1284) */
+    short           bribery_chance;                  /* +0x26: bribery probability threshold for siege events;
+                                                      * Evidence: checked nonzero then added to prob for bribery test (combat.c:1291) */
+    short           espionage_chance;                /* +0x28: espionage probability threshold for siege events;
+                                                      * Evidence: checked nonzero then added to prob for espionage test (combat.c:1307) */
+    short           sabotage_chance;                 /* +0x2A: sabotage probability threshold for siege events;
+                                                      * Evidence: checked nonzero then added to prob for sabotage test (combat.c:1318) */
+    short           siege_base_mult;                 /* +0x2C: second factor in siege base probability;
+                                                      * Evidence: multiplied with siege_strength_mult (combat.c:1269) */
+    short           siege_bonus_field;               /* +0x2E: siege probability bonus for open field combat;
+                                                      * Evidence: added to prob when player_type==0 (combat.c:1275) */
+    short           siege_bonus_castle;              /* +0x30: siege probability bonus for castle (city type 2);
+                                                      * Evidence: added to prob when cityType==2 (combat.c:1278) */
+    short           siege_bonus_fortified;           /* +0x32: siege probability bonus for fortified city (type 1);
+                                                      * Evidence: added to prob when cityType==1 (combat.c:1281) */
+    short           siege_bonus_neutral;             /* +0x34: siege probability bonus for neutral city (type 0);
+                                                      * Evidence: added to prob when cityType==0 (combat.c:1284) */
+    short           low_gold_siege_modifier;         /* +0x36: siege probability modifier when player treasury < 100 gold;
+                                                      * Evidence: added to prob when gold < 100 (combat.c:1303) */
+    short           alliance_ai_enabled;             /* +0x38: nonzero enables alliance-based AI diplomacy behavior;
+                                                      * Evidence: checked alongside allied_victory_enabled to gate alliance logic
+                                                      * (ai.c:807, combat.c:2087,2228) */
+    short           min_army_strength;               /* +0x3A: minimum strength threshold for army tier classification;
+                                                      * Evidence: set from strength table min, used as threshold in army classification passes
+                                                      * (ai.c:2649,2717,2765) */
+    short           elite_army_count;                /* +0x3C: AI counter for elite-tier armies (flag 0x40);
+                                                      * Evidence: zeroed then incremented for armies with strong flyers (ai.c:2581,2679) */
+    short           standard_army_count;             /* +0x3E: AI counter for standard-tier armies (flag 0x80);
+                                                      * Evidence: zeroed then incremented for armies meeting strength req (ai.c:2580,2726) */
+    short           basic_army_count;                /* +0x40: AI counter for basic-tier armies (flag 0x08);
+                                                      * Evidence: zeroed then incremented in third classification pass (ai.c:2579,2774) */
+    short           hero_combat_enabled;             /* +0x42: nonzero enables hero capture / early-game rush mechanics;
+                                                      * Evidence: checked == 0 to skip hero capture (combat.c:2350, ai.c:3824) */
+    short           dominance_threshold;             /* +0x44: % threshold for human player being considered dominant;
+                                                      * AI uses fixed 50; this is the configurable human threshold;
+                                                      * Evidence: used as threshold when player_type==0 (ai.c:1055, combat.c:2049) */
+    short           quest_target_army;               /* +0x46: army index protected from attack due to active quest (-1=none);
+                                                      * Evidence: set to -1, then set from quest record; compared with armyIdx
+                                                      * to skip attack (ai.c:2123,2131,3394,3836; combat.c:2362) */
+    short           ai_processing_active;            /* +0x48: nonzero = AI turn processing is in progress;
+                                                      * Evidence: checked != 0 to skip finalization and re-evaluation
+                                                      * (ai.c:1870,2974) */
     short           completed_quest_count;           /* +0x4A: quests completed */
     char            _pad4c[0x0A];                   /* +0x4C */
     unsigned char   army_state[100];                 /* +0x56: per-army state (0x64 bytes) */

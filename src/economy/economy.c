@@ -280,7 +280,7 @@ void SortArmyUnits(short armyIdx)
  * When an army is destroyed, iterates all cities and clears any production
  * slot that references this army index. Also clears the army's quest flag.
  *
- * Original: FUN_1000f258 at 0x1000f258 (176 bytes)
+ * Original: RemoveArmyFromCities at 0x1000f258 (176 bytes)
  */
 void RemoveArmyFromCities(short armyIdx)
 {
@@ -1815,7 +1815,7 @@ void StartOfTurnProcessing(void)
     /* Start turn timer */
     /* turnStarted = true;              (offset +0x9A in timer struct) */
     /* turnStartTime = GetCurrentTime(); (offset +0x9C) */
-    /* FUN_10001a88 - get current tick count */
+    /* GetTickCount - get current tick count */
 }
 
 /* ======================================================================

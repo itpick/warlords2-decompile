@@ -98,8 +98,8 @@ extern void  NotifyTileChanged(short x, short y);                 /* NotifyTileC
 extern void  NotifyAllTilesChanged(void);                         /* NotifyAllTilesChanged */
 extern void  InitArmyProduction(void);                            /* InitArmyProduction */
 extern void  InitPlayerData(void);                                /* InitPlayerData */
-extern void *AllocateMemory(long size);                           /* FUN_100f1640 */
-extern void *AllocateHandle(long size);                           /* FUN_100f15e0 */
+extern void *AllocateMemory(long size);                           /* AllocateBlock */
+extern void *AllocateHandle(long size);                           /* AllocateHandle */
 extern void  ReleaseHandle_Mapgen(void *handle);                         /* ReleaseHandle_Mapgen */
 extern short AbsShort(long value);                                /* AbsShort */
 extern void  StoreCoords(void *dest, short x, short y);          /* StoreCoords */

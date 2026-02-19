@@ -46,7 +46,7 @@ extern void  FUN_1002b91c(void);                      /* UpdateDisplayState */
 extern int   LookupCityAtPos(short x, short y);          /* FindArmyAtPosition */
 extern void  ActivateAttackEvent(int siegeSlot);             /* ClearSiegeSlot */
 extern int   FUN_1000ed34(int slot, int target, int atkAddr, int defAddr); /* FindBestSiegeTarget */
-extern void  FUN_1000f258(short armyIdx);             /* ClearSiegeAssignments */
+extern void  RemoveArmyFromCities(short armyIdx);             /* ClearSiegeAssignments */
 extern void  FUN_1000f308(short siegeSlot);           /* UpdateSiegeStrength */
 extern void  FUN_1001fcc0(void);                      /* RecalculateSiegePaths */
 extern void  FUN_1001ae14(int siegeSlot, int penalty); /* BreakSiege */
@@ -54,12 +54,12 @@ extern int   AbsShort(long value);                /* AbsoluteValue */
 
 /* Forward declarations for functions defined later in this file */
 int  SelectDiplomacyTarget(short mode);               /* FindPrimaryThreat */
-int  CheckThirdPartyTreaty(short playerIdx);           /* FUN_10011734 */
+int  CheckThirdPartyTreaty(short playerIdx);           /* CheckThirdPartyTreaty */
 extern void  GetAdjacentArmies(short army, short mode, void *adjBuf, void *dataBuf); /* GetAdjacentArmies */
 extern int   FindNearestEnemy(short x, short y, int param3); /* FindNearestFriendlyCity */
 extern void  GetUnitStats(char typeId, void *buffer);  /* GetUnitTypeInfo */
-extern void  FUN_10011590(void);                       /* AdoptNeutralArmy */
-extern int   FUN_10011734(short playerIdx);            /* CheckThirdPartyTreaty */
+extern void  AdoptNeutralArmy(void);                       /* AdoptNeutralArmy */
+extern int   CheckThirdPartyTreaty(short playerIdx);            /* CheckThirdPartyTreaty */
 extern int   CheckQuestCondition(short armyIdx);              /* CalcArmyValue */
 extern void  LaunchAllianceAttack(short army, int mode);       /* ? */
 extern void  LaunchAllianceDefense(short army);                 /* ? */
@@ -1432,7 +1432,7 @@ void HandleSiege(void)
         (*(unsigned int *)(diploAddr + 0x1582) & 0xCFFFFFFF) | 0x20000000;
 
     /* Clear existing siege assignments and recalculate */
-    FUN_1000f258(bestArmy);
+    RemoveArmyFromCities(bestArmy);
     FUN_1000f308(emptySlot);
     FUN_1001fcc0();
 }
@@ -1723,7 +1723,7 @@ int SelectDiplomacyTarget(short mode)
         }
 
         /* Third party treaty check */
-        int treaty = FUN_10011734(i);
+        int treaty = CheckThirdPartyTreaty(i);
         if (treaty != 0) {
             diplomacyScore[i] = 0;
         }
@@ -1857,7 +1857,7 @@ void DoFightResults(void)
     mapBase = gMapTiles;
 
     /* Pre-phase: adopt neutral armies if applicable */
-    FUN_10011590();
+    AdoptNeutralArmy();
 
     /* Check if alliance system is active */
     if (*(short *)(*gameState + 0x11C) == 0) return;
@@ -2097,7 +2097,7 @@ void DoFightResults(void)
                 i != *(short *)(gs + 0x110)) {
                 unsigned int dipl = *(unsigned int *)(gs + currentPlayer * 0x10 + pBase + 0x1582);
                 if (((dipl >> 0x1C) & 3) != 0) {
-                    int treaty = FUN_10011734(i);
+                    int treaty = CheckThirdPartyTreaty(i);
                     if (treaty != 0) {
                         int addr = *gameState + currentPlayer * 0x10 + pBase;
                         *(unsigned int *)(addr + 0x1582) &= 0xCFFFFFFF;
@@ -2208,7 +2208,7 @@ void DoFightResults(void)
 /*
  * ==========================================================================
  *  CheckThirdPartyTreaty
- *  Original: FUN_10011734 at 0x10011734
+ *  Original: CheckThirdPartyTreaty at 0x10011734
  *  Size: 208 bytes
  *
  *  Checks if a player has third-party treaty protection that would
@@ -2380,7 +2380,7 @@ int TryHeroCapture(short armyIdx, short targetPlayer)
 /*
  * ==========================================================================
  *  ClearSiegeAssignments
- *  Original: FUN_1000f258 at 0x1000f258
+ *  Original: RemoveArmyFromCities at 0x1000f258
  *  Size: 176 bytes
  *
  *  Removes an army from all siege support slots across all siege

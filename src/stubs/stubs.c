@@ -16,7 +16,7 @@ int FUN_10009d38() { return 0; }
 int FUN_1000a12c() { return 0; }
 int FUN_1000d9ac() { return 0; }
 int FUN_10015904() { return 0; }
-int FUN_10017170() { return 0; }
+int ApplyDirectionOffset() { return 0; }
 int FUN_100230e8() { return 0; }
 int FUN_10025f98() { return 0; }
 int FUN_100276fc() { return 0; }
@@ -86,8 +86,8 @@ int CARRY8(int a, int b) { return ((unsigned char)a + (unsigned char)b) > 0xFF; 
 
 /* Missing stubs - these are only called, never defined elsewhere */
 int FUN_10007f78() { return 0; }
-int FUN_100c3d2c() { return 0; }
-int FUN_100f15e0() { return 0; }
+int ConstructCommand() { return 0; }
+int AllocateHandle() { return 0; }
 
 /* High-address function stubs (globals/data region) */
 

@@ -86,7 +86,7 @@
 #define NEIGHBOR_SENTINEL   (-10)   /* terminator for neighbor offset lists */
 
 /* ===== Direction Constants ===== */
-/* Returned by GetDirection (FUN_100184dc): */
+/* Returned by GetDirection (GetDirection): */
 #define DIR_N               0
 #define DIR_NE              1
 #define DIR_E               2
@@ -206,7 +206,7 @@ extern int      *gPathCachePtr;
 /* ===== External Function Declarations ===== */
 
 /* Mac OS Memory Manager wrappers */
-extern int      FUN_100f15e0(int size, int flags, ...);    /* NewHandle / memory alloc */
+extern int      AllocateHandle(int size, int flags, ...);    /* NewHandle / memory alloc */
 #ifdef MODERN_BUILD
 extern void     DetachResource(void *handle);                 /* HLock - lock handle */
 #endif
@@ -225,12 +225,12 @@ extern short    AbsShort(short value);
 extern short    CalcDistance(short x1, short y1, short x2, short y2);
 
 /* Apply direction offset to coordinates, returns 1 if valid, 0 if out of bounds */
-/* FUN_10017170 at 10017170 */
-extern int      FUN_10017170(short *px, short *py, short direction);
+/* ApplyDirectionOffset at 10017170 */
+extern int      ApplyDirectionOffset(short *px, short *py, short direction);
 
 /* Get direction from (x1,y1) to (x2,y2), returns 0-7 or 0xFF if same tile */
-/* FUN_100184dc at 100184dc */
-extern int      FUN_100184dc(short x1, short y1, short x2, short y2);
+/* GetDirection at 100184dc */
+extern int      GetDirection(short x1, short y1, short x2, short y2);
 
 
 /* ===== Forward Declarations (internal to this module) ===== */
@@ -340,7 +340,7 @@ static void AllocatePathfindingBuffers(void)
 
     /* Allocate or resize distance grid (0x8880 bytes) */
     if (*distHandle == 0) {
-        handle = FUN_100f15e0(0x8880, 0);
+        handle = AllocateHandle(0x8880, 0);
         *distHandle = handle;
     } else {
         if (*(int *)*distHandle == 0) {
@@ -352,13 +352,13 @@ static void AllocatePathfindingBuffers(void)
 
     /* Allocate cost map (0x4440 bytes) */
     if (*costHandle == 0) {
-        handle = FUN_100f15e0(0x4440, 0, 0);
+        handle = AllocateHandle(0x4440, 0, 0);
         *costHandle = handle;
     }
 
     /* Allocate path cache (0x10B8 bytes = 20 * 214) */
     if (*cacheHandle == 0) {
-        handle = FUN_100f15e0(0x10B8, 0, 0);
+        handle = AllocateHandle(0x10B8, 0, 0);
         *cacheHandle = handle;
     }
 
@@ -405,7 +405,7 @@ static int FindCachedPathStep(short targetX, short targetY, short cacheEntry)
         }
 
         /* Apply direction offset to advance position */
-        result = FUN_10017170(&startX, &startY,
+        result = ApplyDirectionOffset(&startX, &startY,
                      *(unsigned char *)(*cachePtr + cacheEntry * PATH_CACHE_ENTRY_SIZE +
                                         step + PATH_WAYPOINT_OFFSET));
         if (result == 0) {
@@ -583,7 +583,7 @@ static int TryDirectPath(PathRequest *req)
     }
 
     /* Compute direction from source to destination */
-    direction = (unsigned char)FUN_100184dc(p[0], p[1], p[2], p[3]);
+    direction = (unsigned char)GetDirection(p[0], p[1], p[2], p[3]);
 
     /* Store single-step direction as the entire path */
     **(unsigned char **)(p + 6) = direction;
@@ -647,7 +647,7 @@ static int CheckTileAccessibility(short x, short y)
         if (found != 0) break;
 
         /* Apply direction offset */
-        result = FUN_10017170(&curX, &curY,
+        result = ApplyDirectionOffset(&curX, &curY,
                      *(unsigned short *)(step * 2 + walkTable));
         if (result == 0) {
             return 0;
@@ -1364,7 +1364,7 @@ static void ReconstructPath(PathRequest *req)
         }
 
         /* Get compass direction from current position toward destination */
-        direction = FUN_100184dc((short)curX, (short)curY, p[2], p[3]);
+        direction = GetDirection((short)curX, (short)curY, p[2], p[3]);
 
         bestY = -1;
         bestX = -1;
@@ -2018,7 +2018,7 @@ apply_discounts:
  * Walks through the waypoint buffer step by step, accumulating movement
  * costs. Stops when:
  *   - A waypoint is 0xFF (end of path)
- *   - FUN_10017170 returns 0 (direction leads out of bounds)
+ *   - ApplyDirectionOffset returns 0 (direction leads out of bounds)
  *   - 100 steps exceeded
  *
  * If costBuffer is provided, fills it with cumulative costs (capped at 255).
@@ -2080,7 +2080,7 @@ static short CalcPathCost(PathRequest *req, short movePoints, int costBuffer)
         if (*(char *)(*(int *)(p + 6) + step) == -1) break;
 
         /* Apply direction to advance position */
-        result = FUN_10017170(&curX, &curY,
+        result = ApplyDirectionOffset(&curX, &curY,
                      *(char *)(*(int *)(p + 6) + step));
         if (result == 0) break;
 
@@ -2203,7 +2203,7 @@ static void FreePathfindingBuffers(void)
 /*
  * ======================================================================
  * GetDirection - Compute compass direction from (x1,y1) to (x2,y2)
- * FUN_100184dc at 100184dc (Size: 152 bytes)
+ * GetDirection at 100184dc (Size: 152 bytes)
  *
  * Returns a direction index 0-7 (N, NE, E, SE, S, SW, W, NW) or
  * 0xFF if the two positions are identical.
@@ -2226,7 +2226,7 @@ static void FreePathfindingBuffers(void)
 /*
  * ======================================================================
  * ApplyDirectionOffset - Apply a direction offset to tile coordinates
- * FUN_10017170 at 10017170 (Size: 100 bytes)
+ * ApplyDirectionOffset at 10017170 (Size: 100 bytes)
  *
  * Uses two lookup tables (FUN_10115d3c for DX, iRam10115d44 for DY)
  * indexed by direction (0-7) to compute new coordinates.
@@ -2281,8 +2281,8 @@ static void FreePathfindingBuffers(void)
  *   AllocInfluenceMap -> GetDistanceGridPtr
  *   FreeInfluenceMap -> FreePathfindingBuffers
  *
- *   FUN_100184dc -> GetDirection             (external)
- *   FUN_10017170 -> ApplyDirectionOffset     (external)
+ *   GetDirection -> GetDirection             (external)
+ *   ApplyDirectionOffset -> ApplyDirectionOffset     (external)
  *   CalcDistance -> CalcDistance             (external)
  *   AbsShort -> abs()                    (external)
  *

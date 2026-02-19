@@ -1394,7 +1394,7 @@ void DrawFullMapView(void)                                      /* DrawFullMapVi
     int     terrainIndex;
 
     /* Step 1: Allocate temp coordinate list */
-    coordList = (int *)FUN_100f1640(mapWidth * 4 * mapHeight);
+    coordList = (int *)AllocateBlock(mapWidth * 4 * mapHeight);
 
     /* Step 2: Set up drawing target */
     GetGWorld_Wrapper(&savedPort, &savedDevice);                /* GetGWorld_Wrapper */

@@ -92,14 +92,14 @@ extern int   ResourceRead_Dispatch(int method_ptr, ...);
 /* MacApp handle/memory management */
 extern void  FUN_100db158(int hi, int lo);  /* Lock handle */
 extern void  FocusObject(int param);       /* Unlock handle */
-extern int   FUN_100f1640(int size);        /* Allocate heap block */
+extern int   AllocateBlock(int size);        /* Allocate heap block */
 
 /* Game functions called by FUN_10095330 */
 extern void  FUN_1002bcd8(void);
 extern int   ProcessQuestEvent(int a, int b, int c, int d);
 
 /* Game functions called by FUN_100ae86c */
-extern int   FUN_10000090(void);
+extern int   TrySetjmp(void);
 extern void  FUN_100ae1a8(int param);
 extern void  FUN_100ae550(void);
 extern void  FUN_100ae77c(void);
@@ -859,9 +859,9 @@ void FUN_100ae86c(void)
     /* Initialize unit type selection to -1 (0xFFFF) */
     *(short *)((char *)piRam1011684c + 4) = (short)0xffff;
     /* Allocate terrain cost buffers (0x1D = 29 unit classes) */
-    uVar4 = FUN_100f1640(0x1d);
+    uVar4 = AllocateBlock(0x1d);
     *(int *)((char *)piRam1011684c + 8) = uVar4;
-    uVar4 = FUN_100f1640(0x1d);
+    uVar4 = AllocateBlock(0x1d);
     *(int *)((char *)piRam1011684c + 12) = uVar4;
     /* Copy current terrain movement costs for the current player */
     local_130 = 0;
@@ -883,7 +883,7 @@ void FUN_100ae86c(void)
     local_24 = *(int *)((pint *)gResourcePtr);
     *(int *)((pint *)gResourcePtr) = (int)auStack_12c;
     local_10 = local_14;
-    iVar5 = FUN_10000090();
+    iVar5 = TrySetjmp();
     if (iVar5 == 0) {
         if (*piRam1011684c != 0) {
             local_c = ResourceRead_Dispatch(*piRam1011684c +

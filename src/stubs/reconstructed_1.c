@@ -144,7 +144,7 @@ void PlaceUnitInArmy(int, int, int);
 void SortArmyUnits(int);
 void UnlockUnitData(void);
 int GetArmyInfo(int, void *);
-int FUN_100f15e0(int);
+int AllocateHandle(int);
 void ReleaseHandle_Mapgen(int);
 int FUN_1000e938(short);
 void FUN_1000ea7c(int, ...);
@@ -172,7 +172,7 @@ void FUN_10000000(void)
 
 // Address: 0x10000090 | Size: 24 bytes
 // TVect trampoline -> puRam10115354 (Mac OS Toolbox call)
-void FUN_10000090(void)
+void TrySetjmp(void)
 {
     /* TVect: indirect jump via puRam10115354 */
     return;
@@ -228,7 +228,7 @@ void FUN_100016f8(void)
 
 // Address: 0x10001a88 | Size: 24 bytes
 // TVect trampoline -> puRam10115a34 (Mac OS Toolbox call)
-int FUN_10001a88(void)
+int GetTickCount(void)
 {
     /* TVect: indirect jump via puRam10115a34 */
     return 0;
@@ -276,6 +276,7 @@ void FUN_10002c58(int a)
 
 // Address: 0x10003558 | Size: 24 bytes
 // TVect trampoline -> puRam10115838 (Mac OS Toolbox call)
+// On PPC this is the real Mac OS GetNamedResource; kept as FUN_ to avoid Toolbox name collision
 void FUN_10003558(void)
 {
     /* TVect: indirect jump via puRam10115838 */
@@ -571,7 +572,7 @@ void FUN_1000d808(void)
         FUN_10008f70();
     }
     FUN_1003d4dc();
-    uVar5 = FUN_10001a88();
+    uVar5 = GetTickCount();
     return;
 }
 
@@ -703,7 +704,7 @@ long long FUN_1000ed34(long long param_1, short param_2, short *param_3, short *
         bVar16 = iVar13 != 0;
         iVar13 = (int)(short)((short)iVar13 + -1);
     } while (bVar16);
-    iVar13 = FUN_100f15e0(600);
+    iVar13 = AllocateHandle(600);
     *piVar12 = iVar13;
     if (iVar13 == 0) {
         uVar17 = (long long)-1;
@@ -802,36 +803,8 @@ long long FUN_1000ed34(long long param_1, short param_2, short *param_3, short *
 
 // Address: 0x1000f258 | Size: 176 bytes
 // Removes a specific army from all city production/garrison slots.
-// Iterates over all cities, clearing any reference to the given army index.
-void FUN_1000f258(short param_1)
-{
-    int bVar1;
-    short sVar2;
-    int *piVar3;
-    int *piVar4;
-    int iVar5;
-    int iVar6;
-
-    piVar4 = piRam10117468;
-    piVar3 = piRam1011735c;
-    sVar2 = *(short *)(*piRam10117468 + 0x24a);
-    while (sVar2 != 0) {
-        sVar2 = sVar2 + -1;
-        if (*(short *)(*piVar4 + sVar2 * 0x5c + 0x24c) != 0) {
-            iVar6 = 3;
-            do {
-                iVar5 = *piVar4 + sVar2 * 0x5c + iVar6 * 2;
-                if (*(short *)(iVar5 + 0x252) == param_1) {
-                    *(short *)(iVar5 + 0x252) = (short)0xffff;
-                    *(short *)(*piVar3 + param_1 * 0x42 + 0x1636) = 0;
-                }
-                bVar1 = iVar6 != 0;
-                iVar6 = (int)(short)((short)iVar6 + -1);
-            } while (bVar1);
-        }
-    }
-    return;
-}
+// Superseded by clean reconstruction in economy/economy.c
+/* Raw Ghidra decompile removed - clean version in economy/economy.c */
 
 // Address: 0x1000f308 | Size: 260 bytes
 // Updates city border defense counts by examining neighbor army adjacency.

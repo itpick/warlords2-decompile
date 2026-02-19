@@ -39,11 +39,11 @@
 extern int  ResourceRead_Dispatch(int method_ptr, ...);
 
 /* MacApp object constructors */
-extern void FUN_100c3d2c(void *cmd);                     /* TCommand base ctor (48B) */
-extern void FUN_100c3df8(void *cmd, int cmdID,           /* TCommand::ICommand */
+extern void ConstructCommand(void *cmd);                     /* TCommand base ctor (48B) */
+extern void InitCommand(void *cmd, int cmdID,           /* TCommand::ICommand */
                           void *target, int a, int b, void *doc);
 extern void *NewPtr_Thunk(int size);                      /* NewObject / malloc */
-extern void  FUN_100f57c8(void *ptr);                     /* DisposeObject / free */
+extern void  DisposeObject(void *ptr);                     /* DisposeObject / free */
 extern void  FUN_100d568c(void *obj);                     /* TBehavior ctor */
 extern void  FUN_100bf518(void *obj);                     /* Simple object ctor (0x20B) */
 extern void  FUN_100c6b2c(void *obj);                     /* Extended object ctor (0xBCB) */
@@ -57,8 +57,8 @@ extern void  FUN_100db158(int hi, int lo);                /* Lock handle */
 extern void  FocusObject(void);                          /* Unlock handle */
 extern void  EndFocus(void);                          /* Get handle state */
 extern void  MarkChanged(void);                          /* Set handle state */
-extern void *FUN_100db3c8(int mode);                      /* New resource handle */
-extern void  FUN_100db49c(void *h, unsigned long type,    /* Write resource */
+extern void *NewResourceHandle(int mode);                      /* New resource handle */
+extern void  WriteResourceData(void *h, unsigned long type,    /* Write resource */
                            int a, int b, int c, int d, int e);
 extern void  FUN_100bd55c(void *doc);                     /* Attach doc to app */
 
@@ -75,8 +75,8 @@ extern void *FUN_10098320(void *buf, unsigned long type,  /* Find resource by ty
 extern void  FUN_100982e8(void *buf);                     /* Close resource stream */
 
 /* MacApp utility functions */
-extern int   FUN_100f1640(int size);                      /* Allocate heap block */
-extern void *FUN_100f15e0(int count);                     /* Allocate small block */
+extern int   AllocateBlock(int size);                      /* Allocate heap block */
+extern void *AllocateHandle(int count);                     /* Allocate small block */
 extern void  BuildPascalString(void *dst, int src);            /* Pascal string copy */
 extern int   FUN_100b1c84(int val);                       /* String conversion */
 extern void  FUN_100ed640(void);                          /* Framework init 1 */
@@ -95,15 +95,15 @@ extern void  FUN_100d8c9c(int cmd, int param);            /* Post command */
 extern void  ReleaseHandle_Mapgen(int param);                     /* Release resource */
 extern void  FreeBlock(int param);                     /* Release resource variant */
 extern void  FUN_100b08d4(short *rect, int param);        /* Get screen size */
-extern int   FUN_100f27d0(int menuID, int enabled);       /* Enable/disable menu item */
+extern int   EnableMenuItem(int menuID, int enabled);       /* Enable/disable menu item */
 extern int   FUN_100f0538(int param);                     /* List iteration */
 
 /* MacApp error handling / exception */
-extern int   FUN_10000090(void *exception_buf);           /* Try (setjmp) */
+extern int   TrySetjmp(void *exception_buf);           /* Try (setjmp) */
 extern void  FUN_10000150(void);                          /* Throw (longjmp) */
 extern void  ReleaseResource_Thunk(void *handle);                  /* Dispose handle */
 extern char  FUN_10000360(void *handle);                  /* Get handle flags */
-extern int   FUN_10001a88(void);                          /* Get tick count */
+extern int   GetTickCount(void);                          /* Get tick count */
 #ifdef MODERN_BUILD
 extern int   GetString(int offset, void *buf);         /* Read from offset */
 #endif
@@ -474,11 +474,11 @@ void DoMenuCommand(int *self, int cmdNumber)
         /* Allocate TMoveArmyCommand (0xB4 = 180 bytes) */
         newCmd = NewPtr_Thunk(0xB4);
         if (newCmd != NULL) {
-            FUN_100c3d2c(newCmd);                 /* TCommand base ctor */
+            ConstructCommand(newCmd);                 /* TCommand base ctor */
             *(int *)newCmd = (int)((void **)tvect)[-0x437];  /* Set vtable */
             *(short *)((char *)newCmd + 0xB0) = 0;
         }
-        FUN_100c3df8(newCmd, cmdNumber, self, 1, 1, self);
+        InitCommand(newCmd, cmdNumber, self, 1, 1, self);
         *(short *)((char *)newCmd + 0xB0) = 0;
         /* PerformCommand(cmd) via vtable +0x200 */
         ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
@@ -501,13 +501,13 @@ void DoMenuCommand(int *self, int cmdNumber)
         /* Allocate TMoveArmyByKeyCommand (0x108 = 264 bytes) */
         newCmd = NewPtr_Thunk(0x108);
         if (newCmd != NULL) {
-            FUN_100c3d2c(newCmd);                 /* TCommand base ctor */
+            ConstructCommand(newCmd);                 /* TCommand base ctor */
             *(int *)newCmd = (int)((void **)tvect)[-0x43a];  /* Set vtable */
             *(short *)((char *)newCmd + 0x30) = 0xFFFF;
             *(short *)((char *)newCmd + 0x32) = 0xFFFF;
             *(short *)((char *)newCmd + 0x104) = 0;
         }
-        FUN_100c3df8(newCmd, 0x57C, self, 1, 1, self);
+        InitCommand(newCmd, 0x57C, self, 1, 1, self);
         /* PerformCommand(cmd) via vtable +0x200 */
         ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x200), (int)newCmd);
         return;
@@ -521,7 +521,7 @@ void DoMenuCommand(int *self, int cmdNumber)
         /* Allocate TMoveArmyCommand full data (0x1E0 bytes) */
         newCmd = NewPtr_Thunk(0x1E0);
         if (newCmd != NULL) {
-            FUN_100c3d2c(newCmd);                 /* TCommand base ctor */
+            ConstructCommand(newCmd);                 /* TCommand base ctor */
             *(int *)newCmd = (int)((void **)tvect)[-0x43c];  /* Set vtable */
             ((int *)newCmd)[0x0C] = 0;
             *(short *)((char *)newCmd + 0x104) = 0;
@@ -529,7 +529,7 @@ void DoMenuCommand(int *self, int cmdNumber)
             *(short *)((char *)newCmd + 0x1DA) = 0xFFFF;
             *(short *)((char *)newCmd + 0x1DC) = 0xFFFF;
         }
-        FUN_100c3df8(newCmd, cmdNumber, self, 1, 1, self);
+        InitCommand(newCmd, cmdNumber, self, 1, 1, self);
         ((int *)newCmd)[0x0C] = (int)self;
         *(short *)((char *)newCmd + 0x1DA) = 0xFFFF;
         *(short *)((char *)newCmd + 0x1DC) = 0xFFFF;
@@ -796,16 +796,16 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
 
     /* Allocate game state buffers if not yet present */
     if (*piVar5 == 0) {
-        *piVar5 = FUN_100f1640(0x2FCC);     /* GameState: ~12K */
+        *piVar5 = AllocateBlock(0x2FCC);     /* GameState: ~12K */
     }
     if (*piVar4 == 0) {
-        *piVar4 = FUN_100f1640(0x8880);     /* MapTiles: ~35K */
+        *piVar4 = AllocateBlock(0x8880);     /* MapTiles: ~35K */
     }
     if (*piVar6 == 0) {
-        *piVar6 = FUN_100f1640(22000);      /* UnitTypeTable */
+        *piVar6 = AllocateBlock(22000);      /* UnitTypeTable */
     }
     if (*piVar3 == 0) {
-        *piVar3 = FUN_100f1640(0x4440);     /* Info panel data */
+        *piVar3 = AllocateBlock(0x4440);     /* Info panel data */
     }
 
     /* If this is a file-based document (not new), read saved data */
@@ -835,7 +835,7 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
             if (!bTurnRestore) {
                 int viewState = *piVar2;
                 *(char *)(viewState + 0x9a) = 1;
-                *(int *)(viewState + 0x9c) = FUN_10001a88();
+                *(int *)(viewState + 0x9c) = GetTickCount();
             }
             ReleaseHandle_Sound(typeRes);
             uVar14 = 0;
@@ -846,7 +846,7 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
 
         /* Read per-player "Mail" resources (IDs 1000-1007) */
         /* Stub — FUN_1007ded4: reads Mail resources with exception handling */
-        /* Original uses setjmp/FUN_10000090 for exception safety */
+        /* Original uses setjmp/TrySetjmp for exception safety */
         /* Reads 8 iterations: FUN_10003558('Mail', i+1000) for i in 0..7 */
         /* Stores player mail data at docSelf + i*4 + 0x170 */
 
@@ -871,7 +871,7 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
         int viewState = *piVar2;
         if (*(char *)(viewState + 0x9a) != '\0') {
             *(char *)(viewState + 0x9a) = 1;
-            *(int *)(viewState + 0x9c) = FUN_10001a88();
+            *(int *)(viewState + 0x9c) = GetTickCount();
         }
     }
 }
@@ -889,7 +889,7 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
  *   - "MKik" resource (multiplayer kick state)
  *   - "Turn" resource (turn-in-progress indicator)
  *
- * Uses exception handling (FUN_10000090) for safe resource writes.
+ * Uses exception handling (TrySetjmp) for safe resource writes.
  * ========================================================================= */
 void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
 {
@@ -915,7 +915,7 @@ void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
         /* Write "Type" resource (ID 1000) -- marks file as saved game */
         /* Exception-safe block: setjmp + resource write + longjmp on error */
         {
-            void *typeHandle = FUN_100f15e0(2);
+            void *typeHandle = AllocateHandle(2);
             *(short *)*(int *)typeHandle = 1;
             /* AddResource(typeHandle, 'Type', 1000, ...) */
             /* ... resource write with error handling ... */
@@ -982,11 +982,11 @@ void DoSetupMenus(int docSelf)
     /* If document is not file-based and view state has pending changes */
     if (*(char *)(docSelf + 0x16c) == '\0' && *(char *)(*piVar6 + 0x9a) != '\0') {
         /* Disable certain menus during non-file mode */
-        FUN_100f27d0(0x1F, 0);  /* Disable menu 0x1F */
-        FUN_100f27d0(0x1E, 0);  /* Disable menu 0x1E */
-        FUN_100f27d0(0x20, 0);  /* Disable menu 0x20 */
-        FUN_100f27d0(0x21, 0);  /* Disable menu 0x21 */
-        FUN_100f27d0(0x24, 0);  /* Disable menu 0x24 */
+        EnableMenuItem(0x1F, 0);  /* Disable menu 0x1F */
+        EnableMenuItem(0x1E, 0);  /* Disable menu 0x1E */
+        EnableMenuItem(0x20, 0);  /* Disable menu 0x20 */
+        EnableMenuItem(0x21, 0);  /* Disable menu 0x21 */
+        EnableMenuItem(0x24, 0);  /* Disable menu 0x24 */
     }
 
     /* Set panel visibility state */
@@ -1136,7 +1136,7 @@ void DoPostCreate(void)
     *(int *)puVar9 = iVar13;
 
     /* Exception-safe initialization */
-    iVar11 = FUN_10000090((void *)iVar13);
+    iVar11 = TrySetjmp((void *)iVar13);
     if (iVar11 != 0) {
         if (*(short *)(iVar13 + 0x100) != 0) {
             if (*(int *)(iVar13 + 0x104) == 0) {
@@ -1308,25 +1308,25 @@ void DoPostCreate(void)
     /* === Allocate Game Data Buffers === */
 
     if (*piVar7 == 0) {
-        *piVar7 = FUN_100f1640(0x8880);     /* Fog of war map: 35K */
+        *piVar7 = AllocateBlock(0x8880);     /* Fog of war map: 35K */
     }
     if (*piVar6 == 0) {
-        *piVar6 = FUN_100f1640(0xAE);       /* Unit class table: 174 bytes */
+        *piVar6 = AllocateBlock(0xAE);       /* Unit class table: 174 bytes */
     }
     if (*piVar5 == 0) {
-        *piVar5 = FUN_100f1640(22000);       /* Unit type table */
+        *piVar5 = AllocateBlock(22000);       /* Unit type table */
     }
     if (*piVar4 == 0) {
-        *piVar4 = FUN_100f1640(0x2FCC);     /* GameState: ~12K */
+        *piVar4 = AllocateBlock(0x2FCC);     /* GameState: ~12K */
     }
     if (*piVar3 == 0) {
-        *piVar3 = FUN_100f1640(0x8880);     /* Map tiles: ~35K */
+        *piVar3 = AllocateBlock(0x8880);     /* Map tiles: ~35K */
     }
     if (*piVar2 == 0) {
-        *piVar2 = FUN_100f1640(0x4440);     /* Info panel data */
+        *piVar2 = AllocateBlock(0x4440);     /* Info panel data */
     }
     if (*piVar14 == 0) {
-        *piVar14 = FUN_100f1640(0x3A);      /* Misc data: 58 bytes */
+        *piVar14 = AllocateBlock(0x3A);      /* Misc data: 58 bytes */
     }
 
     /* Create document helper object (0x1B4 bytes) */
@@ -1367,14 +1367,14 @@ void DoPostCreate(void)
 void OpenW2SCStream(int docSelf, int param_2)
 {
     /* Dispose old stream handle */
-    FUN_100f57c8(*(void **)(docSelf + 0x148));
+    DisposeObject(*(void **)(docSelf + 0x148));
 
     /* Create new resource handle */
-    void *newHandle = FUN_100db3c8(0);
+    void *newHandle = NewResourceHandle(0);
     *(int *)(docSelf + 0x148) = (int)newHandle;
 
     /* Write as W2SC resource type: 'W2SC' = 0x57325343 */
-    FUN_100db49c(newHandle, 0x57325343,
+    WriteResourceData(newHandle, 0x57325343,
                  0 /* app file ref */, 0, 0, 0, 1);
 
     /* Call stream read/open method via vtable +0xA8 */
@@ -1392,13 +1392,13 @@ void OpenW2SCStream(int docSelf, int param_2)
  */
 void OpenW2TEStream(int docSelf, int param_2)
 {
-    FUN_100f57c8(*(void **)(docSelf + 0x14C));
+    DisposeObject(*(void **)(docSelf + 0x14C));
 
-    void *newHandle = FUN_100db3c8(0);
+    void *newHandle = NewResourceHandle(0);
     *(int *)(docSelf + 0x14C) = (int)newHandle;
 
     /* Write as W2TE resource type: 'W2TE' = 0x57325445 */
-    FUN_100db49c(newHandle, 0x57325445,
+    WriteResourceData(newHandle, 0x57325445,
                  0 /* app file ref */, 0, 0, 0, 1);
 
     int *streamObj = *(int **)(docSelf + 0x14C);
@@ -1414,13 +1414,13 @@ void OpenW2TEStream(int docSelf, int param_2)
  */
 void OpenW2ARStream(int docSelf, int param_2)
 {
-    FUN_100f57c8(*(void **)(docSelf + 0x150));
+    DisposeObject(*(void **)(docSelf + 0x150));
 
-    void *newHandle = FUN_100db3c8(0);
+    void *newHandle = NewResourceHandle(0);
     *(int *)(docSelf + 0x150) = (int)newHandle;
 
     /* Write as W2AR resource type: 'W2AR' = 0x57324152 */
-    FUN_100db49c(newHandle, 0x57324152,
+    WriteResourceData(newHandle, 0x57324152,
                  0 /* app file ref */, 0, 0, 0, 1);
 
     int *streamObj = *(int **)(docSelf + 0x150);
@@ -1459,6 +1459,6 @@ void SaveWindowPositions(void *self)
      * 5. Write "Turn" resource with current turn state
      * 6. Dispose temporary handles
      *
-     * Uses exception handling (FUN_10000090) for safe resource writes.
+     * Uses exception handling (TrySetjmp) for safe resource writes.
      */
 }

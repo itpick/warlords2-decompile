@@ -101,10 +101,10 @@ void FUN_1003dc28(void);
 
 
 /* ======================================================================
- * FUN_10011590 - Army targeting logic
+ * AdoptNeutralArmy - Army targeting logic
  * Address: 0x10011590, Size: 420 bytes
  * ====================================================================== */
-void FUN_10011590(void)
+void AdoptNeutralArmy(void)
 {
   unsigned char bVar1;
   short sVar2;
@@ -159,38 +159,11 @@ void FUN_10011590(void)
 
 
 /* ======================================================================
- * FUN_10011734 - Diplomacy check
+ * CheckThirdPartyTreaty - Diplomacy check
  * Address: 0x10011734, Size: 208 bytes
+ * Superseded by clean reconstruction in combat/combat.c
  * ====================================================================== */
-long long FUN_10011734(short param_1)
-{
-  int bVar1;
-  int iVar2;
-  long long uVar3;
-  int iVar4;
-  int iVar5;
-
-  uVar3 = 0;
-  if ((*(short *)(*piRam1011735c + 0x11c) != 0) && (*(short *)(*piRam10117468 + 0x38) != 0)) {
-    if (*(short *)(*piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 2 + 0xd0) == 0) {
-      return 0;
-    }
-    iVar5 = 7;
-    do {
-      iVar2 = iVar5 * 2;
-      iVar4 = *piRam1011735c + iVar2;
-      if ((((*(short *)(iVar4 + 0x138) != 0) && (*(short *)(iVar4 + 0xd0) == 0)) &&
-          ((*(unsigned int *)(*piRam1011735c + param_1 * 0x10 + iVar2 + 0x1582) >> 0x1a & 3) == 2)) &&
-         (*(short *)(iVar2 + gDiploThreatData) != 0)) {
-        uVar3 = 1;
-      }
-      bVar1 = iVar5 != 0;
-      iVar5 = (int)(short)((short)iVar5 + -1);
-    } while (bVar1);
-    return uVar3;
-  }
-  return 0;
-}
+/* Raw Ghidra decompile removed - clean version in combat/combat.c */
 
 
 /* ======================================================================
@@ -1136,7 +1109,7 @@ void FUN_10025758(short param_1,short param_2,short param_3)
       local_40 = 0;
       local_48 = *puVar9;
       *puVar9 = (int)auStack_150;
-      iVar13 = FUN_10000090(auStack_150);
+      iVar13 = TrySetjmp(auStack_150);
       if (iVar13 == 0) {
         FUN_1002565c();
         *puVar9 = local_48;
@@ -1190,7 +1163,7 @@ void FUN_1002656c(void)
     local_18 = 0;
     local_20 = *puVar3;
     *puVar3 = (int)auStack_128;
-    iVar4 = FUN_10000090(auStack_128);
+    iVar4 = TrySetjmp(auStack_128);
     if (iVar4 == 0) {
       ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x810));
       ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x738));
@@ -1283,7 +1256,7 @@ void FUN_10029ac0(long long param_1,short param_2,char param_3,char param_4)
   if (bVar12) {
     iVar10 = *piVar7;
     *(char *)(iVar10 + 0x9a) = 1;
-    uVar11 = FUN_10001a88();
+    uVar11 = GetTickCount();
     *(int *)(iVar10 + 0x9c) = uVar11;
   }
   else if ((*(char *)(*piVar7 + 0x9a) == '\0') && (param_4 != '\0')) {
@@ -1363,7 +1336,7 @@ void FUN_10029e84(int *param_1)
     }
     piVar10 = (int *)FUN_100522dc(*(int *)(iVar1 + 0x15c),1,0);
     local_238[0] = ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0xb8));
-    uVar7 = FUN_100f1640();
+    uVar7 = AllocateBlock();
     StreamRead(piVar10,uVar7,local_238[0]);
     StreamWrite(piVar9,local_238,4);
     StreamWrite(piVar9,uVar7,local_238[0]);
@@ -1371,7 +1344,7 @@ void FUN_10029e84(int *param_1)
     FreeBlock(uVar7);
     piVar10 = (int *)FUN_100522dc(*(int *)(iVar1 + 0x160),1,0);
     local_238[0] = ResourceRead_Dispatch((int)piVar10 + (int)*(short *)(*piVar10 + 0xb8));
-    uVar7 = FUN_100f1640();
+    uVar7 = AllocateBlock();
     StreamRead(piVar10,uVar7,local_238[0]);
     StreamWrite(piVar9,local_238,4);
     StreamWrite(piVar9,uVar7,local_238[0]);
@@ -1527,7 +1500,7 @@ void FUN_1002b4e0(void)
     local_1c = 0;
     local_24 = *(int *)piRam10117370;
     *(int *)piRam10117370 = (int)auStack_12c;
-    iVar3 = FUN_10000090(auStack_12c);
+    iVar3 = TrySetjmp(auStack_12c);
     if (iVar3 == 0) {
       piVar4 = (int *)ResourceRead_Dispatch(**(int **)(local_154 + -0x1e4) +
                                    (int)*(short *)(*(int *)**(int **)(local_154 + -0x1e4) + 200),
@@ -2009,7 +1982,7 @@ void FUN_100351ec(void)
   local_4c = 0;
   local_54 = **(int **)(iVar8 + -0x530);
   **(int **)(iVar8 + -0x530) = (int)auStack_15c;
-  iVar8 = FUN_10000090(auStack_15c);
+  iVar8 = TrySetjmp(auStack_15c);
   lVar13 = 0;
   if (iVar8 == 0) {
     uVar11 = 3;
@@ -2169,7 +2142,7 @@ void FUN_10037fe4(short param_1)
       local_20 = 0;
       local_28 = *puVar3;
       *puVar3 = (int)auStack_130;
-      iVar8 = FUN_10000090(auStack_130);
+      iVar8 = TrySetjmp(auStack_130);
       if (iVar8 == 0) {
         FUN_100376d8(1,1);
         FUN_10037cdc();
@@ -2222,7 +2195,7 @@ void FUN_1003a5fc(void)
   local_1c = 0;
   local_24 = *puVar1;
   *puVar1 = (int)auStack_12c;
-  iVar3 = FUN_10000090(auStack_12c);
+  iVar3 = TrySetjmp(auStack_12c);
   if (iVar3 == 0) {
     FUN_1003a230(piVar2);
     FUN_1003a5f8();
@@ -2377,7 +2350,7 @@ void FUN_1002a864(long long param_1)
     iVar17 = *(int *)(**(int **)(iVar17 + -0x554) + 0x88);
     piVar9 = (int *)FUN_100522dc(*(int *)(iVar17 + 0x15c),1,0);
     local_50 = ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0xb8));
-    uVar6 = FUN_100f1640();
+    uVar6 = AllocateBlock();
     StreamRead(piVar9,uVar6,local_50);
     iVar1 = *piVar8;
     uVar7 = ByteSwap32(local_50);

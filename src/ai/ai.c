@@ -174,8 +174,8 @@ void   AI_ArmyManagement(short armyIdx, short mode); /* FUN_10010b30 */
 void   AI_CullWeakUnits(short armyIdx, int unitPool); /* FUN_1001072c */
 
 /* Helpers */
-void   AI_ClaimNeutralArmies(void);                  /* FUN_10011590 */
-int    AI_CheckAllianceThreats(short playerIdx);     /* FUN_10011734 */
+void   AI_ClaimNeutralArmies(void);                  /* AdoptNeutralArmy */
+int    AI_CheckAllianceThreats(short playerIdx);     /* CheckThirdPartyTreaty */
 short  AI_FindArmyForHero(short unitType);           /* FUN_1000cf78 */
 void   AI_PlaceNewUnit(short unitType, short armyIdx); /* FUN_1000d0c0 */
 void   AI_TryHireHero(void);                         /* FUN_1000d1a4 */
@@ -723,7 +723,7 @@ void AI_AssignRemainingArmies(void)
 
 
 /* ================================================================
- *  AI_ClaimNeutralArmies (FUN_10011590)
+ *  AI_ClaimNeutralArmies (AdoptNeutralArmy)
  *
  *  Finds the nearest neutral army (owner == 0x0F) that is on
  *  passable terrain, not owned by a live enemy player, and within
@@ -791,7 +791,7 @@ void AI_ClaimNeutralArmies(void)
 
 
 /* ================================================================
- *  AI_CheckAllianceThreats (FUN_10011734)
+ *  AI_CheckAllianceThreats (CheckThirdPartyTreaty)
  *
  *  Checks if any AI player has alliance-based threats that should
  *  be acted upon. Returns 1 if threats exist, 0 otherwise.

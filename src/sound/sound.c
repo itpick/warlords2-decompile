@@ -286,7 +286,7 @@ void CSoundHandler_Destroy(int *self, unsigned long freeFlags)  /* CSoundHandler
         }
 
         /* Shrink/dispose the collection itself */
-        self[1] = FUN_100f57c8(self[1]);
+        self[1] = DisposeObject(self[1]);
         FUN_100ec1e8(iterState, 2);                 /* DisposeCollectionIterator */
     }
 
@@ -525,7 +525,7 @@ void StartGlobalSoundPlayback(short sndID)                     /* StartGlobalSou
 
         /* Store timestamp reference */
         {
-            unsigned int tickCount = FUN_10001a88();            /* TickCount */
+            unsigned int tickCount = GetTickCount();            /* TickCount */
             /* Store at global for timing reference */
         }
 
@@ -932,7 +932,7 @@ void RestartMusic(void)                                        /* YieldToEventLo
         unsigned char errBuf[256];
         *gErrorHandler = errBuf;
 
-        int errCode = FUN_10000090(errBuf);
+        int errCode = TrySetjmp(errBuf);
         if (errCode == 0) {
             PlayMusic(0, true);                                /* PlayMusic */
         }
@@ -1020,7 +1020,7 @@ void SelectMusic(short musicStateID)                           /* SelectMusic */
     void *savedErrHandler = *gErrorHandler;
     *gErrorHandler = errBuf;
 
-    if (FUN_10000090(errBuf) != 0) {
+    if (TrySetjmp(errBuf) != 0) {
         /* Error path -- restore and return */
         *gErrorHandler = savedErrHandler;
         return;

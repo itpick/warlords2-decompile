@@ -19,7 +19,7 @@ int AbsShort(int);
 void FUN_10082430(int, short, short);
 void FUN_1000848c(short, short);
 void FUN_1003d734(void);
-void FUN_10011590(void);
+void AdoptNeutralArmy(void);
 short FindPrimaryThreat(int);
 void FUN_1001ab94(void);
 void FUN_1000fac4(void);
@@ -33,7 +33,7 @@ int FUN_10010b30(int, int);
 void ActivateAttackEvent(int);
 int FUN_1000ed34(int, int, int, int);
 void FUN_1000f064(int);
-void FUN_1000f258(int);
+void RemoveArmyFromCities(int);
 void FUN_1000f308(int);
 int IsPositionReachable(int, int);
 int FUN_1001acdc(short, short, short);
@@ -59,10 +59,10 @@ void PrepareDefender(int);
 int FUN_10013150(void);
 int CanArmyEnterCity(long long, int);
 void FUN_1001ae14(long long, int);
-int FUN_10011734(int);
-int FUN_100f15e0(int);
+int CheckThirdPartyTreaty(int);
+int AllocateHandle(int);
 void FUN_1000c67c(void);
-int FUN_100f1640(int);
+int AllocateBlock(int);
 void FUN_1001f758(void);
 void FUN_1001f958(void);
 int GetNeighborArmies(int, void *, int);
@@ -309,7 +309,7 @@ void FUN_1000c724(short param_1)
     int i;
 
     for (i = 7; i >= 0; i--) {
-        int ptr = FUN_100f15e0(0x42c);
+        int ptr = AllocateHandle(0x42c);
         if (ptr == 0) {
             FocusObject(0);
         }
@@ -346,7 +346,7 @@ void FUN_1000c844(void)
     iVar3 = *gGameState;
 
     /* Store allied victory state for current player */
-    /* *(undefined2 *)(current_player * 2 + gDiploThreatData) = ext->allied_victory_check */
+    /* *(undefined2 *)(current_player * 2 + gDiploThreatData) = ext->alliance_ai_enabled */
 
     sVar2 = *(short *)(iVar3 + 0x1602);  /* army_count */
     while (sVar2 != 0) {
@@ -658,7 +658,7 @@ void FUN_100114d4(void)
 void FUN_10011804(void)
 {
     /* This is the largest function in this batch.
-       It calls FUN_10011590 for initial analysis,
+       It calls AdoptNeutralArmy for initial analysis,
        then iterates through all players evaluating:
        - Army counts per player (total, unmoved, border)
        - Military balance comparisons
@@ -677,7 +677,7 @@ void FUN_10011804(void)
  */
 void FUN_10013040(void)
 {
-    /* Checks if AI mode is off (ext->ai_mode_flag == 0),
+    /* Checks if AI processing is off (ext->ai_processing_active == 0),
        iterates armies, checks state against gValidArmyStateList table,
        calls FUN_10012cc8 for qualifying armies.
        In modern build: no-op (AI combat logic). */

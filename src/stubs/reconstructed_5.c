@@ -127,7 +127,7 @@ void FUN_100ef284(int, char *);
 char FUN_100ef9b8(int *);
 int FUN_100ef6e4(char *);
 int FUN_100f0334(int, int, int);
-void FUN_100f27d0(int, char);
+void EnableMenuItem(int, char);
 
 /* External globals referenced by decompiled code */
 extern char *pcRam10116d94;
@@ -188,16 +188,16 @@ void FUN_100bd55c(int *param_1)
 
 
 /* =====================================================================
- * FUN_100c3d2c - TCommand constructor (MacApp framework object)
+ * ConstructCommand - TCommand constructor (MacApp framework object)
  * Original: 100c3d2c, 164 bytes
  * ===================================================================== */
 
 
 /* =====================================================================
- * FUN_100c3df8 - TCommand::ICommand initializer
+ * InitCommand - TCommand::ICommand initializer
  * Original: 100c3df8, 120 bytes
  * ===================================================================== */
-void FUN_100c3df8(int param_1, int param_2, int param_3,
+void InitCommand(int param_1, int param_2, int param_3,
                   char param_4, char param_5, int param_6)
 {
     FUN_100d90e4(param_1, param_2, 0, param_3);
@@ -323,12 +323,12 @@ void FUN_100d6dd0(int *param_1)
     int iVar1;
 
     FUN_100da394(param_1);
-    FUN_100f27d0(0x20, 1);
-    FUN_100f27d0(0x21, 1);
+    EnableMenuItem(0x20, 1);
+    EnableMenuItem(0x21, 1);
     iVar1 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x298));
     if (iVar1 != 0) {
-        FUN_100f27d0(0x1e, 1);
-        FUN_100f27d0(0x22, 1);
+        EnableMenuItem(0x1e, 1);
+        EnableMenuItem(0x22, 1);
     }
     return;
 }
@@ -509,10 +509,10 @@ void MarkChanged(void)
 
 
 /* =====================================================================
- * FUN_100db3c8 - MacApp TEditText constructor
+ * NewResourceHandle - MacApp TEditText constructor
  * Original: 100db3c8, 212 bytes
  * ===================================================================== */
-int * FUN_100db3c8(int *param_1)
+int * NewResourceHandle(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x68),
@@ -540,10 +540,10 @@ int * FUN_100db3c8(int *param_1)
 
 
 /* =====================================================================
- * FUN_100db49c - TEditText initializer / set data fields
+ * WriteResourceData - TEditText initializer / set data fields
  * Original: 100db49c, 100 bytes
  * ===================================================================== */
-void FUN_100db49c(int param_1, int param_2, int param_3,
+void WriteResourceData(int param_1, int param_2, int param_3,
                   char param_4, char param_5, char param_6, char param_7)
 {
     FUN_100f5274(param_1);
@@ -1081,16 +1081,16 @@ void FUN_100f0788(short *param_1)
 
 
 /* =====================================================================
- * FUN_100f15e0 - Allocate small block (NewHandle equivalent)
+ * AllocateHandle - Allocate small block (NewHandle equivalent)
  * Original: 100f15e0, 96 bytes
  * ===================================================================== */
 
 
 /* =====================================================================
- * FUN_100f1640 - Allocate heap block (NewPtr equivalent)
+ * AllocateBlock - Allocate heap block (NewPtr equivalent)
  * Original: 100f1640, 96 bytes
  * ===================================================================== */
-int FUN_100f1640(int param_1)
+int AllocateBlock(int param_1)
 {
     char uVar2;
     int uVar1;
@@ -1103,10 +1103,10 @@ int FUN_100f1640(int param_1)
 
 
 /* =====================================================================
- * FUN_100f27d0 - Enable/disable menu item
+ * EnableMenuItem - Enable/disable menu item
  * Original: 100f27d0, 116 bytes
  * ===================================================================== */
-void FUN_100f27d0(int param_1, char param_2)
+void EnableMenuItem(int param_1, char param_2)
 {
     int uVar1;
     short local_10;
@@ -1133,10 +1133,10 @@ void FUN_100f27d0(int param_1, char param_2)
 
 
 /* =====================================================================
- * FUN_100f57c8 - DisposeObject / free
+ * DisposeObject - DisposeObject / free
  * Original: 100f57c8, 76 bytes
  * ===================================================================== */
-int FUN_100f57c8(int *param_1)
+int DisposeObject(int *param_1)
 {
     if (param_1 != (int *)0x0) {
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
