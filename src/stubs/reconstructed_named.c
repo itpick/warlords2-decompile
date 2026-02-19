@@ -1915,3 +1915,28 @@ long VTableDispatch(int vtableCall, ...)
     /* ResourceRead_Dispatch - alias for VtableDispatch */
     return 0;
 }
+
+
+/* =========================================================================
+ * CreateProducedUnit - Create a newly produced unit from city
+ * Original: FUN_1001b584 at 0x1001b584, 860 bytes
+ * Called from ProcessCityProduction after finding best army target
+ * ========================================================================= */
+short CreateProducedUnit(short cityIdx, long param_2, short ownerPlayer,
+                         short neutralFlag, long influenceMap)
+{
+    /* Stub — full implementation in recovered_stubs.c as FUN_1001b584 */
+    return 0;
+}
+
+
+/* =========================================================================
+ * AssignProducedToArmy - Assign a produced unit to an existing army
+ * Original: FUN_1001c2dc at 0x1001c2dc, 1056 bytes
+ * Called from ProcessCityProduction when a suitable army is found
+ * ========================================================================= */
+short AssignProducedToArmy(short cityIdx, long param_2, short armyIdx)
+{
+    /* Stub — full implementation in recovered_stubs.c as FUN_1001c2dc */
+    return 0;
+}
