@@ -1997,7 +1997,7 @@ long long FUN_100b0d34(int param_1,long long param_2,unsigned int param_3,long l
     if (uStack00000020 <= local_18[0]) {
       puVar2 = ((char*)0 + 0x00000020);
     }
-    FUN_10002340(param_2,uVar1,*puVar2);
+    CopyDataToBuffer(param_2,uVar1,*puVar2);
     ResourceRead_Dispatch(param_1 + *(short *)(*(int *)(param_1 + 0x10) + 0x70),param_2);
   }
   return uVar1;
@@ -2644,8 +2644,8 @@ void FUN_100b1900(unsigned char *param_1,unsigned char *param_2,short param_3,sh
   else {
     param_4 = ((unsigned short)*param_1 - sVar1) + 1;
   }
-  FUN_100012d8(param_1 + iVar2,param_1 + sVar6 + 1,param_4);
-  FUN_100012d8(param_2 + 1,param_1 + iVar2,uVar5);
+  Sound_BlockCopy(param_1 + iVar2,param_1 + sVar6 + 1,param_4);
+  Sound_BlockCopy(param_2 + 1,param_1 + iVar2,uVar5);
   *param_1 = (char)sVar6 + (char)param_4;
   return;
 }
@@ -2677,7 +2677,7 @@ int FUN_100b1b08(unsigned char *param_1)
           (short)(((long long)((int)uVar3 >> 3) + (unsigned long long)((int)uVar3 < 0 && (uVar3 & 7) != 0) &
                   0xffffffff) << 3);
   *psRam10116888 = sVar4;
-  FUN_100012d8(param_1 + 1,sVar4 * 0x100 + iVar2,*param_1);
+  Sound_BlockCopy(param_1 + 1,sVar4 * 0x100 + iVar2,*param_1);
   sVar4 = *psVar1;
   *(char *)(sVar4 * 0x100 + (unsigned int)*param_1 + iVar2) = 0;
   return sVar4 * 0x100 + iVar2;
@@ -2692,7 +2692,7 @@ int FUN_100b1c18()
 
   char auStack_110 [272];
   
-  FUN_100012d8(param_2 + 1,auStack_110,*param_2);
+  Sound_BlockCopy(param_2 + 1,auStack_110,*param_2);
   auStack_110[*param_2] = 0;
   FUN_100b1b90(param_1,auStack_110,param_3);
   return 0;
@@ -2709,7 +2709,7 @@ char * FUN_100b1d1c(char *param_1,int param_2)
   if ((param_1 != (char *)0x0) ||
      (param_1 = (char *)NewPtr_Thunk(0x100), param_1 != (char *)0x0)) {
     *param_1 = 4;
-    FUN_100012d8(((char*)0 + 0x0000001c),param_1 + 1,4);
+    Sound_BlockCopy(((char*)0 + 0x0000001c),param_1 + 1,4);
   }
   return param_1;
 }
@@ -2733,8 +2733,8 @@ void FUN_100b1e10(unsigned char *param_1,unsigned char *param_2,long long param_
   else {
     *param_1 = 0xff;
   }
-  FUN_100012d8(param_2 + 1,param_1 + 1,*param_2);
-  FUN_100012d8(param_3,param_1 + *param_2 + 1,(unsigned int)*param_1 - (unsigned int)*param_2);
+  Sound_BlockCopy(param_2 + 1,param_1 + 1,*param_2);
+  Sound_BlockCopy(param_3,param_1 + *param_2 + 1,(unsigned int)*param_1 - (unsigned int)*param_2);
   return;
 }
 
@@ -2787,7 +2787,7 @@ char * FUN_100b1fec(char *param_1,long long param_2)
       uVar2 = (char)*piVar1;
     }
     *param_1 = uVar2;
-    FUN_100012d8(param_2,param_1 + 1);
+    Sound_BlockCopy(param_2,param_1 + 1);
   }
   return param_1;
 }
@@ -2824,7 +2824,7 @@ char * FUN_100b20f0(char *param_1,long long param_2)
       uVar2 = (char)*piVar1;
     }
     *param_1 = uVar2;
-    FUN_100012d8(param_2,param_1 + 1);
+    Sound_BlockCopy(param_2,param_1 + 1);
   }
   return param_1;
 }
@@ -3691,12 +3691,12 @@ void FUN_100b3584(int *param_1,int *param_2,long long param_3)
           ;
         }
         if ((*(unsigned char *)(param_1 + 3) & 4) != 0) {
-          FUN_10000000(auStack_2b8);
+          Render_GetForeColor(auStack_2b8);
           ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xc0),1,local_36,
                        local_34 - local_2b4,local_32);
         }
         if ((*(unsigned char *)(param_1 + 3) & 8) != 0) {
-          FUN_10000000(auStack_2d0);
+          Render_GetForeColor(auStack_2d0);
           ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xc0),0,local_32 - local_2ca,
                        local_38,local_34);
         }
@@ -3715,7 +3715,7 @@ void FUN_100b3584(int *param_1,int *param_2,long long param_3)
         FUN_100012a8();
         FUN_10001e30(local_154);
         FUN_100005a0(local_154,local_3c);
-        FUN_10000000(auStack_290);
+        Render_GetForeColor(auStack_290);
         FUN_10001ec0(local_3c,local_28a,local_28c);
         FUN_10000108(local_3c,local_154,local_3c);
         FUN_10000b58(local_3c);
@@ -3776,7 +3776,7 @@ void FUN_100b3a8c(long long param_1,int *param_2,long long param_3)
   
   ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x288),param_3,auStack_10);
   GetBitMapPtr(auStack_10);
-  FUN_10002c58();
+  Render_GetPixBaseAddr();
   return;
 }
 
@@ -3926,7 +3926,7 @@ void FUN_100b3f0c(int *param_1,int *param_2,long long param_3)
   FUN_100e17d8(param_3,auStack_48,auStack_38);
   iVar1 = FUN_100e1a08(auStack_48);
   if (iVar1 == 0) {
-    FUN_10000000(auStack_60);
+    Render_GetForeColor(auStack_60);
     ResourceRead_Dispatch((int)*(short *)(*param_2 + 0x288) + (int)param_2,auStack_38,auStack_28);
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xc0),1,local_26,local_24 - local_5c,
                  local_22);
@@ -3988,7 +3988,7 @@ void FUN_100b413c(int *param_1,int *param_2,long long param_3)
   FUN_100e17d8(param_3,auStack_48,auStack_38);
   iVar1 = FUN_100e1a08(auStack_48);
   if (iVar1 == 0) {
-    FUN_10000000(auStack_60);
+    Render_GetForeColor(auStack_60);
     ResourceRead_Dispatch((int)*(short *)(*param_2 + 0x288) + (int)param_2,auStack_38,local_28);
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xc0),0,local_22 - local_5a,local_28[0],
                  local_24);
@@ -4375,7 +4375,7 @@ int * FUN_100b4ffc(int *param_1)
     }
     else {
       FUN_10002a78(auStack_138);
-      FUN_100db158(local_30,local_2c);
+      LockHandleRange(local_30,local_2c);
     }
   }
   else {
@@ -4535,7 +4535,7 @@ void FUN_100b54b4(int param_1,long long param_2,long long param_3)
     local_120 = 0xff;
   }
   local_11c = (char)local_120;
-  FUN_100012d8(&local_11c,param_3,(local_120 & 0xff) + 1);
+  Sound_BlockCopy(&local_11c,param_3,(local_120 & 0xff) + 1);
   return;
 }
 
@@ -4614,7 +4614,7 @@ void FUN_100b55e0(int param_1,long long param_2,long long param_3,int *param_4)
   else {
     FUN_10002a78(auStack_158);
     local_150 = FreeBlock(0);
-    FUN_100db158(local_4c,local_48);
+    LockHandleRange(local_4c,local_48);
   }
   FUN_10002a78(auStack_158);
   FreeBlock(local_150);
@@ -4677,7 +4677,7 @@ void FUN_100b57b0(int param_1,long long param_2,long long param_3,int *param_4)
   else {
     FUN_10002a78(auStack_158);
     FUN_10002a78(auStack_150);
-    FUN_100db158(local_48,local_44);
+    LockHandleRange(local_48,local_44);
   }
   FUN_10002a78(auStack_158);
   return;
@@ -4764,7 +4764,7 @@ void FUN_100b5a88(int param_1,long long param_2,unsigned char *param_3)
   puVar2 = puVar4;
   if ((((char*)0) != (char *)0x118) ||
      (puVar2 = (char *)NewPtr_Thunk(0x100), puVar2 != (char *)0x0)) {
-    FUN_100012d8(param_3,puVar2,(unsigned long long)*param_3 + 1);
+    Sound_BlockCopy(param_3,puVar2,(unsigned long long)*param_3 + 1);
   }
   FUN_10003528(puVar3,param_2,0x54455854,((char*)0) + -0x117,*puVar4);
   EndFocus();
@@ -4824,14 +4824,14 @@ void FUN_100b5b88(int param_1,long long param_2,long long param_3,int *param_4)
     FUN_100ebaf8(local_160,param_4,1);
     ResourceRead_Dispatch((int)*(short *)(local_160[0] + 0x10) + (int)local_160);
     iVar3 = local_160[1];
-    iVar4 = FUN_100ebf44(local_160);
+    iVar4 = Sound_HasMoreItems(local_160);
     while (iVar4 != 0) {
       uVar2 = ResourceRead_Dispatch((int)param_4 + (int)*(short *)(*param_4 + 0xe0),iVar3);
       FUN_10003918(auStack_280,iVar3,param_3,uVar2,*(short *)(param_4 + 3));
       EndFocus();
       ResourceRead_Dispatch((int)*(short *)(local_160[0] + 0x18) + (int)local_160);
       iVar3 = local_160[1];
-      iVar4 = FUN_100ebf44(local_160);
+      iVar4 = Sound_HasMoreItems(local_160);
     }
     FUN_100ebc68(local_160,2);
     FUN_100036a8(&local_288,param_2,auStack_280);
@@ -4841,7 +4841,7 @@ void FUN_100b5b88(int param_1,long long param_2,long long param_3,int *param_4)
   else {
     FUN_10002a78(auStack_280);
     EndFocus();
-    FUN_100db158(local_178,local_174);
+    LockHandleRange(local_178,local_174);
   }
   FUN_10002a78(auStack_280);
   EndFocus();
@@ -4887,7 +4887,7 @@ void FUN_100b5d64(int param_1,long long param_2,int param_3,int *param_4)
     FUN_100ebaf8(local_160,param_4,1);
     ResourceRead_Dispatch((int)*(short *)(local_160[0] + 0x10) + (int)local_160);
     iVar2 = local_160[1];
-    iVar3 = FUN_100ebf44(local_160);
+    iVar3 = Sound_HasMoreItems(local_160);
     while (iVar3 != 0) {
       local_27c = 0;
       local_280 = param_3;
@@ -4897,7 +4897,7 @@ void FUN_100b5d64(int param_1,long long param_2,int param_3,int *param_4)
       EndFocus();
       ResourceRead_Dispatch((int)*(short *)(local_160[0] + 0x18) + (int)local_160);
       iVar2 = local_160[1];
-      iVar3 = FUN_100ebf44(local_160);
+      iVar3 = Sound_HasMoreItems(local_160);
     }
     FUN_100ebc68(local_160,2);
     FUN_100036a8(&local_290,param_2,auStack_288);
@@ -4907,7 +4907,7 @@ void FUN_100b5d64(int param_1,long long param_2,int param_3,int *param_4)
   else {
     FUN_10002a78(auStack_288);
     EndFocus();
-    FUN_100db158(local_178,local_174);
+    LockHandleRange(local_178,local_174);
   }
   FUN_10002a78(auStack_288);
   EndFocus();
@@ -5021,8 +5021,8 @@ long long FUN_100b604c(long long param_1,short *param_2,long long param_3)
       iVar7 = GetTickCount();
       *piVar3 = iVar7;
       if (local_44[0] != 0) {
-        FUN_10002340(*(unsigned char **)*puVar1,local_244,(unsigned long long)**(unsigned char **)*puVar1 + 1);
-        uVar6 = FUN_100b1c84(local_244);
+        CopyDataToBuffer(*(unsigned char **)*puVar1,local_244,(unsigned long long)**(unsigned char **)*puVar1 + 1);
+        uVar6 = ConvertToString(local_244);
         FUN_10000a68(local_44[0],uVar6);
       }
       *psVar2 = 0x168;
@@ -5040,7 +5040,7 @@ long long FUN_100b604c(long long param_1,short *param_2,long long param_3)
       iVar7 = local_44[0];
       *piVar3 = iVar8;
       if (local_44[0] != 0) {
-        uVar6 = FUN_100b1c84(local_144);
+        uVar6 = ConvertToString(local_144);
         FUN_10000a68(iVar7,uVar6);
       }
       local_254 = (unsigned int)local_144[0] * 6;
@@ -5660,7 +5660,7 @@ void FUN_100b6708(long long param_1,long long param_2)
   }
   else {
     FUN_100f5754(uVar3);
-    FUN_100db158(local_2c,local_28);
+    LockHandleRange(local_2c,local_28);
   }
   FUN_100f5754(uVar3);
   return;
@@ -5720,7 +5720,7 @@ void FUN_100b6864()
   }
   else {
     *(char *)(*piVar1 + 0x3c) = 0;
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -5875,8 +5875,8 @@ void FUN_100b6bbc(int *param_1,long long param_2,long long param_3,char param_4,
   *puVar2 = auStack_268;
   iVar4 = TrySetjmp(auStack_268);
   if (iVar4 == 0) {
-    local_4bc = (int *)FUN_100eab4c(0);
-    FUN_100eabdc();
+    local_4bc = (int *)Sound_NewCollection(0);
+    Sound_InitCollection();
     local_280 = 0;
     local_27c = 0;
     local_274 = 0;
@@ -5888,9 +5888,9 @@ void FUN_100b6bbc(int *param_1,long long param_2,long long param_3,char param_4,
       local_4c0 = (int *)FUN_100e9174();
       ResourceRead_Dispatch(param_1[0xc] + (int)*(short *)(*(int *)param_1[0xc] + 0x140),0x2d2d2d2d,
                    0x616c6973,local_4bc);
-      FUN_100ec170(auStack_4b8,local_4bc,1);
-      uVar3 = FUN_100ec2c4(auStack_4b8);
-      iVar4 = FUN_100ebf44(auStack_4b8);
+      Sound_InitCollectionIter(auStack_4b8,local_4bc,1);
+      uVar3 = Sound_GetFirstItem(auStack_4b8);
+      iVar4 = Sound_HasMoreItems(auStack_4b8);
       while (iVar4 != 0) {
         piVar5 = (int *)ResourceRead_Dispatch(*piVar1 + (int)*(short *)(*(int *)*piVar1 + 0x370),param_2);
         local_4c = 0;
@@ -5908,27 +5908,27 @@ void FUN_100b6bbc(int *param_1,long long param_2,long long param_3,char param_4,
         }
         else {
           DisposeObject(piVar5);
-          FUN_100db158(local_4c,local_48);
+          LockHandleRange(local_4c,local_48);
         }
         ResourceRead_Dispatch((int)local_4bc + (int)*(short *)(*local_4bc + 0x138),uVar3);
         ReleaseHandle_Mapgen(uVar3);
-        uVar3 = FUN_100ec34c(auStack_4b8);
-        iVar4 = FUN_100ebf44(auStack_4b8);
+        uVar3 = Sound_GetNextItem(auStack_4b8);
+        iVar4 = Sound_HasMoreItems(auStack_4b8);
       }
-      FUN_100ec1e8(auStack_4b8,2);
+      Sound_DisposeCollectionIter(auStack_4b8,2);
       *puVar2 = local_278;
     }
     else {
       if (local_4bc != (int *)0x0) {
         ResourceRead_Dispatch((int)local_4bc + (int)*(short *)(*local_4bc + 0x120));
       }
-      FUN_100db158(local_280,local_27c);
+      LockHandleRange(local_280,local_27c);
     }
     *puVar2 = local_160;
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_168,local_164);
+    LockHandleRange(local_168,local_164);
   }
   ResourceRead_Dispatch((int)local_4bc + (int)*(short *)(*local_4bc + 0x90));
   param_1[0xf] = (int)local_4c0;
@@ -6034,7 +6034,7 @@ void FUN_100b7024(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x168),local_28,local_24);
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -6093,7 +6093,7 @@ void FUN_100b7190(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x168),local_28,local_24);
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -6307,7 +6307,7 @@ void FUN_100b763c(int *param_1,int param_2,int param_3)
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
     **(int **)(local_154 + -0xedc) = 0;
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 }
@@ -6459,7 +6459,7 @@ unsigned long long FUN_100b7af0(int *param_1,unsigned long long param_2,short *p
         bVar14 = 0x1f;
       }
       local_1a4 = CONCAT13(bVar14,(local_1a4 & 0xFFFFFFFF));
-      FUN_100012d8(pbVar5 + 1,(int)&local_1a4 + 1);
+      Sound_BlockCopy(pbVar5 + 1,(int)&local_1a4 + 1);
       *(int *)pbVar7 = local_1a4;
       *(int *)(pbVar7 + 4) = uStack_1a0;
       *(int *)(pbVar7 + 8) = uStack_19c;
@@ -6571,7 +6571,7 @@ int FUN_100b8360(int *param_1,long long param_2,int *param_3)
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x398),param_2,&local_f0,&local_7c,
                auStack_38,auStack_f8,auStack_34,auStack_30);
   ResourceRead_Dispatch((int)param_3 + (int)*(short *)(*param_3 + 0x198),local_78);
-  lVar2 = FUN_10001c20(local_7c);
+  lVar2 = GetHandleByteCount(local_7c);
   sVar1 = (short)((unsigned long long)(lVar2 << 0x20) >> 0x22);
   bVar5 = false;
   if (sVar1 == 0) {
@@ -6679,9 +6679,9 @@ long long FUN_100b8560(long long param_1,int *param_2)
   
   uVar2 = uRam10116a54;
   local_40 = 0;
-  uVar3 = FUN_100b1c84(uRam10116a54);
-  uVar4 = FUN_100b1c84(uVar2);
-  uVar5 = FUN_100b1c84(uVar2);
+  uVar3 = ConvertToString(uRam10116a54);
+  uVar4 = ConvertToString(uVar2);
+  uVar5 = ConvertToString(uVar2);
   uVar3 = FUN_10000ed0(uVar5,uVar4,0,&local_a8,auStack_f8,0,uVar3);
   uVar4 = 0;
   if ((int)uVar3 == 0) {
@@ -6789,14 +6789,14 @@ int * FUN_100b86b4(int *param_1)
   local_288 = (int *)0x0;
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x398),in_stack_0000001c,&local_2f8,
                &local_28c,local_2fc,auStack_29c,&local_300,&local_304);
-  lVar2 = FUN_10001c20(local_28c);
+  lVar2 = GetHandleByteCount(local_28c);
   sVar9 = (short)((unsigned long long)(lVar2 << 0x20) >> 0x22);
   if (sVar9 == 0) {
     sVar9 = -1;
     local_294 = &local_294;
   }
   else {
-    FUN_100ef9b8(local_28c);
+    Sound_DetachResourceAlt(local_28c);
     local_294 = (int ***)*local_28c;
   }
   local_6c = 0;
@@ -6839,7 +6839,7 @@ int * FUN_100b86b4(int *param_1)
   else {
     local_28c = (int *)ReleaseHandle_Mapgen(local_28c);
     local_288 = (int *)DisposeObject(local_288);
-    FUN_100db158(local_6c,local_68);
+    LockHandleRange(local_6c,local_68);
   }
   local_28c = (int *)ReleaseHandle_Mapgen(local_28c);
   if (param_1 == (int *)0x0) {
@@ -6866,7 +6866,7 @@ int * FUN_100b86b4(int *param_1)
         *in_stack_00000020 = iVar7;
       }
       local_288 = (int *)DisposeObject(local_288);
-      FUN_100db158(local_184,local_180);
+      LockHandleRange(local_184,local_180);
     }
   }
   return param_1;
@@ -6916,7 +6916,7 @@ void FUN_100b8ac4(int *param_1)
     piVar9 = *(int **)(iVar7 + 0x28);
   }
   piVar5 = (int *)FUN_100b6444(auStack_168);
-  iVar6 = FUN_100ebf44(auStack_168);
+  iVar6 = Sound_HasMoreItems(auStack_168);
   iVar7 = (int)uVar3;
   while (iVar6 != 0) {
     if ((piVar9 == (int *)0x0) || (piVar5 != piVar9)) {
@@ -6924,7 +6924,7 @@ void FUN_100b8ac4(int *param_1)
       uVar3 = (unsigned long long)local_18c;
     }
     piVar5 = (int *)FUN_100b6468(auStack_168);
-    iVar6 = FUN_100ebf44(auStack_168);
+    iVar6 = Sound_HasMoreItems(auStack_168);
     iVar7 = (int)uVar3;
   }
   FUN_100b63d8(auStack_168,2);
@@ -7445,14 +7445,14 @@ void FUN_100b928c(int *param_1,long long param_2)
   ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0xa8),param_2,0);
   FUN_100ebf7c(auStack_150,param_1[0xb],0);
   piVar2 = (int *)FUN_100ec060(auStack_150);
-  iVar3 = FUN_100ebf44(auStack_150);
+  iVar3 = Sound_HasMoreItems(auStack_150);
   while (piVar5 = (int *)0x0, iVar3 != 0) {
     iVar3 = ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 200));
     iVar4 = ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x160));
     piVar5 = piVar2;
     if (iVar4 == iVar3) break;
     piVar2 = (int *)FUN_100ec0e8(auStack_150);
-    iVar3 = FUN_100ebf44(auStack_150);
+    iVar3 = Sound_HasMoreItems(auStack_150);
   }
   if (piVar5 == (int *)0x0) {
     DisposeObject(piVar1);
@@ -7633,16 +7633,16 @@ void FUN_100b9dd8(int *param_1)
     uVar3 = GetTickCount();
     **(int **)(local_134 + -200) = uVar3;
     **(short **)(local_134 + -0xcc) = 300;
-    FUN_100b1c84(uVar4);
+    ConvertToString(uVar4);
     uVar4 = FUN_10001ae8();
     *puVar1 = uVar4;
     FocusObject();
-    FUN_100d8c9c(0xc9,*(int *)(local_134 + -0xe40));
+    PostMenuCommand(0xc9,*(int *)(local_134 + -0xe40));
     uVar4 = ReleaseHandle_Mapgen(*puVar1);
     *puVar1 = uVar4;
   }
   else {
-    FUN_100d8e3c(0xc9);
+    ShowErrorAlert(0xc9);
   }
   return;
 }
@@ -7763,7 +7763,7 @@ void FUN_100ba248(long long param_1,short param_2,short param_3,short param_4,
   }
   else {
     DisposeGeneric(uVar5);
-    FUN_100db158(local_50,local_4c);
+    LockHandleRange(local_50,local_4c);
   }
   DisposeGeneric(uVar5);
   return;
@@ -8213,12 +8213,12 @@ FUN_100bab34(long long param_1,long long param_2,short param_3,char *param_4,
   }
   else {
     FUN_100f1574(uVar5);
-    FUN_100db158(local_3c,local_38);
+    LockHandleRange(local_3c,local_38);
   }
   iVar3 = FUN_100f0eec();
   if (iVar3 == 0) {
     param_3 = FUN_100ecdec(param_3,param_2 == 0);
-    FUN_100db158(0xffffffffffffff94,0);
+    LockHandleRange(0xffffffffffffff94,0);
   }
   return param_3;
 }
@@ -8550,7 +8550,7 @@ void FUN_100bb6e8(int *param_1,long long param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x280),param_2);
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x280),param_2);
   return;
@@ -8657,7 +8657,7 @@ void FUN_100bb8b8(int *param_1,char param_2)
   }
   else {
     **(char **)(local_17c + -0xe50) = 1;
-    FUN_100db158(local_58,local_54);
+    LockHandleRange(local_58,local_54);
   }
   return;
 }
@@ -9003,7 +9003,7 @@ void FUN_100bc460(int *param_1,int param_2)
           ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x508),0);
         }
         FUN_100db22c(local_34,local_30,(short)iVar3);
-        FUN_100db158(local_34,local_30);
+        LockHandleRange(local_34,local_30);
       }
     }
   }
@@ -9017,7 +9017,7 @@ void FUN_100bc654(long long param_1,long long param_2)
   int local_10 [4];
   
   FUN_10000660(local_10);
-  FUN_100b1c84(param_2);
+  ConvertToString(param_2);
   FUN_100034b0();
   FUN_10000198(local_10[0]);
   return;
@@ -9066,7 +9066,7 @@ int * FUN_100bc6ac(int *param_1,long long param_2)
   else {
     local_140 = (int *)0x0;
     FUN_100db22c(local_3c,local_38,0x820005);
-    FUN_100db158(local_3c,local_38);
+    LockHandleRange(local_3c,local_38);
   }
   return local_140;
 }
@@ -9105,7 +9105,7 @@ int * FUN_100bc87c(int *param_1,long long param_2,int *param_3)
   local_50 = 0;
   FUN_100ebf7c(auStack_3f4,param_3,1);
   local_54 = (int *)FUN_100ec060(auStack_3f4);
-  iVar4 = FUN_100ebf44(auStack_3f4);
+  iVar4 = Sound_HasMoreItems(auStack_3f4);
   if (iVar4 != 0) {
     do {
       local_170 = (int *)0x0;
@@ -9129,7 +9129,7 @@ int * FUN_100bc87c(int *param_1,long long param_2,int *param_3)
         if ((piVar5 == (int *)0x0) || (iVar4 != 0)) {
           iVar6 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x348),param_2,local_54);
           if (iVar6 == 0) {
-            FUN_100db158(0xffffffffffffb1da,0);
+            LockHandleRange(0xffffffffffffb1da,0);
           }
           else {
             iVar6 = *param_1;
@@ -9165,7 +9165,7 @@ int * FUN_100bc87c(int *param_1,long long param_2,int *param_3)
       }
       else {
         if (local_68 == 0) {
-          FUN_100012d8(local_1b0,uVar1,(unsigned long long)local_1b0[0] + 1);
+          Sound_BlockCopy(local_1b0,uVar1,(unsigned long long)local_1b0[0] + 1);
         }
         DisposeObject(local_54);
         local_170 = (int *)0x0;
@@ -9178,12 +9178,12 @@ int * FUN_100bc87c(int *param_1,long long param_2,int *param_3)
         }
       }
       local_54 = (int *)FUN_100ec0e8(auStack_3f4);
-      iVar4 = FUN_100ebf44(auStack_3f4);
+      iVar4 = Sound_HasMoreItems(auStack_3f4);
     } while ((iVar4 != 0) && (local_3f8 == 0));
   }
   FUN_100ebff4(auStack_3f4,2);
   if (local_3f8 != 0) {
-    FUN_100db158(local_3f8,local_50);
+    LockHandleRange(local_3f8,local_50);
   }
   return local_170;
 }
@@ -9254,7 +9254,7 @@ void FUN_100bce04(int *param_1,char param_2)
       FUN_100f2204();
     }
     else {
-      FUN_100db158(local_2c,local_28);
+      LockHandleRange(local_2c,local_28);
     }
   }
   *(char *)((int)param_1 + 0x31) = uVar1;
@@ -9346,7 +9346,7 @@ void FUN_100bd190(int param_1,int *param_2)
     if (iVar2 != 0) {
       DisposeObject(param_2);
     }
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -9519,7 +9519,7 @@ void FUN_100bd7ac(int param_1,char param_2,long long param_3)
       puVar3 = puVar7;
       if ((((char*)0) != (char *)0x224) ||
          (puVar3 = (char *)NewPtr_Thunk(0x100), puVar3 != (char *)0x0)) {
-        FUN_100012d8(pbVar1,puVar3,(unsigned long long)*pbVar1 + 1);
+        Sound_BlockCopy(pbVar1,puVar3,(unsigned long long)*pbVar1 + 1);
       }
       if ((iVar8 != 0) && (iVar8 != -1)) {
         FUN_100f2758(param_3,puVar7);
@@ -9596,7 +9596,7 @@ void FUN_100bdb40(int param_1,long long param_2,int *param_3)
 void FUN_100bdb88(long long param_1,short param_2,long long param_3)
 
 {
-  FUN_100d8e68(param_2,param_3);
+  ShowErrorWithDetail(param_2,param_3);
   return;
 }
 
@@ -9612,7 +9612,7 @@ void FUN_100bdbbc(int *param_1)
       (iVar1 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2e8)), iVar1 != 0)) &&
      (uVar2 = GetTickCount(), (unsigned int)param_1[0x13] < uVar2)) {
     **(char **)(local_2c + -0xe50) = 1;
-    FUN_100d8e3c(0x88);
+    ShowErrorAlert(0x88);
     iVar1 = GetTickCount();
     param_1[0x13] = iVar1 + param_1[0x14];
   }
@@ -9811,7 +9811,7 @@ LAB_100be404:
       }
     }
     local_20 = (int *)0x0;
-    FUN_100db158(local_38,local_34);
+    LockHandleRange(local_38,local_34);
   }
   return local_20;
 }
@@ -9983,11 +9983,11 @@ void FUN_100be9b8(int *param_1,long long param_2,long long param_3)
   *puVar1 = auStack_130;
   iVar2 = TrySetjmp(auStack_130);
   if (iVar2 == 0) {
-    FUN_100b1c84(param_2);
+    ConvertToString(param_2);
     iVar2 = FUN_10001ae8();
     param_1[1] = iVar2;
     FocusObject();
-    FUN_100b1c84(param_3);
+    ConvertToString(param_3);
     iVar2 = FUN_10001ae8();
     param_1[2] = iVar2;
     FocusObject();
@@ -9995,7 +9995,7 @@ void FUN_100be9b8(int *param_1,long long param_2,long long param_3)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 }
@@ -10104,7 +10104,7 @@ int FUN_100beed0(int param_1,long long param_2)
   FUN_100ebaf8(local_150,*(int *)(param_1 + 4),1);
   ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
   iVar1 = local_150[1];
-  iVar3 = FUN_100ebf44(local_150);
+  iVar3 = Sound_HasMoreItems(local_150);
   while (iVar4 = 0, iVar3 != 0) {
     iVar4 = ResourceRead_Dispatch((int)*(int **)(param_1 + 4) +
                          (int)*(short *)(**(int **)(param_1 + 4) + 0x120),iVar1);
@@ -10112,7 +10112,7 @@ int FUN_100beed0(int param_1,long long param_2)
     if (lVar2 == 0) break;
     ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
     iVar1 = local_150[1];
-    iVar3 = FUN_100ebf44(local_150);
+    iVar3 = Sound_HasMoreItems(local_150);
   }
   FUN_100ebc68(local_150,2);
   return iVar4;
@@ -10153,7 +10153,7 @@ int FUN_100bf0ac(int param_1,long long param_2,long long param_3)
   ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
   iVar1 = local_150[1];
   iVar2 = local_174;
-  iVar4 = FUN_100ebf44(local_150);
+  iVar4 = Sound_HasMoreItems(local_150);
   while (iVar5 = 0, iVar4 != 0) {
     iVar5 = ResourceRead_Dispatch((int)*(int **)(param_1 + 4) +
                          (int)*(short *)(**(int **)(param_1 + 4) + 0x120),iVar1);
@@ -10162,10 +10162,10 @@ int FUN_100bf0ac(int param_1,long long param_2,long long param_3)
     if (lVar3 == 0) break;
     ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
     iVar1 = local_150[1];
-    iVar4 = FUN_100ebf44(local_150);
+    iVar4 = Sound_HasMoreItems(local_150);
   }
   if (iVar5 != 0) {
-    FUN_100012d8((unsigned char *)**(int **)(iVar5 + 4),param_3,
+    Sound_BlockCopy((unsigned char *)**(int **)(iVar5 + 4),param_3,
                  (unsigned long long)*(unsigned char *)**(int **)(iVar5 + 4) + 1);
     FUN_100ebc68(local_150,2);
   }
@@ -10206,7 +10206,7 @@ void FUN_100bf2a8(int param_1,long long param_2)
   FUN_100ebaf8(local_150,*(int *)(param_1 + 4),1);
   ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
   iVar1 = local_150[1];
-  iVar3 = FUN_100ebf44(local_150);
+  iVar3 = Sound_HasMoreItems(local_150);
   while (iVar4 = 0, iVar3 != 0) {
     iVar4 = ResourceRead_Dispatch((int)*(int **)(param_1 + 4) +
                          (int)*(short *)(**(int **)(param_1 + 4) + 0x120),iVar1);
@@ -10214,7 +10214,7 @@ void FUN_100bf2a8(int param_1,long long param_2)
     if (lVar2 == 0) break;
     ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
     iVar1 = local_150[1];
-    iVar3 = FUN_100ebf44(local_150);
+    iVar3 = Sound_HasMoreItems(local_150);
   }
   if (iVar4 != 0) {
     ResourceRead_Dispatch((int)*(int **)(param_1 + 4) + (int)*(short *)(**(int **)(param_1 + 4) + 0x180),
@@ -10236,7 +10236,7 @@ int FUN_100bf3ec(int param_1,int param_2,long long param_3)
   iVar1 = ResourceRead_Dispatch((int)*(int **)(param_1 + 4) +
                        (int)*(short *)(**(int **)(param_1 + 4) + 0x160),uRam10116af8,local_10);
   if (iVar1 != 0) {
-    FUN_100012d8((unsigned char *)**(int **)(iVar1 + 8),param_3,
+    Sound_BlockCopy((unsigned char *)**(int **)(iVar1 + 8),param_3,
                  (unsigned long long)*(unsigned char *)**(int **)(iVar1 + 8) + 1);
   }
   else {
@@ -10264,7 +10264,7 @@ void FUN_100bf488()
 void FUN_100bf5bc()
 
 {
-  FUN_100bf518(0);
+  ConstructSimpleObject(0);
   return;
 }
 
@@ -11208,7 +11208,7 @@ void FUN_100c0c18(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_48,local_44);
+    LockHandleRange(local_48,local_44);
   }
   return;
 }
@@ -11709,7 +11709,7 @@ int FUN_100c19e4(int param_1,unsigned char *param_2,short param_3,int param_4)
   if ((param_1 != 0) || (param_1 = NewPtr_Thunk(0x108), param_1 != 0)) {
     iVar1 = param_1;
     if ((param_1 != 0) || (iVar1 = NewPtr_Thunk(0x100), iVar1 != 0)) {
-      FUN_100012d8(param_2,iVar1,(unsigned long long)*param_2 + 1);
+      Sound_BlockCopy(param_2,iVar1,(unsigned long long)*param_2 + 1);
     }
     *(short *)(param_1 + 0x100) = param_3;
     *(int *)(param_1 + 0x104) = param_4;
@@ -12118,8 +12118,8 @@ long long FUN_100c208c(short param_1)
   uVar2 = FUN_100c1fd8(param_1);
   if ((int)uVar2 == 0) {
     FUN_100b1d1c(local_110,param_1);
-    FUN_100012d8(local_110,uVar1,(unsigned long long)local_110[0] + 1);
-    FUN_100db158(0xffffffffffffb1d8,0);
+    Sound_BlockCopy(local_110,uVar1,(unsigned long long)local_110[0] + 1);
+    LockHandleRange(0xffffffffffffb1d8,0);
     uVar2 = 0;
   }
   else {
@@ -12138,8 +12138,8 @@ long long FUN_100c21d0(unsigned char *param_1)
   uVar1 = uRam10116a74;
   uVar2 = FUN_100c2120(param_1);
   if ((int)uVar2 == 0) {
-    FUN_100012d8(param_1,uVar1,(unsigned long long)*param_1 + 1);
-    FUN_100db158(0xffffffffffffb1d8,0);
+    Sound_BlockCopy(param_1,uVar1,(unsigned long long)*param_1 + 1);
+    LockHandleRange(0xffffffffffffb1d8,0);
     uVar2 = 0;
   }
   else {
@@ -12223,7 +12223,7 @@ void FUN_100c2250()
     FUN_100c28bc(auStack_40,2);
   }
   else {
-    FUN_100db158(local_58,local_54);
+    LockHandleRange(local_58,local_54);
   }
   return;
 }
@@ -12268,7 +12268,7 @@ void FUN_100c26ec(int *param_1,long long param_2)
   param_1[1] = uVar1 + 2;
   uVar2 = FUN_10001338(((unsigned long long)uVar1 & 0x3fffffff) * 4 + 8);
   FocusObject();
-  FUN_10002340(*param_1,uVar2,param_1[1] << 2);
+  CopyDataToBuffer(*param_1,uVar2,param_1[1] << 2);
   FUN_100025b0(*param_1);
   *param_1 = (int)uVar2;
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(param_1[3] + 0x10),param_2);
@@ -13158,7 +13158,7 @@ int * FUN_100c3064(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0x5c),
      param_1 != (int *)0x0)) {
-    FUN_100bf518(param_1);
+    ConstructSimpleObject(param_1);
     *param_1 = (*(int*)((char*)ppuVar1 - 0x33d));
     param_1[0x14] = 0;
     param_1[0x13] = 0;
@@ -13302,7 +13302,7 @@ long long FUN_100c33f0(int param_1,long long param_2,int *param_3)
     uVar2 = ResourceRead_Dispatch((int)*(int **)(param_1 + 0x4c) +
                          (int)*(short *)(**(int **)(param_1 + 0x4c) + 0x6c0),param_2,uVar1);
     if ((int)uVar2 < 0) {
-      FUN_100db158((short)uVar2,0);
+      LockHandleRange((short)uVar2,0);
     }
   }
   return uVar2;
@@ -13428,7 +13428,7 @@ void FUN_100c3760(int *param_1,int *param_2,int param_3)
     }
     FUN_1010556c(auStack_150,piVar2);
     piVar3 = (int *)FUN_10105660(auStack_150);
-    iVar1 = FUN_100ebf44(auStack_150);
+    iVar1 = Sound_HasMoreItems(auStack_150);
     while (iVar1 != 0) {
       ResourceRead_Dispatch((int)piVar3 + (int)*(short *)(*piVar3 + 0x4d0));
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x2e8),piVar3);
@@ -13437,7 +13437,7 @@ void FUN_100c3760(int *param_1,int *param_2,int param_3)
         ResourceRead_Dispatch((int)piVar3 + (int)*(short *)(*piVar3 + 0x328));
       }
       piVar3 = (int *)FUN_10105684(auStack_150);
-      iVar1 = FUN_100ebf44(auStack_150);
+      iVar1 = Sound_HasMoreItems(auStack_150);
     }
     ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x2e0),param_2);
     iVar1 = ResourceRead_Dispatch(param_1[0x15] + (int)*(short *)(*(int *)param_1[0x15] + 0x668));
@@ -13656,10 +13656,10 @@ short FUN_100c3c18(long long param_1,long long param_2,int *param_3)
   long long uVar2;
   short uVar3;
   
-  uVar1 = FUN_100ef9b8(param_3);
-  uVar2 = FUN_10001c20(param_3);
+  uVar1 = Sound_DetachResourceAlt(param_3);
+  uVar2 = GetHandleByteCount(param_3);
   uVar3 = FUN_10002c88(uVar2,param_2,*param_3);
-  FUN_10001b60(param_3,uVar1);
+  RestoreHandleFlags(param_3,uVar1);
   return uVar3;
 }
 
@@ -14610,7 +14610,7 @@ void FUN_100c566c(int *param_1,long long param_2,long long param_3,char param_4,
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 }
@@ -14858,7 +14858,7 @@ void FUN_100c5838(int *param_1)
     }
     else {
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x168),local_28,local_24);
-      FUN_100db158(local_28,local_24);
+      LockHandleRange(local_28,local_24);
     }
   }
   FUN_100c4280(param_1);
@@ -15085,7 +15085,7 @@ void FUN_100c5e5c(int param_1)
         piVar3 = (int *)DisposeObject(piVar3);
       }
       FUN_100db22c(local_28,local_24,(short)iVar4);
-      FUN_100db158(local_28,local_24);
+      LockHandleRange(local_28,local_24);
     }
     if (*(char *)((int)piVar3 + 0x1f) != '\0') {
       ResourceRead_Dispatch((int)*(short *)(*piVar3 + 0x138) + (int)piVar3);
@@ -15254,7 +15254,7 @@ void FUN_100c637c(int *param_1,int *param_2)
         piStack0000001c = (int *)DisposeObject(piStack0000001c);
       }
       FUN_100db22c(local_34,local_30,(short)iVar3);
-      FUN_100db158(local_34,local_30);
+      LockHandleRange(local_34,local_30);
     }
     if (piStack0000001c != (int *)0x0) {
       ResourceRead_Dispatch((int)piStack0000001c + (int)*(short *)(*piStack0000001c + 0x118));
@@ -15433,7 +15433,7 @@ void FUN_100c6a9c()
 void FUN_100c6be4()
 
 {
-  FUN_100c6b2c(0);
+  ConstructExtendedObject(0);
   return;
 }
 
@@ -15531,7 +15531,7 @@ void FUN_100c6c9c(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_38,local_34);
+    LockHandleRange(local_38,local_34);
   }
   return;
 }
@@ -15773,7 +15773,7 @@ int FUN_100c752c(int param_1)
     local_18 = *(int *)(param_1 + 0x98);
     uStack_14 = *(int *)(param_1 + 0x9c);
     uStack_10 = *(int *)(param_1 + 0xa0);
-    FUN_100f0788(&local_18);
+    Render_RestoreClipRegion(&local_18);
     FUN_10000030();
   }
   return iVar1 != 0;
@@ -16072,7 +16072,7 @@ void FUN_100c7e34()
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_38,local_34);
+    LockHandleRange(local_38,local_34);
   }
   return;
 
@@ -16280,7 +16280,7 @@ int * FUN_100c7f28()
     piVar2[0x2c] = 0;
     piVar2[0x2e] = piVar2[0x2c];
     piVar2[0x2d] = piVar2[0x2e];
-    FUN_100012d8(**(int **)(param_1 + 0xa8) + 0x28,auStack_230,
+    Sound_BlockCopy(**(int **)(param_1 + 0xa8) + 0x28,auStack_230,
                  (unsigned long long)*(unsigned char *)(**(int **)(param_1 + 0xa8) + 0x28) + 1);
     local_2c = 0;
     local_28 = 0;
@@ -16297,7 +16297,7 @@ int * FUN_100c7f28()
     }
     else {
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-      FUN_100db158(local_2c,local_28);
+      LockHandleRange(local_2c,local_28);
     }
   }
   return piVar2;
@@ -16364,7 +16364,7 @@ void FUN_100c818c(int *param_1,long long param_2,long long param_3,long long par
   *(short *)(param_1 + 0x2f) = param_6;
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_3c);
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_3c,auStack_44);
-  uVar2 = FUN_100b1c84(param_2);
+  uVar2 = ConvertToString(param_2);
   uVar3 = GetBitMapPtr(auStack_44);
   iVar5 = FUN_10001068(iVar4,uVar3,uVar2,0,0,0,0,param_6);
   FocusObject();
@@ -16643,7 +16643,7 @@ void FUN_100c8cc0(int param_1,long long param_2)
 
 {
   if (*(int *)(param_1 + 0xa8) == 0) {
-    FUN_100012d8(pbRam10116a54,param_2,(unsigned long long)*pbRam10116a54 + 1);
+    Sound_BlockCopy(pbRam10116a54,param_2,(unsigned long long)*pbRam10116a54 + 1);
   }
   else {
     FUN_100038d0(*(int *)(param_1 + 0xa8),param_2);
@@ -16844,7 +16844,7 @@ void FUN_100c92b8(int *param_1,long long param_2,char param_3)
       FUN_100c67b4(auStack_130,param_1,param_3);
       FUN_100c6824(auStack_130);
       FUN_100ee844(auStack_138,*(char *)((int)param_1 + 0xa6));
-      uVar2 = FUN_100b1c84(param_2);
+      uVar2 = ConvertToString(param_2);
       FUN_10003168(param_1[0x2a],uVar2);
       iVar3 = ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x3c0) + (int)param_1);
       if (iVar3 != 0) {
@@ -17076,7 +17076,7 @@ void FUN_100c9a90()
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 
@@ -17248,7 +17248,7 @@ void FUN_100ca110(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 }
@@ -17327,13 +17327,13 @@ void FUN_100ca280(int param_1)
   
   FUN_100ebf7c(auStack_148,*(int *)(param_1 + 0xc4),1);
   piVar1 = (int *)FUN_100ec060(auStack_148);
-  iVar2 = FUN_100ebf44(auStack_148);
+  iVar2 = Sound_HasMoreItems(auStack_148);
   while (iVar2 != 0) {
     if ((piVar1 + *(unsigned char *)(param_1 + 0xc0))[0x24] == param_1) {
       ResourceRead_Dispatch((int)*(short *)(*piVar1 + 0x750) + (int)piVar1,0,*(unsigned char *)(param_1 + 0xc0));
     }
     piVar1 = (int *)FUN_100ec0e8(auStack_148);
-    iVar2 = FUN_100ebf44(auStack_148);
+    iVar2 = Sound_HasMoreItems(auStack_148);
   }
   uVar3 = DisposeObject(*(int *)(param_1 + 0xc4));
   *(int *)(param_1 + 0xc4) = uVar3;
@@ -17375,7 +17375,7 @@ void FUN_100ca378(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 }
@@ -17757,14 +17757,14 @@ void FUN_100ca754(int *param_1,long long param_2,long long param_3,int param_4)
       }
       FUN_100ebf7c(auStack_160,param_1[0x31],1);
       piVar5 = (int *)FUN_100ec060(auStack_160);
-      iVar3 = FUN_100ebf44(auStack_160);
+      iVar3 = Sound_HasMoreItems(auStack_160);
       lVar6 = 0;
       while (iVar3 != 0) {
         lVar1 = ResourceRead_Dispatch((int)piVar5 + (int)*(short *)(*piVar5 + 0x770),
                              *(char *)(param_1 + 0x30),param_1[0x2c]);
         lVar6 = lVar6 + lVar1;
         piVar5 = (int *)FUN_100ec0e8(auStack_160);
-        iVar3 = FUN_100ebf44(auStack_160);
+        iVar3 = Sound_HasMoreItems(auStack_160);
       }
       iVar3 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x3a8));
       if ((iVar3 != 0) && ((int)lVar6 != 0)) {
@@ -18070,18 +18070,18 @@ void FUN_100ca96c(int *param_1,long long param_2)
   iVar1 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x838));
   if (iVar1 == 0) {
     FUN_10000030();
-    FUN_100ef824(auStack_20);
-    FUN_100f03e8(*(int *)(local_44 + -0xc38));
+    Render_GetFontState(auStack_20);
+    Render_SetFontState(*(int *)(local_44 + -0xc38));
     iVar1 = *(int *)param_1[0x2a];
     local_18 = *(short *)(iVar1 + 8);
     local_16 = *(short *)(iVar1 + 10);
     local_14 = *(short *)(iVar1 + 0xc);
     local_12 = *(short *)(iVar1 + 0xe);
     GetBitMapPtr(&local_18);
-    FUN_10002c58();
+    Render_GetPixBaseAddr();
     GetBitMapPtr(&local_18);
     FUN_100021d8();
-    FUN_100f03e8(auStack_20);
+    Render_SetFontState(auStack_20);
   }
   FUN_100c87e0(param_1,param_2);
   return;
@@ -18099,14 +18099,14 @@ void FUN_100caa4c(int *param_1,short param_2)
   
   FUN_100ebf7c(auStack_150,param_1[0x31],1);
   piVar2 = (int *)FUN_100ec060(auStack_150);
-  iVar3 = FUN_100ebf44(auStack_150);
+  iVar3 = Sound_HasMoreItems(auStack_150);
   lVar4 = 0;
   while (iVar3 != 0) {
     lVar1 = ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x768),
                          *(char *)(param_1 + 0x30),param_2);
     lVar4 = lVar4 + lVar1;
     piVar2 = (int *)FUN_100ec0e8(auStack_150);
-    iVar3 = FUN_100ebf44(auStack_150);
+    iVar3 = Sound_HasMoreItems(auStack_150);
   }
   iVar3 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x3a8));
   if (iVar3 != 0) {
@@ -18567,7 +18567,7 @@ int FUN_100cb278()
   int iVar1;
   long long uVar2;
   
-  iVar1 = FUN_100ebf44(param_1);
+  iVar1 = Sound_HasMoreItems(param_1);
   if ((iVar1 == 0) ||
      (iVar1 = ResourceRead_Dispatch((int)*(int **)(param_1 + 0x10) +
                            (int)*(short *)(**(int **)(param_1 + 0x10) + 0x140),
@@ -19328,7 +19328,7 @@ void FUN_100cbbc4(int *param_1,long long param_2,long long param_3,long long par
   FUN_100ebaf8(local_150,param_1[2],1);
   ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
   iVar1 = local_150[1];
-  iVar2 = FUN_100ebf44(local_150);
+  iVar2 = Sound_HasMoreItems(local_150);
   while (iVar2 != 0) {
     puVar3 = (int *)
              ResourceRead_Dispatch(param_1[2] + (int)*(short *)(*(int *)param_1[2] + 0xe0),iVar1);
@@ -19337,7 +19337,7 @@ void FUN_100cbbc4(int *param_1,long long param_2,long long param_3,long long par
     }
     ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
     iVar1 = local_150[1];
-    iVar2 = FUN_100ebf44(local_150);
+    iVar2 = Sound_HasMoreItems(local_150);
   }
   FUN_100ebc68(local_150,2);
   return;
@@ -19507,7 +19507,7 @@ void FUN_100cbef4(int param_1)
       FUN_100eba50(local_14c,*(int *)(param_1 + 0x10),1,local_150,0);
       ResourceRead_Dispatch((int)*(short *)(local_14c[0] + 0x10) + (int)local_14c);
       iVar2 = local_14c[1];
-      iVar3 = FUN_100ebf44(local_14c);
+      iVar3 = Sound_HasMoreItems(local_14c);
       while ((iVar3 != 0 &&
              (iVar3 = ResourceRead_Dispatch((int)*(int **)(param_1 + 0x10) +
                                    (int)*(short *)(**(int **)(param_1 + 0x10) + 0x140),iVar2),
@@ -19515,7 +19515,7 @@ void FUN_100cbef4(int param_1)
         local_150 = iVar2;
         ResourceRead_Dispatch((int)*(short *)(local_14c[0] + 0x18) + (int)local_14c);
         iVar2 = local_14c[1];
-        iVar3 = FUN_100ebf44(local_14c);
+        iVar3 = Sound_HasMoreItems(local_14c);
       }
       *(int *)(param_1 + 8) = local_150;
       FUN_100ebc68(local_14c,2);
@@ -19928,7 +19928,7 @@ void FUN_100ccb1c(int param_1,int *param_2)
   }
   else {
     uVar2 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x108));
-    uVar3 = FUN_10000360(*(int *)(param_1 + 4));
+    uVar3 = GetHandleFlags(*(int *)(param_1 + 4));
     local_38 = 0;
     local_34 = 0;
     local_2c = 0;
@@ -19942,12 +19942,12 @@ void FUN_100ccb1c(int param_1,int *param_2)
       CheckMemError();
       ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0xe0),**(int **)(param_1 + 4),
                    uVar2);
-      FUN_10001b60(*(int *)(param_1 + 4),uVar3);
+      RestoreHandleFlags(*(int *)(param_1 + 4),uVar3);
       *puVar1 = local_30;
     }
     else {
-      FUN_10001b60(*(int *)(param_1 + 4),uVar3);
-      FUN_100db158(local_38,local_34);
+      RestoreHandleFlags(*(int *)(param_1 + 4),uVar3);
+      LockHandleRange(local_38,local_34);
     }
   }
   return;
@@ -19995,7 +19995,7 @@ int FUN_100cccd0(int param_1)
   }
   else {
     local_130 = DisposeObject(local_130);
-    FUN_100db158(local_2c,local_28);
+    LockHandleRange(local_2c,local_28);
   }
   return local_130;
 }
@@ -20220,7 +20220,7 @@ int * FUN_100cd114(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0x88),
      param_1 != (int *)0x0)) {
-    FUN_1010598c(param_1);
+    ConstructViewObject(param_1);
     *param_1 = (*(int*)((char*)ppuVar1 - 0x2dc));
     param_1[0x21] = 0;
     *(char *)(param_1 + 0x20) = 0;
@@ -20377,7 +20377,7 @@ void FUN_100cd454(int *param_1)
       else {
         ReleaseHandle_Mapgen(iVar3);
         param_1[0x21] = 0;
-        FUN_100db158(local_38,local_34);
+        LockHandleRange(local_38,local_34);
       }
     }
   }
@@ -20420,7 +20420,7 @@ void FUN_100cd610(int *param_1,long long param_2)
     if (*(char *)((int)param_1 + 0x81) == '\0') {
       if (*(char *)(param_1 + 0x20) != '\0') {
         if (**(char **)(local_17c + -0x90) == '\0') {
-          FUN_100b08d4(local_154,(unsigned long long)*(unsigned int *)param_1[0x21] + 2);
+          GetScreenBounds(local_154,(unsigned long long)*(unsigned int *)param_1[0x21] + 2);
           local_14c = *puVar1;
           local_144[0] = local_14c;
         }
@@ -20432,13 +20432,13 @@ void FUN_100cd610(int *param_1,long long param_2)
       }
     }
     else {
-      FUN_100f0788(*(int *)(local_17c + -0x8c));
+      Render_RestoreClipRegion(*(int *)(local_17c + -0x8c));
       ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x610) + (int)param_1,local_144);
-      uVar4 = FUN_100ef9b8(param_1[0x21]);
+      uVar4 = Sound_DetachResourceAlt(param_1[0x21]);
       puVar1 = (int *)param_1[0x21];
-      uVar5 = FUN_10001c20();
+      uVar5 = GetHandleByteCount();
       FUN_100efdd0(*puVar1,uVar5,local_144,0,1,0,0);
-      FUN_10001b60(param_1[0x21],uVar4);
+      RestoreHandleFlags(param_1[0x21],uVar4);
     }
     if (*(short *)((int)param_1 + 0x82) != *(short *)(*piVar2 + 0x38)) {
       ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x500) + (int)param_1,local_144);
@@ -20526,7 +20526,7 @@ void FUN_100ce568(unsigned char *param_1)
   FUN_100ebaf8(local_150,*(int *)(*piRam1011781c + 4),1);
   ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
   iVar4 = local_150[1];
-  iVar3 = FUN_100ebf44(local_150);
+  iVar3 = Sound_HasMoreItems(local_150);
   while (iVar3 != 0) {
     iVar4 = ResourceRead_Dispatch((int)*(int **)(*piVar1 + 4) +
                          (int)*(short *)(**(int **)(*piVar1 + 4) + 0x120),iVar4);
@@ -20542,7 +20542,7 @@ void FUN_100ce568(unsigned char *param_1)
     }
     ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
     iVar4 = local_150[1];
-    iVar3 = FUN_100ebf44(local_150);
+    iVar3 = Sound_HasMoreItems(local_150);
   }
   FUN_100ebc68(local_150,2);
   return;
@@ -20766,7 +20766,7 @@ void FUN_100ce79c(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -20823,7 +20823,7 @@ int * FUN_100ce928(int *param_1)
     }
     else {
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-      FUN_100db158(local_2c,local_28);
+      LockHandleRange(local_2c,local_28);
     }
   }
   return piVar2;
@@ -20864,7 +20864,7 @@ void FUN_100cea9c(int *param_1,int *param_2)
     pbVar2 = *(unsigned char **)(local_25c + -0xe4c);
     uVar4 = uVar8;
     if (((uVar8 & 0xffffffff) != 0) || (uVar4 = NewPtr_Thunk(0x100), (uVar4 & 0xffffffff) != 0)) {
-      FUN_100012d8(pbVar2,uVar4,(unsigned long long)*pbVar2 + 1);
+      Sound_BlockCopy(pbVar2,uVar4,(unsigned long long)*pbVar2 + 1);
     }
     uVar7 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x100));
     *(short *)(param_1 + 0x2a) = uVar7;
@@ -20878,7 +20878,7 @@ void FUN_100cea9c(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(0,0);
+    LockHandleRange(0,0);
   }
   return;
 }
@@ -20904,13 +20904,13 @@ void FUN_100cec8c(int param_1,long long param_2,int *param_3,long long param_4)
   if (((int)param_2 == 0xc) && (param_3[8] == param_1)) {
     FUN_1010556c(auStack_150,param_1);
     piVar1 = (int *)FUN_10105660(auStack_150);
-    iVar2 = FUN_100ebf44(auStack_150);
+    iVar2 = Sound_HasMoreItems(auStack_150);
     while (iVar2 != 0) {
       if (piVar1 != param_3) {
         ResourceRead_Dispatch((int)*(short *)(*piVar1 + 0xd0) + (int)piVar1,0x20,param_1,0);
       }
       piVar1 = (int *)FUN_10105684(auStack_150);
-      iVar2 = FUN_100ebf44(auStack_150);
+      iVar2 = Sound_HasMoreItems(auStack_150);
     }
     *(int *)(param_1 + 0xb0) = param_3[6];
     FUN_101055f4(auStack_150,2);
@@ -21074,7 +21074,7 @@ void FUN_100ced8c(int *param_1,long long param_2)
     FUN_10000030();
     ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x778) + (int)param_1,&local_17c);
     FUN_100031b0(local_17a,local_17c);
-    FUN_100ef8c8(auStack_194);
+    Render_GetPenState(auStack_194);
     FUN_100ee844(auStack_2b8,*(char *)((int)param_1 + 0xa6));
     local_2c8 = param_1[0x26];
     iStack_2c4 = param_1[0x27];
@@ -21084,7 +21084,7 @@ void FUN_100ced8c(int *param_1,long long param_2)
     local_174[0] = 0;
     ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x7a0) + (int)param_1,local_174);
     FUN_100ce568(local_174);
-    FUN_100b1c84(local_174);
+    ConvertToString(local_174);
     iStack_198 = FUN_100006f0();
     iStack_198 = iStack_198 + 0x18;
     local_74 = 0;
@@ -21111,7 +21111,7 @@ void FUN_100ced8c(int *param_1,long long param_2)
     sVar1 = FUN_100e1a3c(&local_1a4,1);
     FUN_10001d88(local_52 + sVar1 + 0x10,local_54);
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x798),param_2);
-    FUN_100f0538(auStack_194);
+    IterateListItems(auStack_194);
   }
   FUN_101088b0(param_1,param_2);
   return;
@@ -21141,7 +21141,7 @@ void FUN_100cf054(int *param_1,long long param_2)
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x7a0),&local_12c);
   FUN_100ce568(&local_12c);
   FUN_100ee844(auStack_15c,*(char *)((int)param_1 + 0xa6));
-  FUN_100b1c84(&local_12c);
+  ConvertToString(&local_12c);
   iVar1 = FUN_100006f0();
   uStack_144 = FUN_100ef96c(auStack_2c);
   local_13c = 0;
@@ -21168,11 +21168,11 @@ void FUN_100cf1a8(int param_1,long long param_2)
   unsigned char *pbVar1;
   
   if (*(int **)(param_1 + 0xac) == (int *)0x0) {
-    FUN_100012d8(pbRam10116a54,param_2,(unsigned long long)*pbRam10116a54 + 1);
+    Sound_BlockCopy(pbRam10116a54,param_2,(unsigned long long)*pbRam10116a54 + 1);
   }
   else {
     pbVar1 = (unsigned char *)**(int **)(param_1 + 0xac);
-    FUN_100012d8(pbVar1,param_2,(unsigned long long)*pbVar1 + 1);
+    Sound_BlockCopy(pbVar1,param_2,(unsigned long long)*pbVar1 + 1);
   }
   return;
 }
@@ -21196,7 +21196,7 @@ void FUN_100cf250(int *param_1,unsigned char *param_2,char param_3)
   
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x7a8));
   if (-1 < (long long)(((unsigned long long)*param_2 - 1) + (unsigned long long)((unsigned long long)*param_2 != 0) << 0x20)) {
-    FUN_100b1c84(param_2);
+    ConvertToString(param_2);
     iVar1 = FUN_10001ae8();
     param_1[0x2b] = iVar1;
     iVar1 = FUN_10002b20();
@@ -21241,7 +21241,7 @@ void FUN_100cf3d4(int param_1,int param_2)
   
   FUN_1010556c(auStack_148,param_1);
   piVar1 = (int *)FUN_10105660(auStack_148);
-  iVar2 = FUN_100ebf44(auStack_148);
+  iVar2 = Sound_HasMoreItems(auStack_148);
   while (iVar2 != 0) {
     if (piVar1[6] == param_2) {
       ResourceRead_Dispatch((int)*(short *)(*piVar1 + 200) + (int)piVar1,0x1f,param_1,0);
@@ -21250,7 +21250,7 @@ void FUN_100cf3d4(int param_1,int param_2)
       ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 200),0x20,param_1,0);
     }
     piVar1 = (int *)FUN_10105684(auStack_148);
-    iVar2 = FUN_100ebf44(auStack_148);
+    iVar2 = Sound_HasMoreItems(auStack_148);
   }
   *(int *)(param_1 + 0xb0) = param_2;
   FUN_101055f4(auStack_148,2);
@@ -21297,7 +21297,7 @@ void FUN_100cf4f8(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xd8),0);
   return;
@@ -21513,7 +21513,7 @@ int * FUN_100cf5fc(int param_1)
     }
     else {
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-      FUN_100db158(local_2c,local_28);
+      LockHandleRange(local_2c,local_28);
     }
   }
   return piVar2;
@@ -21562,7 +21562,7 @@ void FUN_100cf764(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -21616,7 +21616,7 @@ void FUN_100cf8e4(int *param_1,long long param_2)
       FUN_10000030();
       ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x730) + (int)param_1,auStack_78);
       ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x288) + (int)param_1,auStack_78,auStack_68);
-      uVar2 = FUN_10000360(param_1[0x2b]);
+      uVar2 = GetHandleFlags(param_1[0x2b]);
       LockHandle_Thunk(param_1[0x2b]);
       DetachResource(param_1[0x2b]);
       if (*(char *)((int)param_1 + 0xa9) == '\0') {
@@ -21650,7 +21650,7 @@ void FUN_100cf8e4(int *param_1,long long param_2)
                      uVar3,0,0);
         DisposeHandle_Thunk(*(int *)(*(int *)param_1[0x2b] + 0x4e));
       }
-      FUN_10001b60(param_1[0x2b],uVar2);
+      RestoreHandleFlags(param_1[0x2b],uVar2);
     }
   }
   FUN_101088b0(param_1,param_2);
@@ -21688,7 +21688,7 @@ void FUN_100cfb50(int *param_1,long long param_2,char param_3)
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x798));
   HLock_Thunk_Sound(param_2);
   MarkChanged();
-  lVar1 = FUN_10001c20(param_2);
+  lVar1 = GetHandleByteCount(param_2);
   lVar3 = -lVar1 + 0x80;
   *(char *)(param_1 + 0x2a) = (char)lVar3 + (-(lVar3 == 0) - ((char)-lVar1 + '\x7f'));
   param_1[0x2b] = (int)param_2;
@@ -21716,11 +21716,11 @@ void FUN_100cfc24(int *param_1,short param_2,char param_3)
   if (param_2 != -1) {
     if ((*(char *)(param_1 + 0x2a) != '\0') &&
        (uVar1 = GetResource_Thunk(0x6369636e,*(short *)((int)param_1 + 0xaa)), (int)uVar1 != 0)) {
-      uVar2 = FUN_10000360(uVar1);
+      uVar2 = GetHandleFlags(uVar1);
       LockHandle_Thunk(uVar1);
       iVar3 = FUN_10001f68(*(short *)((int)param_1 + 0xaa));
       param_1[0x2b] = iVar3;
-      FUN_10001b60(uVar1,uVar2);
+      RestoreHandleFlags(uVar1,uVar2);
     }
     if (param_1[0x2b] == 0) {
       iVar3 = FUN_10001f80(*(short *)((int)param_1 + 0xaa));
@@ -21781,7 +21781,7 @@ int * FUN_100cfd90(int param_1)
     }
     else {
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-      FUN_100db158(local_2c,local_28);
+      LockHandleRange(local_2c,local_28);
     }
   }
   return piVar2;
@@ -21817,7 +21817,7 @@ void FUN_100cfe98(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -21853,7 +21853,7 @@ void FUN_100cffdc(int *param_1,long long param_2)
     if (*(int *)param_1[0x2b] != 0) {
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_34);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_34,auStack_3c);
-      uVar1 = FUN_10000360(param_1[0x2b]);
+      uVar1 = GetHandleFlags(param_1[0x2b]);
       LockHandle_Thunk(param_1[0x2b]);
       local_4c = *(int *)param_1[0x2b];
       local_48 = 2;
@@ -21861,7 +21861,7 @@ void FUN_100cffdc(int *param_1,long long param_2)
       FUN_10000660(&local_50);
       uVar2 = GetBitMapPtr(auStack_3c);
       CopyBits_Thunk(&local_4c,(unsigned long long)local_50 + 2,auStack_46,uVar2,0,0);
-      FUN_10001b60(param_1[0x2b],uVar1);
+      RestoreHandleFlags(param_1[0x2b],uVar1);
     }
   }
   FUN_101088b0(param_1,param_2);
@@ -21942,7 +21942,7 @@ int * FUN_100d0258(int param_1)
     }
     else {
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-      FUN_100db158(local_2c,local_28);
+      LockHandleRange(local_2c,local_28);
     }
   }
   return piVar2;
@@ -21991,7 +21991,7 @@ void FUN_100d03c0(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -22154,7 +22154,7 @@ void FUN_100d08c4(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xd8),0);
   return;
@@ -22353,7 +22353,7 @@ int * FUN_100d09bc(int param_1)
     }
     else {
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-      FUN_100db158(local_2c,local_28);
+      LockHandleRange(local_2c,local_28);
     }
   }
   return piVar2;
@@ -22398,7 +22398,7 @@ void FUN_100d0b10(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -22430,12 +22430,12 @@ void FUN_100d0c54(int *param_1,long long param_2)
     if (*(int *)param_1[0x2b] != 0) {
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_28);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_28,auStack_30);
-      uVar1 = FUN_10000360(param_1[0x2b]);
+      uVar1 = GetHandleFlags(param_1[0x2b]);
       LockHandle_Thunk(param_1[0x2b]);
       FUN_10000030();
       uVar2 = GetBitMapPtr(auStack_30);
       FUN_10000750(param_1[0x2b],uVar2);
-      FUN_10001b60(param_1[0x2b],uVar1);
+      RestoreHandleFlags(param_1[0x2b],uVar1);
     }
   }
   FUN_101088b0(param_1,param_2);
@@ -22570,13 +22570,13 @@ void FUN_100d0f88()
     }
     else {
       local_260 = (int *)DisposeObject(local_260);
-      FUN_100db158(local_15c,local_158);
+      LockHandleRange(local_15c,local_158);
     }
     *puVar2 = local_3c;
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_44,local_40);
+    LockHandleRange(local_44,local_40);
   }
   param_1[0x37] = (int)local_260;
   FUN_10000540(2,0,param_1[0x20]);
@@ -22629,7 +22629,7 @@ int FUN_100d1144(int param_1)
   }
   else {
     local_130 = DisposeObject(local_130);
-    FUN_100db158(local_2c,local_28);
+    LockHandleRange(local_2c,local_28);
   }
   return local_130;
 }
@@ -22685,7 +22685,7 @@ void FUN_100d1330(int *param_1)
   else {
     local_134 = (int *)DisposeObject(0);
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   param_1[0x37] = (int)local_134;
   FUN_10000540(2,0,param_1[0x20]);
@@ -22882,7 +22882,7 @@ int * FUN_100d1be0(int param_1)
   }
   else {
     ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return piVar2;
 }
@@ -22929,7 +22929,7 @@ void FUN_100d1d20(int *param_1,int *param_2)
     pbVar2 = *(unsigned char **)(local_25c + -0xe4c);
     uVar4 = uVar9;
     if (((uVar9 & 0xffffffff) != 0) || (uVar4 = NewPtr_Thunk(0x100), (uVar4 & 0xffffffff) != 0)) {
-      FUN_100012d8(pbVar2,uVar4,(unsigned long long)*pbVar2 + 1);
+      Sound_BlockCopy(pbVar2,uVar4,(unsigned long long)*pbVar2 + 1);
     }
     uVar7 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x100));
     *(short *)(param_1 + 0x2a) = uVar7;
@@ -22943,7 +22943,7 @@ void FUN_100d1d20(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(0,0);
+    LockHandleRange(0,0);
   }
   return;
 }
@@ -23005,7 +23005,7 @@ void FUN_100d2100(int param_1,long long param_2)
 
 {
   if (*(int **)(param_1 + 0xac) == (int *)0x0) {
-    FUN_100012d8(pbRam10116a54,param_2,(unsigned long long)*pbRam10116a54 + 1);
+    Sound_BlockCopy(pbRam10116a54,param_2,(unsigned long long)*pbRam10116a54 + 1);
   }
   else {
     FUN_100ef284(**(int **)(param_1 + 0xac),param_2);
@@ -23059,7 +23059,7 @@ void FUN_100d2270(int *param_1,long long param_2,char param_3)
   if (((int *)param_1[0x2b] == (int *)0x0) ||
      (iVar1 = FUN_100ef228(param_2,*(int *)param_1[0x2b]), iVar1 != 0)) {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x7b8));
-    FUN_100b1c84(param_2);
+    ConvertToString(param_2);
     iVar1 = FUN_10001ae8();
     param_1[0x2b] = iVar1;
     iVar1 = FUN_10002b20();
@@ -23072,7 +23072,7 @@ void FUN_100d2270(int *param_1,long long param_2,char param_3)
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_28);
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_28,auStack_30);
         GetBitMapPtr(auStack_30);
-        FUN_10002c58();
+        Render_GetPixBaseAddr();
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x480),auStack_28);
       }
     }
@@ -23150,7 +23150,7 @@ void FUN_100d2504(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -23243,11 +23243,11 @@ void FUN_100d285c(int *param_1,int param_2)
       }
       FUN_100009d8(local_110,300,(short)param_2);
       FUN_100009f0(local_110,uVar2,uVar2,uVar2);
-      FUN_100d8e3c(300);
+      ShowErrorAlert(300);
     }
     if ((int *)param_1[0x2b] != (int *)0x0) {
       pbVar1 = *(unsigned char **)param_1[0x2b];
-      FUN_100012d8(pbVar1,local_110,(unsigned long long)*pbVar1 + 1);
+      Sound_BlockCopy(pbVar1,local_110,(unsigned long long)*pbVar1 + 1);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x7d8),local_110);
     }
   }
@@ -23308,12 +23308,12 @@ void FUN_100d2a84(int param_1,char *param_2)
              ResourceRead_Dispatch((int)*(int **)(param_1 + 0xb8) +
                           (int)*(short *)(**(int **)(param_1 + 0xb8) + 0x7f0));
     local_14[0] = 0xff;
-    local_18 = FUN_10001c20(puVar1);
+    local_18 = GetHandleByteCount(puVar1);
     if (local_14[0] < local_18) {
       piVar2 = local_14;
     }
     *param_2 = (char)*piVar2;
-    FUN_10002340(*puVar1,param_2 + 1);
+    CopyDataToBuffer(*puVar1,param_2 + 1);
   }
   return;
 }
@@ -23523,7 +23523,7 @@ void FUN_100d3174(int *param_1,unsigned char *param_2,char param_3)
   pbVar1 = pbVar6;
   if ((((char*)0) != (char *)0x120) ||
      (pbVar1 = (unsigned char *)NewPtr_Thunk(0x100), pbVar1 != (unsigned char *)0x0)) {
-    FUN_100012d8(param_2,pbVar1,(unsigned long long)*param_2 + 1);
+    Sound_BlockCopy(param_2,pbVar1,(unsigned long long)*param_2 + 1);
   }
   if (*(short *)(param_1 + 0x2d) < (short)(unsigned short)*pbVar6) {
     *pbVar6 = (unsigned char)*(short *)(param_1 + 0x2d);
@@ -23537,7 +23537,7 @@ void FUN_100d3174(int *param_1,unsigned char *param_2,char param_3)
     iVar2 = FUN_100ef228(puVar5,pbVar6);
     if (iVar2 != 0) {
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x7b8));
-      FUN_100b1c84(pbVar6);
+      ConvertToString(pbVar6);
       iVar2 = FUN_10001ae8();
       param_1[0x2b] = iVar2;
       iVar2 = FUN_10002b20();
@@ -23552,7 +23552,7 @@ void FUN_100d3174(int *param_1,unsigned char *param_2,char param_3)
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),puVar4);
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),puVar4,puVar3);
         GetBitMapPtr(puVar3);
-        FUN_10002c58();
+        Render_GetPixBaseAddr();
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x480),puVar4);
       }
     }
@@ -23705,7 +23705,7 @@ void FUN_100d3734(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 }
@@ -24024,7 +24024,7 @@ void FUN_100d3dc8(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -24360,7 +24360,7 @@ void FUN_100d4614(int *param_1,int *param_2)
     pbVar2 = *(unsigned char **)(local_25c + -0xe4c);
     uVar4 = uVar8;
     if (((uVar8 & 0xffffffff) != 0) || (uVar4 = NewPtr_Thunk(0x100), (uVar4 & 0xffffffff) != 0)) {
-      FUN_100012d8(pbVar2,uVar4,(unsigned long long)*pbVar2 + 1);
+      Sound_BlockCopy(pbVar2,uVar4,(unsigned long long)*pbVar2 + 1);
     }
     uVar7 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x100));
     *(short *)(param_1 + 0x30) = uVar7;
@@ -24374,7 +24374,7 @@ void FUN_100d4614(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(0,0);
+    LockHandleRange(0,0);
   }
   return;
 }
@@ -24547,7 +24547,7 @@ void FUN_100d4a3c(int *param_1,int *param_2)
     pbVar2 = *(unsigned char **)(local_25c + -0xe4c);
     uVar5 = uVar9;
     if (((uVar9 & 0xffffffff) != 0) || (uVar5 = NewPtr_Thunk(0x100), (uVar5 & 0xffffffff) != 0)) {
-      FUN_100012d8(pbVar2,uVar5,(unsigned long long)*pbVar2 + 1);
+      Sound_BlockCopy(pbVar2,uVar5,(unsigned long long)*pbVar2 + 1);
     }
     uVar8 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x100));
     *(short *)(param_1 + 0x30) = uVar8;
@@ -24561,7 +24561,7 @@ void FUN_100d4a3c(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(0,0);
+    LockHandleRange(0,0);
   }
   return;
 }
@@ -24723,7 +24723,7 @@ void FUN_100d4f48(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -24756,7 +24756,7 @@ void FUN_100d5090(int *param_1,int *param_2)
     pbVar2 = *(unsigned char **)(local_25c + -0xe4c);
     uVar5 = uVar9;
     if (((uVar9 & 0xffffffff) != 0) || (uVar5 = NewPtr_Thunk(0x100), (uVar5 & 0xffffffff) != 0)) {
-      FUN_100012d8(pbVar2,uVar5,(unsigned long long)*pbVar2 + 1);
+      Sound_BlockCopy(pbVar2,uVar5,(unsigned long long)*pbVar2 + 1);
     }
     uVar8 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x100));
     *(short *)(param_1 + 0x30) = uVar8;
@@ -24770,7 +24770,7 @@ void FUN_100d5090(int *param_1,int *param_2)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(0,0);
+    LockHandleRange(0,0);
   }
   return;
 }
@@ -25014,7 +25014,7 @@ void FUN_100d55fc()
 void FUN_100d5718()
 
 {
-  FUN_100d568c(0);
+  ConstructBehavior(0);
   return;
 }
 
@@ -25433,11 +25433,11 @@ void FUN_100d61a8(int param_1)
   local_118[0] = 0;
   ResourceRead_Dispatch((int)*(int **)(param_1 + 0x30) + (int)*(short *)(**(int **)(param_1 + 0x30) + 0x310),
                local_118);
-  uVar2 = FUN_100b1c84(uVar1);
-  uVar3 = FUN_100b1c84(uVar1);
-  uVar4 = FUN_100b1c84(uVar1);
+  uVar2 = ConvertToString(uVar1);
+  uVar3 = ConvertToString(uVar1);
+  uVar4 = ConvertToString(uVar1);
   FUN_100009f0(local_118,uVar4,uVar3,uVar2);
-  iVar5 = FUN_100d8c9c(0x84,0);
+  iVar5 = PostMenuCommand(0x84,0);
   if (iVar5 == 1) {
     ResourceRead_Dispatch((int)*(int **)(param_1 + 0x30) +
                  (int)*(short *)(**(int **)(param_1 + 0x30) + 0x2c8));
@@ -25526,7 +25526,7 @@ void FUN_100d63d4(int *param_1)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -25623,7 +25623,7 @@ short FUN_100d6740(long long param_1)
   
   FUN_100d5ea0(auStack_148,param_1);
   piVar1 = (int *)FUN_100d5f94(auStack_148);
-  iVar2 = FUN_100ebf44(auStack_148);
+  iVar2 = Sound_HasMoreItems(auStack_148);
   sVar3 = 0;
   while (iVar2 != 0) {
     iVar2 = ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x668));
@@ -25631,7 +25631,7 @@ short FUN_100d6740(long long param_1)
       sVar3 = sVar3 + 1;
     }
     piVar1 = (int *)FUN_100d5fb8(auStack_148);
-    iVar2 = FUN_100ebf44(auStack_148);
+    iVar2 = Sound_HasMoreItems(auStack_148);
   }
   FUN_100d5f28(auStack_148,2);
   return sVar3;
@@ -25776,7 +25776,7 @@ void FUN_100d68a8(int *param_1)
   iVar1 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x298));
   if ((iVar1 != 0) &&
      (unaff_r29 = ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x270) + (int)param_1), unaff_r29 == 2)) {
-    FUN_100db158(0,0x820000);
+    LockHandleRange(0,0x820000);
   }
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x38),0x1c,param_1);
   if (iVar1 != 0) {
@@ -25789,11 +25789,11 @@ void FUN_100d68a8(int *param_1)
   }
   FUN_100d5ea0(auStack_148,param_1);
   piVar2 = (int *)FUN_100d5f94(auStack_148);
-  iVar1 = FUN_100ebf44(auStack_148);
+  iVar1 = Sound_HasMoreItems(auStack_148);
   while (iVar1 != 0) {
     ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x738));
     piVar2 = (int *)FUN_100d5fb8(auStack_148);
-    iVar1 = FUN_100ebf44(auStack_148);
+    iVar1 = Sound_HasMoreItems(auStack_148);
   }
   FUN_100d5f28(auStack_148,2);
   return;
@@ -26118,12 +26118,12 @@ void FUN_100d7008(int param_1)
   uVar1 = uRam10116a54;
   local_118[0] = 0;
   if (*(char *)(param_1 + 0x134) != '\0') {
-    FUN_100012d8(param_1 + 0x20,local_118,(unsigned long long)*(unsigned char *)(param_1 + 0x20) + 1);
-    uVar2 = FUN_100b1c84(uVar1);
-    uVar3 = FUN_100b1c84(uVar1);
-    uVar4 = FUN_100b1c84(uVar1);
+    Sound_BlockCopy(param_1 + 0x20,local_118,(unsigned long long)*(unsigned char *)(param_1 + 0x20) + 1);
+    uVar2 = ConvertToString(uVar1);
+    uVar3 = ConvertToString(uVar1);
+    uVar4 = ConvertToString(uVar1);
     FUN_100009f0(local_118,uVar4,uVar3,uVar2);
-    FUN_100d8e3c(0x87);
+    ShowErrorAlert(0x87);
   }
   piVar5 = *(int **)(param_1 + 0x120);
   if (piVar5 != (int *)0x0) {
@@ -26162,12 +26162,12 @@ long long FUN_100d7100(int *param_1)
       uVar3 = 10;
     }
     FUN_100009d8(auStack_318,0xfa,uVar3);
-    FUN_100012d8(param_1 + 8,local_118,(unsigned long long)*(unsigned char *)(param_1 + 8) + 1);
+    Sound_BlockCopy(param_1 + 8,local_118,(unsigned long long)*(unsigned char *)(param_1 + 8) + 1);
     piVar1 = (int *)*piVar1;
     ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x530),local_218);
-    uVar3 = FUN_100b1c84(*(int *)(local_33c + -0xe4c));
+    uVar3 = ConvertToString(*(int *)(local_33c + -0xe4c));
     FUN_100009f0(local_118,auStack_318,local_218,uVar3);
-    uVar3 = FUN_100d8c9c(0x83,0);
+    uVar3 = PostMenuCommand(0x83,0);
   }
   return uVar3;
 }
@@ -26209,7 +26209,7 @@ void FUN_100d72a0(int param_1,long long param_2,int param_3)
 
 {
   if (param_3 != param_1) {
-    FUN_100db158(0xffffffffffffb1dd,0);
+    LockHandleRange(0xffffffffffffb1dd,0);
   }
   return;
 }
@@ -26218,7 +26218,7 @@ void FUN_100d72a0(int param_1,long long param_2,int param_3)
 void FUN_100d72d8(int param_1,long long param_2)
 
 {
-  FUN_100012d8(param_1 + 0x20,param_2,(unsigned long long)*(unsigned char *)(param_1 + 0x20) + 1);
+  Sound_BlockCopy(param_1 + 0x20,param_2,(unsigned long long)*(unsigned char *)(param_1 + 0x20) + 1);
   return;
 }
 
@@ -26231,13 +26231,13 @@ void FUN_100d7318(long long param_1,unsigned char *param_2)
   char auStack_148 [328];
   
   FUN_100d5ea0(auStack_148,param_1);
-  FUN_100012d8(param_2,param_1 + 0x20,(unsigned long long)*param_2 + 1);
+  Sound_BlockCopy(param_2,param_1 + 0x20,(unsigned long long)*param_2 + 1);
   piVar1 = (int *)FUN_100d5f94(auStack_148);
-  iVar2 = FUN_100ebf44(auStack_148);
+  iVar2 = Sound_HasMoreItems(auStack_148);
   while (iVar2 != 0) {
     ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x798),param_2);
     piVar1 = (int *)FUN_100d5fb8(auStack_148);
-    iVar2 = FUN_100ebf44(auStack_148);
+    iVar2 = Sound_HasMoreItems(auStack_148);
   }
   FUN_100d5f28(auStack_148,2);
   return;
@@ -26343,11 +26343,11 @@ void FUN_100d73f4(long long param_1)
   
   FUN_100d5ea0(auStack_140,param_1);
   piVar1 = (int *)FUN_100d5f94(auStack_140);
-  iVar2 = FUN_100ebf44(auStack_140);
+  iVar2 = Sound_HasMoreItems(auStack_140);
   while (iVar2 != 0) {
     ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x348));
     piVar1 = (int *)FUN_100d5fb8(auStack_140);
-    iVar2 = FUN_100ebf44(auStack_140);
+    iVar2 = Sound_HasMoreItems(auStack_140);
   }
   FUN_100d5f28(auStack_140,2);
   return;
@@ -26448,13 +26448,13 @@ void FUN_100d749c(long long param_1)
   
   FUN_100d5e14(auStack_140,param_1,0);
   piVar1 = (int *)FUN_100d5f94(auStack_140);
-  iVar2 = FUN_100ebf44(auStack_140);
+  iVar2 = Sound_HasMoreItems(auStack_140);
   while (iVar2 != 0) {
     if (*(char *)((int)piVar1 + 0xaa) != '\0') {
       ResourceRead_Dispatch((int)*(short *)(*piVar1 + 800) + (int)piVar1);
     }
     piVar1 = (int *)FUN_100d5fb8(auStack_140);
-    iVar2 = FUN_100ebf44(auStack_140);
+    iVar2 = Sound_HasMoreItems(auStack_140);
   }
   FUN_100d5f28(auStack_140,2);
   return;
@@ -26677,9 +26677,9 @@ void FUN_100d78b4(int param_1,int *param_2)
 void FUN_100d7990(long long param_1)
 
 {
-  FUN_10000000(param_1 + 0x1e);
-  FUN_100ef8c8(param_1 + 0x30);
-  FUN_100ef824(param_1 + 0x36);
+  Render_GetForeColor(param_1 + 0x1e);
+  Render_GetPenState(param_1 + 0x30);
+  Render_GetFontState(param_1 + 0x36);
   return;
 }
 
@@ -26691,8 +26691,8 @@ void FUN_100d79dc(int param_1)
   FUN_100031b0(*(short *)(param_1 + 6),*(short *)(param_1 + 4));
   FUN_10002130(*(short *)(param_1 + 8));
   FUN_10002118(param_1 + 10);
-  FUN_100f0538(param_1 + 0x12);
-  FUN_100f03e8(param_1 + 0x18);
+  IterateListItems(param_1 + 0x12);
+  Render_SetFontState(param_1 + 0x18);
   return;
 }
 
@@ -26700,9 +26700,9 @@ void FUN_100d79dc(int param_1)
 void FUN_100d7a4c(long long param_1)
 
 {
-  FUN_100016f8(param_1 + 0x1e);
-  FUN_100f0538(param_1 + 0x30);
-  FUN_100f03e8(param_1 + 0x36);
+  Render_SetForeColor(param_1 + 0x1e);
+  IterateListItems(param_1 + 0x30);
+  Render_SetFontState(param_1 + 0x36);
   return;
 }
 
@@ -26756,7 +26756,7 @@ int * FUN_100d7d1c(int param_1)
   }
   else {
     ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return piVar2;
 }
@@ -26912,7 +26912,7 @@ void FUN_100d7f24(int *param_1,long long param_2,long long param_3)
   uVar3 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xe0),
                        (unsigned long long)(unsigned int)param_1[2] + 1);
   if ((uVar2 & 0xffffffff) < (uVar3 & 0xffffffff)) {
-    FUN_10002340(uVar2,uVar1,uVar3 - uVar2);
+    CopyDataToBuffer(uVar2,uVar1,uVar3 - uVar2);
   }
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xb0),(unsigned long long)(unsigned int)param_1[2] - param_3
               );
@@ -26941,7 +26941,7 @@ void FUN_100d80c8(int *param_1,long long param_2,long long param_3,int param_4)
   
   if (0 < param_4) {
     uVar1 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xe0),param_2);
-    FUN_10002340(uVar1,param_3,
+    CopyDataToBuffer(uVar1,param_3,
                  (unsigned long long)(unsigned int)(param_4 + -1 << ((int)*(short *)((int)param_1 + 0xe) & 0x3fU)) +
                  (long long)*(short *)(param_1 + 3));
   }
@@ -27009,7 +27009,7 @@ void FUN_100d82c0(int *param_1,long long param_2,int *param_3,long long param_4)
                        (unsigned long long)(unsigned int)param_1[2] + 1);
   iVar1 = (int)param_4 << ((int)*(short *)((int)param_1 + 0xe) & 0x3fU);
   if ((int)param_2 <= param_1[2]) {
-    FUN_10002340(puVar3,uVar2,iVar4 - (int)puVar3);
+    CopyDataToBuffer(puVar3,uVar2,iVar4 - (int)puVar3);
   }
   if (iVar1 == 4) {
     if ((((unsigned int)param_3 & 1) == 0) && (((unsigned int)puVar3 & 1) == 0)) {
@@ -27017,7 +27017,7 @@ void FUN_100d82c0(int *param_1,long long param_2,int *param_3,long long param_4)
       goto LAB_100d8438;
     }
   }
-  FUN_10002340(param_3,puVar3,iVar1);
+  CopyDataToBuffer(param_3,puVar3,iVar1);
 LAB_100d8438:
   param_1[2] = param_1[2] + (int)param_4;
   if (param_1[1] != 0) {
@@ -27057,7 +27057,7 @@ void FUN_100d85c8(int *param_1,long long param_2,long long param_3,int param_4)
   long long uVar1;
   
   uVar1 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xe0),param_2);
-  FUN_10002340(param_3,uVar1,param_4 << ((int)*(short *)((int)param_1 + 0xe) & 0x3fU));
+  CopyDataToBuffer(param_3,uVar1,param_4 << ((int)*(short *)((int)param_1 + 0xe) & 0x3fU));
   return;
 }
 
@@ -27871,7 +27871,7 @@ int * FUN_100d9860(int param_1)
   }
   else {
     ResourceRead_Dispatch((int)piVar4 + (int)*(short *)(*piVar4 + 0x90));
-    FUN_100db158(local_44,local_40);
+    LockHandleRange(local_44,local_40);
   }
   return piVar4;
 }
@@ -29938,10 +29938,10 @@ void FUN_100db22c(short param_1,int param_2,long long param_3)
 
 {
   if (param_2 == 0) {
-    FUN_100db158(param_1,param_3);
+    LockHandleRange(param_1,param_3);
   }
   else {
-    FUN_100db158(param_1);
+    LockHandleRange(param_1);
   }
   return;
 }
@@ -30007,7 +30007,7 @@ void FUN_100db2a4(int param_1)
     if ((int)uVar1 == 0) {
       uVar1 = 0xffffffffffffff40;
     }
-    FUN_100db158(uVar1,0);
+    LockHandleRange(uVar1,0);
   }
   return;
 }
@@ -30084,7 +30084,7 @@ void FUN_100db368(long long param_1)
   char auStack_108 [264];
   
   FUN_100b1e10(auStack_108,param_1,uRam10116ee8);
-  FUN_100b1c84(auStack_108);
+  ConvertToString(auStack_108);
   FUN_100023b8();
   return;
 }
@@ -30298,7 +30298,7 @@ void FUN_100db6cc(int *param_1,int param_2)
   if (local_54 < 0x40) {
     puVar1 = &local_54;
   }
-  FUN_100012d8((unsigned char *)(param_2 + 10),auStack_50,*puVar1);
+  Sound_BlockCopy((unsigned char *)(param_2 + 10),auStack_50,*puVar1);
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xd0),*(short *)(param_2 + 6),0,
                auStack_50);
   param_1[0x14] = *(int *)(param_2 + 2);
@@ -30393,7 +30393,7 @@ long long FUN_100db90c(int *param_1,short param_2,long long param_3,long long pa
   long long uVar1;
   char auStack_68 [104];
   
-  uVar1 = FUN_100b1c84(param_4);
+  uVar1 = ConvertToString(param_4);
   uVar1 = FUN_10001848(param_2,param_3,uVar1,auStack_68);
   if ((int)uVar1 == -0x2b) {
     uVar1 = 0;
@@ -30720,7 +30720,7 @@ long long FUN_100dc1e0(int param_1,unsigned char param_2)
     if (local_dc < 0x40) {
       puVar2 = &local_dc;
     }
-    FUN_100012d8((unsigned char *)(param_1 + 10),auStack_d8,*puVar2);
+    Sound_BlockCopy((unsigned char *)(param_1 + 10),auStack_d8,*puVar2);
     uVar1 = FUN_100eed08(auStack_98,0x7a,0);
     local_82 = *(short *)(param_1 + 4);
     local_68 = *(int *)(param_1 + 6);
@@ -30917,7 +30917,7 @@ void FUN_100dc5e8(int param_1,int param_2)
   if (local_9c < 0x40) {
     puVar1 = &local_9c;
   }
-  FUN_100012d8((unsigned char *)(param_1 + 10),&local_98,*puVar1);
+  Sound_BlockCopy((unsigned char *)(param_1 + 10),&local_98,*puVar1);
   local_58 = local_98;
   uStack_54 = uStack_94;
   uStack_50 = uStack_90;
@@ -31036,7 +31036,7 @@ void FUN_100dc7dc(int param_1,int param_2)
   if (local_9c < 0x40) {
     puVar1 = &local_9c;
   }
-  FUN_100012d8((unsigned char *)(param_1 + 10),&local_98,*puVar1);
+  Sound_BlockCopy((unsigned char *)(param_1 + 10),&local_98,*puVar1);
   local_58 = local_98;
   uStack_54 = uStack_94;
   uStack_50 = uStack_90;
@@ -31169,7 +31169,7 @@ void FUN_100dcab4(int param_1,int *param_2)
   if (local_6c < 0x40) {
     puVar1 = &local_6c;
   }
-  FUN_100012d8((unsigned char *)(param_1 + 10),&local_68,*puVar1);
+  Sound_BlockCopy((unsigned char *)(param_1 + 10),&local_68,*puVar1);
   *param_2 = local_68;
   param_2[1] = uStack_64;
   param_2[2] = uStack_60;
@@ -31462,8 +31462,8 @@ long long FUN_100dd178(int param_1,int *param_2)
      (iVar3 = ResourceRead_Dispatch((int)*(short *)(*param_2 + 0x160) + (int)param_2),
      *(int *)(param_1 + 6) == iVar3)) {
     ResourceRead_Dispatch((int)*(short *)(*param_2 + 0x198) + (int)param_2,local_50);
-    uVar1 = FUN_100b1c84(local_50);
-    uVar2 = FUN_100b1c84(param_1 + 10);
+    uVar1 = ConvertToString(local_50);
+    uVar2 = ConvertToString(param_1 + 10);
     iVar3 = FUN_10001998(uVar2,uVar1,0,1);
     if (iVar3 != 0) {
       return 1;
@@ -31537,7 +31537,7 @@ long long FUN_100dd3bc(int param_1,short *param_2)
   local_1b6 = local_158;
   uVar1 = FUN_10002058(auStack_1c8);
   if ((int)uVar1 == 0) {
-    FUN_100012d8(param_1 + 10,local_118,(unsigned long long)*(unsigned char *)(param_1 + 10) + 1);
+    Sound_BlockCopy(param_1 + 10,local_118,(unsigned long long)*(unsigned char *)(param_1 + 10) + 1);
     local_1ea = *(short *)(param_1 + 4);
     local_1d0 = *(int *)(param_1 + 6);
     local_1dc = local_164;
@@ -31545,8 +31545,8 @@ long long FUN_100dd3bc(int param_1,short *param_2)
     local_1e4 = local_158;
     uVar1 = FUN_10001a28(auStack_200);
     if ((int)uVar1 == 0) {
-      uVar1 = FUN_100b1c84(param_2 + 3);
-      uVar2 = FUN_100b1c84(local_118);
+      uVar1 = ConvertToString(param_2 + 3);
+      uVar2 = ConvertToString(local_118);
       uVar1 = FUN_10000ee8(*param_2,*(int *)(param_2 + 1),uVar2,uVar1);
     }
   }
@@ -31649,7 +31649,7 @@ void FUN_100dd660(int param_1,int param_2)
   if (local_54 < 0x40) {
     puVar1 = &local_54;
   }
-  FUN_100012d8((unsigned char *)(param_1 + 10),auStack_50,*puVar1);
+  Sound_BlockCopy((unsigned char *)(param_1 + 10),auStack_50,*puVar1);
   *(int *)(param_2 + 0xc) = 0;
   *(char **)(param_2 + 0x12) = auStack_50;
   *(short *)(param_2 + 0x16) = *(short *)(param_1 + 4);
@@ -31690,7 +31690,7 @@ void FUN_100dd768(int param_1,int param_2)
   if (local_54 < 0x40) {
     puVar1 = &local_54;
   }
-  FUN_100012d8((unsigned char *)(param_1 + 10),auStack_50,*puVar1);
+  Sound_BlockCopy((unsigned char *)(param_1 + 10),auStack_50,*puVar1);
   *(char **)(param_2 + 0x12) = auStack_50;
   *(short *)(param_2 + 0x16) = *(short *)(param_1 + 4);
   *(int *)(param_2 + 0x30) = *(int *)(param_1 + 6);
@@ -31703,7 +31703,7 @@ void FUN_100dd768(int param_1,int param_2)
 void FUN_100dd808(long long param_1,unsigned char *param_2)
 
 {
-  FUN_10002340(param_2,param_1 + 10,(unsigned long long)*param_2 + 1);
+  CopyDataToBuffer(param_2,param_1 + 10,(unsigned long long)*param_2 + 1);
   return;
 }
 
@@ -31822,7 +31822,7 @@ void FUN_100dda84(int *param_1,long long param_2,int param_3)
   }
   else {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-    FUN_100db158(local_30,local_2c);
+    LockHandleRange(local_30,local_2c);
   }
   return;
 }
@@ -31883,18 +31883,18 @@ void FUN_100ddc8c(int param_1,short param_2,short param_3,char param_4)
   uVar2 = ResourceRead_Dispatch((int)*(int **)(param_1 + 0x13c) +
                        (int)*(short *)(**(int **)(param_1 + 0x13c) + 0x110),param_4);
   if ((int)uVar2 == -0x4e22) {
-    FUN_100012d8(param_1 + 0x20,local_120,(unsigned long long)*(unsigned char *)(param_1 + 0x20) + 1);
+    Sound_BlockCopy(param_1 + 0x20,local_120,(unsigned long long)*(unsigned char *)(param_1 + 0x20) + 1);
     FUN_100009d8(auStack_220,param_2,param_3);
-    uVar2 = FUN_100b1c84(uVar1);
-    uVar3 = FUN_100b1c84(uVar1);
+    uVar2 = ConvertToString(uVar1);
+    uVar3 = ConvertToString(uVar1);
     FUN_100009f0(local_120,auStack_220,uVar3,uVar2);
-    iVar4 = FUN_100d8c9c(0x85,0);
+    iVar4 = PostMenuCommand(0x85,0);
     if (iVar4 == 2) {
-      FUN_100db158(0,0x820000);
+      LockHandleRange(0,0x820000);
     }
   }
   else if (((int)uVar2 != 0) && (param_4 != '\0')) {
-    FUN_100db158(uVar2,0);
+    LockHandleRange(uVar2,0);
   }
   return;
 }
@@ -31934,7 +31934,7 @@ void FUN_100dddb0(int *param_1,int *param_2,int *param_3,int *param_4)
       *param_4 = *param_4 + (unsigned int)local_218[0] + 0x19;
     }
     if ((*(char *)(param_1 + 0x4b) != '\0') && (param_1[0x4c] != 0)) {
-      iVar2 = FUN_10001c20(param_1[0x4c]);
+      iVar2 = GetHandleByteCount(param_1[0x4c]);
       *param_4 = *param_4 + iVar2 + 0x18;
     }
     if ((*(char *)((int)param_1 + 0x12d) != '\0') &&
@@ -31971,11 +31971,11 @@ void FUN_100de030(int param_1,int *param_2)
         uVar5 = AllocateHandle(0x78);
         *(int *)(param_1 + 0x130) = uVar5;
       }
-      uVar2 = FUN_100ef9b8(*(int *)(param_1 + 0x130));
+      uVar2 = Sound_DetachResourceAlt(*(int *)(param_1 + 0x130));
       ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x260),
                    **(int **)(param_1 + 0x130),local_18);
       EndFocus();
-      FUN_10001b60(*(int *)(param_1 + 0x130),uVar2);
+      RestoreHandleFlags(*(int *)(param_1 + 0x130),uVar2);
     }
     else {
       puVar4 = (int *)GetResource_Thunk(0x50524e54,1);
@@ -31986,8 +31986,8 @@ void FUN_100de030(int param_1,int *param_2)
         }
         else {
           puVar1 = *(int **)(param_1 + 0x130);
-          uVar2 = FUN_10001c20();
-          FUN_10002340(*puVar4,*puVar1,uVar2);
+          uVar2 = GetHandleByteCount();
+          CopyDataToBuffer(*puVar4,*puVar1,uVar2);
           ReleaseHandle_Sound(puVar4);
         }
       }
@@ -32013,7 +32013,7 @@ void FUN_100de188(int *param_1,int *param_2,char param_3)
   int local_2c;
   
   puVar1 = puRam10117370;
-  iVar2 = FUN_10003558(0x44455347,1);
+  iVar2 = GetResourceByTypeId(0x44455347,1);
   if (((iVar2 != 0) && (param_3 == '\0')) &&
      (iVar3 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x240)), iVar3 != 0)) {
     local_144[0] = 0;
@@ -32039,7 +32039,7 @@ void FUN_100de188(int *param_1,int *param_2,char param_3)
       local_144[0] = DisposeObject(local_144[0]);
       DisposeObject(piVar4);
       ReleaseHandle_Sound(iVar2);
-      FUN_100db158(local_3c,local_38);
+      LockHandleRange(local_3c,local_38);
     }
   }
   return;
@@ -32085,7 +32085,7 @@ void FUN_100de3d4(int *param_1,int *param_2)
                (((unsigned long long)local_358[0] - 1) + (unsigned long long)((unsigned long long)local_358[0] != 0) << 0x20))
       {
         uVar3 = FUN_100f1574(1);
-        FUN_100b1c84(local_358);
+        ConvertToString(local_358);
         uVar5 = FUN_10001ae8();
         FUN_100f1574(uVar3);
         FocusObject(uVar5);
@@ -32097,20 +32097,20 @@ void FUN_100de3d4(int *param_1,int *param_2)
         *puVar2 = auStack_140;
         iVar4 = TrySetjmp(auStack_140);
         if (iVar4 == 0) {
-          uVar3 = FUN_100b1c84(uVar1);
+          uVar3 = ConvertToString(uVar1);
           AddResource(uVar5,0x53545220,0xffffffffffffbff4,uVar3);
           MarkChanged();
           *puVar2 = local_38;
         }
         else {
           ReleaseHandle_Mapgen(uVar5);
-          FUN_100db158(local_40,local_3c);
+          LockHandleRange(local_40,local_3c);
         }
       }
     }
     else {
       uVar3 = FUN_100f1574(1);
-      FUN_100b1c84(local_458);
+      ConvertToString(local_458);
       uVar5 = FUN_10001ae8();
       FUN_100f1574(uVar3);
       FocusObject(uVar5);
@@ -32122,14 +32122,14 @@ void FUN_100de3d4(int *param_1,int *param_2)
       *puVar2 = auStack_258;
       iVar4 = TrySetjmp(auStack_258);
       if (iVar4 == 0) {
-        uVar3 = FUN_100b1c84(uVar1);
+        uVar3 = ConvertToString(uVar1);
         AddResource(uVar5,0x53545220,0xffffffffffffbff3,uVar3);
         MarkChanged();
         *puVar2 = local_150;
       }
       else {
         ReleaseHandle_Mapgen(uVar5);
-        FUN_100db158(local_158,local_154);
+        LockHandleRange(local_158,local_154);
       }
     }
   }
@@ -32151,17 +32151,17 @@ void FUN_100de664(int param_1,int *param_2)
     iVar3 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x240));
     if (iVar3 == 0) {
       local_20 = 0x78;
-      uVar1 = FUN_10000360(*(int *)(param_1 + 0x130));
+      uVar1 = GetHandleFlags(*(int *)(param_1 + 0x130));
       DetachResource(*(int *)(param_1 + 0x130));
       uVar2 = ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0x2c0),
                            **(int **)(param_1 + 0x130),&local_20);
-      FUN_10001b60(*(int *)(param_1 + 0x130),uVar1);
+      RestoreHandleFlags(*(int *)(param_1 + 0x130),uVar1);
       EndFocus(uVar2);
     }
     else {
       local_1c[0] = *(int *)(param_1 + 0x130);
       FUN_100f16a0(local_1c);
-      uVar1 = FUN_100b1c84(*(int *)(local_44 + -0xe4c));
+      uVar1 = ConvertToString(*(int *)(local_44 + -0xe4c));
       AddResource(local_1c[0],0x50524e54,1,uVar1);
       MarkChanged();
     }
@@ -32221,16 +32221,16 @@ void FUN_100de77c(int *param_1,int *param_2)
       }
       else {
         DisposeObject(piVar5);
-        FUN_100db158(local_150,local_14c);
+        LockHandleRange(local_150,local_14c);
       }
-      uVar2 = FUN_100b1c84(*(int *)(local_27c + -0xe4c));
+      uVar2 = ConvertToString(*(int *)(local_27c + -0xe4c));
       AddResource(uVar4,0x44455347,1,uVar2);
       MarkChanged();
       *puVar1 = local_30;
     }
     else {
       ReleaseHandle_Mapgen(uVar4);
-      FUN_100db158(local_38,local_34);
+      LockHandleRange(local_38,local_34);
     }
   }
   return;
@@ -32253,7 +32253,7 @@ void FUN_100de9ac(int *param_1,char param_2)
   
   local_50[0] = 0;
   ResourceRead_Dispatch(param_1[0x4f] + (int)*(short *)(*(int *)param_1[0x4f] + 0x138),local_50);
-  FUN_100012d8(local_50,param_1 + 8,(unsigned long long)local_50[0] + 1);
+  Sound_BlockCopy(local_50,param_1 + 8,(unsigned long long)local_50[0] + 1);
   ResourceRead_Dispatch(param_1[0x4f] + (int)*(short *)(*(int *)param_1[0x4f] + 0xb0),param_2);
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2a0),0);
   return;
@@ -32312,10 +32312,10 @@ void FUN_100deae8(int *param_1)
       local_28 = -0x4e21;
     }
     if (local_24 == 0) {
-      FUN_100012d8(param_1 + 8,uVar1,(unsigned long long)*(unsigned char *)(param_1 + 8) + 1);
+      Sound_BlockCopy(param_1 + 8,uVar1,(unsigned long long)*(unsigned char *)(param_1 + 8) + 1);
     }
     FUN_100db22c(local_28,local_24,0x820003);
-    FUN_100db158(local_28,local_24);
+    LockHandleRange(local_28,local_24);
   }
   return;
 }
@@ -32602,7 +32602,7 @@ void FUN_100df03c(int param_1,unsigned char *param_2)
   else {
     local_50 = 0x3f;
   }
-  FUN_100012d8(param_2 + 1,auStack_4f);
+  Sound_BlockCopy(param_2 + 1,auStack_4f);
   ResourceRead_Dispatch((int)*(int **)(param_1 + 0x13c) +
                (int)*(short *)(**(int **)(param_1 + 0x13c) + 0x140),&local_50);
   return;
@@ -32986,7 +32986,7 @@ void FUN_100df6b4(int param_1,unsigned char *param_2)
     bVar4 = 0x3f;
   }
   local_174 = CONCAT13(bVar4,(local_174 & 0xFFFFFFFF));
-  FUN_100012d8(auStack_133,(int)&local_174 + 1);
+  Sound_BlockCopy(auStack_133,(int)&local_174 + 1);
   *(int *)param_2 = local_174;
   *(int *)(param_2 + 4) = uStack_170;
   *(int *)(param_2 + 8) = uStack_16c;
@@ -33064,7 +33064,7 @@ void FUN_100df87c(int *param_1,char param_2)
     }
     else {
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0xd8));
-      FUN_100db158(local_30,local_2c);
+      LockHandleRange(local_30,local_2c);
     }
     ResourceRead_Dispatch(param_1[2] + (int)*(short *)(*(int *)param_1[2] + 0xe0));
     EndFocus();
@@ -33121,8 +33121,8 @@ void FUN_100df9e4(int param_1,long long param_2,long long param_3,int *param_4)
   uVar4 = FUN_10000a98(local_2bc,0x3fd0,1);
   uVar5 = FUN_10000a98(local_2c4,0x36c0,1);
   puVar8 = (int *)FUN_100b0368(auStack_4c,auStack_158);
-  uVar6 = FUN_100b1c84(auStack_258);
-  uVar7 = FUN_100b1c84(local_14c);
+  uVar6 = ConvertToString(auStack_258);
+  uVar7 = ConvertToString(local_14c);
   FUN_10000cc0(uVar7,uVar6,local_2b0,local_2b4[0],*puVar8,uVar3,uVar4,local_2c0);
   FUN_100ef5f0(uVar3);
   FUN_100ef5f0(uVar4);
@@ -33133,7 +33133,7 @@ void FUN_100df9e4(int param_1,long long param_2,long long param_3,int *param_4)
   if ((local_2b0[0] == '\0') ||
      (FUN_10117884((int)param_4 + (int)*(short *)(*param_4 + 0xa8),auStack_2aa),
      (int)(bVar10 >> 1 & 1))) {
-    FUN_100db158(0,0x820000);
+    LockHandleRange(0,0x820000);
     return;
   }
   piVar9 = (int *)ResourceRead_Dispatch(**(int **)(local_2f4 + -0xedc) +
@@ -33150,7 +33150,7 @@ void FUN_100df9e4(int param_1,long long param_2,long long param_3,int *param_4)
   if ((int)uVar3 == -0x2b) {
     return;
   }
-  FUN_100db158(uVar3,0);
+  LockHandleRange(uVar3,0);
   return;
 }
 
@@ -33234,16 +33234,16 @@ void FUN_100dfcd4(int *param_1,long long param_2,long long param_3,char param_4,
           if ((*(char *)((int)param_1 + 0xd) == '\x01') || (*(char *)((int)param_1 + 0xd) == '\x03')
              ) {
             ResourceRead_Dispatch((int)local_44 + (int)*(short *)(*local_44 + 0x198),local_25c);
-            uVar4 = FUN_100b1c84(uVar2);
-            uVar5 = FUN_100b1c84(uVar2);
-            uVar6 = FUN_100b1c84(uVar2);
+            uVar4 = ConvertToString(uVar2);
+            uVar5 = ConvertToString(uVar2);
+            uVar6 = ConvertToString(uVar2);
             FUN_100009f0(local_25c,uVar6,uVar5,uVar4);
-            iVar7 = FUN_100d8c9c(0x86,0);
+            iVar7 = PostMenuCommand(0x86,0);
             if (iVar7 == 1) {
               bVar1 = true;
             }
             else {
-              FUN_100db158(0,0x820000);
+              LockHandleRange(0,0x820000);
             }
           }
           else if (*(char *)((int)param_1 + 0xd) == '\x02') {
@@ -33252,14 +33252,14 @@ void FUN_100dfcd4(int *param_1,long long param_2,long long param_3,char param_4,
         }
       }
       else if ((int)uVar4 != -0x2b) {
-        FUN_100db158(uVar4,0);
+        LockHandleRange(uVar4,0);
       }
       if (bVar1) {
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x100),param_2,cStack0000002b,param_4
                      ,local_44);
       }
       else {
-        FUN_100db158(0xffffffffffffffde,0);
+        LockHandleRange(0xffffffffffffffde,0);
       }
     }
     else if ((*(char *)((int)param_1 + 0xd) == '\x01') || (*(char *)((int)param_1 + 0xd) == '\0')) {
@@ -33294,7 +33294,7 @@ void FUN_100dfcd4(int *param_1,long long param_2,long long param_3,char param_4,
       uVar4 = 0x820008;
     }
     FUN_100db22c(local_5c,local_58,uVar4);
-    FUN_100db158(local_5c,local_58);
+    LockHandleRange(local_5c,local_58);
   }
   ResourceRead_Dispatch((int)local_44 + (int)*(short *)(*local_44 + 0x1d0));
   ResourceRead_Dispatch((int)local_44 + (int)*(short *)(*local_44 + 0x90));

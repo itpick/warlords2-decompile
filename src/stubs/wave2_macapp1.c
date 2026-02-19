@@ -804,7 +804,7 @@ void FUN_100800d0(int param_1,long long param_2)
     }
     else if (((*(char *)(param_1 + 0x16e) == '\0') || (*(char *)(param_1 + 0x1e9) == '\0')) ||
             (local_34 != 0x820000)) {
-      FUN_100db158(local_38,local_34);
+      LockHandleRange(local_38,local_34);
     }
     else {
       piVar6 = (int *)ResourceRead_Dispatch(*piVar4 + (int)*(short *)(*(int *)*piVar4 + 200),0x424,param_1);
@@ -850,7 +850,7 @@ int * FUN_100802fc(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0x40),
      param_1 != (int *)0x0)) {
-    FUN_100d568c(param_1);
+    ConstructBehavior(param_1);
     param_1[0xd] = 0x20202020;
     param_1[0xe] = 0;
     param_1[0xf] = 0;
@@ -933,7 +933,7 @@ int * FUN_10080558(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0x40),
      param_1 != (int *)0x0)) {
-    FUN_100d568c(param_1);
+    ConstructBehavior(param_1);
     param_1[0xd] = 0x20202020;
     param_1[0xe] = 0;
     param_1[0xf] = 0;
@@ -1056,7 +1056,7 @@ int * FUN_10080858(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0xa8),
      param_1 != (int *)0x0)) {
-    FUN_100c6b2c(param_1);
+    ConstructExtendedObject(param_1);
     *param_1 = (*(int*)((char*)ppuVar1 - 0x55a));
   }
   return param_1;
@@ -1164,7 +1164,7 @@ int * FUN_100809c8()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x1b4);
   if (puVar2 != (int *)0x0) {
-    FUN_100c6b2c(puVar2);
+    ConstructExtendedObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x141));
     *(char *)(puVar2 + 0x2a) = 0;
     puVar2[0x2b] = 0;
@@ -1344,7 +1344,7 @@ void FUN_10080cf0(int *param_1,short param_2)
       sVar7 = 0x100;
     }
     local_32 = sVar7 + local_36 + 0x40;
-    FUN_100b08d4(local_50,&local_38);
+    GetScreenBounds(local_50,&local_38);
     local_54 = (int)local_4e;
     uVar4 = param_1[0xe] - (int)local_4e;
     local_3c = ((int)uVar4 >> 1) + (unsigned int)((int)uVar4 < 0 && (uVar4 & 1) != 0);
@@ -1360,7 +1360,7 @@ void FUN_10080cf0(int *param_1,short param_2)
       *(short *)(puVar3 + 0x32) = 0;
       puVar3[0x36] = 0;
     }
-    FUN_100b08d4(&local_60,&local_38);
+    GetScreenBounds(&local_60,&local_38);
     local_48 = (int)local_60;
     local_44 = (int)local_5e;
     FUN_100d08c4(puVar3,param_1,&local_40,&local_48,5,5,sVar5 + param_2);
@@ -1468,7 +1468,7 @@ void FUN_100810e8(int *param_1)
   if (*pcRam10117378 != '\0') {
     ppuVar13 = 0 /* TVect base */;
     FUN_10084ee0();
-    FUN_10084ef0(0);
+    ConstructDialogBehavior(0);
   }
   if (param_1[0x6c] == 0) {
     if (param_1[0xe] < 0x71) {
@@ -1677,7 +1677,7 @@ int * FUN_100819e4(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0x44),
      param_1 != (int *)0x0)) {
-    FUN_100d568c(param_1);
+    ConstructBehavior(param_1);
     param_1[0xd] = 0x20202020;
     param_1[0xe] = 0;
     param_1[0xf] = 0;
@@ -1814,7 +1814,7 @@ void FUN_10081ddc()
 void FUN_10081f08()
 
 {
-  FUN_10081e48(0);
+  SetBetterDialogParam(0);
   return;
 }
 
@@ -1864,7 +1864,7 @@ void FUN_10081fcc(int *param_1,long long param_2)
     }
     else {
       *(char *)((int)param_1 + 0xbe) = 1;
-      FUN_100db158(local_28,local_24);
+      LockHandleRange(local_28,local_24);
     }
   }
   else {
@@ -1917,7 +1917,7 @@ void FUN_1008213c(long long param_1,int *param_2,int param_3)
      ((iVar3 = FUN_1003b4a4(uVar4,uVar5,1), iVar3 == 5 ||
       ((*(int *)(*(int*)((char*)ppuVar2 - 0x70)) != 0 && (iVar3 == 0)))))) {
     FUN_10021524(uVar4,uVar5,0);
-    FUN_1005e858();
+    ToggleSoundEnabled();
     bVar1 = true;
   }
   if (bVar1) {
@@ -1951,9 +1951,9 @@ void FUN_10082390(int param_1)
   int *ppuVar1;
   
   ppuVar1 = 0 /* TVect base */;
-  FUN_1000a094(param_1 + 0x8c);
-  FUN_1000a094(param_1 + 0xa0);
-  FUN_1000a094((*(int*)((char*)ppuVar1 - 0x68)));
+  Render_DisposeGWorldDesc(param_1 + 0x8c);
+  Render_DisposeGWorldDesc(param_1 + 0xa0);
+  Render_DisposeGWorldDesc((*(int*)((char*)ppuVar1 - 0x68)));
   *(short *)(*(int*)((char*)ppuVar1 - 0x545)) = 0;
   *(short *)(*(int*)((char*)ppuVar1 - 0x544)) = 0;
   if (*(int *)(param_1 + 0xb4) != 0) {
@@ -1994,7 +1994,7 @@ void FUN_10082430(int param_1,short param_2,short param_3)
     uVar3 = HLock_Thunk(*(int *)(param_1 + 0x9c));
   }
   if ((int)uVar3 != 0) {
-    iVar4 = FUN_10001d70(uVar3);
+    iVar4 = Render_ValidatePixMap(uVar3);
     if (iVar4 != 0) {
       HUnlock_Thunk(uVar3);
       goto LAB_100824d8;
@@ -2127,7 +2127,7 @@ void FUN_10082640(int *param_1,int *param_2,int *param_3,short *param_4,short *p
     GetGWorld_Wrapper(&local_2c4,&local_2c8);
     SetGWorld_Wrapper(local_60,0);
     RGBForeColor_Thunk(*(int *)(local_2f4 + -0x1d4));
-    FUN_100008b8();
+    Render_PenNormal();
     RGBForeColor_Thunk((unsigned long long)*(unsigned int *)(local_2f4 + -0x1d4) + 0x5fa);
     SetForeColor_Thunk();
     if (local_60 != 0) {
@@ -2148,7 +2148,7 @@ void FUN_10082640(int *param_1,int *param_2,int *param_3,short *param_4,short *p
     BlitSpriteNormal(&local_70,0,0,*(short *)(iVar2 + 4),*(short *)(iVar2 + 6),
                  *(int *)(local_2f4 + -0x1208),0,0);
     FUN_100001c8();
-    FUN_1000a094(&local_70);
+    Render_DisposeGWorldDesc(&local_70);
     FUN_10001548(local_74);
     FUN_100ee77c(auStack_2a0,2);
     FUN_100ee77c(auStack_188,2);
@@ -2794,7 +2794,7 @@ int * FUN_10083d50()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0xac);
   if (puVar2 != (int *)0x0) {
-    FUN_1010598c(puVar2);
+    ConstructViewObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x140));
     *(char *)(puVar2 + 0x25) = 0;
     *(char *)((int)puVar2 + 0x95) = 0;
@@ -2864,7 +2864,7 @@ void FUN_10083dd8(int *param_1,long long param_2)
     local_50 = 0;
     local_4e = 0;
     RGBForeColor_Thunk(uVar12);
-    FUN_100008b8();
+    Render_PenNormal();
     RGBForeColor_Thunk(uVar12 + 0x5fa);
     SetForeColor_Thunk();
     uVar8 = GetBitMapPtr(&local_50);
@@ -2959,7 +2959,7 @@ void FUN_1008421c(int param_1)
   if (param_1 == *piVar1) {
     *piVar1 = *(int *)(param_1 + 0xa4);
   }
-  FUN_1000a094(param_1 + 0x80);
+  Render_DisposeGWorldDesc(param_1 + 0x80);
   FUN_10106060(param_1);
   return;
 }
@@ -3060,7 +3060,7 @@ void FUN_100845a0(int param_1)
     else {
       sVar1 = 2;
     }
-    FUN_1000848c(in_r7[1] / (int)sVar1 & 0xff,*in_r7 / (int)sVar1 & 0xff);
+    CenterMapOnLocation(in_r7[1] / (int)sVar1 & 0xff,*in_r7 / (int)sVar1 & 0xff);
   }
   return;
 }
@@ -3226,7 +3226,7 @@ void FUN_100847cc(int *param_1,int *param_2,int *param_3,short *param_4,short *p
     GetGWorld_Wrapper(&local_2bc,&local_2c0);
     SetGWorld_Wrapper(local_60,0);
     RGBForeColor_Thunk(*(int *)(local_2ec + -0x1d4));
-    FUN_100008b8();
+    Render_PenNormal();
     RGBForeColor_Thunk((unsigned long long)*(unsigned int *)(local_2ec + -0x1d4) + 0x5fa);
     SetForeColor_Thunk();
     if (local_60 != 0) {
@@ -3248,7 +3248,7 @@ void FUN_100847cc(int *param_1,int *param_2,int *param_3,short *param_4,short *p
     BlitSpriteNormal(&local_70,0,0,*(short *)(iVar3 + 4),*(short *)(iVar3 + 6),
                  *(int *)(local_2ec + -0x1208),0,0);
     FUN_100001c8();
-    FUN_1000a094(&local_70);
+    Render_DisposeGWorldDesc(&local_70);
     FUN_10001548(local_74);
     FUN_100ee77c(auStack_2a0,2);
     FUN_100ee77c(auStack_188,2);
@@ -3367,7 +3367,7 @@ int FUN_10084ee0()
 void FUN_10084f84()
 
 {
-  FUN_10084ef0(0);
+  ConstructDialogBehavior(0);
   return;
 }
 
@@ -3693,7 +3693,7 @@ void FUN_1008535c(int *param_1,long long param_2)
     if (*(int *)param_1[0x2b] != 0) {
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_270);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_270,auStack_278);
-      uVar2 = FUN_10000360(param_1[0x2b]);
+      uVar2 = GetHandleFlags(param_1[0x2b]);
       LockHandle_Thunk(param_1[0x2b]);
       iVar4 = *(int *)param_1[0x2b];
       local_30 = *(short *)(iVar4 + 2);
@@ -3707,7 +3707,7 @@ void FUN_1008535c(int *param_1,long long param_2)
       FUN_10000030();
       uVar3 = GetBitMapPtr(&local_30);
       FUN_10000750(param_1[0x2b],uVar3);
-      FUN_10001b60(param_1[0x2b],uVar2);
+      RestoreHandleFlags(param_1[0x2b],uVar2);
     }
   }
   FUN_10001548(local_14c);
@@ -3802,7 +3802,7 @@ void FUN_10085644(int *param_1)
     }
     if (*(int *)param_1[0x2b] != 0) {
       *piVar20 = param_1[0x2b];
-      uVar10 = FUN_10000360();
+      uVar10 = GetHandleFlags();
       DetachResource(*piVar20);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),puVar17);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),puVar17,puVar18);
@@ -3816,7 +3816,7 @@ void FUN_10085644(int *param_1)
       SaveDrawingState(puVar13);
       SetupDrawingEnvironment();
       RGBForeColor_Thunk(uVar15 + 0x5a);
-      FUN_100008b8();
+      Render_PenNormal();
       puVar9 = puVar19;
       if ((((char*)0) != (char *)0x5c) ||
          (puVar9 = (short *)NewPtr_Thunk(8), puVar9 != (short *)0x0)) {
@@ -3825,16 +3825,16 @@ void FUN_10085644(int *param_1)
         puVar9[2] = *(short *)(((char*)0) + -0x60);
         puVar9[3] = *(short *)(((char*)0) + -0x5e);
       }
-      FUN_100b08d4(((char*)0) + -0xb8,puVar18);
+      GetScreenBounds(((char*)0) + -0xb8,puVar18);
       uVar6 = FUN_100b057c(puVar19,0);
       FUN_100b0618(puVar19,puVar12,uVar6);
       uVar6 = GetBitMapPtr(puVar12);
       uVar7 = GetBitMapPtr(puVar19);
       CopyBits_Thunk(uVar3,uVar5,uVar7,uVar6,0x24,0);
       RGBForeColor_Thunk(uVar15);
-      FUN_100008b8();
+      Render_PenNormal();
       RGBForeColor_Thunk(uVar15 + 0x5a);
-      FUN_100008b8();
+      Render_PenNormal();
       puVar9 = puVar16;
       if ((((char*)0) != (char *)0x6c) ||
          (puVar9 = (short *)NewPtr_Thunk(8), puVar9 != (short *)0x0)) {
@@ -3849,13 +3849,13 @@ void FUN_10085644(int *param_1)
       uVar6 = GetBitMapPtr(puVar16);
       CopyBits_Thunk(uVar4,uVar5,uVar6,uVar3,0x24,0);
       RGBForeColor_Thunk(uVar15);
-      FUN_100008b8();
+      Render_PenNormal();
       UnlockPixels_Wrapper(iVar1);
       UnlockPixels_Wrapper(iVar8);
       UnlockPixels_Wrapper(uVar2);
       RestoreDrawingState(puVar13,2);
       if (((char*)0) != (char *)0x54) {
-        FUN_10001b60(*piVar20,uVar10);
+        RestoreHandleFlags(*piVar20,uVar10);
       }
     }
   }
@@ -3916,7 +3916,7 @@ void FUN_10085a0c(int param_1)
   if (iVar5 == 0) {
     FocusObject(0);
   }
-  iVar5 = FUN_10001d70(*(int *)(*(int *)(param_1 + 0xc4) + 2));
+  iVar5 = Render_ValidatePixMap(*(int *)(*(int *)(param_1 + 0xc4) + 2));
   if (iVar5 == 0) {
     FocusObject(0);
   }
@@ -3934,7 +3934,7 @@ void FUN_10085a0c(int param_1)
   local_5a = *(short *)(iVar5 + 4);
   local_58 = *(short *)(iVar5 + 6);
   local_56 = *(short *)(iVar5 + 8);
-  FUN_100b08d4(auStack_2c8,&local_5c);
+  GetScreenBounds(auStack_2c8,&local_5c);
   if (local_2c6 == (short)*(int *)(param_1 + 0x38)) {
     uVar2 = FUN_100b057c(&local_5c,0);
     FUN_100b0618(&local_5c,auStack_2e0,uVar2);
@@ -3961,7 +3961,7 @@ void FUN_10085a0c(int param_1)
     uVar2 = GetBitMapPtr(&local_6c);
     FUN_10003150(uVar1,uVar2);
     FUN_10001548(local_70);
-    FUN_100b08d4(auStack_2d8,&local_5c);
+    GetScreenBounds(auStack_2d8,&local_5c);
     local_186 = (short)*(int *)(param_1 + 0x38);
     local_18a = local_186 - local_2d6;
     local_188 = (short)*(int *)(param_1 + 0x34);
@@ -3979,7 +3979,7 @@ void FUN_10085a0c(int param_1)
   if (iVar5 == 0) {
     FocusObject(0);
   }
-  iVar5 = FUN_10001d70(*(int *)(*(int *)(param_1 + 0xd8) + 2));
+  iVar5 = Render_ValidatePixMap(*(int *)(*(int *)(param_1 + 0xd8) + 2));
   if (iVar5 == 0) {
     FocusObject(0);
   }
@@ -3989,25 +3989,25 @@ void FUN_10085a0c(int param_1)
   local_64 = 0;
   local_62 = 0;
   uVar2 = GetBitMapPtr(&local_64);
-  FUN_10001d58(&local_2b0,8,uVar2,**(int **)(local_304 + -0x1cc),0,0);
+  Render_NewGWorld(&local_2b0,8,uVar2,**(int **)(local_304 + -0x1cc),0,0);
   DetachResource(*(int *)(local_2b0 + 2));
   uVar2 = LockPixels_Wrapper(*(int *)(param_1 + 0xc4));
   SetGWorld_Wrapper(local_2b0,0);
   RGBForeColor_Thunk(uVar6 + 0x5a);
-  FUN_100008b8();
+  Render_PenNormal();
   GetBitMapPtr(&local_64);
-  FUN_10002c58();
+  Render_GetPixBaseAddr();
   local_2b8 = 0xf7f7;
   local_2b6 = 0x6f6f;
   local_2b4 = 0xe7e7;
   RGBForeColor_Thunk(&local_2b8);
-  FUN_100008b8();
+  Render_PenNormal();
   FUN_100670ec(auStack_54,2);
   uVar3 = GetBitMapPtr(&local_64);
   uVar4 = GetBitMapPtr(&local_64);
   CopyBits_Thunk(uVar2,local_2b0 + 2,uVar4,uVar3,0x24,0);
   RGBForeColor_Thunk(uVar6);
-  FUN_100008b8();
+  Render_PenNormal();
   FUN_10067178(auStack_54,2);
   UnlockPixels_Wrapper(*(int *)(param_1 + 0xc4));
   uVar1 = *(int *)(param_1 + 0xd8);
@@ -4052,8 +4052,8 @@ void FUN_100860c8(long long param_1)
 
 {
   FUN_100d0d64(param_1);
-  FUN_1000a094(param_1 + 0xb4);
-  FUN_1000a094(param_1 + 200);
+  Render_DisposeGWorldDesc(param_1 + 0xb4);
+  Render_DisposeGWorldDesc(param_1 + 200);
   return;
 }
 
@@ -4260,7 +4260,7 @@ void FUN_100862d8()
 void FUN_1008638c()
 
 {
-  FUN_10086324(0);
+  SetFightResult2Param(0);
   return;
 }
 
@@ -4276,7 +4276,7 @@ void FUN_100863b4()
 void FUN_10086450()
 
 {
-  FUN_100863e8(0);
+  SetSageDialogParam(0);
   return;
 }
 
@@ -4349,7 +4349,7 @@ void FUN_10086478(int *param_1,int param_2,long long param_3)
 void FUN_10086788()
 
 {
-  FUN_10086708(0);
+  SetFightResult1Param(0);
   return;
 }
 
@@ -4434,7 +4434,7 @@ int * FUN_100869f0()
   ppuVar2 = 0 /* TVect base */;
   puVar3 = (int *)NewPtr_Thunk(0x84);
   if (puVar3 != (int *)0x0) {
-    FUN_1010598c(puVar3);
+    ConstructViewObject(puVar3);
     *puVar3 = (*(int*)((char*)ppuVar2 - 0x13c));
     *(short *)(puVar3 + 0x20) = 0;
     *(short *)((int)puVar3 + 0x82) = 0xffff;
@@ -4550,12 +4550,12 @@ void FUN_10086a64(int *param_1)
       iVar10 = FUN_100b08a4(&local_a0,1);
       local_74 = local_74 - iVar10;
       local_88 = *piVar4;
-      local_84 = FUN_10000360(local_88);
+      local_84 = GetHandleFlags(local_88);
       LockHandle_Thunk(local_88);
       uVar5 = GetBitMapPtr(&local_68);
       FUN_10000750(*piVar4,uVar5);
       if (((char*)0) != (char *)0x88) {
-        FUN_10001b60(local_88,local_84);
+        RestoreHandleFlags(local_88,local_84);
       }
     }
   }
@@ -4567,12 +4567,12 @@ void FUN_10086a64(int *param_1)
     if (*(int *)*piVar2 != 0) {
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_80,&local_68);
       local_90 = *piVar2;
-      local_8c = FUN_10000360(local_90);
+      local_8c = GetHandleFlags(local_90);
       LockHandle_Thunk(local_90);
       uVar5 = GetBitMapPtr(&local_68);
       FUN_10000750(*piVar2,uVar5);
       if (((char*)0) != (char *)0x90) {
-        FUN_10001b60(local_90,local_8c);
+        RestoreHandleFlags(local_90,local_8c);
       }
     }
   }
@@ -4583,10 +4583,10 @@ void FUN_10086a64(int *param_1)
     }
     if (*(int *)*piVar3 != 0) {
       GetGWorld_Wrapper(&local_58,auStack_54);
-      sVar11 = FUN_10001c20(*piVar3);
+      sVar11 = GetHandleByteCount(*piVar3);
       sVar11 = (short)(((long long)sVar11 & 0xffffffffU) / 0x102);
       local_98 = *piVar3;
-      local_94 = FUN_10000360(local_98);
+      local_94 = GetHandleFlags(local_98);
       DetachResource(local_98);
       iVar10 = 0;
       if (0 < sVar11) {
@@ -4597,7 +4597,7 @@ void FUN_10086a64(int *param_1)
             local_ae = 0;
             iVar9 = local_e4;
             FUN_100b06d4(&local_68,&local_b0);
-            FUN_100b08d4(&local_c0,&local_68);
+            GetScreenBounds(&local_c0,&local_68);
             local_a8 = **(short **)(iVar9 + -0xe60);
             local_a6 = (*(short **)(iVar9 + -0xe60))[1];
             local_a4 = local_c0;
@@ -4609,7 +4609,7 @@ void FUN_10086a64(int *param_1)
             uVar5 = LockPixels_Wrapper(*(int *)(iVar10 + 0x10));
             uVar6 = LockPixels_Wrapper(local_58);
             RGBForeColor_Thunk(*(int *)(iVar9 + -0x1d4));
-            FUN_100008b8();
+            Render_PenNormal();
             RGBForeColor_Thunk((unsigned long long)*(unsigned int *)(local_e4 + -0x1d4) + 0x5fa);
             SetForeColor_Thunk();
             uVar7 = GetBitMapPtr(&local_68);
@@ -4624,7 +4624,7 @@ void FUN_10086a64(int *param_1)
         } while (sVar12 < sVar11);
       }
       if (((char*)0) != (char *)0x98) {
-        FUN_10001b60(local_98,local_94);
+        RestoreHandleFlags(local_98,local_94);
       }
     }
   }
@@ -4774,7 +4774,7 @@ void FUN_10087118(int param_1,int param_2)
   }
   HLock_Thunk_Sound(*piVar4);
   FocusObject(*(int *)*piVar4);
-  sVar13 = FUN_10001c20(*piVar4);
+  sVar13 = GetHandleByteCount(*piVar4);
   sVar15 = (short)(((long long)sVar13 & 0xffffffffU) / 0x102);
   HLock_Thunk_Sound(*piVar2);
   FocusObject(*(int *)*piVar2);
@@ -4815,37 +4815,37 @@ LAB_1008755c:
     HLock_Thunk_Sound(*piVar4);
   }
   local_60 = *piVar4;
-  local_5c = FUN_10000360(local_60);
+  local_5c = GetHandleFlags(local_60);
   DetachResource(local_60);
   uVar18 = (unsigned long long)*(unsigned int *)*piVar4;
   sVar14 = 0xd;
   if ((local_50 != '\0') && (iVar11 = *(int *)(*(int *)(local_cc + -0x1464) + 0x10), iVar11 != 0)) {
     SetGWorld_Wrapper(iVar11,0);
     RGBForeColor_Thunk(*(int *)(local_cc + -0x1d4));
-    FUN_100008b8();
+    Render_PenNormal();
     RGBForeColor_Thunk((unsigned long long)*(unsigned int *)(local_cc + -0x1d4) + 0x5fa);
     SetForeColor_Thunk();
     uVar19 = 0;
     if (0 < sVar15) {
       do {
         lVar8 = uVar18 + ((uVar19 & 0x1ffffff) * 0x80 + uVar19 & 0x7fffffff) * 2;
-        FUN_100b1c84(lVar8);
+        ConvertToString(lVar8);
         iVar11 = FUN_100006f0();
         uVar17 = sVar13 - iVar11;
         MoveTo_Thunk((short)((int)uVar17 >> 1) + (unsigned short)((int)uVar17 < 0 && (uVar17 & 1) != 0),
                      sVar14);
-        FUN_100b1c84(lVar8);
+        ConvertToString(lVar8);
         FUN_10000b88();
         sVar14 = sVar14 + 0x13;
         sVar16 = (short)uVar19 + 1;
         uVar19 = (unsigned long long)sVar16;
       } while (sVar16 < sVar15);
     }
-    FUN_100b1c84(uVar18);
+    ConvertToString(uVar18);
     iVar11 = FUN_100006f0();
     uVar17 = sVar13 - iVar11;
     MoveTo_Thunk((short)((int)uVar17 >> 1) + (unsigned short)((int)uVar17 < 0 && (uVar17 & 1) != 0),sVar14);
-    FUN_100b1c84(uVar18);
+    ConvertToString(uVar18);
     FUN_10000b88();
   }
   iVar11 = *(int *)(iVar12 + 0x10);
@@ -4887,7 +4887,7 @@ LAB_1008755c:
   }
   SetGWorld_Wrapper(local_58,local_54);
   if (((char*)0) != (char *)0x60) {
-    FUN_10001b60(local_60,local_5c);
+    RestoreHandleFlags(local_60,local_5c);
   }
   return;
 }
@@ -5032,11 +5032,11 @@ void FUN_100878fc(int *param_1)
       local_b4 = local_b4 - iVar12;
     }
   }
-  sVar16 = FUN_10001c20(*piVar3);
+  sVar16 = GetHandleByteCount(*piVar3);
   sVar16 = (short)(((long long)sVar16 & 0xffffffffU) / 0x102);
   iVar12 = *piVar3;
   *piVar21 = iVar12;
-  local_c4 = FUN_10000360(iVar12);
+  local_c4 = GetHandleFlags(iVar12);
   DetachResource(*piVar21);
   iVar12 = 0;
   if (0 < sVar16) {
@@ -5047,7 +5047,7 @@ void FUN_100878fc(int *param_1)
     } while (sVar17 < sVar16);
   }
   if (((char*)0) != (char *)0xc8) {
-    FUN_10001b60(*piVar21,local_c4);
+    RestoreHandleFlags(*piVar21,local_c4);
   }
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),puVar24,psVar15);
   psVar13 = psVar22;
@@ -5094,7 +5094,7 @@ void FUN_100878fc(int *param_1)
   }
   iVar12 = *piVar2;
   *piVar20 = iVar12;
-  local_cc = FUN_10000360(iVar12);
+  local_cc = GetHandleFlags(iVar12);
   LockHandle_Thunk(*piVar20);
   iVar12 = *(int *)*piVar2;
   *puVar25 = *(short *)(iVar12 + 2);
@@ -5110,7 +5110,7 @@ void FUN_100878fc(int *param_1)
     HLock_Thunk_Sound(*piVar3);
   }
   local_d8 = *piVar3;
-  local_d4 = FUN_10000360(local_d8);
+  local_d4 = GetHandleFlags(local_d8);
   LockHandle_Thunk(local_d8);
   GetGWorld_Wrapper(((char*)0) + -0x58,((char*)0) + -0x54);
   iVar12 = local_11c;
@@ -5129,7 +5129,7 @@ void FUN_100878fc(int *param_1)
     *psVar23 = *psVar23 + 1;
     local_9c = local_9c + 1;
     RGBForeColor_Thunk((unsigned long long)uVar1);
-    FUN_100008b8();
+    Render_PenNormal();
     RGBForeColor_Thunk((unsigned long long)uVar1 + 0x5fa);
     SetForeColor_Thunk();
     uVar9 = GetBitMapPtr(psVar22);
@@ -5209,10 +5209,10 @@ void FUN_100878fc(int *param_1)
   UnlockPixels_Wrapper(*(int *)(*(int *)(local_11c + -0x1464) + 0x10));
   UnlockPixels_Wrapper(local_58);
   if (piVar2 != (int *)0x0) {
-    FUN_10001b60(*piVar2,*(char *)(piVar2 + 1));
+    RestoreHandleFlags(*piVar2,*(char *)(piVar2 + 1));
   }
   if (((char*)0) != (char *)0xd0) {
-    FUN_10001b60(*piVar20,local_cc);
+    RestoreHandleFlags(*piVar20,local_cc);
   }
   return;
 }
@@ -5240,10 +5240,10 @@ void FUN_10088464(long long param_1)
     }
     *piVar2 = 0;
     *(short *)(*(int*)((char*)ppuVar4 - 0x517)) = 0xffff;
-    FUN_1000a094((*(int*)((char*)ppuVar4 - 0x519)));
-    FUN_1000a094((*(int*)((char*)ppuVar4 - 0x518)));
-    FUN_1000a094((*(int*)((char*)ppuVar4 - 0x516)));
-    FUN_1000a094((*(int*)((char*)ppuVar4 - 0x51d)));
+    Render_DisposeGWorldDesc((*(int*)((char*)ppuVar4 - 0x519)));
+    Render_DisposeGWorldDesc((*(int*)((char*)ppuVar4 - 0x518)));
+    Render_DisposeGWorldDesc((*(int*)((char*)ppuVar4 - 0x516)));
+    Render_DisposeGWorldDesc((*(int*)((char*)ppuVar4 - 0x51d)));
   }
   FUN_10106060(param_1);
   return;
@@ -5267,7 +5267,7 @@ int * FUN_10088570()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x44);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -5660,7 +5660,7 @@ void FUN_10088724()
         uVar25 = ResourceRead_Dispatch((int)piVar21 + (int)*(short *)(*piVar21 + 0x848));
       }
       *puVar8 = uVar25;
-      FUN_100981f8(auStack_1b0,0x80);
+      OpenResourceStream(auStack_1b0,0x80);
       uVar26 = FUN_100f1574(1);
       puVar23 = (unsigned int *)FUN_10001fc8(0x40a);
       **(char **)(local_1d4 + -0x3c) = uVar26;
@@ -5669,19 +5669,19 @@ void FUN_10088724()
         *(short *)(*puVar23 + 2) = psVar9[1];
         *(short *)(*puVar23 + 4) = psVar9[2];
         *(short *)(*puVar23 + 6) = psVar9[3];
-        FUN_100012d8((int)puVar14 + 6,(unsigned long long)*puVar23 + 8,
+        Sound_BlockCopy((int)puVar14 + 6,(unsigned long long)*puVar23 + 8,
                      (unsigned long long)*(unsigned char *)((int)puVar14 + 6) + 1);
-        FUN_100012d8((int)puVar13 + 6,(unsigned long long)*puVar23 + 0x108,
+        Sound_BlockCopy((int)puVar13 + 6,(unsigned long long)*puVar23 + 0x108,
                      (unsigned long long)*(unsigned char *)((int)puVar13 + 6) + 1);
-        FUN_100012d8((int)puVar12 + 6,(unsigned long long)*puVar23 + 0x208,
+        Sound_BlockCopy((int)puVar12 + 6,(unsigned long long)*puVar23 + 0x208,
                      (unsigned long long)*(unsigned char *)((int)puVar12 + 6) + 1);
-        FUN_100012d8((int)puVar11 + 6,(unsigned long long)*puVar23 + 0x308,
+        Sound_BlockCopy((int)puVar11 + 6,(unsigned long long)*puVar23 + 0x308,
                      (unsigned long long)*(unsigned char *)((int)puVar11 + 6) + 1);
         *(char *)(*puVar23 + 0x408) = (char)*puVar8;
         FUN_100985fc(auStack_1b0,puVar23,0x52616e64,1000,*(int *)(local_1d4 + -0xe4c));
       }
       ReleaseHandle_Mapgen(puVar23);
-      FUN_100982e8(auStack_1b0,2);
+      CloseResourceStream(auStack_1b0,2);
     }
     ResourceRead_Dispatch((int)piVar17 + (int)*(short *)(*piVar17 + 0x738));
     *puVar10 = local_54;
@@ -5690,7 +5690,7 @@ void FUN_10088724()
     if (piVar17 != (int *)0x0) {
       ResourceRead_Dispatch((int)piVar17 + (int)*(short *)(*piVar17 + 0x738));
     }
-    FUN_100db158(local_5c,local_58);
+    LockHandleRange(local_5c,local_58);
   }
   if (iVar19 == 0x6f6b2020) {
     piVar17 = *(int **)(param_1 + 8);
@@ -5778,10 +5778,10 @@ void FUN_10089188()
   iVar6 = FUN_10001ae8((int)&uStack_64 + 2);
   FUN_100f1574(uVar4);
   if (iVar6 != 0) {
-    FUN_100981f8(auStack_b8,0x80);
+    OpenResourceStream(auStack_b8,0x80);
     FUN_100985fc(auStack_b8,iVar6,0x4c617374,1000,*(int *)(local_dc + -0xe4c));
     ReleaseHandle_Mapgen(iVar6);
-    FUN_100982e8(auStack_b8,2);
+    CloseResourceStream(auStack_b8,2);
   }
   ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x328));
   uVar4 = FUN_1007a894(0);
@@ -6017,7 +6017,7 @@ void FUN_100894b4(long long param_1)
       local_1f0 = local_92;
       uStack_1ee = (short)((unsigned int)local_44 >> 0x10);
       uStack_1ec = (short)local_44;
-      FUN_100012d8(local_1a8,&uStack_1ea,(unsigned long long)local_1a8[0] + 1);
+      Sound_BlockCopy(local_1a8,&uStack_1ea,(unsigned long long)local_1a8[0] + 1);
       FUN_100ef284(local_1a8,&uStack_1ea);
       if ((local_80 & 0x8000) == 0) {
         if (local_88 == 0x57325343) {
@@ -6046,7 +6046,7 @@ void FUN_100894b4(long long param_1)
         uVar1 = FUN_100032d0(&local_1f0,1);
         iVar4 = FUN_10000678();
         if (iVar4 == 0) {
-          uVar2 = FUN_10003558(0x616c6973,0);
+          uVar2 = GetResourceByTypeId(0x616c6973,0);
           iVar4 = -0x2b;
           if ((int)uVar2 != 0) {
             iVar4 = FUN_10002070(0,uVar2,&local_238,auStack_464);
@@ -6192,7 +6192,7 @@ void FUN_10089798(int param_1)
       uStack_19c = puVar12[0x11] & 0xffff0000;
       uVar3 = FUN_100032d0(&local_1e0,1);
       MarkChanged();
-      iVar11 = FUN_10003558(0x5343454e,10000);
+      iVar11 = GetResourceByTypeId(0x5343454e,10000);
       if (iVar11 == 0) {
         local_198[0] = 0;
         iVar11 = *(int *)(local_404 + -0x144c);
@@ -6273,8 +6273,8 @@ void FUN_10089d60(int param_1)
       FUN_10089798(param_1);
     }
     else {
-      FUN_100981f8(auStack_170,0x80);
-      puVar4 = (int *)FUN_10098320(auStack_170,0x4c617374,1000);
+      OpenResourceStream(auStack_170,0x80);
+      puVar4 = (int *)FindResourceByType(auStack_170,0x4c617374,1000);
       sVar7 = 1;
       sVar8 = sVar7;
       if (puVar4 != (int *)0x0) {
@@ -6293,7 +6293,7 @@ void FUN_10089d60(int param_1)
         ReleaseHandle_Mapgen(puVar4);
       }
       ResourceRead_Dispatch((int)piVar3 + (int)*(short *)(*piVar3 + 0x8f0),sVar8,0,1,1);
-      FUN_100982e8(auStack_170,2);
+      CloseResourceStream(auStack_170,2);
     }
   }
   piVar1 = (int *)*piVar2;
@@ -6344,7 +6344,7 @@ void FUN_10089f20(int param_1,long long param_2,long long param_3,long long para
 void FUN_1008a0d8()
 
 {
-  FUN_1008a058(0);
+  SetProductionParam(0);
   return;
 }
 
@@ -6392,7 +6392,7 @@ void FUN_1008a100(int param_1)
         iVar5 = local_44;
         FocusObject();
         FUN_10003378(uVar6,(unsigned long long)*(unsigned int *)(iVar5 + -0x144c) + 0x144);
-        uVar8 = FUN_100b1c84(lVar7 + 4);
+        uVar8 = ConvertToString(lVar7 + 4);
         FUN_10001a40(uVar6,sVar11 + 4,uVar8);
         sVar11 = sVar11 + 1;
       } while (sVar11 <= sVar10);
@@ -6410,7 +6410,7 @@ void FUN_1008a100(int param_1)
     FUN_10003378(uVar6,(unsigned long long)uVar1 + 0x14c);
     FUN_10003378(uVar6,(unsigned long long)uVar1 + 0x150);
     sVar10 = FUN_10002bb0(uVar6);
-    uVar8 = FUN_100b1c84(piVar2 + 1);
+    uVar8 = ConvertToString(piVar2 + 1);
     FUN_10001a40(uVar6,sVar10,uVar8);
   }
   uVar6 = FUN_10002bb0(uVar6);
@@ -6634,7 +6634,7 @@ LAB_1008ab88:
         }
         ResourceRead_Dispatch((int)piVar8 + (int)*(short *)(*piVar8 + 0x328));
         uVar13 = (unsigned long long)(unsigned int)param_3[6];
-        FUN_1007ba3c(iVar6,0,(0x66657764 < uVar13 &&
+        CancelUndoAction(iVar6,0,(0x66657764 < uVar13 &&
                              (unsigned long long)(0x66657765 < uVar13) <= uVar13 - 0x66657765) -
                              (0x66657765 < uVar13));
         return;
@@ -6702,7 +6702,7 @@ void FUN_1008ad28(int param_1,int param_2)
 void FUN_1008adf4()
 
 {
-  FUN_1008ad74(0);
+  SetDismissParam(0);
   return;
 }
 
@@ -7017,13 +7017,13 @@ void FUN_1008b804(int param_1)
       *pbVar3 = (unsigned char)iVar11;
       if (iVar11 == 0) {
         EnsureSpriteLoaded(0x4f);
-        FUN_1000a094(iVar2);
+        Render_DisposeGWorldDesc(iVar2);
         HLock_Thunk(*(int *)(iVar7 + 0x10));
         FUN_10002c10();
       }
       else {
         EnsureSpriteLoaded(0xf);
-        FUN_1000a094(iVar7);
+        Render_DisposeGWorldDesc(iVar7);
         HLock_Thunk(*(int *)(iVar2 + 0x10));
         FUN_10002c10();
       }
@@ -7042,10 +7042,10 @@ void FUN_1008b804(int param_1)
       pbVar1 = (unsigned char *)*puVar14;
       *pbVar1 = *pbVar3;
       pbVar1[1] = *pbVar4;
-      FUN_100981f8(auStack_190,0x80);
+      OpenResourceStream(auStack_190,0x80);
       FUN_100985fc(auStack_190,puVar14,0x504d6163,1000,*(int *)(local_1b4 + -0xe4c));
       FUN_10000960(puVar14);
-      FUN_100982e8(auStack_190,2);
+      CloseResourceStream(auStack_190,2);
     }
   }
   if ((*(short *)(param_1 + 0x40) != *(short *)(*puVar6 + *(short *)(*puVar6 + 0x110) * 2 + 0xd0))
@@ -7665,8 +7665,8 @@ void FUN_1008bcb0(long long param_1,long long param_2,long long param_3)
   long long uVar1;
   long long uVar2;
   
-  uVar1 = FUN_100b1c84(param_3 + 4);
-  uVar2 = FUN_100b1c84(param_2 + 4);
+  uVar1 = ConvertToString(param_3 + 4);
+  uVar2 = ConvertToString(param_2 + 4);
   FUN_10115b60(uVar2,uVar1,0,0);
   return;
 }
@@ -7723,7 +7723,7 @@ void FUN_1008bdb8(int *param_1,int *param_2)
 void FUN_1008bf5c()
 
 {
-  FUN_1008bed8(0);
+  SetBuildProdParam(0);
   return;
 }
 
@@ -7773,8 +7773,8 @@ void FUN_1008bf84(int param_1)
         do {
           piVar1 = (int *)*piVar9;
           lVar4 = ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0xe0),sVar11);
-          uVar5 = FUN_100b1c84(auStack_128);
-          uVar6 = FUN_100b1c84(lVar4 + 4);
+          uVar5 = ConvertToString(auStack_128);
+          uVar6 = ConvertToString(lVar4 + 4);
           iVar8 = FUN_10001998(uVar6,uVar5,0,0);
           uVar3 = (unsigned long long)local_24c;
           if (iVar8 != 0) {
@@ -7835,16 +7835,16 @@ void FUN_1008c1bc(int param_1)
   local_130[0] = 0;
   ResourceRead_Dispatch((int)piVar7 + (int)*(short *)(*piVar7 + 0x7a0),local_130);
   iVar8 = local_3ac;
-  uVar4 = FUN_100b1c84(local_130);
+  uVar4 = ConvertToString(local_130);
   iVar8 = FUN_10001998((unsigned long long)*(unsigned int *)(iVar8 + -0x144c) + 0x178,uVar4,0,0);
   iVar13 = -1;
   if (iVar8 == 0) {
     iVar8 = local_3ac;
-    uVar4 = FUN_100b1c84(local_130);
+    uVar4 = ConvertToString(local_130);
     iVar8 = FUN_10001998((unsigned long long)*(unsigned int *)(iVar8 + -0x144c) + 0x184,uVar4,0,0);
     if (iVar8 == 0) {
       iVar8 = local_3ac;
-      uVar4 = FUN_100b1c84(local_130);
+      uVar4 = ConvertToString(local_130);
       iVar8 = FUN_10001998((unsigned long long)*(unsigned int *)(iVar8 + -0x144c) + 0x194,uVar4,0,0);
       if (iVar8 != 0) {
         iVar13 = 2;
@@ -7863,8 +7863,8 @@ void FUN_1008c1bc(int param_1)
     if (0 < sVar11) {
       do {
         lVar5 = ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0xe0),sVar12);
-        uVar4 = FUN_100b1c84(local_130);
-        uVar6 = FUN_100b1c84(lVar5 + 4);
+        uVar4 = ConvertToString(local_130);
+        uVar6 = ConvertToString(lVar5 + 4);
         iVar8 = FUN_10001998(uVar6,uVar4,0,0);
         if (iVar8 != 0) {
           *pcVar3 = '\0';
@@ -7895,7 +7895,7 @@ void FUN_1008c1bc(int param_1)
         sVar11 = (short)iVar8 + 1;
         iVar8 = (int)sVar11;
       } while (sVar11 < 0xb);
-      FUN_100012d8(local_130,local_24c,(unsigned long long)local_130[0] + 1);
+      Sound_BlockCopy(local_130,local_24c,(unsigned long long)local_130[0] + 1);
       local_250 = ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0xa8));
       local_250 = local_250 + 1;
       ResourceRead_Dispatch(*piVar2 + (int)*(short *)(*(int *)*piVar2 + 0x108),&local_250);
@@ -8317,7 +8317,7 @@ int * FUN_1008d570(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0xbc),
      param_1 != (int *)0x0)) {
-    FUN_100e1f44(param_1);
+    ConstructBaseObject(param_1);
     *param_1 = (*(int*)((char*)ppuVar1 - 0x4f9));
     *(short *)(param_1 + 0x2e) = 0;
   }
@@ -8350,7 +8350,7 @@ void FUN_1008d608(long long param_1,short param_2,long long param_3)
   else {
     iVar1 = ResourceRead_Dispatch(*piRam10116488 + (int)*(short *)(*(int *)*piRam10116488 + 0xe0),
                          (long long)param_2 + -3);
-    FUN_100012d8(iVar1 + 4,param_3,(unsigned long long)*(unsigned char *)(iVar1 + 4) + 1);
+    Sound_BlockCopy(iVar1 + 4,param_3,(unsigned long long)*(unsigned char *)(iVar1 + 4) + 1);
   }
   return;
 }
@@ -8441,7 +8441,7 @@ long long FUN_1008d948(int *param_1)
 void FUN_1008da5c()
 
 {
-  FUN_1008d9dc(0);
+  SetStartOfTurnParam(0);
   return;
 }
 
@@ -8483,7 +8483,7 @@ void FUN_1008db24(int param_1,long long param_2)
 void FUN_1008dc24()
 
 {
-  FUN_1008dbbc(0);
+  SetHeroHireParam(0);
   return;
 }
 
@@ -8502,13 +8502,13 @@ void FUN_1008dc4c(int *param_1,short param_2,long long param_3)
   local_20 = param_1[0x28];
   iStack_1c = param_1[0x29];
   iStack_18 = param_1[0x2a];
-  FUN_100b1c84(param_3);
+  ConvertToString(param_3);
   iVar1 = FUN_100006f0();
   iVar2 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x8c8));
   if (iVar2 + -2 < iVar1) {
     local_20 = local_20 | 0x2000;
   }
-  FUN_100f0788(&local_20);
+  Render_RestoreClipRegion(&local_20);
   return;
 }
 
@@ -8531,7 +8531,7 @@ int * FUN_1008dd78()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0xbc);
   if (puVar2 != (int *)0x0) {
-    FUN_100e1f44(puVar2);
+    ConstructBaseObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x13d));
     puVar2[0x2e] = 0;
   }
@@ -8603,7 +8603,7 @@ void FUN_1008e000(int param_1,short param_2,long long param_3)
   
   iVar1 = ResourceRead_Dispatch((int)*(int **)(param_1 + 0xb8) +
                        (int)*(short *)(**(int **)(param_1 + 0xb8) + 0xe0),param_2);
-  FUN_100012d8(iVar1 + 6,param_3,(unsigned long long)*(unsigned char *)(iVar1 + 6) + 1);
+  Sound_BlockCopy(iVar1 + 6,param_3,(unsigned long long)*(unsigned char *)(iVar1 + 6) + 1);
   return;
 }
 
@@ -8688,7 +8688,7 @@ int * FUN_1008e240(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0x50),
      param_1 != (int *)0x0)) {
-    FUN_100d568c(param_1);
+    ConstructBehavior(param_1);
     param_1[0xd] = 0x20202020;
     param_1[0xe] = 0;
     param_1[0xf] = 0;
@@ -8798,8 +8798,8 @@ int FUN_1008e440(long long param_1,unsigned short param_2)
       return 1;
     }
     if (((unsigned int)(int)local_6a >> 4 & 1) == 1) {
-      uVar2 = FUN_100b1c84(local_288);
-      uVar3 = FUN_100b1c84(local_188);
+      uVar2 = ConvertToString(local_288);
+      uVar3 = ConvertToString(local_188);
       iVar4 = FUN_10001998(uVar3,uVar2,0,0);
       if (iVar4 != 0) {
         return local_58;
@@ -8938,8 +8938,8 @@ void FUN_1008e5d0(long long param_1,unsigned int param_2,int param_3,int *param_
         local_f8 = local_9a;
         uStack_f6 = (short)((unsigned int)local_4c >> 0x10);
         uStack_f4 = (short)local_4c;
-        FUN_100012d8(local_13a,&uStack_f2,(unsigned long long)local_13a[0] + 1);
-        FUN_100012d8(local_13a,auStack_240,(unsigned long long)local_13a[0] + 1);
+        Sound_BlockCopy(local_13a,&uStack_f2,(unsigned long long)local_13a[0] + 1);
+        Sound_BlockCopy(local_13a,auStack_240,(unsigned long long)local_13a[0] + 1);
         FUN_100ef284(auStack_240,&uStack_f2);
         if ((local_88 & 0x8000) == 0) {
           if (local_90 == param_2) {
@@ -8968,7 +8968,7 @@ void FUN_1008e5d0(long long param_1,unsigned int param_2,int param_3,int *param_
           uVar1 = FUN_100032d0(&local_f8,1);
           iVar3 = FUN_10000678();
           if (iVar3 == 0) {
-            uVar2 = FUN_10003558(0x616c6973,0);
+            uVar2 = GetResourceByTypeId(0x616c6973,0);
             iVar3 = -0x2b;
             if ((int)uVar2 != 0) {
               iVar3 = FUN_10002070(0,uVar2,&local_288,auStack_4b4);
@@ -9046,7 +9046,7 @@ void FUN_1008e8f4(long long param_1,int *param_2,int *param_3,long long param_4)
           lVar2 = ResourceRead_Dispatch((int)param_3 + (int)*(short *)(*param_3 + 0xe0),sVar7);
           FUN_10003378(uVar1,lVar2 + 6);
           if ((int)param_4 != 0) {
-            uVar3 = FUN_100b1c84(param_4);
+            uVar3 = ConvertToString(param_4);
             iVar4 = FUN_10001998(uVar3,lVar2 + 6,0,0);
             if (iVar4 != 0) {
               if (param_2[6] == 0x74657272) {
@@ -9099,8 +9099,8 @@ void FUN_1008eb38(int param_1)
   puVar3 = puRam10117370;
   uVar2 = uRam10116474;
   piVar1 = *(int **)(param_1 + 8);
-  FUN_100981f8(auStack_188,0x80);
-  puVar5 = (unsigned int *)FUN_10098320(auStack_188,0x52616e64,1000);
+  OpenResourceStream(auStack_188,0x80);
+  puVar5 = (unsigned int *)FindResourceByType(auStack_188,0x52616e64,1000);
   if (puVar5 != (unsigned int *)0x0) {
     DetachResource(puVar5);
   }
@@ -9272,9 +9272,9 @@ void FUN_1008eb38(int param_1)
   }
   else {
     ReleaseHandle_Mapgen(puVar5);
-    FUN_100db158(local_38,local_34);
+    LockHandleRange(local_38,local_34);
   }
-  FUN_100982e8(auStack_188,2);
+  CloseResourceStream(auStack_188,2);
   return;
 }
 
@@ -9323,7 +9323,7 @@ int * FUN_1008f3c4()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x84);
   if (puVar2 != (int *)0x0) {
-    FUN_1010598c(puVar2);
+    ConstructViewObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x642));
   }
   return puVar2;
@@ -9362,7 +9362,7 @@ int * FUN_1008f658(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0xe0),
      param_1 != (int *)0x0)) {
-    FUN_100c6b2c(param_1);
+    ConstructExtendedObject(param_1);
     *param_1 = (*(int*)((char*)ppuVar1 - 0x4d2));
     *(short *)(param_1 + 0x2a) = 0;
     param_1[0x2e] = 0;
@@ -9942,7 +9942,7 @@ void FUN_1008fb5c(int param_1)
   local_3e = uVar8;
   uVar6 = FUN_100f1574(1);
   uVar3 = GetBitMapPtr(&local_44);
-  iVar4 = FUN_10001d58(&local_80,8,uVar3,**(int **)(iVar4 + -0x1cc),0,0);
+  iVar4 = Render_NewGWorld(&local_80,8,uVar3,**(int **)(iVar4 + -0x1cc),0,0);
   **(char **)(local_bc + -0x3c) = uVar6;
   if (iVar4 == 0) {
     *(char *)(param_1 + 0xb3) = 8;
@@ -9963,7 +9963,7 @@ void FUN_1008fb5c(int param_1)
     uStack_8c = *(int *)(param_1 + 0x9c);
     uStack_88 = *(int *)(param_1 + 0xa0);
     SetupDrawingEnvironment();
-    FUN_100f0788(&local_90);
+    Render_RestoreClipRegion(&local_90);
     if (*(char *)(param_1 + 0xdb) == '\0') {
       FUN_100329b0(0x2d,0,*(short *)(param_1 + 0xd0),1);
       FUN_100329b0(*(short *)(param_1 + 0xd8) * 0x10 + 0x1d,0,*(short *)(param_1 + 0xd2),1);
@@ -10022,8 +10022,8 @@ void FUN_1008ffb0(long long param_1)
 
 {
   FUN_10106060(param_1);
-  FUN_1000a094(param_1 + 0xa8);
-  FUN_1000a094(param_1 + 0xbc);
+  Render_DisposeGWorldDesc(param_1 + 0xa8);
+  Render_DisposeGWorldDesc(param_1 + 0xbc);
   return;
 }
 
@@ -10083,7 +10083,7 @@ int * FUN_10090154()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0xb8);
   if (puVar2 != (int *)0x0) {
-    FUN_100e1f44(puVar2);
+    ConstructBaseObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x13b));
   }
   return puVar2;
@@ -10166,7 +10166,7 @@ int * FUN_100904ac()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x40);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -10309,7 +10309,7 @@ int * FUN_100908d0()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x80);
   if (puVar2 != (int *)0x0) {
-    FUN_1010598c(puVar2);
+    ConstructViewObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x139));
   }
   return puVar2;
@@ -10353,7 +10353,7 @@ int * FUN_100909e0()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x40);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -10397,7 +10397,7 @@ void FUN_10090adc()
 void FUN_10090b90()
 
 {
-  FUN_10090b28(0);
+  SetCharacterListParam(0);
   return;
 }
 
@@ -10426,14 +10426,14 @@ void FUN_10090bb8(int *param_1)
     uVar1 = FUN_100b1b08(local_128);
     iVar2 = FUN_100ef96c(auStack_28);
     if (param_1[0xd] + -3 <= iVar2) {
-      FUN_100b1c84(local_128);
+      ConvertToString(local_128);
       iVar2 = FUN_100006f0();
       iVar3 = FUN_100e1a3c(auStack_140,1);
       if (iVar3 + -3 < iVar2) {
         iStack_14c = param_1[0x27];
         iStack_148 = param_1[0x28];
         local_150 = param_1[0x26] | 0x2000;
-        FUN_100f0788(&local_150);
+        Render_RestoreClipRegion(&local_150);
       }
     }
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_140,&local_130);
@@ -10451,7 +10451,7 @@ void FUN_10090d30(int *param_1,long long param_2,char param_3)
   if (((int *)param_1[0x2b] == (int *)0x0) ||
      (iVar1 = FUN_100ef228(param_2,*(int *)param_1[0x2b]), iVar1 != 0)) {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x7b8));
-    FUN_100b1c84(param_2);
+    ConvertToString(param_2);
     iVar1 = FUN_10001ae8();
     param_1[0x2b] = iVar1;
     iVar1 = FUN_10002b20();
@@ -10486,7 +10486,7 @@ int * FUN_10090ed8()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0xa8);
   if (puVar2 != (int *)0x0) {
-    FUN_100c6b2c(puVar2);
+    ConstructExtendedObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x138));
   }
   return puVar2;
@@ -10568,7 +10568,7 @@ void FUN_10091054()
 void FUN_10091108()
 
 {
-  FUN_100910a0(0);
+  SetFinalBehaviorParam(0);
   return;
 }
 
@@ -11973,7 +11973,7 @@ LAB_1009324c:
 void FUN_10093b94()
 
 {
-  FUN_10093b10(0);
+  SetSoundHandlerParam(0);
   return;
 }
 
@@ -12085,7 +12085,7 @@ int * FUN_10093f2c()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x20);
   if (puVar2 != (int *)0x0) {
-    FUN_100bf518(puVar2);
+    ConstructSimpleObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x148));
   }
   return puVar2;
@@ -12124,11 +12124,11 @@ void FUN_10093f80(int *param_1,long long param_2,char param_3)
   }
   FUN_1010556c(auStack_158,param_1);
   uVar2 = FUN_10105660(auStack_158);
-  iVar6 = FUN_100ebf44(auStack_158);
+  iVar6 = Sound_HasMoreItems(auStack_158);
   while (iVar6 != 0) {
     FUN_10093f80(uVar2,param_2,param_3);
     uVar2 = FUN_10105684(auStack_158);
-    iVar6 = FUN_100ebf44(auStack_158);
+    iVar6 = Sound_HasMoreItems(auStack_158);
   }
   FUN_101055f4(auStack_158,2);
   return;
@@ -12147,11 +12147,11 @@ void FUN_100940f8(int param_1,int *param_2)
   if (iVar2 == 0) {
     FUN_1010556c(auStack_148,*(int *)(param_1 + 8));
     uVar1 = FUN_10105660(auStack_148);
-    iVar2 = FUN_100ebf44(auStack_148);
+    iVar2 = Sound_HasMoreItems(auStack_148);
     while (iVar2 != 0) {
       FUN_10093f80(uVar1,param_2,1);
       uVar1 = FUN_10105684(auStack_148);
-      iVar2 = FUN_100ebf44(auStack_148);
+      iVar2 = Sound_HasMoreItems(auStack_148);
     }
     FUN_101055f4(auStack_148,2);
   }
@@ -12171,11 +12171,11 @@ void FUN_100941d4(int param_1,int *param_2)
   if (iVar2 == 0) {
     FUN_1010556c(auStack_148,*(int *)(param_1 + 8));
     uVar1 = FUN_10105660(auStack_148);
-    iVar2 = FUN_100ebf44(auStack_148);
+    iVar2 = Sound_HasMoreItems(auStack_148);
     while (iVar2 != 0) {
       FUN_10093f80(uVar1,param_2,0);
       uVar1 = FUN_10105684(auStack_148);
-      iVar2 = FUN_100ebf44(auStack_148);
+      iVar2 = Sound_HasMoreItems(auStack_148);
     }
     FUN_101055f4(auStack_148,2);
   }
@@ -12889,7 +12889,7 @@ void FUN_10094fc4()
 
 
 
-// FAILED to decompile: FUN_100950a4 at 100950a4
+// FAILED to decompile: ShowScenarioSelect at 100950a4
 
 /* Address: 0x100953a0 Size: 80 bytes */
 void FUN_100953a0()
@@ -13750,7 +13750,7 @@ int * FUN_10095c44()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x40);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -14086,7 +14086,7 @@ int * FUN_10096198()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0xb8);
   if (puVar2 != (int *)0x0) {
-    FUN_100e1f44(puVar2);
+    ConstructBaseObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x142));
   }
   return puVar2;
@@ -14163,13 +14163,13 @@ void FUN_100961ec(int *param_1,short param_2,long long param_3)
   local_40 = param_1[0x28];
   iStack_3c = param_1[0x29];
   iStack_38 = param_1[0x2a];
-  FUN_100b1c84(param_3);
+  ConvertToString(param_3);
   iVar4 = FUN_100006f0();
   iVar5 = ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x8c8));
   if (iVar5 + -2 < iVar4) {
     local_40 = local_40 | 0x2000;
   }
-  FUN_100f0788(&local_40);
+  Render_RestoreClipRegion(&local_40);
   return;
 }
 
@@ -14217,7 +14217,7 @@ void FUN_10096578()
 void FUN_10096664()
 
 {
-  FUN_100965e4(0);
+  SetMenuShortcutsParam(0);
   return;
 }
 
@@ -14317,7 +14317,7 @@ int * FUN_10096a10(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = 0 /* TVect base */, param_1 = (int *)NewPtr_Thunk(0x40),
      param_1 != (int *)0x0)) {
-    FUN_100d568c(param_1);
+    ConstructBehavior(param_1);
     param_1[0xd] = 0x20202020;
     param_1[0xe] = 0;
     param_1[0xf] = 0;
@@ -14372,7 +14372,7 @@ void FUN_10096b60()
 void FUN_10096c34()
 
 {
-  FUN_10096bcc(0);
+  SetGameOptionsParam(0);
   return;
 }
 
@@ -14403,7 +14403,7 @@ int * FUN_10096cf0()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x40);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -14495,7 +14495,7 @@ int * FUN_10096ffc()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x90);
   if (puVar2 != (int *)0x0) {
-    FUN_10084ef0(puVar2);
+    ConstructDialogBehavior(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x146));
   }
   return puVar2;
@@ -14664,7 +14664,7 @@ int * FUN_10097118()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x80);
   if (puVar2 != (int *)0x0) {
-    FUN_1010598c(puVar2);
+    ConstructViewObject(puVar2);
     *puVar2 = (*(int*)((char*)ppuVar1 - 0x145));
   }
   return puVar2;
@@ -15337,7 +15337,7 @@ void FUN_1009716c()
 void FUN_1009774c()
 
 {
-  FUN_1009769c(0);
+  SetGameSetupParam(0);
   return;
 }
 
@@ -15407,7 +15407,7 @@ void FUN_100978c8()
 void FUN_100979dc()
 
 {
-  FUN_10097974(0);
+  SetSearchDialogParam(0);
   return;
 }
 
@@ -15431,7 +15431,7 @@ void FUN_10097a38()
 void FUN_10097b04()
 
 {
-  FUN_10097a84(0);
+  SetRandomMapParam(0);
   return;
 }
 
@@ -15482,7 +15482,7 @@ int * FUN_10097c1c()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x40);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -15537,7 +15537,7 @@ int * FUN_10097dc0()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x44);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -15676,7 +15676,7 @@ long long FUN_10098188(long long param_1,long long param_2,short param_3)
   
   uVar1 = FUN_100014b8();
   DisposeGeneric((*(int*)0x00000900));
-  uVar2 = FUN_10003558(param_2,param_3);
+  uVar2 = GetResourceByTypeId(param_2,param_3);
   DisposeGeneric(uVar1);
   return uVar2;
 }
@@ -15691,7 +15691,7 @@ long long FUN_10098424(long long param_1,long long param_2,long long param_3)
   
   uVar1 = FUN_100014b8();
   DisposeGeneric((*(int*)0x00000900));
-  uVar2 = FUN_100b1c84(param_3);
+  uVar2 = ConvertToString(param_3);
   uVar2 = FUN_10003540(param_2,uVar2);
   DisposeGeneric(uVar1);
   return uVar2;
@@ -15720,7 +15720,7 @@ int FUN_100984a4(int param_1,long long param_2,unsigned char *param_3)
   else {
     uVar2 = FUN_100032d0(param_1,1);
     if (((int)uVar2 != 0) && (iVar4 = FUN_10000678(), iVar4 == 0)) {
-      uVar3 = FUN_100b1c84(param_3);
+      uVar3 = ConvertToString(param_3);
       iVar4 = FUN_10003540(param_2,uVar3);
       *piVar6 = iVar4;
       if (iVar4 != 0) {
@@ -15731,7 +15731,7 @@ int FUN_100984a4(int param_1,long long param_2,unsigned char *param_3)
     if (*piVar6 == 0) {
       if ((((char*)0) != (char *)0x120) ||
          (puVar5 = (char *)NewPtr_Thunk(0x100), puVar5 != (char *)0x0)) {
-        FUN_100012d8(param_3,puVar5,(unsigned long long)*param_3 + 1);
+        Sound_BlockCopy(param_3,puVar5,(unsigned long long)*param_3 + 1);
       }
       iVar4 = FUN_10098424(param_1,param_2,puVar5);
       *piVar6 = iVar4;
@@ -15776,12 +15776,12 @@ void FUN_100985fc(int param_1,int param_2,long long param_3,short param_4,long l
         local_128 = FUN_10098188(param_1,0x53545220,*(short *)(**(int **)(param_1 + 0x48) + 10)
                                 );
         FUN_10002b50(&local_128);
-        uVar4 = FUN_100b1c84(*(int *)(local_14c + -0xe4c));
+        uVar4 = ConvertToString(*(int *)(local_14c + -0xe4c));
         AddResource(local_128,0x53545220,0xffffffffffffc005,uVar4);
         ReleaseHandle_Sound(local_128);
       }
       if (sStack00000026 == -1) {
-        uVar4 = FUN_100b1c84(param_5);
+        uVar4 = ConvertToString(param_5);
         uVar4 = FUN_10003540(param_3,uVar4);
         if ((int)uVar4 == 0) {
           sStack00000026 = FUN_100030a8(param_3);
@@ -15790,12 +15790,12 @@ void FUN_100985fc(int param_1,int param_2,long long param_3,short param_4,long l
           ResolveAlias(uVar4,((char*)0 + 0x00000026),auStack_124,auStack_120);
         }
       }
-      uVar4 = FUN_10003558(param_3,sStack00000026);
+      uVar4 = GetResourceByTypeId(param_3,sStack00000026);
       if ((int)uVar4 != 0) {
         FUN_10003480(uVar4);
       }
       FUN_10002b50(((char*)0 + 0x0000001c));
-      uVar4 = FUN_100b1c84(param_5);
+      uVar4 = ConvertToString(param_5);
       AddResource(uStack0000001c,param_3,sStack00000026,uVar4);
       FUN_100014e8(uVar3);
       FUN_10003300(uVar3);
@@ -16110,7 +16110,7 @@ void FUN_1009886c(int *param_1,char param_2)
     if (param_2 == '\x01') {
       uVar1 = uRam10116714;
     }
-    FUN_100008b8(uVar1);
+    Render_PenNormal(uVar1);
     SetForeColor_Thunk(*(int *)(local_2c + -0x1184));
   }
   FUN_10000030();
@@ -16129,7 +16129,7 @@ void FUN_100988fc(int *param_1,char param_2,int param_3)
   iVar1 = iRam101177f0;
   FUN_10000660(param_3);
   FUN_10000198(*param_1);
-  FUN_10000000(param_3 + 4);
+  Render_GetForeColor(param_3 + 4);
   *(short *)(param_3 + 0x16) = *(short *)(*(int *)(iVar1 + 0xca) + 0x44);
   *(short *)(param_3 + 0x18) = *(short *)(*(int *)(iVar1 + 0xca) + 0x4a);
   *(unsigned short *)(param_3 + 0x1a) = (unsigned short)*(unsigned char *)(*(int *)(iVar1 + 0xca) + 0x46);
@@ -16203,10 +16203,10 @@ void FUN_10098b04(int *param_1)
   FUN_10002eb0(*(short *)(param_1 + 6));
   FUN_10002d48(*(short *)((int)param_1 + 0x1a));
   if (((long long)*(short *)(*(int *)(*(int *)(local_2c + -0xb0) + 0xca) + 6) & 0xc000U) != 0) {
-    FUN_100008b8((int)param_1 + 0x22);
+    Render_PenNormal((int)param_1 + 0x22);
     SetForeColor_Thunk(param_1 + 7);
   }
-  FUN_100016f8(param_1 + 1);
+  Render_SetForeColor(param_1 + 1);
   FUN_10000198(*param_1);
   return;
 }
@@ -17598,7 +17598,7 @@ void FUN_10099f14(int param_1,unsigned short param_2)
     if (*(unsigned short *)(param_1 + 0x80) < 4) {
       return;
     }
-    FUN_10002c58(param_1 + 0xdc);
+    Render_GetPixBaseAddr(param_1 + 0xdc);
     *(unsigned short *)(param_1 + 0x80) = param_2;
     if (param_2 < 4) {
       return;
@@ -18187,7 +18187,7 @@ void FUN_1009b310(int param_1)
   
   DetachResource(*(int *)(param_1 + 0x60));
   iVar1 = **(int **)(param_1 + 0x60);
-  lVar3 = FUN_10001c20(*(int **)(param_1 + 0x60));
+  lVar3 = GetHandleByteCount(*(int **)(param_1 + 0x60));
   uVar4 = 0;
   if ((unsigned long long)(lVar3 << 0x20) >> 0x23 != 0) {
     do {
@@ -18196,7 +18196,7 @@ void FUN_1009b310(int param_1)
         FUN_10000960(iVar2);
       }
       uVar4 = (unsigned long long)(short)((short)uVar4 + 1);
-      lVar3 = FUN_10001c20(*(int *)(param_1 + 0x60));
+      lVar3 = GetHandleByteCount(*(int *)(param_1 + 0x60));
     } while ((uVar4 & 0xffffffff) < (unsigned long long)(lVar3 << 0x20) >> 0x23);
   }
   DisposeHandle_Thunk(*(int *)(param_1 + 0x60));
@@ -18259,7 +18259,7 @@ long long FUN_1009b3b0(int param_1)
       } while (bVar1);
       local_ba = *(int *)(param_1 + 100);
       local_a6 = *puVar9;
-      local_a2 = FUN_10001c20(puVar9);
+      local_a2 = GetHandleByteCount(puVar9);
       uVar5 = FUN_10003090(local_e4,0);
       if ((int)uVar5 != -0x657) {
         if ((int)uVar5 == 0) {
@@ -18270,7 +18270,7 @@ long long FUN_1009b3b0(int param_1)
         break;
       }
       DisposeHandle_Thunk(puVar9);
-      lVar6 = FUN_10001c20(puVar9);
+      lVar6 = GetHandleByteCount(puVar9);
       FUN_10000ab0(puVar9,lVar6 + 0x200);
       uVar5 = FUN_10002b20();
       iVar15 = (int)uVar5;
@@ -18279,7 +18279,7 @@ long long FUN_1009b3b0(int param_1)
   goto LAB_1009b67c;
   while( true ) {
     uVar8 = *(int *)(param_1 + 0x60);
-    lVar6 = FUN_10001c20();
+    lVar6 = GetHandleByteCount();
     FUN_10000ab0(uVar8,lVar6 + 8);
     uVar5 = FUN_10002b20();
     if ((int)uVar5 != 0) {
@@ -18287,7 +18287,7 @@ long long FUN_1009b3b0(int param_1)
       break;
     }
     piVar2 = *(int **)(param_1 + 0x60);
-    uVar10 = FUN_10001c20();
+    uVar10 = GetHandleByteCount();
     iVar4 = *piVar2 + (uVar10 & 0xfffffff8);
     *(int *)(iVar4 + -8) = local_e8;
     *(int *)(iVar4 + -4) = uVar3;
@@ -18308,7 +18308,7 @@ LAB_1009b520:
     uVar8 = *(int *)(param_1 + 0x58);
     uVar7 = FUN_10002bb0();
     FUN_10001a40(uVar8,uVar7,uVar5);
-    uVar5 = FUN_10001f98(puVar16,&local_e8,(unsigned long long)*puVar16 + 2);
+    uVar5 = CopyHandleData(puVar16,&local_e8,(unsigned long long)*puVar16 + 2);
     if ((int)uVar5 != 0) break;
   }
 LAB_1009b67c:
@@ -18351,7 +18351,7 @@ long long FUN_1009b6a8(int *param_1)
   }
 LAB_1009b750:
   FUN_1009886c(param_1,0);
-  uVar3 = FUN_100b1c84(*(int *)(iVar4 + -0xe4c));
+  uVar3 = ConvertToString(*(int *)(iVar4 + -0xe4c));
   iVar4 = FUN_10001068(*param_1,param_1 + 0x3f,uVar3,0,0xffffffffffff8001,
                        *(short *)(param_1 + 0x17),0,0x3f9);
   param_1[0x14] = iVar4;
@@ -18663,15 +18663,15 @@ long long FUN_1009b948(int *param_1)
     FUN_100021d8(&local_20);
     if (((long long)*(short *)(*param_1 + 6) & 0xc000U) != 0) {
       FUN_10003930(auStack_130);
-      FUN_100008b8(*(int *)(local_154 + -0x1188));
+      Render_PenNormal(*(int *)(local_154 + -0x1188));
     }
     FUN_10003348(&local_20,1,1);
-    FUN_10002c58(&local_20);
+    Render_GetPixBaseAddr(&local_20);
     FUN_1009886c(param_1,0);
     FUN_100027c0(&local_20,param_1[0x15]);
     FUN_10001fe0(param_1[0x14]);
     if (((long long)*(short *)(*param_1 + 6) & 0xc000U) != 0) {
-      FUN_100008b8(auStack_130);
+      Render_PenNormal(auStack_130);
     }
   }
   return 0;
@@ -18697,14 +18697,14 @@ short * FUN_1009bed8(int *param_1,short param_2)
   int iVar3;
   int local_3c;
   
-  lVar1 = FUN_10001c20(param_1);
+  lVar1 = GetHandleByteCount(param_1);
   uVar4 = FUN_100f1574(1);
   puVar2 = (short *)FUN_10001338(lVar1 + 4);
   **(char **)(local_3c + -0x3c) = uVar4;
   if ((puVar2 != (short *)0x0) && (iVar3 = FUN_10002b20(), iVar3 == 0)) {
     *puVar2 = param_2;
     puVar2[1] = (short)lVar1;
-    FUN_10002340(*param_1,puVar2 + 2,lVar1);
+    CopyDataToBuffer(*param_1,puVar2 + 2,lVar1);
   }
   return puVar2;
 }
@@ -19637,7 +19637,7 @@ unsigned int * FUN_1009c744(short *param_1)
   do {
     if (puVar1 == (unsigned int *)0x0) {
 LAB_1009c82c:
-      puVar1 = (unsigned int *)FUN_10001170();
+      puVar1 = (unsigned int *)Render_GetMainDevice();
       return puVar1;
     }
     iVar2 = FUN_100017b8(puVar1,0xd);
@@ -19673,7 +19673,7 @@ void FUN_1009c850(int *param_1,char param_2)
   
   FUN_10000660(&local_40);
   FUN_10000198(*(int *)(*param_1 + 4));
-  FUN_10000000(auStack_58);
+  Render_GetForeColor(auStack_58);
   FUN_10000030();
   local_2c = *(int *)(*param_1 + 8);
   local_28 = *(int *)(*param_1 + 0xc);
@@ -19709,7 +19709,7 @@ void FUN_1009c850(int *param_1,char param_2)
       SetForeColor_Thunk(&local_34);
     }
   }
-  FUN_100016f8(auStack_58);
+  Render_SetForeColor(auStack_58);
   FUN_10000198(local_40);
   return;
 }
@@ -20152,12 +20152,12 @@ void FUN_1009cd0c(int param_1,int param_2,int param_3)
   }
   *(int *)(param_1 + 0x98) = *(int *)(param_1 + 0x98) + param_3;
   if (param_3 + *(short *)(param_1 + 0x94) < 0x7f) {
-    FUN_10002340(param_2,param_1 + *(short *)(param_1 + 0x94) + 0x15,param_3);
+    CopyDataToBuffer(param_2,param_1 + *(short *)(param_1 + 0x94) + 0x15,param_3);
     *(short *)(param_1 + 0x94) = *(short *)(param_1 + 0x94) + (short)param_3;
   }
   else {
     iVar2 = 0x7f - *(short *)(param_1 + 0x94);
-    FUN_10002340(param_2,param_1 + *(short *)(param_1 + 0x94) + 0x15,iVar2);
+    CopyDataToBuffer(param_2,param_1 + *(short *)(param_1 + 0x94) + 0x15,iVar2);
     FUN_1009cc84(param_1,param_1 + 0x15,0x7f);
     param_2 = iVar2 + param_2;
     for (param_3 = param_3 - iVar2; 0x7e < param_3; param_3 = param_3 + -0x7f) {
@@ -20165,7 +20165,7 @@ void FUN_1009cd0c(int param_1,int param_2,int param_3)
       param_2 = param_2 + 0x7f;
     }
     if (param_3 != 0) {
-      FUN_10002340(param_2,param_1 + 0x15,param_3);
+      CopyDataToBuffer(param_2,param_1 + 0x15,param_3);
     }
     *(short *)(param_1 + 0x94) = (short)param_3;
   }
@@ -20290,8 +20290,8 @@ void FUN_1009d0dc(int param_1)
     FUN_100fa9fc(param_1,(iVar1 + *piVar6) - (int)puVar7);
   }
   else {
-    FUN_100d8c9c(0x3fc,0);
-    FUN_100db158(0,0x820000);
+    PostMenuCommand(0x3fc,0);
+    LockHandleRange(0,0x820000);
   }
   return;
 }
@@ -20320,7 +20320,7 @@ void FUN_1009d24c(int param_1,long long param_2,long long param_3)
   lVar3 = (long long)sVar4;
   if ((int)sVar4 < (int)param_3) {
     if (sVar4 != 0) {
-      FUN_10002340(param_1 + *(short *)(param_1 + 0x94) + 0x15,param_2,lVar3);
+      CopyDataToBuffer(param_1 + *(short *)(param_1 + 0x94) + 0x15,param_2,lVar3);
     }
     param_2 = param_2 + lVar3;
     for (param_3 = param_3 - lVar3; 0 < param_3; param_3 = param_3 - (unsigned long long)uVar1) {
@@ -20332,13 +20332,13 @@ void FUN_1009d24c(int param_1,long long param_2,long long param_3)
         puVar2 = local_1c;
       }
       uVar1 = *puVar2;
-      FUN_10002340(param_1 + *(short *)(param_1 + 0x94) + 0x15,param_2);
+      CopyDataToBuffer(param_1 + *(short *)(param_1 + 0x94) + 0x15,param_2);
       param_2 = (unsigned long long)uVar1 + param_2;
       *(short *)(param_1 + 0x94) = (short)uVar1 + *(short *)(param_1 + 0x94);
     }
   }
   else {
-    FUN_10002340(param_1 + *(short *)(param_1 + 0x94) + 0x15,param_2,param_3);
+    CopyDataToBuffer(param_1 + *(short *)(param_1 + 0x94) + 0x15,param_2,param_3);
     *(short *)(param_1 + 0x94) = *(short *)(param_1 + 0x94) + (short)param_3;
   }
   return;
@@ -20362,7 +20362,7 @@ int * FUN_1009d40c()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x44);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -20445,31 +20445,31 @@ void FUN_1009d484(int param_1,long long param_2,int param_3)
   }
   if (*(int *)(param_3 + 0x18) == 0x63726564) {
     if (*(char *)(param_1 + 0x40) == '\0') {
-      FUN_100981f8(auStack_760,0x80);
-      piVar5 = (int *)FUN_10098320(auStack_760,0x76657273,1);
+      OpenResourceStream(auStack_760,0x80);
+      piVar5 = (int *)FindResourceByType(auStack_760,0x76657273,1);
       if (piVar5 != (int *)0x0) {
         local_350 = piVar5;
-        local_34c = FUN_10000360(piVar5);
+        local_34c = GetHandleFlags(piVar5);
         DetachResource(local_350);
-        FUN_100012d8(*piVar5 + 6,auStack_610,(unsigned long long)*(unsigned char *)(*piVar5 + 6) + 1);
+        Sound_BlockCopy(*piVar5 + 6,auStack_610,(unsigned long long)*(unsigned char *)(*piVar5 + 6) + 1);
         FUN_10090e0c(uVar10,0x76657273,auStack_610,1);
         if (((char*)0) != (char *)0x350) {
-          FUN_10001b60(local_350,local_34c);
+          RestoreHandleFlags(local_350,local_34c);
         }
       }
       ReleaseHandle_Mapgen(piVar5);
       FUN_100f2214(4);
       puVar3 = (int *)FUN_1004130c();
       local_358 = puVar3;
-      local_354 = FUN_10000360();
+      local_354 = GetHandleFlags();
       DetachResource(local_358);
-      FUN_100012d8((unsigned char *)*puVar3,auStack_710,(unsigned long long)*(unsigned char *)*puVar3 + 1);
+      Sound_BlockCopy((unsigned char *)*puVar3,auStack_710,(unsigned long long)*(unsigned char *)*puVar3 + 1);
       FUN_10090e0c(uVar10,0x6d656e75,auStack_710,1);
       *(char *)(param_1 + 0x40) = 1;
       if (((char*)0) != (char *)0x358) {
-        FUN_10001b60(local_358,local_354);
+        RestoreHandleFlags(local_358,local_354);
       }
-      FUN_100982e8(auStack_760,2);
+      CloseResourceStream(auStack_760,2);
     }
   }
   else if (((*(int *)(param_3 + 0x18) == 0x7363656e) && (bVar2)) &&
@@ -20553,7 +20553,7 @@ int * FUN_1009db34()
   ppuVar1 = 0 /* TVect base */;
   puVar2 = (int *)NewPtr_Thunk(0x40);
   if (puVar2 != (int *)0x0) {
-    FUN_100d568c(puVar2);
+    ConstructBehavior(puVar2);
     puVar2[0xd] = 0x20202020;
     puVar2[0xe] = 0;
     puVar2[0xf] = 0;
@@ -20637,7 +20637,7 @@ void FUN_1009dd2c(long long param_1,unsigned int param_2,int *param_3)
 void FUN_1009de54()
 
 {
-  FUN_1009ddc0(0);
+  SetPeaceDialogParam(0);
   return;
 }
 
@@ -21078,7 +21078,7 @@ void FUN_1009e534(short param_1)
 void FUN_1009e710()
 
 {
-  FUN_1009e690(0);
+  SetHistoryDialogParam(0);
   return;
 }
 
@@ -21202,7 +21202,7 @@ void FUN_100a032c(int param_1)
     }
   }
   else {
-    FUN_1007c618(*(int *)(param_1 + 0x18),*(short *)(*(int *)(*(int*)((char*)ppuVar1 - 0x70)) + 0x12),
+    MoveToOverviewTarget(*(int *)(param_1 + 0x18),*(short *)(*(int *)(*(int*)((char*)ppuVar1 - 0x70)) + 0x12),
                  *(short *)(*(int *)(*(int*)((char*)ppuVar1 - 0x70)) + 0x14));
   }
   return;
@@ -21424,7 +21424,7 @@ void FUN_100a0740(int param_1)
     iVar10 = AllocateBlock(0x8880);
     *piVar8 = iVar10;
   }
-  FUN_10002340(*(int *)(*(int*)((char*)ppuVar9 - 0x152)),*piVar8,0x8880);
+  CopyDataToBuffer(*(int *)(*(int*)((char*)ppuVar9 - 0x152)),*piVar8,0x8880);
   FUN_100419b0(*(short *)(param_1 + 0x34),*(short *)(param_1 + 0x36),1);
   return;
 }
@@ -21471,7 +21471,7 @@ void FUN_100a0880(int param_1)
       iVar7 = (int)sVar9;
     } while (sVar9 < *(short *)(param_1 + 0x108));
   }
-  FUN_10002340(*puRam10117368,*puRam10117358,0x8880);
+  CopyDataToBuffer(*puRam10117368,*puRam10117358,0x8880);
   PrepareDefender(*(int *)(param_1 + 0xe8));
   FUN_1005cc8c();
   return;
@@ -21567,7 +21567,7 @@ void FUN_100a09a8(int param_1,long long param_2,short param_3)
     iVar11 = AllocateBlock(0x8880);
     *piVar8 = iVar11;
   }
-  FUN_10002340(*(int *)(*(int*)((char*)ppuVar10 - 0x152)),*piVar8,0x8880);
+  CopyDataToBuffer(*(int *)(*(int*)((char*)ppuVar10 - 0x152)),*piVar8,0x8880);
   return;
 }
 
@@ -21692,7 +21692,7 @@ void FUN_100a0da0(int param_1)
       iVar8 = (int)sVar7;
     } while (sVar7 < *(short *)(param_1 + 0x108));
   }
-  FUN_10002340(*puRam10117368,*puRam10117358,0x8880);
+  CopyDataToBuffer(*puRam10117368,*puRam10117358,0x8880);
   PrepareDefender(*(int *)(param_1 + 0xe8));
   FUN_1005cc8c();
   return;
@@ -22155,7 +22155,7 @@ void FUN_100a16ac(int param_1)
   FUN_1005c2d4(1);
   FUN_1005c7d0(0);
   FUN_1005cc8c();
-  FUN_1003dc28();
+  FullDisplayRefresh();
   return;
 }
 
@@ -22192,7 +22192,7 @@ void FUN_100a1738(int param_1)
   FUN_1005c2d4(1);
   FUN_1005c7d0(0);
   FUN_1005cc8c();
-  FUN_1003dc28();
+  FullDisplayRefresh();
   return;
 }
 
@@ -22317,7 +22317,7 @@ void FUN_100a17dc()
 void FUN_100a1978()
 
 {
-  FUN_100a18f8(0);
+  SetAIStrategyParam(0);
   return;
 }
 

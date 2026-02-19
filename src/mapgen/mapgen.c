@@ -1757,7 +1757,7 @@ static void RegisterCitiesAndAddNeutral(void) /* RegisterCitiesAndAddNeutral */
  * Uses rotating sector system (16 sectors) to distribute ruins evenly.
  * Three-tier fallback: preferred sector -> random interior -> any valid.
  * ---------------------------------------------------------------- */
-extern unsigned short *FUN_10116820; /* sector counter storage (reused) */
+extern unsigned short *gSectorCounter; /* sector counter storage (reused) -- FUN_10116820 */
 
 static void FindRuinsLocation(short terrainType, short *outX, short *outY) /* FindRuinsLocation */
 {
@@ -1768,11 +1768,11 @@ static void FindRuinsLocation(short terrainType, short *outX, short *outY) /* Fi
     int found = 0;
 
     /* Initialize sector counter on first call */
-    if (*FUN_10116820 == 0xFFFF) {
-        *FUN_10116820 = DiceRoll(1, 0x10, -1);
+    if (*gSectorCounter == 0xFFFF) {
+        *gSectorCounter = DiceRoll(1, 0x10, -1);
     }
 
-    sectorIdx = *FUN_10116820;
+    sectorIdx = *gSectorCounter;
     sectorInt = (unsigned int)(short)sectorIdx;
 
     /* Tier 1: Try 50 times in preferred sector */
@@ -1832,8 +1832,8 @@ static void FindRuinsLocation(short terrainType, short *outX, short *outY) /* Fi
 
     /* Advance sector counter (mod 16) */
     {
-        unsigned int next = (unsigned int)(short)*FUN_10116820 + 1;
-        *FUN_10116820 = (unsigned short)(next % 16);
+        unsigned int next = (unsigned int)(short)*gSectorCounter + 1;
+        *gSectorCounter = (unsigned short)(next % 16);
     }
 }
 

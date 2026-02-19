@@ -5788,8 +5788,8 @@ int * FUN_10003a48(int *param_1,int *param_2)
   *param_1 = *param_2;
   param_1[1] = uVar1;
   uVar1 = param_1[2];
-  uVar2 = FUN_10002a60();
-  FUN_10002340(param_2[2],uVar1,uVar2);
+  uVar2 = GetHandleDataSize();
+  CopyDataToBuffer(param_2[2],uVar1,uVar2);
   return param_1;
 }
 
@@ -6035,7 +6035,7 @@ void FUN_10003b7c(int param_1)
         iVar9 = (int)sVar12;
       } while (sVar12 < 9);
       uVar1 = *(int *)(param_1 + 0x24);
-      uVar6 = FUN_10002a60();
+      uVar6 = GetHandleDataSize();
       FUN_100eed08(uVar1,uVar6,0);
       iVar9 = 0;
       if (0 < *(short *)(param_1 + 4)) {
@@ -7061,8 +7061,8 @@ void FUN_100084d0(unsigned short param_1)
     if (param_1 < 8) {
       return;
     }
-    FUN_1000848c(*(short *)(*piRam1011735c + 0x17e),*(short *)(*piRam1011735c + 0x180));
-    FUN_1003dc28();
+    CenterMapOnLocation(*(short *)(*piRam1011735c + 0x17e),*(short *)(*piRam1011735c + 0x180));
+    FullDisplayRefresh();
   }
   return;
 }
@@ -7921,9 +7921,9 @@ void FUN_10009a0c()
   *(char *)(iVar2 + 0xb) = 4;
   *(int *)(iVar2 + 0x10) = 0;
   if (*piVar1 == 0) {
-    iVar2 = FUN_100ead08(0);
+    iVar2 = Render_NewGWorldManager(0);
     *piVar1 = iVar2;
-    FUN_100ead98();
+    Render_InitGWorldManager();
   }
   return;
 }
@@ -8052,7 +8052,7 @@ void FUN_1000a4e8()
   puVar3 = gMonoColorTable;
   piVar2 = gGWorldListPtr;
   if (*gGWorldListPtr != 0) {
-    piVar6 = (int *)FUN_10001170();
+    piVar6 = (int *)Render_GetMainDevice();
     sVar1 = *(short *)(**(int **)(*piVar6 + 0x16) + 0x20);
     if (sVar1 == 8) {
       local_2a8[0] = 0;
@@ -8062,13 +8062,13 @@ void FUN_1000a4e8()
     }
     FUN_100ec3d4(auStack_164,*piVar2,1);
     iVar7 = FUN_100ec4b8(auStack_164);
-    iVar8 = FUN_100ebf44(auStack_164);
+    iVar8 = Sound_HasMoreItems(auStack_164);
     while (iVar8 != 0) {
       if (((*(int *)(iVar7 + 0x10) != 0) && (*(char *)(iVar7 + 0xb) != '\x01')) &&
          (uVar5 = HLock_Thunk(*(int *)(iVar7 + 0x10)), (int)uVar5 != 0)) {
-        iVar8 = FUN_10001d70(uVar5);
+        iVar8 = Render_ValidatePixMap(uVar5);
         if (iVar8 == 0) {
-          FUN_1000a094(iVar7);
+          Render_DisposeGWorldDesc(iVar7);
         }
         else {
           HUnlock_Thunk(uVar5);
@@ -8092,7 +8092,7 @@ void FUN_1000a4e8()
         }
       }
       iVar7 = FUN_100ec540(auStack_164);
-      iVar8 = FUN_100ebf44(auStack_164);
+      iVar8 = Sound_HasMoreItems(auStack_164);
     }
     FUN_100ec44c(auStack_164,2);
   }

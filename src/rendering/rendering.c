@@ -86,6 +86,30 @@ extern int   NewGWorld_Wrapper(int *gw, int depth, Rect *r, int cTable,
 extern void  SetRect4(void *r, short x, short y, short w, short h);  /* SetRect4 */
 extern int   GetBitMapPtr(Rect *r);                    /* GetBitMapPtr */
 
+/* QuickDraw state management (PEF stubs) */
+extern void  Render_GetPenState(void *stateBuffer);             /* FUN_100ef8c8 */
+extern void  Render_GetFontState(void *stateBuffer);            /* FUN_100ef824 */
+extern void  Render_GetForeColor(void *stateBuffer);            /* FUN_10000000 */
+extern void  Render_SaveClipRegion(void *stateBuffer);          /* FUN_100f0688 */
+extern void  IterateListItems(void *stateBuffer);               /* FUN_100f0538 - already renamed */
+extern void  Render_SetFontState(void *stateBuffer);            /* FUN_100f03e8 */
+extern void  Render_SetForeColor(void *stateBuffer);            /* FUN_100016f8 */
+extern void  Render_RestoreClipRegion(void *stateBuffer);       /* FUN_100f0788 */
+extern void  Render_PenNormal(void);                            /* FUN_100008b8 */
+extern int   Render_GetMainDevice(void);                        /* FUN_10001170 */
+extern int   Render_DisposeGWorldDesc(int gwDesc);              /* FUN_1000a094 */
+extern int   Render_NewGWorld(int *gw, int depth, Rect *r, int ct, int dev, unsigned long flags); /* FUN_10001d58 */
+extern int   Render_ValidatePixMap(int pixMap);                 /* FUN_10001d70 */
+extern void  Render_GetPixBaseAddr(int pixMapOffset);           /* FUN_10002c58 */
+extern int   Render_NewGWorldManager(int param);                /* FUN_100ead08 */
+extern void  Render_InitGWorldManager(void);                    /* FUN_100ead98 */
+extern void  Render_ValidateSprite(short spriteID);             /* FUN_10045f0c */
+extern void  Render_UnloadSprite(short spriteID);               /* FUN_100450f4 */
+extern void  Render_LoadSprite(short spriteID);                 /* FUN_10044d8c */
+extern void  Render_DrawPixel(short x, short y, short mode);   /* FUN_100008e8 */
+extern int  *Render_GetMinimapView(void);                       /* FUN_1008455c */
+extern void  Render_RefreshFeatureOverlays(void);               /* FUN_10063784 */
+
 /* Forward declarations for functions defined later in this file */
 void HideMinimapCursor(void);
 void ShowMinimapCursor(void);
@@ -109,19 +133,19 @@ void SaveDrawingState(char *stateBuffer)                        /* SaveDrawingSt
 {
     /* Save pen state */
     /* FUN_100ef8c8 -- GetPenState */
-    FUN_100ef8c8(stateBuffer + 0);
+    Render_GetPenState(stateBuffer + 0);
 
     /* Save font state */
     /* FUN_100ef824 -- GetFontState */
-    FUN_100ef824(stateBuffer + 16);
+    Render_GetFontState(stateBuffer + 16);
 
     /* Save foreground color */
     /* FUN_10000000 / FUN_100016f8 -- GetForeColor */
-    FUN_10000000(stateBuffer + 32);
+    Render_GetForeColor(stateBuffer + 32);
 
     /* Save clipping region */
     /* FUN_100f0688 -- SaveClipRegion */
-    FUN_100f0688(stateBuffer + 40);
+    Render_SaveClipRegion(stateBuffer + 40);
 }
 
 /*
@@ -135,19 +159,19 @@ void RestoreDrawingState(char *stateBuffer, int restoreFlags)   /* RestoreDrawin
 {
     /* Restore pen state */
     /* FUN_100f0538 -- SetPenState */
-    FUN_100f0538(stateBuffer + 0);
+    IterateListItems(stateBuffer + 0);
 
     /* Restore font state */
     /* FUN_100f03e8 -- SetFontState */
-    FUN_100f03e8(stateBuffer + 16);
+    Render_SetFontState(stateBuffer + 16);
 
     /* Restore foreground color */
     /* FUN_100016f8 -- SetForeColor */
-    FUN_100016f8(stateBuffer + 32);
+    Render_SetForeColor(stateBuffer + 32);
 
     /* Restore clipping region */
     /* FUN_100f0788 -- RestoreClipRegion */
-    FUN_100f0788(stateBuffer + 40);
+    Render_RestoreClipRegion(stateBuffer + 40);
 }
 
 /*
@@ -164,7 +188,7 @@ void SetupDrawingEnvironment(void)                              /* SetupDrawingE
     SetForeColor_Thunk();
 
     /* Reset pen to default */
-    FUN_100008b8();   /* PenNormal equivalent */
+    Render_PenNormal();   /* PenNormal equivalent */
 }
 
 
@@ -249,7 +273,7 @@ int CreateOrResizeGWorld(int gwDesc, short width, short height,
 
     /* Query current monitor depth */
     {
-        int *devPtr = (int *)FUN_10001170();                    /* GetMainDevice equiv */
+        int *devPtr = (int *)Render_GetMainDevice();             /* GetMainDevice equiv */
         monitorDepth = *(short *)(**(int **)(*devPtr + 0x16) + 0x20);
     }
 
@@ -279,7 +303,7 @@ int CreateOrResizeGWorld(int gwDesc, short width, short height,
     }
 
     /* Free existing GWorld if any */
-    result = FUN_1000a094(gwDesc);                              /* DisposeGWorldDescriptor */
+    result = Render_DisposeGWorldDesc(gwDesc);                   /* DisposeGWorldDescriptor */
     if (result == 0) {
         return 0;
     }
@@ -303,13 +327,13 @@ int CreateOrResizeGWorld(int gwDesc, short width, short height,
         /* 1-bit depth -- use color table from gMonoColorTable */
     }
 
-    result = FUN_10001d58(&gworldPtr, depth, &boundsRect, 0, 0,
+    result = Render_NewGWorld(&gworldPtr, depth, &boundsRect, 0, 0,
                           (extraFlags & 0xFF) != 0);
 
     if (result != 0) {
         if (flags != '\0') {
             /* Try alternate allocation with different flags */
-            result = FUN_10001d58(&gworldPtr, depth, &boundsRect, 0, 0, 4);
+            result = Render_NewGWorld(&gworldPtr, depth, &boundsRect, 0, 0, 4);
             if (result == 0) goto done;
         }
         if (result != 0) {
@@ -322,9 +346,9 @@ done:
     SetGWorld_Wrapper(gworldPtr, 0);                            /* SetGWorld_Wrapper */
 
     /* Lock pixels to validate */
-    result = FUN_10001d70(*(int *)(gworldPtr + 2));
+    result = Render_ValidatePixMap(*(int *)(gworldPtr + 2));
     if (result != 0) {
-        FUN_10002c58(gworldPtr + 0x10);                         /* GetPixBaseAddr */
+        Render_GetPixBaseAddr(gworldPtr + 0x10);                  /* GetPixBaseAddr */
         HUnlock_Thunk(*(int *)(gworldPtr + 2));                 /* HUnlock_Thunk */
     }
 
@@ -332,7 +356,7 @@ done:
     SetGWorld_Wrapper(savedPort, savedDevice);                  /* SetGWorld_Wrapper */
 
     /* Validate pixel map */
-    result = FUN_10001d70(*(int *)(gworldPtr + 2));
+    result = Render_ValidatePixMap(*(int *)(gworldPtr + 2));
 
     /* Store dimensions and flags in descriptor */
     *(char *)(gwDesc + 0x0B) = (char)depth;
@@ -343,9 +367,9 @@ done:
 
     /* Register with GWorld manager */
     if (*gwListPtr == 0) {
-        int mgr = FUN_100ead08(0);
+        int mgr = Render_NewGWorldManager(0);
         *gwListPtr = mgr;
-        FUN_100ead98();
+        Render_InitGWorldManager();
     }
     ResourceRead_Dispatch(*gwListPtr + (int)*(short *)(*(int *)*gwListPtr + 0x118),
                  gwDesc);
@@ -413,7 +437,7 @@ void EnsureSpriteLoaded(short spriteID)                         /* EnsureSpriteL
     /* Check if sprite is already loaded (bit 29) */
     if ((flags >> 0x1D & 1) != 0) {
         /* Already loaded -- touch/validate it */
-        FUN_10045f0c(spriteID);                                 /* ValidateSprite */
+        Render_ValidateSprite(spriteID);                         /* ValidateSprite */
         return;
     }
 
@@ -427,14 +451,14 @@ void EnsureSpriteLoaded(short spriteID)                         /* EnsureSpriteL
             if (*(char *)(i * 0x14 + gSpriteTable + 8) ==
                 *(char *)(spriteAddr + 8))
             {
-                FUN_100450f4(i);                                /* UnloadSprite (LRU eviction) */
+                Render_UnloadSprite(i);                          /* UnloadSprite (LRU eviction) */
                 break;
             }
         }
     }
 
     /* Load the new sprite */
-    FUN_10044d8c(spriteID);                                     /* LoadSprite */
+    Render_LoadSprite(spriteID);                                     /* LoadSprite */
 }
 
 /*
@@ -452,20 +476,20 @@ void EnsureSpriteAndLock(short spriteID)                        /* EnsureSpriteA
 
     /* Load sprite if needed */
     if ((*(unsigned int *)spriteAddr >> 0x1D & 1) == 0) {
-        FUN_10044d8c(spriteID);                                 /* LoadSprite */
+        Render_LoadSprite(spriteID);                                 /* LoadSprite */
     }
 
     /* Lock the image GWorld pixels */
     if (*(int *)(spriteAddr + 0x04) != 0) {
         HLock_Thunk_Sound(*(int *)(spriteAddr + 0x04));               /* HLock_Thunk_Sound */
-        FUN_10001d70(*(int *)(spriteAddr + 0x04));              /* Validate pixmap */
+        Render_ValidatePixMap(*(int *)(spriteAddr + 0x04));              /* Validate pixmap */
     }
 
     /* Lock the mask GWorld pixels (if sprite has mask) */
     if (*(unsigned int *)spriteAddr >> 0x1C & 1) {
         if (*(int *)(spriteAddr + 0x0C) != 0) {
             HLock_Thunk_Sound(*(int *)(spriteAddr + 0x0C));
-            FUN_10001d70(*(int *)(spriteAddr + 0x0C));
+            Render_ValidatePixMap(*(int *)(spriteAddr + 0x0C));
         }
     }
 }
@@ -604,7 +628,7 @@ void BlitSpriteWithMask(int srcGW, short srcTop, short srcLeft,
     /* Restore original port and colors */
     SetGWorld_Wrapper(savedPort, savedDevice);
     RGBForeColor_Thunk((RGBColor *)(gColorPalette));            /* Restore default fg */
-    FUN_100008b8();                                             /* PenNormal */
+    Render_PenNormal();                                             /* PenNormal */
     RGBForeColor_Thunk((RGBColor *)(gColorPalette + 0x5FA));   /* Restore bg */
     SetForeColor_Thunk();
 }
@@ -678,7 +702,7 @@ void BlitSpriteNormal(int srcGW, short srcTop, short srcLeft,
     RGBForeColor_Thunk((RGBColor *)(
         (((long)playerColor & 0x3FFFFFFFUL) * 4 -
          (long)playerColor & 0x7FFFFFFFL) * 2 + gColorPalette));
-    FUN_100008b8();                                             /* PenNormal */
+    Render_PenNormal();                                             /* PenNormal */
 
     /* CopyBits(src, dst, srcRect, dstRect, transferMode, maskRgn=NULL) */
     CopyBits_Thunk(                                             /* CopyBits_Thunk */
@@ -715,7 +739,7 @@ void BlitTerrainPixel(int destGW, short x, short y, short colorIndex)
                 (unsigned long)gColorPalette;
 
     RGBForeColor_Thunk((RGBColor *)colorAddr);                  /* RGBForeColor_Thunk */
-    FUN_100008e8(x, y, 0);                                     /* DrawPixel at (x,y) */
+    Render_DrawPixel(x, y, 0);                                  /* DrawPixel at (x,y) */
 }
 
 /*
@@ -1282,7 +1306,7 @@ void UpdateMinimapAroundTile(short tileX, short tileY, short redrawMode)
  */
 void HideMinimapCursor(void)                                    /* HideMinimapCursor */
 {
-    int *minimapView = (int *)FUN_1008455c();                   /* GetMinimapView */
+    int *minimapView = (int *)Render_GetMinimapView();                   /* GetMinimapView */
     if (minimapView != NULL) {
         *(char *)((int)minimapView + 0x95) = 0;
         ResourceRead_Dispatch((int)minimapView +
@@ -1296,7 +1320,7 @@ void HideMinimapCursor(void)                                    /* HideMinimapCu
  */
 void ShowMinimapCursor(void)                                    /* ShowMinimapCursor */
 {
-    int *minimapView = (int *)FUN_1008455c();
+    int *minimapView = (int *)Render_GetMinimapView();
     if (minimapView != NULL) {
         *(char *)((int)minimapView + 0x95) = 1;
         ResourceRead_Dispatch((int)minimapView +
@@ -1558,7 +1582,7 @@ void DrawSingleMapTile(short updateMode, short mapX, short mapY)
 
     /* If full refresh requested, rebuild feature overlay table */
     if (updateMode != 0) {
-        FUN_10063784();                                         /* RefreshFeatureOverlayTable */
+        Render_RefreshFeatureOverlays();                         /* RefreshFeatureOverlayTable */
     }
 
     /* Load and lock terrain sprite (ID 7) */

@@ -45,7 +45,7 @@ extern void  SetResourceType(void *reader, long resType, short resID); /* SetRes
 
 /* Resource management */
 #ifdef MODERN_BUILD
-extern void *GetNamedResource(long resType, short resID);    /* FUN_10003558 */
+extern void *GetResourceByTypeId(long resType, short resID);    /* FUN_10003558 */
 extern void  AddResource(int handle, long resType, short resID, void *data); /* AddResource */
 extern void  DetachResource(void *h);                        /* DetachResource */
 #endif
@@ -1465,7 +1465,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
         playerDoc = *(int **)(resBase + 0x148);
         FocusObject(playerDoc);
         VtableDispatch((int)playerDoc + (int)*(short *)(*playerDoc + 0x2B8));
-        nameRes = GetNamedResource(0x4E414D45, 10000);      /* 'NAME' */
+        nameRes = GetResourceByTypeId(0x4E414D45, 10000);      /* 'NAME' */
         if ((int)nameRes != 0) {
             CopyResourceToDoc(docHandle, nameRes);
             ResolveAlias(nameRes, NULL, NULL, pathBuf);
@@ -1483,7 +1483,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
         playerDoc = *(int **)(resBase + 0x14C);
         FocusObject(playerDoc);
         VtableDispatch((int)playerDoc + (int)*(short *)(*playerDoc + 0x2B8));
-        nameRes = GetNamedResource(0x4E414D45, 30000);
+        nameRes = GetResourceByTypeId(0x4E414D45, 30000);
         if ((int)nameRes == 0) {
             pathBuf[0] = 0;
         } else {
@@ -1502,7 +1502,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
         playerDoc = *(int **)(resBase + 0x150);
         if (playerDoc != NULL) {
             VtableDispatch((int)playerDoc + (int)*(short *)(*playerDoc + 0x2B8));
-            nameRes = GetNamedResource(0x4E414D45, 20000);
+            nameRes = GetResourceByTypeId(0x4E414D45, 20000);
             if ((int)nameRes == 0) {
                 pathBuf[0] = 0;
             } else {
@@ -1522,7 +1522,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
         playerDoc = *(int **)(resBase + 0x154);
         if (playerDoc != NULL) {
             VtableDispatch((int)playerDoc + (int)*(short *)(*playerDoc + 0x2B8));
-            nameRes = GetNamedResource(0x4E414D45, 25000);
+            nameRes = GetResourceByTypeId(0x4E414D45, 25000);
             if ((int)nameRes == 0) {
                 pathBuf[0] = 0;
             } else {
@@ -1542,7 +1542,7 @@ void WriteGameState(int *docHandle)                          /* WriteGameState *
         playerDoc = *(int **)(resBase + 0x158);
         if (playerDoc != NULL) {
             VtableDispatch((int)playerDoc + (int)*(short *)(*playerDoc + 0x2B8));
-            nameRes = GetNamedResource(0x4E414D45, 15000);
+            nameRes = GetResourceByTypeId(0x4E414D45, 15000);
             if ((int)nameRes == 0) {
                 pathBuf[0] = 0;
             } else {

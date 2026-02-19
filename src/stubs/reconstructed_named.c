@@ -16,7 +16,7 @@
  * Forward declarations for internal calls
  * ========================================================================= */
 int ResourceRead_Dispatch();
-void FUN_10000150(void);
+void ThrowException(void);
 int TrySetjmp(void *exception_buf);
 void FUN_10000378(int);
 int FUN_10000468(void);
@@ -817,12 +817,12 @@ int GetGWorld_Wrapper(int *port, int *gdh)
 
 #ifdef MODERN_BUILD
 /* =========================================================================
- * GetNamedResource - Mac OS: GetResource wrapper
- * Original: FUN_10003558
+ * GetResourceByTypeId - Mac OS: GetResource wrapper
+ * Original: GetResourceByTypeId
  * ========================================================================= */
-void *GetNamedResource(long resType, short resID)
+void *GetResourceByTypeId(long resType, short resID)
 {
-    /* GetNamedResource - resource manager */
+    /* GetResourceByTypeId - resource manager */
     return (void *)0;
 }
 #endif
@@ -1145,12 +1145,12 @@ int MoveTo_Thunk(short h, short v)
 
 /* =========================================================================
  * Game_NewAlias - Create new alias handle (game wrapper)
- * Original: FUN_100b1c84, 4 bytes (NOP)
+ * Original: ConvertToString, 4 bytes (NOP)
  * Renamed from NewAlias to avoid conflict with Mac Toolbox NewAlias
  * ========================================================================= */
 void *Game_NewAlias(void *path)
 {
-    /* FUN_100b1c84 - returns immediately (NOP stub) */
+    /* ConvertToString - returns immediately (NOP stub) */
     return (void *)0;
 }
 
@@ -1370,11 +1370,11 @@ int ProgressUpdate(void *bar, short percent)
 
 /* =========================================================================
  * PStrToHandle - Convert Pascal string to handle
- * Original: FUN_100b1c84, 4 bytes (NOP)
+ * Original: ConvertToString, 4 bytes (NOP)
  * ========================================================================= */
 int PStrToHandle(unsigned char *pstr)
 {
-    /* FUN_100b1c84 - returns 0 (NOP) */
+    /* ConvertToString - returns 0 (NOP) */
     return 0;
 }
 
@@ -1849,7 +1849,7 @@ int UnlockHandle(int unused)
 
 /* =========================================================================
  * UnlockHandle2 - Alternative handle unlock (restore flags)
- * Original: FUN_10001b60 equivalent
+ * Original: RestoreHandleFlags equivalent
  * ========================================================================= */
 int UnlockHandle2(void *handle)
 {

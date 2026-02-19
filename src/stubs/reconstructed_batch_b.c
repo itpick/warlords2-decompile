@@ -115,20 +115,20 @@ extern char *pcRam101161c8;
 /* Forward declarations */
 void UpdateDisplayState(void);
 unsigned long long LookupCityAtPos(short, short);
-void FUN_10025758(short, short, short);
+void ShowCityInfo(short, short, short);
 int FUN_1005f50c(short, short, short);
 short RandomRange(short, short, short);
 void DispatchNextPhase(int *, long long);
-void FUN_10044d8c(short);
+void Render_LoadSprite(short);
 short CheckQuestCondition(short);
 void GetUnitStats(short, int *);
 
 
 /* ======================================================================
- * FUN_10040fb8 - Game initialization / new turn setup
+ * RefreshAfterMenus - Game initialization / new turn setup
  * Address: 0x10040fb8, Size: 308 bytes
  * ====================================================================== */
-void FUN_10040fb8(void)
+void RefreshAfterMenus(void)
 {
   int *piVar1;
   void **ppuVar2;
@@ -180,10 +180,10 @@ void FUN_10040fb8(void)
 
 
 /* ======================================================================
- * FUN_100410ec - Turn start / player initialization
+ * HandleEndTurn - Turn start / player initialization
  * Address: 0x100410ec, Size: 540 bytes
  * ====================================================================== */
-void FUN_100410ec(void)
+void HandleEndTurn(void)
 {
   int iVar1;
   unsigned short *puVar2;
@@ -236,10 +236,10 @@ void FUN_100410ec(void)
 
 
 /* ======================================================================
- * FUN_10041cf8 - Movement continuation
+ * ProcessEndTurn - Movement continuation
  * Address: 0x10041cf8, Size: 180 bytes
  * ====================================================================== */
-void FUN_10041cf8(void)
+void ProcessEndTurn(void)
 {
   pint *piVar1;
   int iVar2;
@@ -262,16 +262,16 @@ void FUN_10041cf8(void)
     }
     iVar2 = GetNextDefender();
   }
-  FUN_1003dc28();
+  FullDisplayRefresh();
   return;
 }
 
 
 /* ======================================================================
- * FUN_10044d8c - Unit type display
+ * Render_LoadSprite - Unit type display
  * Address: 0x10044d8c, Size: 832 bytes
  * ====================================================================== */
-void FUN_10044d8c(short param_1)
+void Render_LoadSprite(short param_1)
 {
   int *piVar1;
   unsigned int uVar2;
@@ -353,7 +353,7 @@ void FUN_10044d8c(short param_1)
   *(unsigned int *)(iVar3 + iVar6) = uVar2 | 0x20000000;
   if ((uVar2 >> 0x1a & 1) != 0) {
     uVar8 = HLock_Thunk_Sound(*(int *)(*(int *)(iVar9 + 4) + 0x10));
-    iVar11 = FUN_10001d70(uVar8);
+    iVar11 = Render_ValidatePixMap(uVar8);
     if (iVar11 != 0) {
       *puVar12 = (unsigned short)((unsigned int)*(int *)(iVar3 + iVar6) >> 0x19) & 1;
       FUN_1005262c(puVar12, *(int *)(iVar9 + 4), *(int *)(iVar9 + 0xc),
@@ -369,10 +369,10 @@ void FUN_10044d8c(short param_1)
 
 
 /* ======================================================================
- * FUN_100450f4 - Clear unit flags
+ * Render_UnloadSprite - Clear unit flags
  * Address: 0x100450f4, Size: 124 bytes
  * ====================================================================== */
-void FUN_100450f4(short param_1)
+void Render_UnloadSprite(short param_1)
 {
   int iVar1;
   void **ppuVar2;
@@ -382,19 +382,19 @@ void FUN_100450f4(short param_1)
   iVar3 = param_1 * 0x14;
   iVar1 = iVar3 + gSpriteTable;
   *(unsigned int *)(iVar3 + gSpriteTable) = *(unsigned int *)(iVar3 + gSpriteTable) & 0xddffffff;
-  FUN_1000a094(*(int *)(iVar1 + 4));
+  Render_DisposeGWorldDesc(*(int *)(iVar1 + 4));
   if ((*(unsigned int *)((pint)ppuVar2[-0x66f] + iVar3) >> 0x1a & 1) != 0) {
-    FUN_1000a094(*(int *)(iVar1 + 0xc));
+    Render_DisposeGWorldDesc(*(int *)(iVar1 + 0xc));
   }
   return;
 }
 
 
 /* ======================================================================
- * FUN_10045f0c - Check/load unit resources
+ * Render_ValidateSprite - Check/load unit resources
  * Address: 0x10045f0c, Size: 288 bytes
  * ====================================================================== */
-void FUN_10045f0c(short param_1)
+void Render_ValidateSprite(short param_1)
 {
   int bVar1;
   int iVar2;
@@ -410,7 +410,7 @@ void FUN_10045f0c(short param_1)
   if ((iVar4 != 0) && (iVar4 = *(int *)(iVar4 + 0x10), iVar4 != 0)) {
     uVar3 = HLock_Thunk_Sound(iVar4);
     if ((int)uVar3 != 0) {
-      iVar4 = FUN_10001d70(uVar3);
+      iVar4 = Render_ValidatePixMap(uVar3);
       if (iVar4 != 0) {
         HUnlock_Thunk(uVar3);
         bVar1 = 0;
@@ -421,13 +421,13 @@ void FUN_10045f0c(short param_1)
   uVar5 = *(unsigned int *)(iVar4 + iVar2) >> 0x1a & 1;
   if ((((uVar5 != 0) && (iVar4 = *(int *)(iVar4 + iVar2 + 0xc), iVar4 != 0)) &&
       (iVar4 = *(int *)(iVar4 + 0x10), iVar4 != 0)) &&
-     ((uVar3 = HLock_Thunk_Sound(iVar4), (int)uVar3 != 0 && (iVar4 = FUN_10001d70(uVar3), iVar4 != 0))))
+     ((uVar3 = HLock_Thunk_Sound(iVar4), (int)uVar3 != 0 && (iVar4 = Render_ValidatePixMap(uVar3), iVar4 != 0))))
   {
     HUnlock_Thunk(uVar3);
     uVar5 = 0;
   }
   if ((bVar1) || (uVar5 != 0)) {
-    FUN_10044d8c(uVar6);
+    Render_LoadSprite(uVar6);
   }
   return;
 }
@@ -536,10 +536,10 @@ void GetUnitStats(short param_1, int *param_2)
 
 
 /* ======================================================================
- * FUN_1004bd0c - Quest/search dialog
+ * ShowProductionDialog - Quest/search dialog
  * Address: 0x1004bd0c, Size: 940 bytes
  * ====================================================================== */
-void FUN_1004bd0c(void)
+void ShowProductionDialog(void)
 {
   unsigned int uVar1;
   int *piVar2;
@@ -633,17 +633,17 @@ LAB_1004bf3c:
       ResourceRead_Dispatch((int)piVar9 + (int)*(short *)(*piVar9 + 0x738));
     }
     *piVar2 = 0;
-    FUN_100db158(local_40, local_3c);
+    LockHandleRange(local_40, local_3c);
   }
   return;
 }
 
 
 /* ======================================================================
- * FUN_1004d0d0 - Production dialog
+ * ShowItemsDialog - Production dialog
  * Address: 0x1004d0d0, Size: 820 bytes
  * ====================================================================== */
-void FUN_1004d0d0(void)
+void ShowItemsDialog(void)
 {
   int bVar1;
   pint *piVar2;
@@ -720,7 +720,7 @@ void FUN_1004d0d0(void)
       ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x738));
     }
     *piVar3 = 0;
-    FUN_100db158(local_38, local_34);
+    LockHandleRange(local_38, local_34);
   }
   DispatchNextPhase(*(int *)(*piVar4 + 0x88), 0x3fa);
   return;
@@ -728,10 +728,10 @@ void FUN_1004d0d0(void)
 
 
 /* ======================================================================
- * FUN_10050a48 - Army UI update
+ * SelectArmySlot - Army UI update
  * Address: 0x10050a48, Size: 240 bytes
  * ====================================================================== */
-void FUN_10050a48(unsigned short param_1)
+void SelectArmySlot(unsigned short param_1)
 {
   int *piVar1;
   int *piVar2;
@@ -859,10 +859,10 @@ void ScanDefenseGrid(void)
 
 
 /* ======================================================================
- * FUN_10055408 - Army info dialog
+ * InspectArmyDetails - Army info dialog
  * Address: 0x10055408, Size: 944 bytes
  * ====================================================================== */
-void FUN_10055408(unsigned short param_1)
+void InspectArmyDetails(unsigned short param_1)
 {
   int *piVar1;
   int *piVar2;
@@ -944,7 +944,7 @@ void FUN_10055408(unsigned short param_1)
         ResourceRead_Dispatch((int)*(short *)(*piVar6 + 0x738) + (int)piVar6);
       }
       *piVar1 = 0;
-      FUN_100db158(local_40, local_3c);
+      LockHandleRange(local_40, local_3c);
     }
   }
   DispatchNextPhase(*(int *)(*piVar2 + 0x88), 0x3fa);
@@ -953,10 +953,10 @@ void FUN_10055408(unsigned short param_1)
 
 
 /* ======================================================================
- * FUN_1005bdb8 - Port/ship dialog
+ * ShowReports - Port/ship dialog
  * Address: 0x1005bdb8, Size: 1308 bytes
  * ====================================================================== */
-void FUN_1005bdb8(void)
+void ShowReports(void)
 {
   short sVar1;
   int bVar2;
@@ -1067,7 +1067,7 @@ void FUN_1005bdb8(void)
               *puVar3 = local_50;
               return;
             }
-            FUN_100db158(local_58, local_54);
+            LockHandleRange(local_58, local_54);
             return;
           }
         } while (sVar13 < sVar1);
@@ -1080,10 +1080,10 @@ void FUN_1005bdb8(void)
 
 
 /* ======================================================================
- * FUN_1005e858 - Diplomacy dialog
+ * ToggleSoundEnabled - Diplomacy dialog
  * Address: 0x1005e858, Size: 548 bytes
  * ====================================================================== */
-void FUN_1005e858(void)
+void ToggleSoundEnabled(void)
 {
   int *piVar1;
   int iVar2;
@@ -1169,7 +1169,7 @@ void FUN_1005e858(void)
         ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
       }
       *piVar3 = 0;
-      FUN_100db158(local_30, local_2c);
+      LockHandleRange(local_30, local_2c);
     }
   }
   return;
@@ -1177,10 +1177,10 @@ void FUN_1005e858(void)
 
 
 /* ======================================================================
- * FUN_1005ef84 - Terrain info dialog
+ * ToggleMapZoom - Terrain info dialog
  * Address: 0x1005ef84, Size: 448 bytes
  * ====================================================================== */
-void FUN_1005ef84(void)
+void ToggleMapZoom(void)
 {
   int *piVar1;
   int *piVar2;
@@ -1240,7 +1240,7 @@ void FUN_1005ef84(void)
       ResourceRead_Dispatch((int)piVar1 + (int)*(short *)(*piVar1 + 0x738));
     }
     *piVar2 = 0;
-    FUN_100db158(local_30, local_2c);
+    LockHandleRange(local_30, local_2c);
   }
   return;
 }
@@ -1347,10 +1347,10 @@ int FUN_1005f50c(short param_1, short param_2, short param_3)
 
 
 /* ======================================================================
- * FUN_10063784 - Load game data/resources
+ * Render_RefreshFeatureOverlays - Load game data/resources
  * Address: 0x10063784, Size: 884 bytes
  * ====================================================================== */
-void FUN_10063784(void)
+void Render_RefreshFeatureOverlays(void)
 {
   int iVar1;
   int *puVar2;
@@ -1459,10 +1459,10 @@ void FUN_10063784(void)
 
 
 /* ======================================================================
- * FUN_10065500 - End turn processing
+ * SelectArmyByIndex - End turn processing
  * Address: 0x10065500, Size: 700 bytes
  * ====================================================================== */
-void FUN_10065500(short param_1)
+void SelectArmyByIndex(short param_1)
 {
   int bVar1;
   unsigned int uVar2;
@@ -1565,10 +1565,10 @@ LAB_1006564c:
 
 
 /* ======================================================================
- * FUN_100657bc - Turn display setup
+ * RestoreDisplayState - Turn display setup
  * Address: 0x100657bc, Size: 880 bytes
  * ====================================================================== */
-void FUN_100657bc(void)
+void RestoreDisplayState(void)
 {
   unsigned int uVar1;
   pint *piVar2;
@@ -1608,7 +1608,7 @@ void FUN_100657bc(void)
     FUN_100909d0();
     puVar6 = (int *)NewPtr_Thunk(0x40);
     if (puVar6 != (int *)0x0) {
-      FUN_100d568c(puVar6);
+      ConstructBehavior(puVar6);
       puVar6[0xd] = 0x20202020;
       puVar6[0xe] = 0;
       puVar6[0xf] = 0;
@@ -1661,10 +1661,10 @@ void FUN_100657bc(void)
 
 
 /* ======================================================================
- * FUN_10065d24 - End/next turn logic
+ * DeselectArmy - End/next turn logic
  * Address: 0x10065d24, Size: 1096 bytes
  * ====================================================================== */
-void FUN_10065d24(short param_1)
+void DeselectArmy(short param_1)
 {
   pint *piVar1;
   pint *piVar2;
@@ -1711,7 +1711,7 @@ void FUN_10065d24(short param_1)
     if ((1 < sVar7) && (*(short *)(*piVar5 + 0x124) != 0)) {
       RefreshDisplay(1, 1, 0);
       iVar6 = *piVar5 + *(short *)(*piVar5 + 0x110) * 0x14;
-      FUN_1000848c(*(unsigned short *)(iVar6 + 0x18a), *(unsigned short *)(iVar6 + 0x18c));
+      CenterMapOnLocation(*(unsigned short *)(iVar6 + 0x18a), *(unsigned short *)(iVar6 + 0x18c));
     }
     piVar2 = (pint *)*piVar2;
     ResourceRead_Dispatch((int)piVar2 + (int)*(short *)(*piVar2 + 0x4c8));
@@ -1750,14 +1750,14 @@ void FUN_10065d24(short param_1)
       }
       if ((param_1 < 2) && (sVar7 == 1)) {
         iVar6 = *piVar5 + *(short *)(*piVar5 + 0x110) * 0x14;
-        FUN_10025758(2, *(unsigned short *)(iVar6 + 0x18a), *(unsigned short *)(iVar6 + 0x18c));
+        ShowCityInfo(2, *(unsigned short *)(iVar6 + 0x18a), *(unsigned short *)(iVar6 + 0x18c));
       }
       else {
         if ((param_1 < 3) && (iVar6 = FUN_1004a854(), iVar6 != 0)) {
           FUN_1004af7c();
         }
         FUN_1005cc8c();
-        FUN_1003dc28();
+        FullDisplayRefresh();
         iVar6 = *piVar5;
         if (((*(short *)(iVar6 + 0x12e) != 0) && (sVar7 == 2)) &&
            ((*(unsigned int *)(iVar6 + 0x134) >> 0x1e & 1) == 0)) {
@@ -1779,10 +1779,10 @@ void FUN_10065d24(short param_1)
 
 
 /* ======================================================================
- * FUN_100668a4 - UI component initialization
+ * InitMapViewBehavior - UI component initialization
  * Address: 0x100668a4, Size: 848 bytes
  * ====================================================================== */
-void FUN_100668a4(void)
+void InitMapViewBehavior(void)
 {
   int uVar2;
   int *puVar3;
@@ -1885,10 +1885,10 @@ void FUN_100668a4(void)
 
 
 /* ======================================================================
- * FUN_10073250 - Sound check/init
+ * InitTurnProcessBehavior - Sound check/init
  * Address: 0x10073250, Size: 192 bytes
  * ====================================================================== */
-void FUN_10073250(void)
+void InitTurnProcessBehavior(void)
 {
   char *pcVar1;
   int iVar2;
@@ -1921,10 +1921,10 @@ void FUN_10073250(void)
 
 
 /* ======================================================================
- * FUN_10073310 - Object allocator
+ * ConstructDocumentHelper - Object allocator
  * Address: 0x10073310, Size: 120 bytes
  * ====================================================================== */
-int *FUN_10073310(int *param_1)
+int *ConstructDocumentHelper(int *param_1)
 {
   void **ppuVar1;
 
@@ -1942,10 +1942,10 @@ int *FUN_10073310(int *param_1)
 
 
 /* ======================================================================
- * FUN_10075570 - Button state update
+ * SetPanelVisibility - Button state update
  * Address: 0x10075570, Size: 336 bytes
  * ====================================================================== */
-void FUN_10075570(int param_1, long long param_2, char param_3)
+void SetPanelVisibility(int param_1, long long param_2, char param_3)
 {
   int *piVar1;
   int *piVar2;
@@ -1987,20 +1987,20 @@ void FUN_10075570(int param_1, long long param_2, char param_3)
 
 
 /* ======================================================================
- * FUN_10078fa4 - Getter (return uRam1011626c)
+ * InitFightOrderBehavior - Getter (return uRam1011626c)
  * Address: 0x10078fa4, Size: 16 bytes
  * ====================================================================== */
-int FUN_10078fa4(void)
+int InitFightOrderBehavior(void)
 {
   return uRam1011626c;
 }
 
 
 /* ======================================================================
- * FUN_10078fb4 - Object allocator
+ * SetFightOrderParam - Object allocator
  * Address: 0x10078fb4, Size: 104 bytes
  * ====================================================================== */
-int *FUN_10078fb4(int *param_1)
+int *SetFightOrderParam(int *param_1)
 {
   void **ppuVar1;
 
@@ -2008,7 +2008,7 @@ int *FUN_10078fb4(int *param_1)
   if ((param_1 != (int *)0x0) ||
      (ppuVar1 = DOT_TVECT, param_1 = (int *)NewPtr_Thunk(0xa8),
      param_1 != (int *)0x0)) {
-    FUN_100c6b2c(param_1);
+    ConstructExtendedObject(param_1);
     *param_1 = (int)ppuVar1[-0x58c];
   }
   return param_1;
@@ -2016,10 +2016,10 @@ int *FUN_10078fb4(int *param_1)
 
 
 /* ======================================================================
- * FUN_1007a748 - Menu resource setup
+ * InitMiscSetupBehavior - Menu resource setup
  * Address: 0x1007a748, Size: 272 bytes
  * ====================================================================== */
-void FUN_1007a748(void)
+void InitMiscSetupBehavior(void)
 {
   int *puVar1;
   int *puVar2;
@@ -2062,10 +2062,10 @@ void FUN_1007a748(void)
 
 
 /* ======================================================================
- * FUN_1007b218 - Dialog with done button
+ * InspectHero - Dialog with done button
  * Address: 0x1007b218, Size: 468 bytes
  * ====================================================================== */
-void FUN_1007b218(int *param_1)
+void InspectHero(int *param_1)
 {
   int *puVar1;
   int *piVar3;
@@ -2106,7 +2106,7 @@ void FUN_1007b218(int *param_1)
     if (iVar4 != 0) {
       ResourceRead_Dispatch((int)piVar3 + (int)*(short *)(*piVar3 + 0x738));
     }
-    FUN_100db158(local_2c, local_28);
+    LockHandleRange(local_2c, local_28);
   }
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x110), 0x3fa);
   return;
@@ -2114,10 +2114,10 @@ void FUN_1007b218(int *param_1)
 
 
 /* ======================================================================
- * FUN_1007ba3c - Game setup dialog
+ * CancelUndoAction - Game setup dialog
  * Address: 0x1007ba3c, Size: 1648 bytes
  * ====================================================================== */
-void FUN_1007ba3c(int *param_1, char param_2, char param_3)
+void CancelUndoAction(int *param_1, char param_2, char param_3)
 {
   int bVar1;
   unsigned int *puVar2;
@@ -2148,14 +2148,14 @@ void FUN_1007ba3c(int *param_1, char param_2, char param_3)
   ppuVar4 = DOT_TVECT;
   if (param_2 != '\0') {
     ppuVar4 = DOT_TVECT;
-    FUN_100981f8(auStack_298, 0x80);
-    puVar5 = (int *)FUN_10098320(auStack_298, 0x53657475, 1000);
+    OpenResourceStream(auStack_298, 0x80);
+    puVar5 = (int *)FindResourceByType(auStack_298, 0x53657475, 1000);
     param_3 = puVar5 == (int *)0x0;
     if (puVar5 != (int *)0x0) {
       param_3 = *(char *)*puVar5 == '\0';
     }
     ReleaseHandle_Mapgen(puVar5);
-    FUN_100982e8(auStack_298, 2);
+    CloseResourceStream(auStack_298, 2);
   }
   if (param_3 == '\0') {
     uVar13 = 0xbcc;
@@ -2277,17 +2277,17 @@ void FUN_1007ba3c(int *param_1, char param_2, char param_3)
       ResourceRead_Dispatch((int)piVar6 + (int)*(short *)(*piVar6 + 0x738));
     }
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2c0));
-    FUN_100db158(local_48, local_44);
+    LockHandleRange(local_48, local_44);
   }
   return;
 }
 
 
 /* ======================================================================
- * FUN_1007c618 - Create scrollbar
+ * MoveToOverviewTarget - Create scrollbar
  * Address: 0x1007c618, Size: 188 bytes
  * ====================================================================== */
-void FUN_1007c618(int *param_1, unsigned short param_2, unsigned short param_3)
+void MoveToOverviewTarget(int *param_1, unsigned short param_2, unsigned short param_3)
 {
   void **ppuVar1;
   int *puVar2;
@@ -2313,12 +2313,12 @@ void FUN_1007c618(int *param_1, unsigned short param_2, unsigned short param_3)
 
 
 /* ======================================================================
- * FUN_1007c6d8 - Scroll viewport
+ * ScrollMapInDirection - Scroll viewport
  * Address: 0x1007c6d8, Size: 60 bytes
  * ====================================================================== */
-void FUN_1007c6d8(long long param_1, short param_2)
+void ScrollMapInDirection(long long param_1, short param_2)
 {
-  FUN_10025758(param_2 + -0x6a6, *(unsigned short *)(*piRam1011735c + 0x17e),
+  ShowCityInfo(param_2 + -0x6a6, *(unsigned short *)(*piRam1011735c + 0x17e),
                *(unsigned short *)(*piRam1011735c + 0x180));
   return;
 }
@@ -2348,10 +2348,12 @@ void DispatchNextPhase(int *param_1, long long param_2)
 
 
 /* ======================================================================
- * FUN_1007c7b4 - Window layout
+ * SaveWindowPositions - Window layout
  * Address: 0x1007c7b4, Size: 1788 bytes
+ * Raw Ghidra decompile removed - clean version in framework/framework.c
  * ====================================================================== */
-void FUN_1007c7b4(void)
+#if 0  /* SaveWindowPositions -- disabled, clean version in framework/framework.c */
+void SaveWindowPositions_STUB(void)
 {
   unsigned long long uVar1;
   int iVar2;
@@ -2476,7 +2478,7 @@ void FUN_1007c7b4(void)
   iVar2 = local_36c;
   EndFocus();
   local_e8 = local_150 < 0x300000;
-  FUN_100b08d4(&local_190, (unsigned long long)*(unsigned int *)(iVar2 + -0xb0) + 0x56);
+  GetScreenBounds(&local_190, (unsigned long long)*(unsigned int *)(iVar2 + -0xb0) + 0x56);
   if (local_150 < 0x300000) {
     if (0x280 < local_18e) {
       local_18e = 0x280;
@@ -2686,13 +2688,14 @@ void FUN_1007c7b4(void)
   }
   return;
 }
+#endif  /* SaveWindowPositions disabled */
 
 
 /* ======================================================================
- * FUN_1007ceb0 - Save game handler
+ * HandleStackManagement - Save game handler
  * Address: 0x1007ceb0, Size: 696 bytes
  * ====================================================================== */
-void FUN_1007ceb0(int *param_1)
+void HandleStackManagement(int *param_1)
 {
   int iVar1;
   pint *piVar2;
@@ -2768,12 +2771,12 @@ void FUN_1007ceb0(int *param_1)
     FUN_100b1fb4(local_160, 0x73);
   }
   pbVar6 = (unsigned char *)FUN_10002c40(*(int *)(local_1fc + 0x28));
-  FUN_100012d8(pbVar6, auStack_2fc, (unsigned long long)*pbVar6 + 1);
+  Sound_BlockCopy(pbVar6, auStack_2fc, (unsigned long long)*pbVar6 + 1);
   ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x2c0));
-  uVar3 = FUN_100b1c84(auStack_2fc);
-  uVar4 = FUN_100b1c84(local_160);
+  uVar3 = ConvertToString(auStack_2fc);
+  uVar4 = ConvertToString(local_160);
   FUN_100009f0(uVar4, uVar3, 0, 0);
-  FUN_100d8c9c(0xbd8, 0);
+  PostMenuCommand(0xbd8, 0);
   FUN_100009f0(0, 0, 0, 0);
   return;
 }

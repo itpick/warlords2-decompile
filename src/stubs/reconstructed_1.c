@@ -80,7 +80,7 @@ void FUN_1002c92c(short, short);
 void FUN_10082260(int);
 void FUN_10082f24(int, short, short);
 void FUN_100836dc(int, short, short);
-void FUN_1003dc28(void);
+void FullDisplayRefresh(void);
 void FUN_100032b8(int);
 void SetMacRect(void *, int, int, short, short);
 void NewGWorld_Wrapper(int, char, void *, int, int, int);
@@ -150,8 +150,8 @@ int FUN_1000e938(short);
 void FUN_1000ea7c(int, ...);
 int FUN_1000ec04(int, short, void *, void *);
 int CalcDistance(short, short, short, short);
-int FUN_100ead08(int);
-void FUN_100ead98(void);
+int Render_NewGWorldManager(int);
+void Render_InitGWorldManager(void);
 int FUN_11011734(int);
 
 /* ===================================================================
@@ -164,9 +164,9 @@ int FUN_11011734(int);
 
 // Address: 0x10000000 | Size: 24 bytes
 // TVect trampoline -> puRam101156a0 (Mac OS Toolbox call)
-void FUN_10000000(void)
+void Render_GetForeColor(void)
 {
-    /* TVect: indirect jump via puRam101156a0 */
+    /* TVect: GetForeColor - indirect jump via puRam101156a0 */
     return;
 }
 
@@ -180,7 +180,7 @@ void TrySetjmp(void)
 
 // Address: 0x10000150 | Size: 24 bytes
 // TVect trampoline -> puRam101158cc (Mac OS Toolbox call)
-void FUN_10000150(void)
+void ThrowException(void)
 {
     /* TVect: indirect jump via puRam101158cc */
     return;
@@ -188,41 +188,41 @@ void FUN_10000150(void)
 
 // Address: 0x100008b8 | Size: 24 bytes
 // TVect trampoline -> puRam10115794 (Mac OS Toolbox call)
-void FUN_100008b8(void)
+void Render_PenNormal(void)
 {
-    /* TVect: indirect jump via puRam10115794 */
+    /* TVect: PenNormal - indirect jump via puRam10115794 */
     return;
 }
 
 // Address: 0x100008e8 | Size: 24 bytes
 // TVect trampoline -> puRam10115798 (Mac OS Toolbox call)
-void FUN_100008e8(void)
+void Render_DrawPixel(void)
 {
-    /* TVect: indirect jump via puRam10115798 */
+    /* TVect: DrawPixel - indirect jump via puRam10115798 */
     return;
 }
 
 // Address: 0x10001170 | Size: 24 bytes
 // TVect trampoline -> puRam101157cc (Mac OS Toolbox call)
-int FUN_10001170(void)
+int Render_GetMainDevice(void)
 {
-    /* TVect: indirect jump via puRam101157cc */
+    /* TVect: GetMainDevice - indirect jump via puRam101157cc */
     return 0;
 }
 
 // Address: 0x100012d8 | Size: 24 bytes
 // TVect trampoline -> puRam10115b7c (Mac OS Toolbox call)
-void FUN_100012d8(void)
+void Sound_BlockCopy(void)
 {
-    /* TVect: indirect jump via puRam10115b7c */
+    /* TVect: BlockCopy - indirect jump via puRam10115b7c */
     return;
 }
 
 // Address: 0x100016f8 | Size: 24 bytes
 // TVect trampoline -> puRam101156a4 (Mac OS Toolbox call)
-void FUN_100016f8(void)
+void Render_SetForeColor(void)
 {
-    /* TVect: indirect jump via puRam101156a4 */
+    /* TVect: SetForeColor - indirect jump via puRam101156a4 */
     return;
 }
 
@@ -236,7 +236,7 @@ int GetTickCount(void)
 
 // Address: 0x10001c20 | Size: 24 bytes
 // TVect trampoline -> FUN_10115ad0 (Mac OS Toolbox call)
-void FUN_10001c20(void)
+void GetHandleByteCount(void)
 {
     /* TVect: indirect jump via FUN_10115ad0 */
     return;
@@ -252,32 +252,32 @@ void ReleaseHandle_Sound(void)
 
 // Address: 0x10001d58 | Size: 24 bytes
 // TVect trampoline -> puRam10115628 (Mac OS Toolbox call)
-int FUN_10001d58(int *a, long long b, void *c, int d, int e, int f)
+int Render_NewGWorld(int *a, long long b, void *c, int d, int e, int f)
 {
-    /* TVect: indirect jump via puRam10115628 */
+    /* TVect: NewGWorld - indirect jump via puRam10115628 */
     return 0;
 }
 
 // Address: 0x10001d70 | Size: 24 bytes
 // TVect trampoline -> puRam1011562c (Mac OS Toolbox call)
-int FUN_10001d70(int a)
+int Render_ValidatePixMap(int a)
 {
-    /* TVect: indirect jump via puRam1011562c */
+    /* TVect: ValidatePixMap - indirect jump via puRam1011562c */
     return 0;
 }
 
 // Address: 0x10002c58 | Size: 24 bytes
 // TVect trampoline -> puRam101156d4 (Mac OS Toolbox call)
-void FUN_10002c58(int a)
+void Render_GetPixBaseAddr(int a)
 {
-    /* TVect: indirect jump via puRam101156d4 */
+    /* TVect: GetPixBaseAddr - indirect jump via puRam101156d4 */
     return;
 }
 
 // Address: 0x10003558 | Size: 24 bytes
 // TVect trampoline -> puRam10115838 (Mac OS Toolbox call)
-// On PPC this is the real Mac OS GetNamedResource; kept as FUN_ to avoid Toolbox name collision
-void FUN_10003558(void)
+// On PPC this is the real Mac OS GetResource; kept as TVect stub to avoid Toolbox name collision
+void GetResource_TVect(void)
 {
     /* TVect: indirect jump via puRam10115838 */
     return;
@@ -295,10 +295,10 @@ int AbsShort(long long param_1)
 
 // Address: 0x10003798 | Size: 24 bytes
 // TVect trampoline -> puRam101152d0 (Mac OS Toolbox call)
-void FUN_10003798(void)
+long Sound_TuneStopAlt(void)
 {
-    /* TVect: indirect jump via puRam101152d0 */
-    return;
+    /* TVect: TuneStop variant - indirect jump via puRam101152d0 */
+    return 0;
 }
 
 
@@ -312,7 +312,7 @@ void FUN_10003798(void)
 
 // Address: 0x1000848c | Size: 68 bytes
 // Wrapper that calls FUN_10082f24 with the global view pointer
-void FUN_1000848c(short param_1, short param_2)
+void CenterMapOnLocation(short param_1, short param_2)
 {
     FUN_10082f24((int)puRam101163ac, param_1, param_2);
     return;
@@ -320,7 +320,7 @@ void FUN_1000848c(short param_1, short param_2)
 
 // Address: 0x1000a094 | Size: 152 bytes
 // Releases a resource/sound object and notifies the system
-int FUN_1000a094(int param_1)
+int Render_DisposeGWorldDesc(int param_1)
 {
     int *piVar1;
 
@@ -338,7 +338,7 @@ int FUN_1000a094(int param_1)
 
 // Address: 0x1000c9c8 | Size: 308 bytes
 // Turn phase: begin turn for current player - sets up diplomacy, triggers events
-void FUN_1000c9c8(void)
+void PlayerSetup_Cmd1(void)
 {
     unsigned int uVar1;
     int iVar3;
@@ -366,7 +366,7 @@ void FUN_1000c9c8(void)
 
 // Address: 0x1000cafc | Size: 88 bytes
 // Turn phase: process fight results
-void FUN_1000cafc(void)
+void PlayerSetup_Cmd2(void)
 {
     AI_StrategicAssessment();
     AI_HeroManagementLoop();
@@ -377,7 +377,7 @@ void FUN_1000cafc(void)
 
 // Address: 0x1000cb54 | Size: 100 bytes
 // Turn phase: process vectoring (if enabled)
-void FUN_1000cb54(void)
+void PlayerSetup_Cmd3(void)
 {
     if (*(short *)(*piRam1011735c + 0x124) != 0) {
         AI_AssignCityDefenders();
@@ -389,7 +389,7 @@ void FUN_1000cb54(void)
 
 // Address: 0x1000cbb8 | Size: 80 bytes
 // Turn phase: process production/economy
-void FUN_1000cbb8(void)
+void PlayerSetup_Cmd4(void)
 {
     AI_PlanArmyMovements();
     UpdateProgressBar(0x19);
@@ -399,7 +399,7 @@ void FUN_1000cbb8(void)
 
 // Address: 0x1000cc08 | Size: 80 bytes
 // Turn phase: process diplomacy
-void FUN_1000cc08(void)
+void PlayerSetup_Cmd5(void)
 {
     AI_ExecuteAttackGroups();
     UpdateProgressBar(0x1e);
@@ -409,7 +409,7 @@ void FUN_1000cc08(void)
 
 // Address: 0x1000cc58 | Size: 80 bytes
 // Turn phase: process combat round
-void FUN_1000cc58(void)
+void PlayerSetup_Cmd6(void)
 {
     AI_SecondaryDefense();
     UpdateProgressBar(0x28);
@@ -419,7 +419,7 @@ void FUN_1000cc58(void)
 
 // Address: 0x1000cca8 | Size: 80 bytes
 // Turn phase: process random events
-void FUN_1000cca8(void)
+void PlayerSetup_Cmd7(void)
 {
     AI_GroupMovement();
     UpdateProgressBar(0x2d);
@@ -429,7 +429,7 @@ void FUN_1000cca8(void)
 
 // Address: 0x1000ccf8 | Size: 92 bytes
 // Turn phase: process scoring for current player
-void FUN_1000ccf8(void)
+void PlayerSetup_Cmd8(void)
 {
     AI_ProductionTurn(*(short *)(*piRam1011735c + 0x110));
     UpdateProgressBar(0x32);
@@ -439,7 +439,7 @@ void FUN_1000ccf8(void)
 
 // Address: 0x1000cd54 | Size: 80 bytes
 // Turn phase: process hero movement
-void FUN_1000cd54(void)
+void GameOption_Toggle1(void)
 {
     AI_AssignRemainingArmies();
     UpdateProgressBar(0x37);
@@ -449,7 +449,7 @@ void FUN_1000cd54(void)
 
 // Address: 0x1000cda4 | Size: 80 bytes
 // Turn phase: process alliance actions
-void FUN_1000cda4(void)
+void GameOption_Toggle2(void)
 {
     AI_ProcessArmyOrders();
     UpdateProgressBar(0x3c);
@@ -459,7 +459,7 @@ void FUN_1000cda4(void)
 
 // Address: 0x1000cdf4 | Size: 80 bytes
 // Turn phase: second combat round processing
-void FUN_1000cdf4(void)
+void GameOption_Toggle3(void)
 {
     AI_SecondaryDefense();
     UpdateProgressBar(0x41);
@@ -469,7 +469,7 @@ void FUN_1000cdf4(void)
 
 // Address: 0x1000ce44 | Size: 68 bytes
 // Turn phase: post-combat cleanup
-void FUN_1000ce44(void)
+void GameOption_Toggle4(void)
 {
     AI_Finalize();
     YieldToEventLoop();
@@ -478,7 +478,7 @@ void FUN_1000ce44(void)
 
 // Address: 0x1000ce88 | Size: 80 bytes
 // Turn phase: process vectoring movement (if enabled)
-void FUN_1000ce88(void)
+void GameOption_Toggle5(void)
 {
     if (*(short *)(*piRam1011735c + 0x124) != 0) {
         HeroSpecialActions();
@@ -488,7 +488,7 @@ void FUN_1000ce88(void)
 
 // Address: 0x1000ced8 | Size: 80 bytes
 // Turn phase: process siege
-void FUN_1000ced8(void)
+void GameOption_Toggle6(void)
 {
     EndOfTurnCleanup();
     UpdateProgressBar(0x46);
@@ -498,7 +498,7 @@ void FUN_1000ced8(void)
 
 // Address: 0x1000cf28 | Size: 80 bytes
 // Turn phase: process city defense
-void FUN_1000cf28(void)
+void GameOption_Toggle7(void)
 {
     AI_FinalPass();
     UpdateProgressBar(0x4b);
@@ -508,7 +508,7 @@ void FUN_1000cf28(void)
 
 // Address: 0x1000d2e8 | Size: 76 bytes
 // Turn phase: AI process turn (hero generation/dispatch)
-void FUN_1000d2e8(void)
+void GameOption_Toggle8(void)
 {
     AI_TryHireHero();
     UpdateProgressBar(0x50);
@@ -518,7 +518,7 @@ void FUN_1000d2e8(void)
 
 // Address: 0x1000d334 | Size: 80 bytes
 // Turn phase: process unit upkeep
-void FUN_1000d334(void)
+void GameOption_Toggle9(void)
 {
     AI_ResetUnusedUnits();
     UpdateProgressBar(0x55);
@@ -528,7 +528,7 @@ void FUN_1000d334(void)
 
 // Address: 0x1000d654 | Size: 76 bytes
 // Turn phase: process army movement/orders
-void FUN_1000d654(void)
+void GameOption_Toggle10(void)
 {
     FUN_1000d384();
     UpdateProgressBar(0x5a);
@@ -538,7 +538,7 @@ void FUN_1000d654(void)
 
 // Address: 0x1000d7bc | Size: 76 bytes
 // Turn phase: assign garrison armies to cities
-void FUN_1000d7bc(void)
+void GameOption_Toggle11(void)
 {
     FUN_1000d6a0();
     UpdateProgressBar(0x5f);
@@ -548,7 +548,8 @@ void FUN_1000d7bc(void)
 
 // Address: 0x1000d808 | Size: 264 bytes
 // Turn phase: end turn cleanup - resets state, clears movement, saves progress
-void FUN_1000d808(void)
+// Note: primary definition in economy/economy.c; this stub kept for reference
+static void StartOfTurnProcessing_Stub(void)
 {
     int bVar1;
     int iVar2;

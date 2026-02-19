@@ -74,11 +74,11 @@ extern int FUN_10116698;
  * ========================================================================= */
 
 /* MacApp framework constructors / helpers */
-extern void  FUN_100d568c(void *obj);       /* TBehavior ctor */
-extern void  FUN_100bf518(void *obj);       /* Simple object ctor (0x20B) */
-extern void  FUN_100c6b2c(void *obj);       /* Extended object ctor (0xBCB) */
-extern void  FUN_1010598c(void *obj);       /* View-based object ctor */
-extern void  FUN_100e1f44(void *obj);       /* Another base ctor (0xB8B) */
+extern void  ConstructBehavior(void *obj);       /* TBehavior ctor */
+extern void  ConstructSimpleObject(void *obj);       /* Simple object ctor (0x20B) */
+extern void  ConstructExtendedObject(void *obj);       /* Extended object ctor (0xBCB) */
+extern void  ConstructViewObject(void *obj);       /* View-based object ctor */
+extern void  ConstructBaseObject(void *obj);       /* Another base ctor (0xB8B) */
 extern void  FUN_100cda40(void *obj);       /* CDA object ctor */
 extern void  FUN_100cdbe4(void *obj);       /* CDB object ctor */
 extern void  FUN_100f6b8c(void *obj);       /* F6B object ctor */
@@ -90,15 +90,15 @@ extern int   FUN_100b0368(void *dst, int src); /* Pascal string copy/init */
 extern int   ResourceRead_Dispatch(int method_ptr, ...);
 
 /* MacApp handle/memory management */
-extern void  FUN_100db158(int hi, int lo);  /* Lock handle */
+extern void  LockHandleRange(int hi, int lo);  /* Lock handle */
 extern void  FocusObject(int param);       /* Unlock handle */
 extern int   AllocateBlock(int size);        /* Allocate heap block */
 
-/* Game functions called by FUN_10095330 */
+/* Game functions called by SearchRuinsTemples */
 extern void  FUN_1002bcd8(void);
 extern int   ProcessQuestEvent(int a, int b, int c, int d);
 
-/* Game functions called by FUN_100ae86c */
+/* Game functions called by HandleAIStrategy */
 extern int   TrySetjmp(void);
 extern void  FUN_100ae1a8(int param);
 extern void  FUN_100ae550(void);
@@ -123,162 +123,162 @@ extern char *TVect_OCECToRString;
  * These return a global variable (typically a vtable/class info pointer)
  * ========================================================================= */
 
-// Function: FUN_100809b8 at 100809b8
+// Function: InitCityPictureBehavior at 100809b8
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_100809b8(void)
+int InitCityPictureBehavior(void)
 {
     return uRam10116350;
 }
 
-// Function: FUN_10081e38 at 10081e38
+// Function: InitBetterDialogBehavior at 10081e38
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10081e38(void)
+int InitBetterDialogBehavior(void)
 {
     return uRam10116384;
 }
 
-// Function: FUN_10083d40 at 10083d40
+// Function: InitHeroInspectBehavior at 10083d40
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10083d40(void)
+int InitHeroInspectBehavior(void)
 {
     return uRam101163a8;
 }
 
-// Function: FUN_10086314 at 10086314
+// Function: InitFightResultBehavior2 at 10086314
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10086314(void)
+int InitFightResultBehavior2(void)
 {
     return uRam101163f4;
 }
 
-// Function: FUN_100863d8 at 100863d8
+// Function: InitSageDialogBehavior at 100863d8
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_100863d8(void)
+int InitSageDialogBehavior(void)
 {
     return uRam101163fc;
 }
 
-// Function: FUN_100866f8 at 100866f8
+// Function: InitFightResultBehavior1 at 100866f8
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_100866f8(void)
+int InitFightResultBehavior1(void)
 {
     return uRam10116404;
 }
 
-// Function: FUN_100869e0 at 100869e0
+// Function: InitArmyDraggerBehavior at 100869e0
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_100869e0(void)
+int InitArmyDraggerBehavior(void)
 {
     return uRam10116424;
 }
 
-// Function: FUN_10088560 at 10088560
+// Function: InitAboutBoxBehavior at 10088560
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10088560(void)
+int InitAboutBoxBehavior(void)
 {
     return uRam10116458;
 }
 
-// Function: FUN_1008a048 at 1008a048
+// Function: InitProductionBehavior at 1008a048
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1008a048(void)
+int InitProductionBehavior(void)
 {
     return uRam1011647c;
 }
 
-// Function: FUN_1008ad64 at 1008ad64
+// Function: InitDismissBehavior at 1008ad64
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1008ad64(void)
+int InitDismissBehavior(void)
 {
     return uRam10116494;
 }
 
-// Function: FUN_1008bec8 at 1008bec8
+// Function: InitBuildProdBehavior at 1008bec8
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1008bec8(void)
+int InitBuildProdBehavior(void)
 {
     return uRam101164a0;
 }
 
-// Function: FUN_1008d9cc at 1008d9cc
+// Function: InitStartOfTurnBehavior at 1008d9cc
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1008d9cc(void)
+int InitStartOfTurnBehavior(void)
 {
     return uRam101164c0;
 }
 
-// Function: FUN_1008dbac at 1008dbac
+// Function: InitHeroHireBehavior at 1008dbac
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1008dbac(void)
+int InitHeroHireBehavior(void)
 {
     return uRam101164cc;
 }
 
-// Function: FUN_1008dd68 at 1008dd68
+// Function: InitCompressedStreamBehavior at 1008dd68
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1008dd68(void)
+int InitCompressedStreamBehavior(void)
 {
     return uRam101164d4;
 }
 
-// Function: FUN_10090144 at 10090144
+// Function: InitReportDisplayBehavior at 10090144
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10090144(void)
+int InitReportDisplayBehavior(void)
 {
     return uRam10116568;
 }
 
-// Function: FUN_1009049c at 1009049c
+// Function: InitScenarioProcessBehavior at 1009049c
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1009049c(void)
+int InitScenarioProcessBehavior(void)
 {
     return uRam1011657c;
 }
 
-// Function: FUN_100908c0 at 100908c0
+// Function: InitOptionsListBehavior at 100908c0
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_100908c0(void)
+int InitOptionsListBehavior(void)
 {
     return uRam10116580;
 }
 
-// Function: FUN_10090b18 at 10090b18
+// Function: InitCharacterListBehavior at 10090b18
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10090b18(void)
+int InitCharacterListBehavior(void)
 {
     return uRam101165ac;
 }
 
-// Function: FUN_10090ec8 at 10090ec8
+// Function: InitExtendedObjectBehavior at 10090ec8
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10090ec8(void)
+int InitExtendedObjectBehavior(void)
 {
     return uRam101165bc;
 }
 
-// Function: FUN_10091090 at 10091090
+// Function: InitFinalBehavior at 10091090
 // Size: 8 bytes
 // Returns a function pointer stored at data address 0x101165c4
-int FUN_10091090(void)
+int InitFinalBehavior(void)
 {
     return FUN_101165c4;
 }
@@ -291,138 +291,138 @@ int FUN_10093b00(void)
     return gSoundActive;
 }
 
-// Function: FUN_10093f1c at 10093f1c
+// Function: InitSoundObjectBehavior at 10093f1c
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10093f1c(void)
+int InitSoundObjectBehavior(void)
 {
     return uRam1011660c;
 }
 
-// Function: FUN_10095c34 at 10095c34
+// Function: InitItemsDialogBehavior at 10095c34
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10095c34(void)
+int InitItemsDialogBehavior(void)
 {
     return uRam10116638;
 }
 
-// Function: FUN_10096188 at 10096188
+// Function: InitReportGridBehavior at 10096188
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10096188(void)
+int InitReportGridBehavior(void)
 {
     return uRam10116640;
 }
 
-// Function: FUN_100965d4 at 100965d4
+// Function: InitMenuShortcutsBehavior at 100965d4
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_100965d4(void)
+int InitMenuShortcutsBehavior(void)
 {
     return uRam10116658;
 }
 
-// Function: FUN_10096bbc at 10096bbc
+// Function: InitGameOptionsBehavior at 10096bbc
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10096bbc(void)
+int InitGameOptionsBehavior(void)
 {
     return uRam1011667c;
 }
 
-// Function: FUN_10096ce0 at 10096ce0
+// Function: InitScenarioListBehavior at 10096ce0
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10096ce0(void)
+int InitScenarioListBehavior(void)
 {
     return uRam1011668c;
 }
 
-// Function: FUN_10096fec at 10096fec
+// Function: InitCityDialogBehavior at 10096fec
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10096fec(void)
+int InitCityDialogBehavior(void)
 {
     return uRam10116690;
 }
 
-// Function: FUN_10097108 at 10097108
+// Function: InitStackDialogBehavior at 10097108
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10097108(void)
+int InitStackDialogBehavior(void)
 {
     return uRam10116694;
 }
 
-// Function: FUN_1009768c at 1009768c
+// Function: InitGameSetupBehavior at 1009768c
 // Size: 8 bytes
 // Returns a function pointer / data value stored at 0x10116698
-int FUN_1009768c(void)
+int InitGameSetupBehavior(void)
 {
     return FUN_10116698;
 }
 
-// Function: FUN_10097964 at 10097964
+// Function: InitSearchDialogBehavior at 10097964
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10097964(void)
+int InitSearchDialogBehavior(void)
 {
     return uRam101166d4;
 }
 
-// Function: FUN_10097a74 at 10097a74
+// Function: InitRandomMapBehavior at 10097a74
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10097a74(void)
+int InitRandomMapBehavior(void)
 {
     return uRam101166e4;
 }
 
-// Function: FUN_10097db0 at 10097db0
+// Function: InitSideSetupBehavior at 10097db0
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_10097db0(void)
+int InitSideSetupBehavior(void)
 {
     return uRam10116700;
 }
 
-// Function: FUN_1009d3fc at 1009d3fc
+// Function: InitScenarioSelectBehavior at 1009d3fc
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1009d3fc(void)
+int InitScenarioSelectBehavior(void)
 {
     return uRam1011674c;
 }
 
-// Function: FUN_1009db24 at 1009db24
+// Function: InitDiplomacyBehavior at 1009db24
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1009db24(void)
+int InitDiplomacyBehavior(void)
 {
     return uRam10116758;
 }
 
-// Function: FUN_1009ddb0 at 1009ddb0
+// Function: InitPeaceDialogBehavior at 1009ddb0
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1009ddb0(void)
+int InitPeaceDialogBehavior(void)
 {
     return uRam1011675c;
 }
 
-// Function: FUN_1009e680 at 1009e680
+// Function: InitHistoryDialogBehavior at 1009e680
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_1009e680(void)
+int InitHistoryDialogBehavior(void)
 {
     return uRam10116780;
 }
 
-// Function: FUN_100a18e8 at 100a18e8
+// Function: InitAIStrategyBehavior at 100a18e8
 // Size: 8 bytes
 // MacApp class descriptor accessor
-int FUN_100a18e8(void)
+int InitAIStrategyBehavior(void)
 {
     return uRam10116800;
 }
@@ -434,15 +434,15 @@ int FUN_100a18e8(void)
  * then set the vtable pointer and initialize fields.
  * ========================================================================= */
 
-// Function: FUN_10081e48 at 10081e48
+// Function: SetBetterDialogParam at 10081e48
 // Size: 192 bytes
 // MacApp view object constructor (0xC4 bytes, TView-based)
-int *FUN_10081e48(int *param_1)
+int *SetBetterDialogParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xc4),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = (int)TVECT_BASE[-0x546];
         param_1[0x20] = 0;
         *(char *)(param_1 + 0x21) = 0;
@@ -460,43 +460,43 @@ int *FUN_10081e48(int *param_1)
     return param_1;
 }
 
-// Function: FUN_10086324 at 10086324
+// Function: SetFightResult2Param at 10086324
 // Size: 104 bytes
 // MacApp extended object constructor (0xA8 bytes, extended base)
-int *FUN_10086324(int *param_1)
+int *SetFightResult2Param(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xa8),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *param_1 = (int)TVECT_BASE[-0x52a];
     }
     return param_1;
 }
 
-// Function: FUN_100863e8 at 100863e8
+// Function: SetSageDialogParam at 100863e8
 // Size: 104 bytes
-// MacApp object constructor (0xB8 bytes, base ctor FUN_100e1f44)
-int *FUN_100863e8(int *param_1)
+// MacApp object constructor (0xB8 bytes, base ctor ConstructBaseObject)
+int *SetSageDialogParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
-        FUN_100e1f44(param_1);
+        ConstructBaseObject(param_1);
         *param_1 = (int)TVECT_BASE[-0x528];
     }
     return param_1;
 }
 
-// Function: FUN_10086708 at 10086708
+// Function: SetFightResult1Param at 10086708
 // Size: 128 bytes
 // MacApp behavior object constructor (0x40 bytes, TBehavior-based)
-int *FUN_10086708(int *param_1)
+int *SetFightResult1Param(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -505,15 +505,15 @@ int *FUN_10086708(int *param_1)
     return param_1;
 }
 
-// Function: FUN_1008a058 at 1008a058
+// Function: SetProductionParam at 1008a058
 // Size: 128 bytes
 // MacApp behavior object constructor (0x40 bytes, TBehavior-based)
-int *FUN_1008a058(int *param_1)
+int *SetProductionParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -522,15 +522,15 @@ int *FUN_1008a058(int *param_1)
     return param_1;
 }
 
-// Function: FUN_1008ad74 at 1008ad74
+// Function: SetDismissParam at 1008ad74
 // Size: 128 bytes
 // MacApp behavior object constructor (0x44 bytes, TBehavior-based)
-int *FUN_1008ad74(int *param_1)
+int *SetDismissParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x44),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -539,15 +539,15 @@ int *FUN_1008ad74(int *param_1)
     return param_1;
 }
 
-// Function: FUN_1008bed8 at 1008bed8
+// Function: SetBuildProdParam at 1008bed8
 // Size: 132 bytes
 // MacApp behavior object constructor (0x5C bytes, TBehavior-based)
-int *FUN_1008bed8(int *param_1)
+int *SetBuildProdParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x5c),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -557,15 +557,15 @@ int *FUN_1008bed8(int *param_1)
     return param_1;
 }
 
-// Function: FUN_1008d9dc at 1008d9dc
+// Function: SetStartOfTurnParam at 1008d9dc
 // Size: 128 bytes
 // MacApp behavior object constructor (0x40 bytes, TBehavior-based)
-int *FUN_1008d9dc(int *param_1)
+int *SetStartOfTurnParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -574,24 +574,24 @@ int *FUN_1008d9dc(int *param_1)
     return param_1;
 }
 
-// Function: FUN_1008dbbc at 1008dbbc
+// Function: SetHeroHireParam at 1008dbbc
 // Size: 104 bytes
-// MacApp object constructor (0xB8 bytes, base ctor FUN_100e1f44)
-int *FUN_1008dbbc(int *param_1)
+// MacApp object constructor (0xB8 bytes, base ctor ConstructBaseObject)
+int *SetHeroHireParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
-        FUN_100e1f44(param_1);
+        ConstructBaseObject(param_1);
         *param_1 = (int)TVECT_BASE[-0x4f4];
     }
     return param_1;
 }
 
-// Function: FUN_10090b28 at 10090b28
+// Function: SetCharacterListParam at 10090b28
 // Size: 104 bytes
 // MacApp object constructor (0xB4 bytes, base ctor FUN_100cdbe4)
-int *FUN_10090b28(int *param_1)
+int *SetCharacterListParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb4),
@@ -602,10 +602,10 @@ int *FUN_10090b28(int *param_1)
     return param_1;
 }
 
-// Function: FUN_100910a0 at 100910a0
+// Function: SetFinalBehaviorParam at 100910a0
 // Size: 104 bytes
 // MacApp object constructor (0xC0 bytes, base ctor FUN_100f6b8c)
-int *FUN_100910a0(int *param_1)
+int *SetFinalBehaviorParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xc0),
@@ -616,15 +616,15 @@ int *FUN_100910a0(int *param_1)
     return param_1;
 }
 
-// Function: FUN_10093b10 at 10093b10
+// Function: SetSoundHandlerParam at 10093b10
 // Size: 132 bytes
 // MacApp simple object constructor (0x28 bytes)
-int *FUN_10093b10(int *param_1)
+int *SetSoundHandlerParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x28),
        param_1 != (int *)0x0)) {
-        FUN_100bf518(param_1);
+        ConstructSimpleObject(param_1);
         *param_1 = (int)TVECT_BASE[-0x4a6];
         *(char *)(param_1 + 8) = 0;
         *(char *)((int)param_1 + 0x21) = 0;
@@ -634,15 +634,15 @@ int *FUN_10093b10(int *param_1)
     return param_1;
 }
 
-// Function: FUN_100965e4 at 100965e4
+// Function: SetMenuShortcutsParam at 100965e4
 // Size: 128 bytes
 // MacApp behavior object constructor (0x40 bytes, TBehavior-based)
-int *FUN_100965e4(int *param_1)
+int *SetMenuShortcutsParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -651,24 +651,24 @@ int *FUN_100965e4(int *param_1)
     return param_1;
 }
 
-// Function: FUN_10096bcc at 10096bcc
+// Function: SetGameOptionsParam at 10096bcc
 // Size: 104 bytes
-// MacApp object constructor (0xB8 bytes, base ctor FUN_100e1f44)
-int *FUN_10096bcc(int *param_1)
+// MacApp object constructor (0xB8 bytes, base ctor ConstructBaseObject)
+int *SetGameOptionsParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb8),
        param_1 != (int *)0x0)) {
-        FUN_100e1f44(param_1);
+        ConstructBaseObject(param_1);
         *param_1 = (int)TVECT_BASE[-0x488];
     }
     return param_1;
 }
 
-// Function: FUN_1009769c at 1009769c
+// Function: SetGameSetupParam at 1009769c
 // Size: 176 bytes
 // MacApp CDA-based object constructor (0xBC bytes)
-int *FUN_1009769c(int *param_1)
+int *SetGameSetupParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xbc),
@@ -686,29 +686,29 @@ int *FUN_1009769c(int *param_1)
     return param_1;
 }
 
-// Function: FUN_10097974 at 10097974
+// Function: SetSearchDialogParam at 10097974
 // Size: 104 bytes
 // MacApp view object constructor (0xA0 bytes, TView-based)
-int *FUN_10097974(int *param_1)
+int *SetSearchDialogParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xa0),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = (int)TVECT_BASE[-0x472];
     }
     return param_1;
 }
 
-// Function: FUN_10097a84 at 10097a84
+// Function: SetRandomMapParam at 10097a84
 // Size: 128 bytes
 // MacApp behavior object constructor (0x40 bytes, TBehavior-based)
-int *FUN_10097a84(int *param_1)
+int *SetRandomMapParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -717,15 +717,15 @@ int *FUN_10097a84(int *param_1)
     return param_1;
 }
 
-// Function: FUN_1009ddc0 at 1009ddc0
+// Function: SetPeaceDialogParam at 1009ddc0
 // Size: 148 bytes
 // MacApp extended object constructor (0xBC bytes)
-int *FUN_1009ddc0(int *param_1)
+int *SetPeaceDialogParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xbc),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *(short *)(param_1 + 0x2a) = 0;
         *(short *)((int)param_1 + 0xaa) = 0;
         *(short *)(param_1 + 0x2b) = 0;
@@ -740,15 +740,15 @@ int *FUN_1009ddc0(int *param_1)
     return param_1;
 }
 
-// Function: FUN_1009e690 at 1009e690
+// Function: SetHistoryDialogParam at 1009e690
 // Size: 128 bytes
 // MacApp behavior object constructor (0x40 bytes, TBehavior-based)
-int *FUN_1009e690(int *param_1)
+int *SetHistoryDialogParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x40),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -757,15 +757,15 @@ int *FUN_1009e690(int *param_1)
     return param_1;
 }
 
-// Function: FUN_100a18f8 at 100a18f8
+// Function: SetAIStrategyParam at 100a18f8
 // Size: 128 bytes
 // MacApp behavior object constructor (0x48 bytes, TBehavior-based)
-int *FUN_100a18f8(int *param_1)
+int *SetAIStrategyParam(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x48),
        param_1 != (int *)0x0)) {
-        FUN_100d568c(param_1);
+        ConstructBehavior(param_1);
         param_1[0xd] = 0x20202020;
         param_1[0xe] = 0;
         param_1[0xf] = 0;
@@ -779,10 +779,10 @@ int *FUN_100a18f8(int *param_1)
  * Larger functions with real logic
  * ========================================================================= */
 
-// Function: FUN_1008455c at 1008455c
+// Function: Render_GetMinimapView at 1008455c
 // Size: 68 bytes
 // Walk linked list of views to find the last one, set screen GWorld pointer
-void FUN_1008455c(void)
+void Render_GetMinimapView(void)
 {
     int iVar1;
     int iVar2;
@@ -801,10 +801,10 @@ void FUN_1008455c(void)
     return;
 }
 
-// Function: FUN_10095330 at 10095330
+// Function: SearchRuinsTemples at 10095330
 // Size: 112 bytes
 // Check if current player has score > 0, if so invoke ProcessQuestEvent
-long long FUN_10095330(void)
+long long SearchRuinsTemples(void)
 {
     long long uVar2;
 
@@ -819,18 +819,18 @@ long long FUN_10095330(void)
     return uVar2;
 }
 
-// Function: FUN_100950a4 at 100950a4
+// Function: ShowScenarioSelect at 100950a4
 // FAILED to decompile - keeping as stub
-int FUN_100950a4(void)
+int ShowScenarioSelect(void)
 {
     /* Ghidra failed to decompile this function */
     return 0;
 }
 
-// Function: FUN_100ae86c at 100ae86c
+// Function: HandleAIStrategy at 100ae86c
 // Size: 656 bytes
 // Terrain movement cost editor dialog - opens dialog, saves/restores costs
-void FUN_100ae86c(void)
+void HandleAIStrategy(void)
 {
     int iVar5;
     int uVar4;
@@ -907,7 +907,7 @@ void FUN_100ae86c(void)
         }
         *piRam1011684c = 0;
         local_4 = auStack_12c;
-        FUN_100db158(uStack_2c, uStack_28);
+        LockHandleRange(uStack_2c, uStack_28);
     }
     return;
 }

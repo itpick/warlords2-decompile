@@ -105,13 +105,13 @@ void FUN_100f5274();
 int *FUN_100f4dc8(int *param_1);
 
 /* Forward declarations for functions defined later in this file */
-int *FUN_1010598c(int *param_1);
+int *ConstructViewObject(int *param_1);
 int *FUN_100f6b8c(int *param_1);
-int *FUN_100c6b2c(int *param_1);
+int *ConstructExtendedObject(int *param_1);
 int *FUN_100cdbe4(int *param_1);
 int *FUN_100cdc88(int *param_1);
 int *FUN_100d8824(int *param_1);
-int *FUN_100bf518(int *param_1);
+int *ConstructSimpleObject(int *param_1);
 int *FUN_100e1df4(int *param_1);
 int *FUN_100e1ea4(int *param_1);
 int  FUN_100eb910();
@@ -135,10 +135,10 @@ int  FUN_100b1058(int, int, int, int);
 void FUN_100afb5c(int, int, int);
 void BuildPascalString(char *param_1, char *param_2);
 void FUN_100b1d90(int param_1, int param_2);
-int  FUN_100b1c84(int param_1);
+int  ConvertToString(int param_1);
 int  GetBitMapPtr(int param_1);
 void FUN_100b06d4(int *param_1, short *param_2);
-void FUN_100b08d4(short *param_1, int *param_2);
+void GetScreenBounds(short *param_1, int *param_2);
 void FUN_100b2e74(void);
 void FUN_100b4c68(void);
 
@@ -178,7 +178,7 @@ int  FUN_100c2120(int param_1);
 int  TrySetjmp(char *param_1);
 int  FUN_100beb7c(int param_1);
 void FUN_100becb8(void);
-void FUN_100db158(long long, int);
+void LockHandleRange(long long, int);
 void FocusObject(void);
 void EndFocus(void);
 int  FUN_10001590(void);
@@ -201,7 +201,7 @@ void FUN_10001488(void);
 void FUN_100014a0(int);
 int  FUN_100014b8(void);
 void FUN_100014d0(long long, char *);
-void FUN_10000150(void);
+void ThrowException(void);
 int  FUN_100019f8(void);
 int  FUN_10000300(void);
 void DisposeGeneric(int);
@@ -240,7 +240,7 @@ void FUN_100ec5c8(int, int);
 void FUN_100eb91c(int *, int *, int, int, char);
 int  FUN_100eb8d0(int param_1);
 void FUN_100ebbe0(int *param_1);
-int  FUN_100ebf44(int *param_1);
+int  Sound_HasMoreItems(int *param_1);
 
 /* Window framework (FUN_1011xxxx) */
 void FUN_10116338(int param_1);
@@ -512,17 +512,17 @@ void FUN_100bed7c(int *param_1)
     }
     else {
         ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x90));
-        FUN_100db158(local_28, local_24);
+        LockHandleRange(local_28, local_24);
     }
     return;
 }
 
 
 /* =========================================================================
- *  FUN_100bf518 - TObject constructor (allocate 0x20 bytes, init fields)
+ *  ConstructSimpleObject - TObject constructor (allocate 0x20 bytes, init fields)
  *  Address: 0x100bf518, Size: 164 bytes
  * ========================================================================= */
-int *FUN_100bf518(int *param_1)
+int *ConstructSimpleObject(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x20),
@@ -581,17 +581,17 @@ int FUN_100c6b1c(void)
 
 
 /* =========================================================================
- *  FUN_100c6b2c - Extended object constructor (0xa8 bytes)
+ *  ConstructExtendedObject - Extended object constructor (0xa8 bytes)
  *  Address: 0x100c6b2c, Size: 184 bytes
  * ========================================================================= */
-int *FUN_100c6b2c(int *param_1)
+int *ConstructExtendedObject(int *param_1)
 {
     int *puVar4;
 
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xa8),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x20] = 1;
         *(char *)(param_1 + 0x21) = 0;
@@ -632,7 +632,7 @@ int *FUN_100cd924(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x88),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x20] = 0x20202020;
         param_1[0x21] = 0x20202020;
@@ -652,7 +652,7 @@ int FUN_100cd99c(void)
 
 
 /* =========================================================================
- *  FUN_100cd9a4 - Constructor: allocate 0xb4 bytes (uses FUN_100c6b2c)
+ *  FUN_100cd9a4 - Constructor: allocate 0xb4 bytes (uses ConstructExtendedObject)
  *  Address: 0x100cd9a4, Size: 148 bytes
  * ========================================================================= */
 int *FUN_100cd9a4(int *param_1)
@@ -660,7 +660,7 @@ int *FUN_100cd9a4(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb4),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x2b] = 0;
         *(short *)(param_1 + 0x2a) = (short)0xffff;
@@ -683,7 +683,7 @@ int FUN_100cda38(void)
 
 
 /* =========================================================================
- *  FUN_100cda40 - Constructor: allocate 0xb0 bytes (uses FUN_100c6b2c)
+ *  FUN_100cda40 - Constructor: allocate 0xb0 bytes (uses ConstructExtendedObject)
  *  Address: 0x100cda40, Size: 140 bytes
  * ========================================================================= */
 int *FUN_100cda40(int *param_1)
@@ -691,7 +691,7 @@ int *FUN_100cda40(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x2b] = 0;
         *(char *)((int)param_1 + 0xa9) = 1;
@@ -722,7 +722,7 @@ int *FUN_100cdad4(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x2b] = 0;
         *(short *)(param_1 + 0x2a) = (short)0xffff;
@@ -751,7 +751,7 @@ int *FUN_100cdb5c(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x2b] = 0;
         *(short *)(param_1 + 0x2a) = (short)0xffff;
@@ -780,7 +780,7 @@ int *FUN_100cdbe4(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb4),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x2b] = 0;
         *(short *)(param_1 + 0x2a) = (short)0xffff;
@@ -878,7 +878,7 @@ int *FUN_100cddf4(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb0),
        param_1 != (int *)0x0)) {
-        FUN_100c6b2c(param_1);
+        ConstructExtendedObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x2b] = 0;
         *(char *)(param_1 + 0x2a) = 1;
@@ -901,7 +901,7 @@ int FUN_100cde80(void)
 
 
 /* =========================================================================
- *  FUN_100cde88 - Constructor: allocate 0x84 bytes (uses FUN_1010598c)
+ *  FUN_100cde88 - Constructor: allocate 0x84 bytes (uses ConstructViewObject)
  *  Address: 0x100cde88, Size: 128 bytes
  * ========================================================================= */
 int *FUN_100cde88(int *param_1)
@@ -909,7 +909,7 @@ int *FUN_100cde88(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x84),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x20] = 0x20202020;
         *(char *)((int)param_1 + 0x46) = 1;
@@ -1024,15 +1024,15 @@ int *FUN_100d4ea4(int *param_1)
 
 
 /* =========================================================================
- *  FUN_100d568c - Constructor: TBehavior (allocate 0x34 bytes)
+ *  ConstructBehavior - Constructor: TBehavior (allocate 0x34 bytes)
  *  Address: 0x100d568c, Size: 140 bytes
  * ========================================================================= */
-int *FUN_100d568c(int *param_1)
+int *ConstructBehavior(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x34),
        param_1 != (int *)0x0)) {
-        FUN_100bf518(param_1);
+        ConstructSimpleObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         *(char *)(param_1 + 8) = 0;
         param_1[9] = 0x20202020;
@@ -1197,7 +1197,7 @@ int *FUN_100e1df4(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xa0),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         *(short *)(param_1 + 0x20) = 0;
         *(short *)((int)param_1 + 0x82) = 0;
@@ -1262,10 +1262,10 @@ int FUN_100e1f3c(void)
 
 
 /* =========================================================================
- *  FUN_100e1f44 - Constructor: allocate 0xb8 bytes (extends FUN_100e1ea4)
+ *  ConstructBaseObject - Constructor: allocate 0xb8 bytes (extends FUN_100e1ea4)
  *  Address: 0x100e1f44, Size: 104 bytes
  * ========================================================================= */
-int *FUN_100e1f44(int *param_1)
+int *ConstructBaseObject(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xb8),
@@ -1405,19 +1405,19 @@ void FUN_100ed524(void)
         (void)uVar4;
     }
     else {
-        FUN_10000150();
+        ThrowException();
     }
     return;
 }
 
 
 /* =========================================================================
- *  FUN_100ed61c - Delegate to FUN_10000150
+ *  FUN_100ed61c - Delegate to ThrowException
  *  Address: 0x100ed61c, Size: 36 bytes
  * ========================================================================= */
 void FUN_100ed61c(void)
 {
-    FUN_10000150();
+    ThrowException();
     return;
 }
 
@@ -1455,19 +1455,19 @@ void FUN_100ed954(char *param_1, int param_2)
     local_158 = param_2;
     local_154 = FUN_100c2120((int)param_1);
     if (local_154 == 0) {
-        FUN_100db158((long long)-0x8000, 0);
+        LockHandleRange((long long)-0x8000, 0);
     }
     ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x10) + (int)local_150);
     iVar1 = local_150[1];
-    iVar3 = FUN_100ebf44(local_150);
+    iVar3 = Sound_HasMoreItems(local_150);
     while ((iVar3 != 0 &&
            (piVar4 = (int *)ResourceRead_Dispatch(*piVar5 + (int)*(short *)(*(int *)*piVar5 + 0xe0), iVar1),
            *piVar4 != param_2))) {
         ResourceRead_Dispatch((int)*(short *)(local_150[0] + 0x18) + (int)local_150);
         iVar1 = local_150[1];
-        iVar3 = FUN_100ebf44(local_150);
+        iVar3 = Sound_HasMoreItems(local_150);
     }
-    iVar3 = FUN_100ebf44(local_150);
+    iVar3 = Sound_HasMoreItems(local_150);
     if (iVar3 == 0) {
         piVar5 = (int *)*piVar5;
         iVar1 = *piVar5;
@@ -1529,7 +1529,7 @@ void FUN_100edaf8(void)
     FUN_100ec5c8(0, 0);
     uVar10 = FUN_100ed918();
     /* Store uVar10 */
-    uVar8 = FUN_100b1c84(uRam10116a54);
+    uVar8 = ConvertToString(uRam10116a54);
     uVar9 = GetBitMapPtr(uRam10116da0);
     uVar11 = FUN_10001680(0, uVar9, uVar8, 0, 0, 0, 0, 0);
     *puRam10117808 = uVar11;
@@ -1542,7 +1542,7 @@ void FUN_100edaf8(void)
     local_766 = 4;
     FUN_100b06d4(puRam101170a8, &local_768);
     local_756 = 0x50;
-    FUN_100b08d4(&local_778, &local_750);
+    GetScreenBounds(&local_778, &local_750);
     local_760 = CONCAT22(0x50, local_756);
     local_75c = CONCAT22(local_778, local_776);
     *puRam10116f30 = local_760;
@@ -1559,7 +1559,7 @@ void FUN_100edaf8(void)
 
     /* Register MacApp behavior/view classes */
     FUN_1010597c();
-    FUN_1010598c(0);
+    ConstructViewObject(0);
     FUN_1010d6a8();
     FUN_1010d6b8(0);
     FUN_1010f044();
@@ -1709,7 +1709,7 @@ void FUN_100f12a8(void)
 
     iVar1 = FUN_100f1264();
     if (iVar1 != 0) {
-        FUN_100db158(-0x6c, 0);
+        LockHandleRange(-0x6c, 0);
     }
     return;
 }
@@ -1739,7 +1739,7 @@ void FUN_100f1430(short param_1)
     /* If error flag set, report */
     {
         /* Simplified: check a global flag */
-        /* FUN_100db158(-0x6c, 0); */
+        /* LockHandleRange(-0x6c, 0); */
     }
     iVar4 = FUN_10001590();
     sVar1 = *(short *)(iVar4 + 0x14);
@@ -1923,7 +1923,7 @@ int *FUN_100f6b8c(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xc0),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         *(char *)((int)param_1 + 0xa9) = 0;
         *(char *)(param_1 + 0x2a) = 0;
@@ -1973,7 +1973,7 @@ int *FUN_100fff20(int *param_1)
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0xd8),
        param_1 != (int *)0x0)) {
-        FUN_1010598c(param_1);
+        ConstructViewObject(param_1);
         *param_1 = 0; /* vtable pointer placeholder */
         param_1[0x20] = 0;
         param_1[0x21] = 0;
@@ -2014,10 +2014,10 @@ int *FUN_100fff20(int *param_1)
 
 
 /* =========================================================================
- *  FUN_1010598c - TView base constructor: allocate 0x80 bytes
+ *  ConstructViewObject - TView base constructor: allocate 0x80 bytes
  *  Address: 0x1010598c, Size: 340 bytes
  * ========================================================================= */
-int *FUN_1010598c(int *param_1)
+int *ConstructViewObject(int *param_1)
 {
     int *puVar4 = puRam10116bc0;
 

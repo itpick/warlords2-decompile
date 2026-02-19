@@ -17,7 +17,7 @@ void DrawFullMapView(void);
 void FUN_10007c50(void);
 int AbsShort(int);
 void FUN_10082430(int, short, short);
-void FUN_1000848c(short, short);
+void CenterMapOnLocation(short, short);
 void FUN_1003d734(void);
 void AdoptNeutralArmy(void);
 short FindPrimaryThreat(int);
@@ -126,7 +126,7 @@ void FUN_100219a8(int, int, int);
  * =================================================================== */
 
 /* addr=10000360 size=24  TVect trampoline -> puRam10115578 */
-int FUN_10000360() { return 0; }
+int GetHandleFlags() { return 0; }
 
 /* addr=10000378 size=24  TVect trampoline -> puRam10115adc */
 int FUN_10000378() { return 0; }
@@ -180,7 +180,7 @@ int FUN_10001b00() { return 0; }
 int FUN_10001b30() { return 0; }
 
 /* addr=10001b60 size=24  TVect trampoline -> puRam1011557c */
-int FUN_10001b60() { return 0; }
+int RestoreHandleFlags() { return 0; }
 
 /* addr=10001d28 size=24  TVect trampoline -> puRam10115358 */
 int FUN_10001d28() { return 0; }
@@ -930,7 +930,7 @@ void FUN_1003d4dc(void)
     } while (!bVar2);
 }
 
-/* FUN_1003dc28 and FUN_1003fe04 moved to reconstructed_2.c */
+/* FullDisplayRefresh and ToggleFogOfWar moved to reconstructed_2.c */
 
 /*
  * addr=1005f50c size=364

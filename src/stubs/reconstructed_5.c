@@ -10,7 +10,7 @@
 /* Forward declarations for called functions not in this file */
 int NewPtr_Thunk(int size);
 int StringLength(void);
-void FUN_100012d8(void);
+void Sound_BlockCopy(void);
 void FUN_100f12a8(void);
 void FUN_100d9034(int *param_1);
 void FUN_100d90e4(int, int, int, int);
@@ -26,7 +26,7 @@ void FUN_100eef18(void);
 int FUN_10000a98(int, int, int);
 int FUN_10001b30(int, int);
 void FUN_100ef5f0(int);
-void FUN_10001b60(int *, int);
+void RestoreHandleFlags(int *, int);
 void FUN_100d8c30(int, int, char *);
 void FUN_100009d8(char *, int, int);
 void FUN_100009f0(char *, char *, char *, int);
@@ -35,14 +35,14 @@ void FUN_10001d28(int, int);
 int FUN_10002b20(void);
 int FUN_10000678(void);
 void FUN_100b1e10(char *, int, int);
-void FUN_100b1c84(void);
+void ConvertToString(void);
 void FUN_100023b8(void);
 void FUN_100f4dc8(int *param_1);
 void FUN_100f5274(int);
 void FUN_100cd91c(void);
 void FUN_100cd924(int);
 void FUN_100c6b1c(void);
-void FUN_100c6b2c(int);
+void ConstructExtendedObject(int);
 void FUN_100d450c(void);
 void FUN_100d451c(int);
 void FUN_100d48f8(void);
@@ -79,13 +79,13 @@ void FUN_100e1df4(int);
 void FUN_100e1e9c(void);
 void FUN_100e1ea4(int);
 void FUN_100e1f3c(void);
-void FUN_100e1f44(int);
+void ConstructBaseObject(int);
 int FUN_100ed918(void);
 void FUN_100ea428(int *);
 void FUN_100ea4b8(void);
 void FUN_100d8824(int *);
 void FUN_100d88b4(int, int, int);
-int FUN_100ebf44(int);
+int Sound_HasMoreItems(int);
 void FUN_100ebaf8(int *, int, int);
 int FUN_100eb910(int);
 void FUN_100ebc68(int *, int);
@@ -111,10 +111,10 @@ int FUN_100efa80(int);
 void FUN_100028c8(int);
 int FUN_100b22b0(int, short *);
 void RGBForeColor_Thunk(short *);
-void FUN_100008b8(void);
+void Render_PenNormal(void);
 void FUN_10000708(int);
 void SetForeColor_Thunk(void);
-void FUN_100ef8c8(void);
+void Render_GetPenState(void);
 void FUN_100026d0(int);
 void FUN_10002d48(int);
 void FUN_10002eb0(int);
@@ -124,7 +124,7 @@ void FUN_10115ad0(int, int);
 void DisposePtr_Thunk(int);
 int FUN_10001338(int);
 void FUN_100ef284(int, char *);
-char FUN_100ef9b8(int *);
+char Sound_DetachResourceAlt(int *);
 int FUN_100ef6e4(char *);
 int FUN_100f0334(int, int, int);
 void EnableMenuItem(int, char);
@@ -165,17 +165,17 @@ char * BuildPascalString(char *param_1, int param_2)
             uVar2 = (char)*piVar1;
         }
         *param_1 = uVar2;
-        FUN_100012d8(/* param_2, param_1 + 1 */);
+        Sound_BlockCopy(/* param_2, param_1 + 1 */);
     }
     return param_1;
 }
 
 
 /* =====================================================================
- * FUN_100bd55c - Document initialization / attach doc to app
+ * AttachDocumentToApp - Document initialization / attach doc to app
  * Original: 100bd55c, 188 bytes
  * ===================================================================== */
-void FUN_100bd55c(int *param_1)
+void AttachDocumentToApp(int *param_1)
 {
     FUN_100f12a8();
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x4b0));
@@ -211,10 +211,10 @@ void InitCommand(int param_1, int param_2, int param_3,
 
 
 /* =====================================================================
- * FUN_100cdf9c - Framework initialization (registers UI classes)
+ * InitMenuBarSystem - Framework initialization (registers UI classes)
  * Original: 100cdf9c, 1324 bytes
  * ===================================================================== */
-void FUN_100cdf9c(void)
+void InitMenuBarSystem(void)
 {
     char *pcVar1;
     char auStack_f40[256];
@@ -240,7 +240,7 @@ void FUN_100cdf9c(void)
             FUN_100cd924(0);
         }
         /* Register 14 component types via init/setup pairs */
-        FUN_100c6b1c(); FUN_100c6b2c(0);
+        FUN_100c6b1c(); ConstructExtendedObject(0);
         FUN_100d450c(); FUN_100d451c(0);
         FUN_100d48f8(); FUN_100d4908(0);
         FUN_100d4e94(); FUN_100d4ea4(0);
@@ -301,10 +301,10 @@ void FUN_100cdf9c(void)
 
 
 /* =====================================================================
- * FUN_100d6c90 - TDocument::DoMenuCommand (super)
+ * SuperDoMenuCommand - TDocument::DoMenuCommand (super)
  * Original: 100d6c90, 96 bytes
  * ===================================================================== */
-void FUN_100d6c90(int param_1, int param_2)
+void SuperDoMenuCommand(int param_1, int param_2)
 {
     if ((unsigned int)(param_2 - 0x1e) < 5) {
         return;
@@ -315,10 +315,10 @@ void FUN_100d6c90(int param_1, int param_2)
 
 
 /* =====================================================================
- * FUN_100d6dd0 - TDocument::DoSetupMenus (super)
+ * SuperDoSetupMenus - TDocument::DoSetupMenus (super)
  * Original: 100d6dd0, 148 bytes
  * ===================================================================== */
-void FUN_100d6dd0(int *param_1)
+void SuperDoSetupMenus(int *param_1)
 {
     int iVar1;
 
@@ -335,10 +335,10 @@ void FUN_100d6dd0(int *param_1)
 
 
 /* =====================================================================
- * FUN_100d8c9c - Post command / Show alert dialog
+ * PostMenuCommand - Post command / Show alert dialog
  * Original: 100d8c9c, 416 bytes
  * ===================================================================== */
-int FUN_100d8c9c(short param_1, int param_2)
+int PostMenuCommand(short param_1, int param_2)
 {
     int uVar2;
     int uVar3;
@@ -366,7 +366,7 @@ int FUN_100d8c9c(short param_1, int param_2)
             uVar3 = 2;
         }
         else {
-            uVar4 = FUN_100ef9b8((int *)puVar6);
+            uVar4 = Sound_DetachResourceAlt((int *)puVar6);
             FUN_100eef18();
             if (param_2 == 0) {
                 puVar8 = (int *)(local_3c + -0xeb4);
@@ -377,7 +377,7 @@ int FUN_100d8c9c(short param_1, int param_2)
             uVar5 = FUN_10000a98(*puVar8, 0xfd0, 1);
             uVar3 = FUN_10001b30(param_1, uVar5);
             FUN_100ef5f0(uVar5);
-            FUN_10001b60((int *)puVar6, uVar4);
+            RestoreHandleFlags((int *)puVar6, uVar4);
             FUN_100efc78(uVar2);
         }
     }
@@ -386,21 +386,21 @@ int FUN_100d8c9c(short param_1, int param_2)
 
 
 /* =====================================================================
- * FUN_100d8e3c - Show error alert (simple wrapper)
+ * ShowErrorAlert - Show error alert (simple wrapper)
  * Original: 100d8e3c, 44 bytes
  * ===================================================================== */
-void FUN_100d8e3c(short param_1)
+void ShowErrorAlert(short param_1)
 {
-    FUN_100d8c9c(param_1, 0);
+    PostMenuCommand(param_1, 0);
     return;
 }
 
 
 /* =====================================================================
- * FUN_100d8e68 - Show error with detail message
+ * ShowErrorWithDetail - Show error with detail message
  * Original: 100d8e68, 324 bytes
  * ===================================================================== */
-void FUN_100d8e68(short param_1, int param_2)
+void ShowErrorWithDetail(short param_1, int param_2)
 {
     int iVar1;
     int uVar2;
@@ -426,7 +426,7 @@ void FUN_100d8e68(short param_1, int param_2)
         }
         FUN_100d8c30(param_1, 0x81, local_328);
         FUN_100009f0(local_228, local_328, local_120, *(int *)(iVar1 + -0xe2c));
-        FUN_100d8e3c(0x82);
+        ShowErrorAlert(0x82);
         FUN_10000a08();
         return;
     }
@@ -435,10 +435,10 @@ void FUN_100d8e68(short param_1, int param_2)
 
 
 /* =====================================================================
- * FUN_100db158 - Event dispatch / notification posting
+ * LockHandleRange - Event dispatch / notification posting
  * Original: 100db158, 148 bytes
  * ===================================================================== */
-void FUN_100db158(short param_1, int param_2)
+void LockHandleRange(short param_1, int param_2)
 {
     int *piVar1;
     int iVar2;
@@ -446,7 +446,7 @@ void FUN_100db158(short param_1, int param_2)
     piVar1 = (int *)gDataPtr_10117370;
     iVar2 = *(int *)gDataPtr_10117370;
     if (iVar2 == 0) {
-        FUN_10000150();
+        ThrowException();
     }
     else {
         do {
@@ -473,7 +473,7 @@ void FUN_100db158(short param_1, int param_2)
 void FocusObject(int param_1)
 {
     if (param_1 == 0) {
-        FUN_100db158(0xff94, 0);
+        LockHandleRange(0xff94, 0);
     }
     return;
 }
@@ -486,7 +486,7 @@ void FocusObject(int param_1)
 void EndFocus(short param_1)
 {
     if (param_1 != 0) {
-        FUN_100db158(param_1, 0);
+        LockHandleRange(param_1, 0);
     }
     return;
 }
@@ -502,7 +502,7 @@ void MarkChanged(void)
 
     uVar1 = FUN_10000678();
     if (uVar1 != 0) {
-        FUN_100db158(uVar1, 0);
+        LockHandleRange(uVar1, 0);
     }
     return;
 }
@@ -558,10 +558,10 @@ void WriteResourceData(int param_1, int param_2, int param_3,
 
 
 /* =====================================================================
- * FUN_100ddfa8 - TFileBasedDoc::IFileBasedDoc (file-based doc init)
+ * SuperDoRead - TFileBasedDoc::IFileBasedDoc (file-based doc init)
  * Original: 100ddfa8, 136 bytes
  * ===================================================================== */
-void FUN_100ddfa8(int *param_1, int param_2, char param_3)
+void SuperDoRead(int *param_1, int param_2, char param_3)
 {
     if (*(char *)(param_1 + 0x4b) != '\0') {
         ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x370) + (int)param_1, param_2, (int)param_3);
@@ -574,10 +574,10 @@ void FUN_100ddfa8(int *param_1, int param_2, char param_3)
 
 
 /* =====================================================================
- * FUN_100de320 - TFileBasedDoc::DoWrite (super call)
+ * SuperDoWrite - TFileBasedDoc::DoWrite (super call)
  * Original: 100de320, 180 bytes
  * ===================================================================== */
-void FUN_100de320(int *param_1, int param_2, char param_3)
+void SuperDoWrite(int *param_1, int param_2, char param_3)
 {
     ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x388), param_2, (int)param_3);
     if ((*(char *)(param_1 + 0x4b) != '\0') && (param_1[0x4c] != 0)) {
@@ -591,10 +591,10 @@ void FUN_100de320(int *param_1, int param_2, char param_3)
 
 
 /* =====================================================================
- * FUN_100e0ea8 - Framework setup 5 (register window class)
+ * InitWindowManager - Framework setup 5 (register window class)
  * Original: 100e0ea8, 148 bytes
  * ===================================================================== */
-void FUN_100e0ea8(void)
+void InitWindowManager(void)
 {
     char *pcVar1;
     char auStack_108[264];
@@ -614,10 +614,10 @@ void FUN_100e0ea8(void)
 
 
 /* =====================================================================
- * FUN_100e1fac - Framework setup 4 (register grid/text classes)
+ * InitDocumentSystem - Framework setup 4 (register grid/text classes)
  * Original: 100e1fac, 368 bytes
  * ===================================================================== */
-void FUN_100e1fac(void)
+void InitDocumentSystem(void)
 {
     int uVar2;
     char auStack_310[256];
@@ -631,7 +631,7 @@ void FUN_100e1fac(void)
     FUN_100e1e9c();
     FUN_100e1ea4(0);
     FUN_100e1f3c();
-    FUN_100e1f44(0);
+    ConstructBaseObject(0);
 
     BuildPascalString(auStack_110, 0x8c);
     FUN_100ed954(auStack_110, 0x67726964);  /* 'grid' */
@@ -654,7 +654,7 @@ void FUN_100e1fac(void)
  * FUN_100eab4c - MacApp TStdPrintHandler constructor
  * Original: 100eab4c, 104 bytes
  * ===================================================================== */
-int * FUN_100eab4c(int *param_1)
+int * Sound_NewCollection(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x20),
@@ -666,10 +666,10 @@ int * FUN_100eab4c(int *param_1)
 
 
 /* =====================================================================
- * FUN_100eabdc - Destructor wrapper
+ * FUN_100eabdc - Destructor wrapper -> Sound_InitCollection
  * Original: 100eabdc, 36 bytes
  * ===================================================================== */
-void FUN_100eabdc(void)
+void Sound_InitCollection(void)
 {
     FUN_100ea4b8();
     return;
@@ -677,10 +677,10 @@ void FUN_100eabdc(void)
 
 
 /* =====================================================================
- * FUN_100ead08 - MacApp TDialogBehavior constructor
+ * FUN_100ead08 - MacApp TDialogBehavior constructor -> Render_NewGWorldManager
  * Original: 100ead08, 104 bytes
  * ===================================================================== */
-int * FUN_100ead08(int *param_1)
+int * Render_NewGWorldManager(int *param_1)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)NewPtr_Thunk(0x20),
@@ -692,10 +692,10 @@ int * FUN_100ead08(int *param_1)
 
 
 /* =====================================================================
- * FUN_100ead98 - Dialog init helper
+ * FUN_100ead98 - Dialog init helper -> Render_InitGWorldManager
  * Original: 100ead98, 44 bytes
  * ===================================================================== */
-void FUN_100ead98(int param_1)
+void Render_InitGWorldManager(int param_1)
 {
     FUN_100d88b4(param_1, 0, 4);
     return;
@@ -706,7 +706,7 @@ void FUN_100ead98(int param_1)
  * FUN_100ebf44 - Iterator check (has next)
  * Original: 100ebf44, 20 bytes
  * ===================================================================== */
-int FUN_100ebf44(int param_1)
+int Sound_HasMoreItems(int param_1)
 {
     return *(int *)(param_1 + 4) != 0;
 }
@@ -716,7 +716,7 @@ int FUN_100ebf44(int param_1)
  * FUN_100ec170 - MacApp collection constructor variant 1
  * Original: 100ec170, 120 bytes
  * ===================================================================== */
-int * FUN_100ec170(int *param_1, int param_2, char param_3)
+int * Sound_InitCollectionIter(int *param_1, int param_2, char param_3)
 {
     if ((param_1 != (int *)0x0) ||
        (param_1 = (int *)FUN_100eb910(0x134),
@@ -731,7 +731,7 @@ int * FUN_100ec170(int *param_1, int param_2, char param_3)
  * FUN_100ec1e8 - Collection destructor variant 1
  * Original: 100ec1e8, 108 bytes
  * ===================================================================== */
-void FUN_100ec1e8(int *param_1, int param_2)
+void Sound_DisposeCollectionIter(int *param_1, int param_2)
 {
     if (param_1 != (int *)0x0) {
         FUN_100ebc68(param_1, 0);
@@ -747,7 +747,7 @@ void FUN_100ec1e8(int *param_1, int param_2)
  * FUN_100ec2c4 - Collection iteration (first+next+check)
  * Original: 100ec2c4, 136 bytes
  * ===================================================================== */
-int FUN_100ec2c4(int *param_1)
+int Sound_GetFirstItem(int *param_1)
 {
     int iVar2;
     int uVar1;
@@ -768,7 +768,7 @@ int FUN_100ec2c4(int *param_1)
  * FUN_100ec34c - Collection iteration variant (last+prev)
  * Original: 100ec34c, 136 bytes
  * ===================================================================== */
-int FUN_100ec34c(int *param_1)
+int Sound_GetNextItem(int *param_1)
 {
     int iVar2;
     int uVar1;
@@ -786,10 +786,10 @@ int FUN_100ec34c(int *param_1)
 
 
 /* =====================================================================
- * FUN_100ed640 - Framework init: ensure heap size
+ * InitFrameworkGlobals - Framework init: ensure heap size
  * Original: 100ed640, 152 bytes
  * ===================================================================== */
-void FUN_100ed640(void)
+void InitFrameworkGlobals(void)
 {
     int uVar1;
     int local_10;
@@ -816,10 +816,10 @@ void FUN_100ed640(void)
 
 
 /* =====================================================================
- * FUN_100ed6d8 - Framework init: validate config
+ * CreateFrameworkContext - Framework init: validate config
  * Original: 100ed6d8, 472 bytes
  * ===================================================================== */
-int FUN_100ed6d8(int param_1)
+int CreateFrameworkContext(int param_1)
 {
     unsigned short uVar1;
     int uVar2;
@@ -864,30 +864,30 @@ int FUN_100ed6d8(int param_1)
 
 
 /* =====================================================================
- * FUN_100ed8b0 - Framework init: final validation & startup
+ * FinalizeFrameworkInit - Framework init: final validation & startup
  * Original: 100ed8b0, 104 bytes
  * ===================================================================== */
-void FUN_100ed8b0(void)
+void FinalizeFrameworkInit(void)
 {
     int iVar2;
 
     if (*pcRam1011709c == '\0') {
-        FUN_100ed640();
+        InitFrameworkGlobals();
     }
-    iVar2 = FUN_100ed6d8(0);
+    iVar2 = CreateFrameworkContext(0);
     if (iVar2 == 0) {
-        FUN_100d8e3c(0x89);
-        FUN_10000150();
+        ShowErrorAlert(0x89);
+        ThrowException();
     }
     return;
 }
 
 
 /* =====================================================================
- * FUN_100ee070 - Framework setup: init display
+ * SetupFrameworkParams - Framework setup: init display
  * Original: 100ee070, 48 bytes
  * ===================================================================== */
-void FUN_100ee070(short param_1)
+void SetupFrameworkParams(short param_1)
 {
     FUN_100f1430(param_1);
     FUN_100edaf8();
@@ -912,7 +912,7 @@ int FreeBlock(int param_1)
  * FUN_100ef824 - Cleanup: flush and finalize
  * Original: 100ef824, 52 bytes
  * ===================================================================== */
-void FUN_100ef824(void)
+void Render_GetFontState(void)
 {
     FUN_100b2264();
     FUN_10003930();
@@ -924,7 +924,7 @@ void FUN_100ef824(void)
  * FUN_100ef8c8 - Cleanup: flush and dispose
  * Original: 100ef8c8, 52 bytes
  * ===================================================================== */
-void FUN_100ef8c8(void)
+void Render_GetPenState(void)
 {
     FUN_100b2264();
     FUN_10001ad0();
@@ -936,7 +936,7 @@ void FUN_100ef8c8(void)
  * FUN_100ef9b8 - Get handle flags / lock state
  * Original: 100ef9b8, 132 bytes
  * ===================================================================== */
-char FUN_100ef9b8(int *param_1)
+char Sound_DetachResourceAlt(int *param_1)
 {
     char uVar1;
 
@@ -948,7 +948,7 @@ char FUN_100ef9b8(int *param_1)
             uVar1 = (char)(*param_1 >> 3);
         }
         else {
-            uVar1 = FUN_10000360((int)param_1);
+            uVar1 = GetHandleFlags((int)param_1);
         }
         FUN_10000378((int)param_1);
     }
@@ -960,7 +960,7 @@ char FUN_100ef9b8(int *param_1)
  * FUN_100f03e8 - Color picker / RGBForeColor handler
  * Original: 100f03e8, 224 bytes
  * ===================================================================== */
-void FUN_100f03e8(unsigned short *param_1)
+void Render_SetFontState(unsigned short *param_1)
 {
     int iVar1;
     int iVar2;
@@ -988,7 +988,7 @@ void FUN_100f03e8(unsigned short *param_1)
         iVar2 = FUN_100b22b0((int)(*(unsigned int *)(iVar2 + 0xca)) + 0x2a, (short *)param_1);
         if (iVar2 != 0) {
             RGBForeColor_Thunk((short *)param_1);
-            FUN_100008b8();
+            Render_PenNormal();
         }
     }
     return;
@@ -996,10 +996,10 @@ void FUN_100f03e8(unsigned short *param_1)
 
 
 /* =====================================================================
- * FUN_100f0538 - List iteration / set foreground color
+ * IterateListItems - List iteration / set foreground color
  * Original: 100f0538, 224 bytes
  * ===================================================================== */
-void FUN_100f0538(unsigned short *param_1)
+void IterateListItems(unsigned short *param_1)
 {
     int iVar1;
     int iVar2;
@@ -1038,7 +1038,7 @@ void FUN_100f0538(unsigned short *param_1)
  * FUN_100f0688 - Get font info from current style
  * Original: 100f0688, 84 bytes
  * ===================================================================== */
-void FUN_100f0688(short *param_1)
+void Render_SaveClipRegion(short *param_1)
 {
     int iVar1;
 
@@ -1046,7 +1046,7 @@ void FUN_100f0688(short *param_1)
     *param_1 = *(short *)(*(int *)(iRam101177f0 + 0xca) + 0x44);
     *(char *)(param_1 + 1) = *(char *)(*(int *)(iVar1 + 0xca) + 0x46);
     param_1[2] = *(short *)(*(int *)(iVar1 + 0xca) + 0x4a);
-    FUN_100ef8c8();
+    Render_GetPenState();
     return;
 }
 
@@ -1055,7 +1055,7 @@ void FUN_100f0688(short *param_1)
  * FUN_100f0788 - Apply font style from params
  * Original: 100f0788, 180 bytes
  * ===================================================================== */
-void FUN_100f0788(short *param_1)
+void Render_RestoreClipRegion(short *param_1)
 {
     int iVar1;
     short local_18;
@@ -1075,7 +1075,7 @@ void FUN_100f0788(short *param_1)
     local_18 = param_1[3];
     local_16 = param_1[4];
     local_14 = param_1[5];
-    FUN_100f0538((unsigned short *)&local_18);
+    IterateListItems((unsigned short *)&local_18);
     return;
 }
 
@@ -1146,10 +1146,10 @@ int DisposeObject(int *param_1)
 
 
 /* =====================================================================
- * FUN_1010003c - Framework setup 2 (register view class)
+ * InitFrameworkSubsystems - Framework setup 2 (register view class)
  * Original: 1010003c, 168 bytes
  * ===================================================================== */
-void FUN_1010003c(void)
+void InitFrameworkSubsystems(void)
 {
     int uVar2;
     int local_12c;

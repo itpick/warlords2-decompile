@@ -44,81 +44,81 @@ extern void InitCommand(void *cmd, int cmdID,           /* TCommand::ICommand */
                           void *target, int a, int b, void *doc);
 extern void *NewPtr_Thunk(int size);                      /* NewObject / malloc */
 extern void  DisposeObject(void *ptr);                     /* DisposeObject / free */
-extern void  FUN_100d568c(void *obj);                     /* TBehavior ctor */
-extern void  FUN_100bf518(void *obj);                     /* Simple object ctor (0x20B) */
-extern void  FUN_100c6b2c(void *obj);                     /* Extended object ctor (0xBCB) */
-extern void  FUN_1010598c(void *obj);                     /* View-based object ctor */
-extern void  FUN_100e1f44(void *obj);                     /* Another base ctor (0xB8B) */
-extern void  FUN_10084ef0(void *obj);                     /* Dialog behavior ctor (0x90B) */
-extern void  FUN_10073310(void *obj);                     /* Document helper ctor */
+extern void  ConstructBehavior(void *obj);                 /* TBehavior ctor */
+extern void  ConstructSimpleObject(void *obj);             /* Simple object ctor (0x20B) */
+extern void  ConstructExtendedObject(void *obj);           /* Extended object ctor (0xBCB) */
+extern void  ConstructViewObject(void *obj);               /* View-based object ctor */
+extern void  ConstructBaseObject(void *obj);               /* Another base ctor (0xB8B) */
+extern void  ConstructDialogBehavior(void *obj);           /* Dialog behavior ctor (0x90B) */
+extern void  ConstructDocumentHelper(void *obj);           /* Document helper ctor */
 
 /* MacApp handle/memory management */
-extern void  FUN_100db158(int hi, int lo);                /* Lock handle */
+extern void  LockHandleRange(int hi, int lo);              /* Lock handle */
 extern void  FocusObject(void);                          /* Unlock handle */
 extern void  EndFocus(void);                          /* Get handle state */
 extern void  MarkChanged(void);                          /* Set handle state */
 extern void *NewResourceHandle(int mode);                      /* New resource handle */
 extern void  WriteResourceData(void *h, unsigned long type,    /* Write resource */
                            int a, int b, int c, int d, int e);
-extern void  FUN_100bd55c(void *doc);                     /* Attach doc to app */
+extern void  AttachDocumentToApp(void *doc);               /* Attach doc to app */
 
 /* MacApp TFileBasedDocument superclass methods */
-extern void  FUN_100ddfa8(int doc, void *fileSpec, char isNew); /* TFileBasedDoc::IFileBasedDoc */
-extern void  FUN_100de320(int doc, void *fileSpec, char isNew); /* TFileBasedDoc::DoWrite super */
-extern void  FUN_100d6c90(void *self, int cmd);                 /* TDocument::DoMenuCommand super */
-extern void  FUN_100d6dd0(int doc);                             /* TDocument::DoSetupMenus super */
+extern void  SuperDoRead(int doc, void *fileSpec, char isNew);       /* TFileBasedDoc::IFileBasedDoc */
+extern void  SuperDoWrite(int doc, void *fileSpec, char isNew);      /* TFileBasedDoc::DoWrite super */
+extern void  SuperDoMenuCommand(void *self, int cmd);                /* TDocument::DoMenuCommand super */
+extern void  SuperDoSetupMenus(int doc);                             /* TDocument::DoSetupMenus super */
 
 /* MacApp resource/stream functions */
-extern void  FUN_100981f8(void *buf, int flags);          /* Open resource stream */
-extern void *FUN_10098320(void *buf, unsigned long type,  /* Find resource by type+ID */
+extern void  OpenResourceStream(void *buf, int flags);     /* Open resource stream */
+extern void *FindResourceByType(void *buf, unsigned long type,  /* Find resource by type+ID */
                            short resID);
-extern void  FUN_100982e8(void *buf);                     /* Close resource stream */
+extern void  CloseResourceStream(void *buf);               /* Close resource stream */
 
 /* MacApp utility functions */
 extern int   AllocateBlock(int size);                      /* Allocate heap block */
 extern void *AllocateHandle(int count);                     /* Allocate small block */
 extern void  BuildPascalString(void *dst, int src);            /* Pascal string copy */
-extern int   FUN_100b1c84(int val);                       /* String conversion */
-extern void  FUN_100ed640(void);                          /* Framework init 1 */
-extern int   FUN_100ed6d8(void *param);                   /* Framework init 2 */
-extern void  FUN_100ed8b0(void);                          /* Framework init 3 */
-extern void  FUN_100ee070(int param);                     /* Framework setup */
-extern void  FUN_1010003c(void);                          /* Framework setup 2 */
-extern void  FUN_100cdf9c(void);                          /* Framework setup 3 */
-extern void  FUN_100e1fac(void);                          /* Framework setup 4 */
-extern void  FUN_100e0ea8(void);                          /* Framework setup 5 */
-extern void  FUN_100e8cdc(void);                          /* Framework setup 6 */
-extern void  FUN_100e8cec(int param);                     /* Framework setup 7 */
-extern void  FUN_100d8e3c(int errCode);                   /* Show error alert */
-extern void  FUN_100d8e68(short code, int detail);        /* Show error with detail */
-extern void  FUN_100d8c9c(int cmd, int param);            /* Post command */
+extern int   ConvertToString(int val);                     /* String conversion */
+extern void  InitFrameworkGlobals(void);                   /* Framework init 1 */
+extern int   CreateFrameworkContext(void *param);           /* Framework init 2 */
+extern void  FinalizeFrameworkInit(void);                   /* Framework init 3 */
+extern void  SetupFrameworkParams(int param);               /* Framework setup */
+extern void  InitFrameworkSubsystems(void);                /* Framework setup 2 */
+extern void  InitMenuBarSystem(void);                      /* Framework setup 3 */
+extern void  InitDocumentSystem(void);                     /* Framework setup 4 */
+extern void  InitWindowManager(void);                      /* Framework setup 5 */
+extern void  InitEventSystem(void);                        /* Framework setup 6 */
+extern void  ConfigureEventSystem(int param);               /* Framework setup 7 */
+extern void  ShowErrorAlert(int errCode);                   /* Show error alert */
+extern void  ShowErrorWithDetail(short code, int detail);   /* Show error with detail */
+extern void  PostMenuCommand(int cmd, int param);           /* Post command */
 extern void  ReleaseHandle_Mapgen(int param);                     /* Release resource */
 extern void  FreeBlock(int param);                     /* Release resource variant */
-extern void  FUN_100b08d4(short *rect, int param);        /* Get screen size */
+extern void  GetScreenBounds(short *rect, int param);       /* Get screen size */
 extern int   EnableMenuItem(int menuID, int enabled);       /* Enable/disable menu item */
-extern int   FUN_100f0538(int param);                     /* List iteration */
+extern int   IterateListItems(int param);                   /* List iteration */
 
 /* MacApp error handling / exception */
 extern int   TrySetjmp(void *exception_buf);           /* Try (setjmp) */
-extern void  FUN_10000150(void);                          /* Throw (longjmp) */
+extern void  ThrowException(void);                         /* Throw (longjmp) */
 extern void  ReleaseResource_Thunk(void *handle);                  /* Dispose handle */
-extern char  FUN_10000360(void *handle);                  /* Get handle flags */
+extern char  GetHandleFlags(void *handle);                 /* Get handle flags */
 extern int   GetTickCount(void);                          /* Get tick count */
 #ifdef MODERN_BUILD
 extern int   GetString(int offset, void *buf);         /* Read from offset */
 #endif
-extern int   FUN_10001c20(void *handle);                  /* Get handle size */
+extern int   GetHandleByteCount(void *handle);              /* Get handle size */
 extern void  ReleaseHandle_Sound(void *handle);                  /* Release handle */
-extern void  FUN_10001b60(void *handle, char flags);      /* Restore handle flags */
-extern void  FUN_10001f98(int handle, void *out, int sz); /* Copy handle data */
-extern int   FUN_10002a60(int handle);                    /* Get handle data size */
-extern void  FUN_10002340(int data, int buf, int sz);     /* Copy data to buffer */
+extern void  RestoreHandleFlags(void *handle, char flags); /* Restore handle flags */
+extern void  CopyHandleData(int handle, void *out, int sz); /* Copy handle data */
+extern int   GetHandleDataSize(int handle);                /* Get handle data size */
+extern void  CopyDataToBuffer(int data, int buf, int sz);  /* Copy data to buffer */
 #ifdef MODERN_BUILD
 extern void  AddResource(void *h, unsigned long type,    /* Add resource */
                            short id, int data);
 extern void  DetachResource(void *h);                       /* Lock resource handle */
 #endif
-extern void *FUN_10003558(unsigned long type, short id);  /* Get named resource */
+extern void *GetResourceByTypeId(unsigned long type, short id);  /* Get named resource */
 
 /* =========================================================================
  * Game Function Forward Declarations
@@ -126,138 +126,141 @@ extern void *FUN_10003558(unsigned long type, short id);  /* Get named resource 
  * ========================================================================= */
 
 /* Command handlers -- game actions */
-extern void  FUN_100410ec(void);                          /* EndTurn / NextArmy */
-extern void  FUN_10041cf8(void);                          /* End Turn Processing */
-extern void  FUN_10065500(short playerIdx);               /* Select Army by Index */
-extern void  FUN_10065d24(short armyIdx);                 /* Deselect Army */
-extern void  FUN_10025758(short mode, short x, short y);  /* City Info */
-extern void  FUN_1002f97c(short a, short x, short b, short y); /* Move to Coords */
-extern void  FUN_1007ceb0(void *self);                    /* Stack Management */
-extern void  FUN_1002fe68(void);                          /* Define Path */
-extern void  FUN_1007ba3c(void *self, int a, int b);      /* Cancel/Undo Action */
-extern void  FUN_10055408(short cityIdx);                 /* Army Details/Inspect */
-extern void  FUN_1002fd74(char param);                    /* Unknown handler (0x3F7) */
-extern void  FUN_1004bd0c(void);                          /* Production Dialog */
-extern void  FUN_10095330(void);                          /* Search Ruins/Temples */
+extern void  HandleEndTurn(void);                          /* EndTurn / NextArmy */
+extern void  ProcessEndTurn(void);                         /* End Turn Processing */
+extern void  SelectArmyByIndex(short playerIdx);           /* Select Army by Index */
+extern void  DeselectArmy(short armyIdx);                  /* Deselect Army */
+extern void  ShowCityInfo(short mode, short x, short y);   /* City Info */
+extern void  MoveToCoordinates(short a, short x, short b, short y); /* Move to Coords */
+extern void  HandleStackManagement(void *self);            /* Stack Management */
+extern void  DefinePath(void);                             /* Define Path */
+extern void  CancelUndoAction(void *self, int a, int b);   /* Cancel/Undo Action */
+extern void  InspectArmyDetails(short cityIdx);            /* Army Details/Inspect */
+extern void  HandleGuardCommand(char param);               /* Guard/Fortify handler (0x3F7) */
+extern void  ShowProductionDialog(void);                   /* Production Dialog */
+extern void  SearchRuinsTemples(void);                     /* Search Ruins/Temples */
 
 /* Player setup commands (0x3FC-0x403) */
-extern void  FUN_1000c9c8(void);                          /* Player Setup Cmd 1 */
-extern void  FUN_1000cafc(void);                          /* Player Setup Cmd 2 */
-extern void  FUN_1000cb54(void);                          /* Player Setup Cmd 3 */
-extern void  FUN_1000cbb8(void);                          /* Player Setup Cmd 4 */
-extern void  FUN_1000cc08(void);                          /* Player Setup Cmd 5 */
-extern void  FUN_1000cc58(void);                          /* Player Setup Cmd 6 */
-extern void  FUN_1000cca8(void);                          /* Player Setup Cmd 7 */
-extern void  FUN_1000ccf8(void);                          /* Player Setup Cmd 8 */
+extern void  PlayerSetup_Cmd1(void);                       /* Player Setup Cmd 1 */
+extern void  PlayerSetup_Cmd2(void);                       /* Player Setup Cmd 2 */
+extern void  PlayerSetup_Cmd3(void);                       /* Player Setup Cmd 3 */
+extern void  PlayerSetup_Cmd4(void);                       /* Player Setup Cmd 4 */
+extern void  PlayerSetup_Cmd5(void);                       /* Player Setup Cmd 5 */
+extern void  PlayerSetup_Cmd6(void);                       /* Player Setup Cmd 6 */
+extern void  PlayerSetup_Cmd7(void);                       /* Player Setup Cmd 7 */
+extern void  PlayerSetup_Cmd8(void);                       /* Player Setup Cmd 8 */
 
 /* Game option toggles (0x404-0x40F) */
-extern void  FUN_1000cd54(void);                          /* Game Option Toggle 1 */
-extern void  FUN_1000cda4(void);                          /* Game Option Toggle 2 */
-extern void  FUN_1000cdf4(void);                          /* Game Option Toggle 3 */
-extern void  FUN_1000ce44(void);                          /* Game Option Toggle 4 */
-extern void  FUN_1000ce88(void);                          /* Game Option Toggle 5 */
-extern void  FUN_1000ced8(void);                          /* Game Option Toggle 6 */
-extern void  FUN_1000cf28(void);                          /* Game Option Toggle 7 */
-extern void  FUN_1000d2e8(void);                          /* Game Option Toggle 8 */
-extern void  FUN_1000d334(void);                          /* Game Option Toggle 9 */
-extern void  FUN_1000d654(void);                          /* Game Option Toggle 10 */
-extern void  FUN_1000d7bc(void);                          /* Game Option Toggle 11 */
-extern void  FUN_1000d808(void);                          /* Game Option Toggle 12 */
+extern void  GameOption_Toggle1(void);                     /* Game Option Toggle 1 */
+extern void  GameOption_Toggle2(void);                     /* Game Option Toggle 2 */
+extern void  GameOption_Toggle3(void);                     /* Game Option Toggle 3 */
+extern void  GameOption_Toggle4(void);                     /* Game Option Toggle 4 */
+extern void  GameOption_Toggle5(void);                     /* Game Option Toggle 5 */
+extern void  GameOption_Toggle6(void);                     /* Game Option Toggle 6 */
+extern void  GameOption_Toggle7(void);                     /* Game Option Toggle 7 */
+extern void  GameOption_Toggle8(void);                     /* Game Option Toggle 8 */
+extern void  GameOption_Toggle9(void);                     /* Game Option Toggle 9 */
+extern void  GameOption_Toggle10(void);                    /* Game Option Toggle 10 */
+extern void  GameOption_Toggle11(void);                    /* Game Option Toggle 11 */
+extern void  StartOfTurnProcessing(void);                  /* Start of turn / Game Option 12 */
 
 /* High-number command handlers */
-extern void  FUN_1007c618(void *self, short x, short y);  /* Move to Overview Target */
-extern void  FUN_1003fe04(void);                          /* Toggle Fog of War */
-extern void  FUN_1000848c(short x, short y);              /* Center Map on Location */
-extern void  FUN_1003dc28(void);                          /* Full Display Refresh */
-extern void  FUN_100ae86c(void);                          /* AI Strategy Command */
-extern void  FUN_1002171c(void);                          /* Game History */
-extern void  FUN_1005bdb8(void);                          /* Reports */
-extern void  FUN_1002b4e0(void);                          /* Unknown Action (0x586) */
-extern void  FUN_10050a48(short slotIdx);                 /* Select Army Slot 0-5 */
-extern void  FUN_1002656c(void);                          /* Army Bonus Display */
-extern void  FUN_1004d0d0(void);                          /* Items Dialog */
-extern void  FUN_100950a4(void);                          /* Scenario Select */
-extern void  FUN_10033e7c(void);                          /* New Game */
-extern void  FUN_100351ec(void);                          /* Random Map */
+extern void  MoveToOverviewTarget(void *self, short x, short y);  /* Move to Overview Target */
+extern void  ToggleFogOfWar(void);                         /* Toggle Fog of War */
+extern void  CenterMapOnLocation(short x, short y);        /* Center Map on Location */
+extern void  FullDisplayRefresh(void);                     /* Full Display Refresh */
+extern void  HandleAIStrategy(void);                       /* AI Strategy Command */
+extern void  ShowGameHistory(void);                        /* Game History */
+extern void  ShowReports(void);                            /* Reports */
+extern void  HandleDisbandAction(void);                    /* Disband Action (0x586) */
+extern void  SelectArmySlot(short slotIdx);                /* Select Army Slot 0-5 */
+extern void  ShowArmyBonus(void);                          /* Army Bonus Display */
+extern void  ShowItemsDialog(void);                        /* Items Dialog */
+extern void  ShowScenarioSelect(void);                     /* Scenario Select */
+extern void  StartNewGame(void);                           /* New Game */
+extern void  StartRandomMap(void);                         /* Random Map */
 extern void  ScanDefenseGrid(void);                          /* About Box */
-extern void  FUN_1005ef84(void);                          /* Map Zoom/View Mode */
-extern void  FUN_1003a5fc(void);                          /* Save Game */
-extern void  FUN_1007c6d8(void *self, int direction);     /* Scroll Map */
-extern void  FUN_1005e858(void);                          /* Toggle Sound */
-extern void  FUN_10037fe4(short offset);                  /* Player Next/Prev */
-extern void  FUN_1007b218(void *self);                    /* Hero Inspect */
+extern void  ToggleMapZoom(void);                          /* Map Zoom/View Mode */
+extern void  SaveGameToFile(void);                         /* Save Game */
+extern void  ScrollMapInDirection(void *self, int direction);     /* Scroll Map */
+extern void  ToggleSoundEnabled(void);                     /* Toggle Sound */
+extern void  SwitchToPlayer(short offset);                 /* Player Next/Prev */
+extern void  InspectHero(void *self);                      /* Hero Inspect */
 extern void  DispatchNextPhase(void *self, int cmdID);         /* Post-command utility */
-extern void  FUN_10040fb8(void);                          /* Display refresh after menus */
-extern void  FUN_100657bc(void);                          /* Restore display state */
-extern void  FUN_10075570(int viewState, int panelID, int visible); /* Panel visibility */
+extern void  RefreshAfterMenus(void);                      /* Display refresh after menus */
+extern void  RestoreDisplayState(void);                    /* Restore display state */
+extern void  SetPanelVisibility(int viewState, int panelID, int visible); /* Panel visibility */
+
+/* Window management */
+void SaveWindowPositions(void *self);                      /* Save/restore window positions */
 
 /* Game state init / turn management */
-extern void  FUN_10029ac0(void *param2, int a, char b, int c); /* LoadAndInitializeGame */
+extern void  LoadAndInitializeGame(void *param2, int a, char b, int c); /* LoadAndInitializeGame */
 
 /* Behavior init functions (called from DoPostCreate) */
-extern void  FUN_100668a4(void);
-extern void  FUN_1009d3fc(void);
-extern void  FUN_10073250(void);
-extern void  FUN_10078fa4(void);
-extern void  FUN_10078fb4(int param);
+extern void  InitMapViewBehavior(void);
+extern void  InitScenarioSelectBehavior(void);
+extern void  InitTurnProcessBehavior(void);
+extern void  InitFightOrderBehavior(void);
+extern void  SetFightOrderParam(int param);
 extern void  GetSoundActiveFlag(void);
-extern void  FUN_10093b10(int param);
-extern void  FUN_10093f1c(void);
-extern void  FUN_1007a748(void);
-extern void  FUN_10096ce0(void);
-extern void  FUN_10096fec(void);
-extern void  FUN_10097108(void);
-extern void  FUN_1009768c(void);
-extern void  FUN_1009769c(int param);
-extern void  FUN_1009db24(void);
-extern void  FUN_1009ddb0(void);
-extern void  FUN_1009ddc0(int param);
-extern void  FUN_1009e680(void);
-extern void  FUN_1009e690(int param);
-extern void  FUN_10097964(void);
-extern void  FUN_10097974(int param);
-extern void  FUN_10095c34(void);
-extern void  FUN_10096188(void);
-extern void  FUN_100809b8(void);
-extern void  FUN_10097a74(void);
-extern void  FUN_10097a84(int param);
-extern void  FUN_10096bbc(void);
-extern void  FUN_10096bcc(int param);
-extern void  FUN_10081e38(void);
-extern void  FUN_10081e48(int param);
-extern void  FUN_100a18e8(void);
-extern void  FUN_100a18f8(int param);
-extern void  FUN_10083d40(void);
-extern void  FUN_10097db0(void);
-extern void  FUN_100866f8(void);
-extern void  FUN_10086708(int param);
-extern void  FUN_10086314(void);
-extern void  FUN_10086324(int param);
-extern void  FUN_100863d8(void);
-extern void  FUN_100863e8(int param);
-extern void  FUN_100965d4(void);
-extern void  FUN_100965e4(int param);
-extern void  FUN_10088560(void);
-extern void  FUN_1008a048(void);
-extern void  FUN_1008a058(int param);
-extern void  FUN_1008ad64(void);
-extern void  FUN_1008ad74(int param);
-extern void  FUN_1008bec8(void);
-extern void  FUN_1008bed8(int param);
-extern void  FUN_1008d9cc(void);
-extern void  FUN_1008d9dc(int param);
-extern void  FUN_1008dbac(void);
-extern void  FUN_1008dbbc(int param);
-extern void  FUN_1008dd68(void);
-extern void  FUN_100869e0(void);
-extern void  FUN_10090144(void);
-extern void  FUN_1009049c(void);
-extern void  FUN_100908c0(void);
-extern void  FUN_10090b18(void);
-extern void  FUN_10090b28(int param);
-extern void  FUN_10090ec8(void);
-extern void  FUN_10091090(void);
-extern void  FUN_100910a0(int param);
+extern void  SetSoundHandlerParam(int param);
+extern void  InitSoundObjectBehavior(void);
+extern void  InitMiscSetupBehavior(void);
+extern void  InitScenarioListBehavior(void);
+extern void  InitCityDialogBehavior(void);
+extern void  InitStackDialogBehavior(void);
+extern void  InitGameSetupBehavior(void);
+extern void  SetGameSetupParam(int param);
+extern void  InitDiplomacyBehavior(void);
+extern void  InitPeaceDialogBehavior(void);
+extern void  SetPeaceDialogParam(int param);
+extern void  InitHistoryDialogBehavior(void);
+extern void  SetHistoryDialogParam(int param);
+extern void  InitSearchDialogBehavior(void);
+extern void  SetSearchDialogParam(int param);
+extern void  InitItemsDialogBehavior(void);
+extern void  InitReportGridBehavior(void);
+extern void  InitCityPictureBehavior(void);
+extern void  InitRandomMapBehavior(void);
+extern void  SetRandomMapParam(int param);
+extern void  InitGameOptionsBehavior(void);
+extern void  SetGameOptionsParam(int param);
+extern void  InitBetterDialogBehavior(void);
+extern void  SetBetterDialogParam(int param);
+extern void  InitAIStrategyBehavior(void);
+extern void  SetAIStrategyParam(int param);
+extern void  InitHeroInspectBehavior(void);
+extern void  InitSideSetupBehavior(void);
+extern void  InitFightResultBehavior1(void);
+extern void  SetFightResult1Param(int param);
+extern void  InitFightResultBehavior2(void);
+extern void  SetFightResult2Param(int param);
+extern void  InitSageDialogBehavior(void);
+extern void  SetSageDialogParam(int param);
+extern void  InitMenuShortcutsBehavior(void);
+extern void  SetMenuShortcutsParam(int param);
+extern void  InitAboutBoxBehavior(void);
+extern void  InitProductionBehavior(void);
+extern void  SetProductionParam(int param);
+extern void  InitDismissBehavior(void);
+extern void  SetDismissParam(int param);
+extern void  InitBuildProdBehavior(void);
+extern void  SetBuildProdParam(int param);
+extern void  InitStartOfTurnBehavior(void);
+extern void  SetStartOfTurnParam(int param);
+extern void  InitHeroHireBehavior(void);
+extern void  SetHeroHireParam(int param);
+extern void  InitCompressedStreamBehavior(void);
+extern void  InitArmyDraggerBehavior(void);
+extern void  InitReportDisplayBehavior(void);
+extern void  InitScenarioProcessBehavior(void);
+extern void  InitOptionsListBehavior(void);
+extern void  InitCharacterListBehavior(void);
+extern void  SetCharacterListParam(int param);
+extern void  InitExtendedObjectBehavior(void);
+extern void  InitFinalBehavior(void);
+extern void  SetFinalBehaviorParam(int param);
 
 /* =========================================================================
  * Globals used by framework
@@ -287,7 +290,7 @@ extern void *TVect_OCECToRString;  /* .TVect::OCECToRString base address */
 /* =========================================================================
  * TDocumentWarlords::DoMenuCommand
  *
- * FUN_1007d168 at 0x1007d168, Size: 3436 bytes
+ * DoMenuCommand at 0x1007d168, Size: 3436 bytes
  *
  * Central command dispatcher for all game menu actions.
  * Routes command IDs (param_2) to handler functions.
@@ -307,7 +310,7 @@ extern void *TVect_OCECToRString;  /* .TVect::OCECToRString base address */
  *   0x836             = Army slot selection (via Next/LeaveGuard)
  *
  * Unhandled commands fall through to TDocument::DoMenuCommand
- * (FUN_100d6c90 -- MacApp superclass).
+ * (SuperDoMenuCommand -- MacApp superclass).
  * ========================================================================= */
 void DoMenuCommand(int *self, int cmdNumber)
 {
@@ -352,29 +355,29 @@ void DoMenuCommand(int *self, int cmdNumber)
             return;
         }
         *(char *)((int)self + 0x16f) = 0;
-        FUN_100410ec();  /* EndTurn / NextArmy handler */
+        HandleEndTurn();  /* EndTurn / NextArmy handler */
         return;
 
     /* ---- Select Army by Index (cmd 0x3EE) ---- */
     case 0x3EE:
-        FUN_10065500(*(short *)(*piRam1011735c + 0x110));
+        SelectArmyByIndex(*(short *)(*piRam1011735c + 0x110));
         return;
 
     /* ---- Deselect Army (cmd 0x3EF) ---- */
     case 0x3EF:
-        FUN_10065d24(*(short *)(self + 0x77));
+        DeselectArmy(*(short *)(self + 0x77));
         return;
 
     /* ---- City Info from city index (cmd 0x3F0) ---- */
     case 0x3F0: {
         int cityBase = *piRam1011735c + *(short *)((int)self + 0x1de) * 0x42;
-        FUN_10025758(2, *(short *)(cityBase + 0x1604), *(short *)(cityBase + 0x1606));
+        ShowCityInfo(2, *(short *)(cityBase + 0x1604), *(short *)(cityBase + 0x1606));
         return;
     }
 
     /* ---- Move to Coordinates (cmd 0x3F1) ---- */
     case 0x3F1:
-        FUN_1002f97c(*(short *)(self + 0x78),
+        MoveToCoordinates(*(short *)(self + 0x78),
                      *(short *)((int)self + 0x1e2),
                      *(short *)(self + 0x79),
                      *(short *)((int)self + 0x1e6));
@@ -382,7 +385,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Stack Management (cmd 0x3F2) ---- */
     case 0x3F2:
-        FUN_1007ceb0(self);
+        HandleStackManagement(self);
         return;
 
     /* ---- Create View (cmd 0x3F3, view ID 3000) ---- */
@@ -399,34 +402,34 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Define Path (cmd 0x3F4) ---- */
     case 0x3F4:
-        FUN_1002fe68();
+        DefinePath();
         return;
 
     /* ---- Cancel/Undo Action (cmd 0x3F5) ---- */
     case 0x3F5:
-        FUN_1007ba3c(self, 1, 1);
+        CancelUndoAction(self, 1, 1);
         return;
 
     /* ---- City Info from city list (cmd 0x3F6) ---- */
     case 0x3F6: {
         int cityBase = *piRam1011735c + *(short *)((int)self + 0x1de) * 0x42;
-        FUN_10025758(0, *(short *)(cityBase + 0x1604), *(short *)(cityBase + 0x1606));
+        ShowCityInfo(0, *(short *)(cityBase + 0x1604), *(short *)(cityBase + 0x1606));
         return;
     }
 
-    /* ---- Unknown handler (cmd 0x3F7) ---- */
+    /* ---- Guard/Fortify handler (cmd 0x3F7) ---- */
     case 0x3F7:
-        FUN_1002fd74(*(char *)(self + 0x7a));
+        HandleGuardCommand(*(char *)(self + 0x7a));
         return;
 
     /* ---- Army Details/Inspect (cmd 0x3F8) ---- */
     case 0x3F8:
-        FUN_10055408(*(short *)((int)self + 0x1de));
+        InspectArmyDetails(*(short *)((int)self + 0x1de));
         return;
 
     /* ---- Production Dialog (cmd 0x3F9) ---- */
     case 0x3F9:
-        FUN_1004bd0c();
+        ShowProductionDialog();
         return;
 
     /* ---- Refresh All Views (cmd 0x3FA) ---- */
@@ -440,32 +443,32 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Search Ruins/Temples (cmd 0x3FB) ---- */
     case 0x3FB:
-        FUN_10095330();
+        SearchRuinsTemples();
         return;
 
     /* ---- Player Setup Commands (0x3FC-0x403) ---- */
-    case 0x3FC:  FUN_1000c9c8();  return;
-    case 0x3FD:  FUN_1000cafc();  return;
-    case 0x3FE:  FUN_1000cb54();  return;
-    case 0x3FF:  FUN_1000cbb8();  return;
-    case 0x400:  FUN_1000cc08();  return;
-    case 0x401:  FUN_1000cc58();  return;
-    case 0x402:  FUN_1000cca8();  return;
-    case 0x403:  FUN_1000ccf8();  return;
+    case 0x3FC:  PlayerSetup_Cmd1();  return;
+    case 0x3FD:  PlayerSetup_Cmd2();  return;
+    case 0x3FE:  PlayerSetup_Cmd3();  return;
+    case 0x3FF:  PlayerSetup_Cmd4();  return;
+    case 0x400:  PlayerSetup_Cmd5();  return;
+    case 0x401:  PlayerSetup_Cmd6();  return;
+    case 0x402:  PlayerSetup_Cmd7();  return;
+    case 0x403:  PlayerSetup_Cmd8();  return;
 
     /* ---- Game Option Toggles (0x404-0x40F) ---- */
-    case 0x404:  FUN_1000cd54();  return;
-    case 0x405:  FUN_1000cda4();  return;
-    case 0x406:  FUN_1000cdf4();  return;
-    case 0x407:  FUN_1000ce44();  return;
-    case 0x408:  FUN_1000ce88();  return;
-    case 0x409:  FUN_1000ced8();  return;
-    case 0x40A:  FUN_1000cf28();  return;
-    case 0x40B:  FUN_1000d2e8();  return;
-    case 0x40C:  FUN_1000d334();  return;
-    case 0x40D:  FUN_1000d654();  return;
-    case 0x40E:  FUN_1000d7bc();  return;
-    case 0x40F:  FUN_1000d808();  return;
+    case 0x404:  GameOption_Toggle1();  return;
+    case 0x405:  GameOption_Toggle2();  return;
+    case 0x406:  GameOption_Toggle3();  return;
+    case 0x407:  GameOption_Toggle4();  return;
+    case 0x408:  GameOption_Toggle5();  return;
+    case 0x409:  GameOption_Toggle6();  return;
+    case 0x40A:  GameOption_Toggle7();  return;
+    case 0x40B:  GameOption_Toggle8();  return;
+    case 0x40C:  GameOption_Toggle9();  return;
+    case 0x40D:  GameOption_Toggle10();  return;
+    case 0x40E:  GameOption_Toggle11();  return;
+    case 0x40F:  StartOfTurnProcessing();  return;
 
     /* ---- Mouse Army Move: group (cmd 0x578) ---- */
     /* ---- Mouse Army Move: single (cmd 0x579) ---- */
@@ -486,14 +489,14 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Move to Overview Target (cmd 0x57A) ---- */
     case 0x57A:
-        FUN_1007c618(self,
+        MoveToOverviewTarget(self,
                      *(short *)(*piRam101176e0 + 0x12),
                      *(short *)(*piRam101176e0 + 0x14));
         return;
 
     /* ---- End Turn Processing (cmd 0x57B) ---- */
     case 0x57B:
-        FUN_10041cf8();
+        ProcessEndTurn();
         return;
 
     /* ---- Keyboard Army Move (cmd 0x57C) ---- */
@@ -539,7 +542,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Toggle Fog of War (cmd 0x581) ---- */
     case 0x581:
-        FUN_1003fe04();
+        ToggleFogOfWar();
         return;
 
     /* ---- Center Map on Location (cmd 0x582) ---- */
@@ -548,34 +551,34 @@ void DoMenuCommand(int *self, int cmdNumber)
         if (overviewData == 0) return;
         if (*(short *)(overviewData + 0x12) < 0) return;
         if (*(short *)(overviewData + 0x14) < 0) return;
-        FUN_1000848c(*(short *)(overviewData + 0x12),
+        CenterMapOnLocation(*(short *)(overviewData + 0x12),
                      *(short *)(overviewData + 0x14));
-        FUN_1003dc28();
+        FullDisplayRefresh();
         return;
 
     /* ---- AI Strategy Command (cmd 0x583) ---- */
     case 0x583:
-        FUN_100ae86c();
+        HandleAIStrategy();
         return;
 
     /* ---- Game History (cmd 0x584) ---- */
     case 0x584:
-        FUN_1002171c();
+        ShowGameHistory();
         return;
 
     /* ---- Reports (cmd 0x585) ---- */
     case 0x585:
-        FUN_1005bdb8();
+        ShowReports();
         return;
 
-    /* ---- Unknown Action (cmd 0x586) ---- */
+    /* ---- Disband Action (cmd 0x586) ---- */
     case 0x586:
-        FUN_1002b4e0();
+        HandleDisbandAction();
         return;
 
     /* ---- Select Army Slot 0 (cmd 0x5DC) ---- */
     case 0x5DC:
-        FUN_10050a48((short)self[0x59] + -0x5DD);
+        SelectArmySlot((short)self[0x59] + -0x5DD);
         return;
 
     /* ---- Select Army Slot 1-5 (cmds 0x5DD-0x5E1) ---- */
@@ -584,32 +587,32 @@ void DoMenuCommand(int *self, int cmdNumber)
     case 0x5DF:
     case 0x5E0:
     case 0x5E1:
-        FUN_10050a48((short)cmdNumber + -0x5DD);
+        SelectArmySlot((short)cmdNumber + -0x5DD);
         return;
 
     /* ---- Army Bonus Display (cmd 0x5E2) ---- */
     case 0x5E2:
-        FUN_1002656c();
+        ShowArmyBonus();
         return;
 
     /* ---- Items Dialog (cmd 0x5E3) ---- */
     case 0x5E3:
-        FUN_1004d0d0();
+        ShowItemsDialog();
         return;
 
     /* ---- Scenario Select (cmd 0x640) ---- */
     case 0x640:
-        FUN_100950a4();
+        ShowScenarioSelect();
         return;
 
     /* ---- New Game (cmd 0x641) ---- */
     case 0x641:
-        FUN_10033e7c();
+        StartNewGame();
         return;
 
     /* ---- Random Map (cmd 0x642) ---- */
     case 0x642:
-        FUN_100351ec();
+        StartRandomMap();
         return;
 
     /* ---- About Box (cmd 0x643) ---- */
@@ -619,12 +622,12 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Map Zoom/View Mode (cmd 0x6A4) ---- */
     case 0x6A4:
-        FUN_1005ef84();
+        ToggleMapZoom();
         return;
 
     /* ---- Save Game (cmd 0x6A5) ---- */
     case 0x6A5:
-        FUN_1003a5fc();
+        SaveGameToFile();
         return;
 
     /* ---- Scroll Map in direction (cmds 0x6A6-0x6AA) ---- */
@@ -633,17 +636,17 @@ void DoMenuCommand(int *self, int cmdNumber)
     case 0x6A8:
     case 0x6A9:
     case 0x6AA:
-        FUN_1007c6d8(self, cmdNumber);
+        ScrollMapInDirection(self, cmdNumber);
         return;
 
     /* ---- Toggle Sound (cmd 0x6AB) ---- */
     case 0x6AB:
-        FUN_1005e858();
+        ToggleSoundEnabled();
         return;
 
     /* ---- Player Next (cmd 0x708) ---- */
     case 0x708:
-        FUN_10037fe4((short)self[0x5a] + -0x709);
+        SwitchToPlayer((short)self[0x5a] + -0x709);
         return;
 
     /* ---- Player Prev/Switch (cmds 0x709-0x70D) ---- */
@@ -652,7 +655,7 @@ void DoMenuCommand(int *self, int cmdNumber)
     case 0x70B:
     case 0x70C:
     case 0x70D:
-        FUN_10037fe4((short)cmdNumber + -0x709);
+        SwitchToPlayer((short)cmdNumber + -0x709);
         return;
 
     /* ---- Menu command: Refresh Menus (cmd 0x76C) ---- */
@@ -661,12 +664,12 @@ void DoMenuCommand(int *self, int cmdNumber)
         ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x228));
         /* SetTarget via vtable +0x38 with (0x76C, 0) */
         ResourceRead_Dispatch((int)self + (int)*(short *)(*self + 0x38), 0x76C, 0);
-        FUN_10040fb8();
+        RefreshAfterMenus();
         return;
 
     /* ---- Hero Inspect (cmd 0x76D) ---- */
     case 0x76D:
-        FUN_1007b218(self);
+        InspectHero(self);
         return;
 
     /* ---- Side Panel Toggle (cmd 0x76F) ---- */
@@ -733,7 +736,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Window position save/restore (cmd 0x772) ---- */
     case 0x772:
-        FUN_1007c7b4(self);
+        SaveWindowPositions(self);
         return;
 
     /* ---- Test if changed, then refresh menus (cmd 0x773) ---- */
@@ -751,7 +754,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 
     /* ---- Default: pass to superclass ---- */
     default:
-        FUN_100d6c90(self, cmdNumber);
+        SuperDoMenuCommand(self, cmdNumber);
         return;
     }
 }
@@ -760,7 +763,7 @@ void DoMenuCommand(int *self, int cmdNumber)
 /* =========================================================================
  * TDocumentWarlords::DoRead (Load Document)
  *
- * FUN_1007ded4 at 0x1007ded4, Size: 1076 bytes
+ * DoReadDocument at 0x1007ded4, Size: 1076 bytes
  *
  * Called when opening a saved game file. Allocates game state buffers
  * if not already present, reads resource data from the file, and
@@ -789,7 +792,7 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
     int iVar10 = 0;
 
     /* Call superclass TFileBasedDocument::DoRead */
-    FUN_100ddfa8(docSelf, fileSpec, isNew);
+    SuperDoRead(docSelf, fileSpec, isNew);
 
     /* Mark document as file-based */
     *(char *)(docSelf + 0x144) = 1;
@@ -813,11 +816,11 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
         void *typeRes;
 
         /* Read "Type" resource (ID 1000) -- file type indicator */
-        typeRes = FUN_10003558(0x54797065, 1000);  /* 'Type' */
+        typeRes = GetResourceByTypeId(0x54797065, 1000);  /* 'Type' */
         if (typeRes != NULL) {
             if (1 < *(short *)*(int *)typeRes) {
-                FUN_100d8c9c(0x3FC, 0);           /* Post setup command */
-                FUN_100db158(0, 0x820000);         /* Lock handle */
+                PostMenuCommand(0x3FC, 0);             /* Post setup command */
+                LockHandleRange(0, 0x820000);          /* Lock handle */
             }
             ReleaseHandle_Sound(typeRes);                 /* Release handle */
         }
@@ -826,9 +829,9 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
         ResourceRead_Dispatch((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
 
         /* Read "Turn" resource (ID 1000) -- turn state indicator */
-        typeRes = FUN_10003558(0x5475726E, 1000);  /* 'Turn' */
+        typeRes = GetResourceByTypeId(0x5475726E, 1000);  /* 'Turn' */
         if (typeRes != NULL) {
-            iVar10 = FUN_10001c20(typeRes);
+            iVar10 = GetHandleByteCount(typeRes);
             if (iVar10 != 0 && *(char *)*(int *)typeRes == '\x01') {
                 bTurnRestore = 1;  /* true */
             }
@@ -845,27 +848,27 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
         ResourceRead_Dispatch((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
 
         /* Read per-player "Mail" resources (IDs 1000-1007) */
-        /* Stub — FUN_1007ded4: reads Mail resources with exception handling */
+        /* Stub -- DoReadDocument: reads Mail resources with exception handling */
         /* Original uses setjmp/TrySetjmp for exception safety */
-        /* Reads 8 iterations: FUN_10003558('Mail', i+1000) for i in 0..7 */
+        /* Reads 8 iterations: GetResourceByTypeId('Mail', i+1000) for i in 0..7 */
         /* Stores player mail data at docSelf + i*4 + 0x170 */
 
         /* Read "MKik" resource for multiplayer kick state */
-        /* *(char *)(docSelf + 0x16f) = (FUN_10003558('MKik', 1000) != 0) */
+        /* *(char *)(docSelf + 0x16f) = (GetResourceByTypeId('MKik', 1000) != 0) */
     }
 
     /* Initialize game from loaded data */
-    FUN_10029ac0(fileSpec, 0, *(char *)(docSelf + 0x16c), !bTurnRestore);
+    LoadAndInitializeGame(fileSpec, 0, *(char *)(docSelf + 0x16c), !bTurnRestore);
 
     /* Center viewport if no pending game phase */
     iVar10 = *piVar5;
     if (*(short *)(iVar10 + 0x124) == 0 && *(char *)(*piVar2 + 0x9a) == '\0') {
-        FUN_1000848c(*(short *)(iVar10 + 0x17e), *(short *)(iVar10 + 0x180));
+        CenterMapOnLocation(*(short *)(iVar10 + 0x17e), *(short *)(iVar10 + 0x180));
     }
 
     /* Restore display state if turn was in progress */
     if (bTurnRestore) {
-        FUN_100657bc();
+        RestoreDisplayState();
     }
     else if (*(char *)(docSelf + 0x16e) != '\0') {
         int viewState = *piVar2;
@@ -880,7 +883,7 @@ void DoReadDocument(int docSelf, int *fileSpec, char isNew)
 /* =========================================================================
  * TDocumentWarlords::DoWrite (Save Document)
  *
- * FUN_1007e894 at 0x1007e894, Size: 1000 bytes
+ * DoWriteDocument at 0x1007e894, Size: 1000 bytes
  *
  * Saves game state to file. Writes:
  *   - Game state via WriteGameStateCrossFormat or WriteGameState
@@ -899,7 +902,7 @@ void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
     char auStack_144[256];
 
     /* Call superclass TFileBasedDocument::DoWrite */
-    FUN_100de320(docSelf, fileSpec, isNew);
+    SuperDoWrite(docSelf, fileSpec, isNew);
 
     /* Copy application name string */
     BuildPascalString(auStack_250, 0 /* string source omitted */);
@@ -926,7 +929,7 @@ void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
             ResourceRead_Dispatch((int)fileSpec + (int)*(short *)(*fileSpec + 0x2B8));
 
             /* Write 8 player mail resources: 'Mail', IDs 1000-1007 */
-            /* Stub — mail resource write loop omitted */
+            /* Stub -- mail resource write loop omitted */
             /* for (i = 0; i < 8; i++) {
              *     mailData = *(int*)(docSelf + i*4 + 0x170);
              *     if (mailData != 0) {
@@ -947,7 +950,7 @@ void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
             if (*(char *)(viewState + 0x9a) != '\0' ||
                 *(char *)(viewState + 0x99) != '\0') {
                 /* Write turn-in-progress indicator */
-                /* Stub — Turn resource write omitted */
+                /* Stub -- Turn resource write omitted */
             }
         }
     }
@@ -957,7 +960,7 @@ void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
 /* =========================================================================
  * TDocumentWarlords::DoSetupMenus
  *
- * FUN_1007e314 at 0x1007e314, Size: 1408 bytes
+ * DoSetupMenus at 0x1007e314, Size: 1408 bytes
  *
  * Called by MacApp to enable/disable menu items based on current game state.
  * Manages menu visibility for:
@@ -966,7 +969,7 @@ void DoWriteDocument(int docSelf, int *fileSpec, char isNew)
  *   - Side panel visibility
  *   - View panels (side, overview, info)
  *
- * Calls superclass TDocument::DoSetupMenus first (FUN_100d6dd0).
+ * Calls superclass TDocument::DoSetupMenus first (SuperDoSetupMenus).
  * ========================================================================= */
 void DoSetupMenus(int docSelf)
 {
@@ -977,7 +980,7 @@ void DoSetupMenus(int docSelf)
     int *piVar3 = gOverviewWindow;
 
     /* Call superclass DoSetupMenus */
-    FUN_100d6dd0(docSelf);
+    SuperDoSetupMenus(docSelf);
 
     /* If document is not file-based and view state has pending changes */
     if (*(char *)(docSelf + 0x16c) == '\0' && *(char *)(*piVar6 + 0x9a) != '\0') {
@@ -992,7 +995,7 @@ void DoSetupMenus(int docSelf)
     /* Set panel visibility state */
     if (*(char *)(*piVar6 + 0x99) == '\0') {
         /* Check side panel (0x76F) visibility */
-        FUN_10075570(*piVar6, 0x76F, *piVar1 != 0);
+        SetPanelVisibility(*piVar6, 0x76F, *piVar1 != 0);
 
         /* Check if side panel window exists and is active */
         int *sideWinObj = (int *)*piVar1;
@@ -1005,8 +1008,8 @@ void DoSetupMenus(int docSelf)
             bSideHidden = (isActive == 0);
         }
 
-        /* Stub — overview and info panel visibility checks omitted */
-        /* FUN_1007e314 continues with similar IsActive checks for */
+        /* Stub -- overview and info panel visibility checks omitted */
+        /* DoSetupMenus continues with similar IsActive checks for */
         /* overview window (gOverviewWindow) and info window (gInfoWindow) */
         /* Then enables/disables menus 0x76F, 0x770, 0x771 accordingly */
     }
@@ -1016,7 +1019,7 @@ void DoSetupMenus(int docSelf)
 /* =========================================================================
  * TDocumentWarlords::DoMakeWindows
  *
- * FUN_1003e13c at 0x1003e13c, Size: 5420 bytes
+ * DoMakeWindows at 0x1003e13c, Size: 5420 bytes
  *
  * Creates the main game window hierarchy with all subviews.
  * This is one of the largest functions in the game.
@@ -1031,23 +1034,23 @@ void DoSetupMenus(int docSelf)
  * Calls player view setup in a loop (4 iterations).
  *
  * If param_2 != 0 (loading saved game):
- *   - FUN_1003c838() -- InitializePlayerTurn
- *   - FUN_1003d4dc() -- AdvanceToNextPlayer
- *   - FUN_10064850(1,1) -- UpdateMapDisplay
- *   - FUN_1003c368() -- RefreshGameState
+ *   - ShuffleTurnOrder()       -- InitializePlayerTurn
+ *   - AdvanceToNextPlayer()    -- AdvanceToNextPlayer
+ *   - UpdateMapDisplay(1,1)    -- UpdateMapDisplay
+ *   - GameInit()               -- RefreshGameState
  * ========================================================================= */
 void DoMakeWindows(int docSelf, short param_2)
 {
-    /* Stub — FUN_1003e13c (5420 bytes)
+    /* Stub -- DoMakeWindows (5420 bytes)
      *
      * This function is extremely large and complex. Key operations:
      *
      * 1. Read application global data (gAppObject + 0x32)
      * 2. Check available memory (EndFocus)
      *    - If < 3MB, limit screen to 640x480
-     * 3. Get screen bounds (FUN_100b08d4)
+     * 3. Get screen bounds (GetScreenBounds)
      * 4. Open resource stream for "Wind" resource (ID 1000)
-     *    via FUN_100981f8 / FUN_10098320
+     *    via OpenResourceStream / FindResourceByType
      * 5. Read 3 saved window rectangles from resource:
      *    - Main window rect (offsets 0x08-0x14)
      *    - Overview window rect (offsets 0x18-0x24)
@@ -1061,15 +1064,15 @@ void DoMakeWindows(int docSelf, short param_2)
      *    - FindSubView for "stac" (TStackInfoView)
      * 8. Create overview window
      * 9. Create info window
-     * 10. Loop 4 times calling FUN_10075ee0 for player view setup
+     * 10. Loop 4 times calling SetupPlayerView for player view setup
      * 11. If loading saved game (param_2 != 0):
-     *     - FUN_1003c838()  (InitializePlayerTurn)
-     *     - FUN_1003d4dc()  (AdvanceToNextPlayer)
-     *     - FUN_10064850(1,1) (UpdateMapDisplay)
-     *     - FUN_1003c368()  (RefreshGameState)
-     * 12. FUN_1003d5d4()    (SetupTurnIndicators)
+     *     - ShuffleTurnOrder()       (InitializePlayerTurn)
+     *     - AdvanceToNextPlayer()    (AdvanceToNextPlayer)
+     *     - UpdateMapDisplay(1,1)    (UpdateMapDisplay)
+     *     - GameInit()               (RefreshGameState)
+     * 12. SetupTurnIndicators()
      * 13. Show/hide windows based on saved visibility
-     * 14. FUN_1003d6c4() and FUN_1003dc28() for final refresh
+     * 14. UpdateTurnDisplay() and FullDisplayRefresh() for final refresh
      */
 }
 
@@ -1077,7 +1080,7 @@ void DoMakeWindows(int docSelf, short param_2)
 /* =========================================================================
  * TDocumentWarlords::DoPostCreate (Application Initialization)
  *
- * FUN_10114e58 at 0x10114e58, Size: 2948 bytes
+ * DoPostCreate at 0x10114e58, Size: 2948 bytes
  *
  * Called once during application startup. Initializes the MacApp framework,
  * creates all 23+ dialog behavior objects, allocates game data buffers,
@@ -1085,10 +1088,10 @@ void DoMakeWindows(int docSelf, short param_2)
  *
  * Behavior creation pattern (repeated ~30 times):
  *   1. Check failure flag at *(local_54 - 0x528)
- *   2. Call behavior-specific init function (e.g., FUN_10078fa4)
+ *   2. Call behavior-specific init function (e.g., InitFightOrderBehavior)
  *   3. Allocate behavior object (NewPtr_Thunk with size)
- *   4. Call base constructor (FUN_100d568c for TBehavior,
- *      FUN_100c6b2c for extended, etc.)
+ *   4. Call base constructor (ConstructBehavior for TBehavior,
+ *      ConstructExtendedObject for extended, etc.)
  *   5. Set vtable pointer from TVect table
  *   6. Initialize behavior-specific fields
  *
@@ -1117,15 +1120,15 @@ void DoPostCreate(void)
     void *failFlag;  /* *(local_54 - 0x528) points to failure indicator */
 
     /* Framework initialization sequence */
-    FUN_100ed640();
+    InitFrameworkGlobals();
 
-    int iVar11 = FUN_100ed6d8(NULL /* tvect[-5] */);
+    int iVar11 = CreateFrameworkContext(NULL /* tvect[-5] */);
     if (iVar11 == 0) {
-        FUN_100d8e3c(0x89);  /* Show error: initialization failed */
+        ShowErrorAlert(0x89);  /* Show error: initialization failed */
         return;
     }
 
-    FUN_100ed8b0();
+    FinalizeFrameworkInit();
 
     /* Initialize framework data structure */
     *(short *)(iVar13 + 0x100) = 0;
@@ -1142,168 +1145,168 @@ void DoPostCreate(void)
             if (*(int *)(iVar13 + 0x104) == 0) {
                 *(int *)(iVar13 + 0x104) = 0x820001;
             }
-            FUN_100d8e68(*(short *)(iVar13 + 0x100), *(int *)(iVar13 + 0x104));
+            ShowErrorWithDetail(*(short *)(iVar13 + 0x100), *(int *)(iVar13 + 0x104));
         }
-        FUN_10000150();  /* longjmp / rethrow */
+        ThrowException();  /* longjmp / rethrow */
     }
 
     /* Core framework setup calls */
-    FUN_100ee070(0x18);
-    FUN_1010003c();
-    FUN_100cdf9c();
-    FUN_100e1fac();
-    FUN_100e0ea8();
+    SetupFrameworkParams(0x18);
+    InitFrameworkSubsystems();
+    InitMenuBarSystem();
+    InitDocumentSystem();
+    InitWindowManager();
 
     /* === Create Dialog Behaviors === */
     /* Each behavior follows the pattern: init function, allocate, construct, set vtable */
 
     /* Behavior 1: Map/game view setup */
-    FUN_100668a4();
+    InitMapViewBehavior();
 
     /* Behavior 2: Scenario select (0x44 bytes, TBehavior) */
-    FUN_1009d3fc();
-    /* Stub — allocation + vtable set for each behavior */
+    InitScenarioSelectBehavior();
+    /* Stub -- allocation + vtable set for each behavior */
 
     /* Behavior 3: Turn processing */
-    FUN_10073250();
+    InitTurnProcessBehavior();
 
     /* Behavior 4: Fight order dialog */
-    FUN_10078fa4();
-    FUN_10078fb4(0);
+    InitFightOrderBehavior();
+    SetFightOrderParam(0);
 
     /* Behavior 5: Sound handler */
     GetSoundActiveFlag();
-    FUN_10093b10(0);
+    SetSoundHandlerParam(0);
 
     /* Behavior 6: Simple object (0x20 bytes) */
-    FUN_10093f1c();
-    /* Allocate + FUN_100bf518 ctor */
+    InitSoundObjectBehavior();
+    /* Allocate + ConstructSimpleObject ctor */
 
     /* Behavior 7: Misc setup */
-    FUN_1007a748();
+    InitMiscSetupBehavior();
 
     /* Behavior 8: Scenario list (0x40 bytes, TBehavior) */
-    FUN_10096ce0();
+    InitScenarioListBehavior();
 
     /* Behavior 9: City dialog (0x90 bytes) */
-    FUN_10096fec();
+    InitCityDialogBehavior();
 
     /* Behavior 10: Stack dialog (0x80 bytes) */
-    FUN_10097108();
+    InitStackDialogBehavior();
 
     /* Behavior 11: Game setup */
-    FUN_1009768c();
-    FUN_1009769c(0);
+    InitGameSetupBehavior();
+    SetGameSetupParam(0);
 
     /* Behavior 12: Diplomacy (0x40 bytes, TBehavior) */
-    FUN_1009db24();
+    InitDiplomacyBehavior();
 
     /* Behavior 13: Peace dialog */
-    FUN_1009ddb0();
-    FUN_1009ddc0(0);
+    InitPeaceDialogBehavior();
+    SetPeaceDialogParam(0);
 
     /* Behavior 14: History dialog */
-    FUN_1009e680();
-    FUN_1009e690(0);
+    InitHistoryDialogBehavior();
+    SetHistoryDialogParam(0);
 
     /* Behavior 15: Search dialog */
-    FUN_10097964();
-    FUN_10097974(0);
+    InitSearchDialogBehavior();
+    SetSearchDialogParam(0);
 
     /* Behavior 16: Items dialog (0x40 bytes, TBehavior) */
-    FUN_10095c34();
+    InitItemsDialogBehavior();
 
     /* Behavior 17: Report grid (0xB8 bytes) */
-    FUN_10096188();
+    InitReportGridBehavior();
 
     /* Behavior 18: City picture (0x1B4 bytes, extended) */
-    FUN_100809b8();
+    InitCityPictureBehavior();
 
     /* Behavior 19: Random map */
-    FUN_10097a74();
-    FUN_10097a84(0);
+    InitRandomMapBehavior();
+    SetRandomMapParam(0);
 
     /* Behavior 20: Game options */
-    FUN_10096bbc();
-    FUN_10096bcc(0);
+    InitGameOptionsBehavior();
+    SetGameOptionsParam(0);
 
     /* Behavior 21: Better dialog */
-    FUN_10081e38();
-    FUN_10081e48(0);
+    InitBetterDialogBehavior();
+    SetBetterDialogParam(0);
 
     /* Behavior 22: AI strategy */
-    FUN_100a18e8();
-    FUN_100a18f8(0);
+    InitAIStrategyBehavior();
+    SetAIStrategyParam(0);
 
     /* Behavior 23: Hero inspect (0xAC bytes) */
-    FUN_10083d40();
+    InitHeroInspectBehavior();
 
     /* Behavior 24: Side setup (0x44 bytes, TBehavior) */
-    FUN_10097db0();
+    InitSideSetupBehavior();
 
     /* Behavior 25-26: Fight result dialogs */
-    FUN_100866f8();
-    FUN_10086708(0);
+    InitFightResultBehavior1();
+    SetFightResult1Param(0);
 
-    FUN_10086314();
-    FUN_10086324(0);
+    InitFightResultBehavior2();
+    SetFightResult2Param(0);
 
     /* Behavior 27: Sage dialog */
-    FUN_100863d8();
-    FUN_100863e8(0);
+    InitSageDialogBehavior();
+    SetSageDialogParam(0);
 
     /* Behavior 28: Menu shortcuts */
-    FUN_100965d4();
-    FUN_100965e4(0);
+    InitMenuShortcutsBehavior();
+    SetMenuShortcutsParam(0);
 
     /* Behavior 29: About box (0x44 bytes, TBehavior) */
-    FUN_10088560();
+    InitAboutBoxBehavior();
 
     /* Behavior 30: Production dialog */
-    FUN_1008a048();
-    FUN_1008a058(0);
+    InitProductionBehavior();
+    SetProductionParam(0);
 
     /* Behavior 31: Dismiss dialog */
-    FUN_1008ad64();
-    FUN_1008ad74(0);
+    InitDismissBehavior();
+    SetDismissParam(0);
 
     /* Behavior 32: Build/prod dialog */
-    FUN_1008bec8();
-    FUN_1008bed8(0);
+    InitBuildProdBehavior();
+    SetBuildProdParam(0);
 
     /* Behavior 33: Start-of-turn */
-    FUN_1008d9cc();
-    FUN_1008d9dc(0);
+    InitStartOfTurnBehavior();
+    SetStartOfTurnParam(0);
 
     /* Behavior 34: Hero hire */
-    FUN_1008dbac();
-    FUN_1008dbbc(0);
+    InitHeroHireBehavior();
+    SetHeroHireParam(0);
 
     /* Behavior 35: Compressed file stream (0xBC bytes) */
-    FUN_1008dd68();
+    InitCompressedStreamBehavior();
 
     /* Behavior 36: Army dragger (0x84 bytes) */
-    FUN_100869e0();
+    InitArmyDraggerBehavior();
 
     /* Behavior 37: Report display (0xB8 bytes) */
-    FUN_10090144();
+    InitReportDisplayBehavior();
 
     /* Behavior 38: Scenario processing (0x40 bytes, TBehavior) */
-    FUN_1009049c();
+    InitScenarioProcessBehavior();
 
     /* Behavior 39: Options list (0x80 bytes) */
-    FUN_100908c0();
+    InitOptionsListBehavior();
 
     /* Behavior 40: Character list */
-    FUN_10090b18();
-    FUN_10090b28(0);
+    InitCharacterListBehavior();
+    SetCharacterListParam(0);
 
     /* Behavior 41: Extended object (0xA8 bytes) */
-    FUN_10090ec8();
+    InitExtendedObjectBehavior();
 
     /* Behavior 42: Last behavior */
-    FUN_10091090();
-    FUN_100910a0(0);
+    InitFinalBehavior();
+    SetFinalBehaviorParam(0);
 
     /* === Allocate Game Data Buffers === */
 
@@ -1332,7 +1335,7 @@ void DoPostCreate(void)
     /* Create document helper object (0x1B4 bytes) */
     piVar14 = (int *)NewPtr_Thunk(0x1B4);
     if (piVar14 != NULL) {
-        FUN_10073310(piVar14);
+        ConstructDocumentHelper(piVar14);
         /* Set vtable from TVect table */
         *piVar14 = 0; /* vtable from local_54 - 0x4DC */
         *(char *)(piVar14 + 0x28) = 0;
@@ -1345,7 +1348,7 @@ void DoPostCreate(void)
     ResourceRead_Dispatch((int)piVar14 + (int)*(short *)(*piVar14 + 0x538));
 
     /* Register document with application */
-    FUN_100bd55c(*(void **)puVar1);
+    AttachDocumentToApp(*(void **)puVar1);
 }
 
 
@@ -1357,7 +1360,7 @@ void DoPostCreate(void)
  * ========================================================================= */
 
 /*
- * OpenW2SCStream -- FUN_1007ec7c
+ * OpenW2SCStream
  * Address: 0x1007ec7c, Size: 152 bytes
  *
  * Opens a W2SC (Scenario) resource stream for reading.
@@ -1384,7 +1387,7 @@ void OpenW2SCStream(int docSelf, int param_2)
 
 
 /*
- * OpenW2TEStream -- FUN_1007ed14
+ * OpenW2TEStream
  * Address: 0x1007ed14, Size: 152 bytes
  *
  * Opens a W2TE (Terrain) resource stream.
@@ -1407,7 +1410,7 @@ void OpenW2TEStream(int docSelf, int param_2)
 
 
 /*
- * OpenW2ARStream -- FUN_1007edac
+ * OpenW2ARStream
  * Address: 0x1007edac, Size: 152 bytes
  *
  * Opens a W2AR (Army/Unit definitions) resource stream.
@@ -1431,7 +1434,7 @@ void OpenW2ARStream(int docSelf, int param_2)
 /* =========================================================================
  * Window Position Save/Restore
  *
- * FUN_1007c7b4 at 0x1007c7b4, Size: 1788 bytes
+ * SaveWindowPositions at 0x1007c7b4, Size: 1788 bytes
  *
  * Saves current window positions and visibility state to the "Wind"
  * resource (ID 1000) for persistence across sessions.
@@ -1444,7 +1447,7 @@ void OpenW2ARStream(int docSelf, int param_2)
  * ========================================================================= */
 void SaveWindowPositions(void *self)
 {
-    /* Stub — FUN_1007c7b4 (1788 bytes)
+    /* Stub -- SaveWindowPositions (1788 bytes)
      *
      * Key operations:
      * 1. Read current window rects for all 3 windows

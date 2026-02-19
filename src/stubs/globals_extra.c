@@ -8,6 +8,7 @@
 #include "warlords2.h"
 
 /* Special globals */
+unsigned short *gSectorCounter = NULL;  /* mapgen sector counter at address 0x10116820 */
 int _FUN_10115e4c = 0;
 int _FUN_10116e14 = 0;
 /* FUN_101159dc defined in wave2_macapp4.c */

@@ -95,7 +95,21 @@ extern void   ConcatBuildName(unsigned char *dst, unsigned char *a,
 
 /* Handle validity check */
 extern int    IsHandleValid(void *h);                                     /* IsHandleValid */
-extern void   ReleaseHandle_Mapgen(void *h);                                     /* ReleaseHandle_Mapgen */
+extern void   ReleaseHandle_Mapgen(void *h);                              /* ReleaseHandle_Mapgen */
+
+/* Collection management (MacApp iterators) */
+extern void   Sound_InitCollectionIter(void *state, int coll, int mode);  /* FUN_100ec170 */
+extern int    Sound_GetFirstItem(void *state);                            /* FUN_100ec2c4 */
+extern int    Sound_HasMoreItems(void *state);                            /* FUN_100ebf44 */
+extern int    Sound_GetNextItem(void *state);                             /* FUN_100ec34c */
+extern void   Sound_DisposeCollectionIter(void *state, int mode);         /* FUN_100ec1e8 */
+extern int    Sound_NewCollection(int param);                             /* FUN_100eab4c */
+extern void   Sound_InitCollection(void);                                 /* FUN_100eabdc */
+
+/* QuickTime / Resource helpers */
+extern long   Sound_TuneStopAlt(int tunePlayer, int mode);               /* FUN_10003798 */
+extern void   Sound_BlockCopy(void *src, void *dst, unsigned long size);  /* FUN_100012d8 */
+extern void   Sound_DetachResourceAlt(void *handle);                      /* FUN_100ef9b8 */
 
 /* =========================================================================
  * Forward Declarations
@@ -275,19 +289,19 @@ void CSoundHandler_Destroy(int *self, unsigned long freeFlags)  /* CSoundHandler
         char iterState[368];
         int  handle;
 
-        FUN_100ec170(iterState, self[1], 1);       /* InitCollectionIterator */
-        handle = FUN_100ec2c4(iterState);           /* GetFirstItem */
-        int more = FUN_100ebf44(iterState);         /* HasMoreItems */
+        Sound_InitCollectionIter(iterState, self[1], 1);  /* InitCollectionIterator */
+        handle = Sound_GetFirstItem(iterState);           /* GetFirstItem */
+        int more = Sound_HasMoreItems(iterState);         /* HasMoreItems */
 
         while (more != 0) {
             DisposeHandle_Thunk((Handle)handle);    /* DisposeHandle_Thunk */
-            handle = FUN_100ec34c(iterState);       /* GetNextItem */
-            more   = FUN_100ebf44(iterState);
+            handle = Sound_GetNextItem(iterState);       /* GetNextItem */
+            more   = Sound_HasMoreItems(iterState);
         }
 
         /* Shrink/dispose the collection itself */
         self[1] = DisposeObject(self[1]);
-        FUN_100ec1e8(iterState, 2);                 /* DisposeCollectionIterator */
+        Sound_DisposeCollectionIter(iterState, 2);       /* DisposeCollectionIterator */
     }
 
     /* Optionally free the struct */
@@ -365,9 +379,9 @@ void CSoundHandler_LoadSound(int self, short sndID)             /* CSoundHandler
 
     /* Add to fSoundList collection */
     if (*(int *)(self + 4) == 0) {
-        int coll = FUN_100eab4c(0);                             /* NewCollection */
+        int coll = Sound_NewCollection(0);                      /* NewCollection */
         *(int *)(self + 4) = coll;
-        FUN_100eabdc();
+        Sound_InitCollection();
     }
 
     /* Insert handle into collection via vtable method */
@@ -428,9 +442,9 @@ short CSoundHandler_LoadSoundByName(int self)                   /* CSoundHandler
 
     /* Add to collection */
     if (*(int *)(self + 4) == 0) {
-        int coll = FUN_100eab4c(0);
+        int coll = Sound_NewCollection(0);
         *(int *)(self + 4) = coll;
-        FUN_100eabdc();
+        Sound_InitCollection();
     }
     ResourceRead_Dispatch(*(int *)(self + 4) +
                  (int)*(short *)(*(int *)*(int *)(self + 4) + 0x158),
@@ -716,7 +730,7 @@ void FadeAndStopMusic(void)                                    /* FadeAndStopMus
     /* Stop playback */
     {
         ComponentResult cr;
-        cr = FUN_10003798(*gTunePlayer, 0);                    /* TuneStop variant */
+        cr = Sound_TuneStopAlt(*gTunePlayer, 0);                /* TuneStop variant */
         EndFocus(cr);
     }
 }
@@ -799,7 +813,7 @@ void LoadMusic(void *resourcePrefix, void *tuneName)           /* LoadMusic */
     ConcatBuildName(scenarioName, nameBuffer, fullName);       /* ConcatBuildName */
 
     /* Copy constructed name */
-    FUN_100012d8(scenarioName, fullName, (unsigned long)scenarioName[0] + 1);
+    Sound_BlockCopy(scenarioName, fullName, (unsigned long)scenarioName[0] + 1);
 
     /* Load Tune resource: Get1NamedResource('Tune', name) */
     {
@@ -810,7 +824,7 @@ void LoadMusic(void *resourcePrefix, void *tuneName)           /* LoadMusic */
     MarkChanged();
 
     HLock_Thunk_Sound(tuneH);                                       /* HLock_Thunk_Sound */
-    FUN_100ef9b8(tuneH);                                      /* DetachResource variant */
+    Sound_DetachResourceAlt(tuneH);                                      /* DetachResource variant */
 
     /* Load Head resource: Get1NamedResource('Head', name) */
     {
@@ -821,7 +835,7 @@ void LoadMusic(void *resourcePrefix, void *tuneName)           /* LoadMusic */
     MarkChanged();
 
     HLock_Thunk_Sound(headH);
-    FUN_100ef9b8(headH);
+    Sound_DetachResourceAlt(headH);
 
     /* Set instrument header: TuneSetHeader(gTunePlayer, *gTuneHeaderH) */
     {
