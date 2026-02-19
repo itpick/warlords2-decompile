@@ -88,6 +88,7 @@ int CARRY8(int a, int b) { return ((unsigned char)a + (unsigned char)b) > 0xFF; 
 int MapRefreshAndCombat() { return 0; }
 int ConstructCommand() { return 0; }
 int AllocateHandle() { return 0; }
+void UpdateMapDisplay(short a, short b) { (void)a; (void)b; }
 
 /* High-address function stubs (globals/data region) */
 int *_FUN_10117690 = 0;    /* Global data pointer referenced by reconstructed_batch_b */

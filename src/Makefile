@@ -85,7 +85,9 @@ app: pef
 	@echo "=== Assembling Mac OS application ==="
 	cp $(PEF_TARGET) $(APP_TARGET)
 	dd if=$(ORIGINAL_APP)/..namedfork/rsrc of=$(APP_TARGET)/..namedfork/rsrc bs=65536 2>/dev/null
-	/usr/bin/xattr -wx com.apple.FinderInfo "$$(xattr -px com.apple.FinderInfo '$(ORIGINAL_APP)')" $(APP_TARGET) 2>/dev/null || true
+	/usr/bin/xattr -wx com.apple.FinderInfo \
+		"41 50 50 4C 57 61 72 32 21 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00" \
+		$(APP_TARGET) 2>/dev/null || true
 	@echo "App assembled: $(APP_TARGET)"
 	@echo "  Data fork (PEF): $$(stat -f%z $(APP_TARGET)) bytes"
 	@echo "  Resource fork:   $$(stat -f%z $(APP_TARGET)/..namedfork/rsrc) bytes"

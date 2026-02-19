@@ -1041,39 +1041,57 @@ void DoSetupMenus(int docSelf)
  * ========================================================================= */
 void DoMakeWindows(int docSelf, short param_2)
 {
-    /* Stub -- DoMakeWindows (5420 bytes)
+    /* Minimal DoMakeWindows implementation (original: 5420 bytes)
      *
-     * This function is extremely large and complex. Key operations:
-     *
-     * 1. Read application global data (gAppObject + 0x32)
-     * 2. Check available memory (EndFocus)
-     *    - If < 3MB, limit screen to 640x480
-     * 3. Get screen bounds (GetScreenBounds)
-     * 4. Open resource stream for "Wind" resource (ID 1000)
-     *    via OpenResourceStream / FindResourceByType
-     * 5. Read 3 saved window rectangles from resource:
-     *    - Main window rect (offsets 0x08-0x14)
-     *    - Overview window rect (offsets 0x18-0x24)
-     *    - Info window rect (offsets 0x2C-0x38)
-     *    - Visibility flags (offset 0x28, etc.)
-     * 6. Validate window positions against screen bounds
-     * 7. Create main game window:
-     *    - FindSubView for "map " (TMapView)
-     *    - FindSubView for "over" (TOverviewView)
-     *    - FindSubView for "turn" (TTurnView)
-     *    - FindSubView for "stac" (TStackInfoView)
-     * 8. Create overview window
-     * 9. Create info window
-     * 10. Loop 4 times calling SetupPlayerView for player view setup
-     * 11. If loading saved game (param_2 != 0):
-     *     - ShuffleTurnOrder()       (InitializePlayerTurn)
-     *     - AdvanceToNextPlayer()    (AdvanceToNextPlayer)
-     *     - UpdateMapDisplay(1,1)    (UpdateMapDisplay)
-     *     - GameInit()               (RefreshGameState)
-     * 12. SetupTurnIndicators()
-     * 13. Show/hide windows based on saved visibility
-     * 14. UpdateTurnDisplay() and FullDisplayRefresh() for final refresh
+     * Creates 3 windows and loads the menu bar so the app can display
+     * something visible in SheepShaver. The original function performed
+     * complex MacApp view hierarchy construction; this is a simplified
+     * version that creates plain windows to prove the app boots.
      */
+#ifndef MODERN_BUILD
+    Rect    mainRect, overRect, infoRect;
+    Handle  menuBar;
+
+    /* Load menu bar from MBAR resource 128 (9 menus: Apple, File, Edit,
+     * Orders, Reports, Heroes, View, History, Game) */
+    menuBar = GetNewMBar(128);
+    if (menuBar != NULL) {
+        SetMenuBar(menuBar);
+        DisposeHandle(menuBar);
+        /* Populate Apple menu with desk accessories */
+        AppendResMenu(GetMenuHandle(1), 'DRVR');
+        DrawMenuBar();
+    }
+
+    /* Main game window — covers most of the screen */
+    SetRect(&mainRect, 2, 40, 510, 382);
+    *gMainGameWindow = (pint)NewCWindow(
+        NULL, &mainRect,
+        "\pWarlords II", true,
+        documentProc, (WindowPtr)-1L, false, 0);
+
+    /* Overview (minimap) window — top right */
+    SetRect(&overRect, 514, 40, 638, 200);
+    *gOverviewWindow = (pint)NewCWindow(
+        NULL, &overRect,
+        "\pOverview", true,
+        documentProc, (WindowPtr)-1L, false, 0);
+
+    /* Info panel window — below overview */
+    SetRect(&infoRect, 514, 204, 638, 382);
+    *gInfoWindow = (pint)NewCWindow(
+        NULL, &infoRect,
+        "\pInfo", true,
+        documentProc, (WindowPtr)-1L, false, 0);
+
+    /* If loading a saved game, initialize game state */
+    if (param_2 != 0) {
+        ShuffleTurnOrder();
+        AdvanceToNextPlayer();
+        UpdateMapDisplay(1, 1);
+        GameInit();
+    }
+#endif /* MODERN_BUILD */
 }
 
 

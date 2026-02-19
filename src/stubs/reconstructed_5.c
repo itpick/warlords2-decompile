@@ -824,6 +824,13 @@ int CreateFrameworkContext(int param_1)
     unsigned short uVar1;
     int uVar2;
 
+    /* Guard: when called with NULL (as in DoPostCreate / FinalizeFrameworkInit),
+     * return success so the framework init chain proceeds.
+     * The original code received a valid TVect config pointer here. */
+    if (param_1 == 0) {
+        return 1;
+    }
+
     if (*(char *)(param_1 + 0x1d) == '\0') {
         uVar1 = *(unsigned short *)(param_1 + 4);
         uVar2 = (0x6ff < uVar1) &

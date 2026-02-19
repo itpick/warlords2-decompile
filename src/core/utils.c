@@ -230,28 +230,24 @@ void SetDrawColor(short colorIndex)
  * Actually a generic memory read/copy with offset.
  * ===================================================================== */
 
-/* Original: ResourceRead_Dispatch at 0x10117884 */
-void ResourceRead_Dispatch(void *handle, long offset)
+/* Original: ResourceRead_Dispatch at 0x10117884, 20 bytes
+ *
+ * This was a PPC Transition Vector (TVect) indirect call trampoline.
+ * In the original binary, it was 5 PPC instructions that:
+ *   1. Loaded a function pointer from the TVect address passed in r3
+ *   2. Loaded the TOC base from TVect+4
+ *   3. Branched to the function with all other args forwarded
+ *
+ * Called 5,724 times throughout the binary for ALL MacApp vtable
+ * dispatch, method calls, and virtual function resolution.
+ *
+ * In our reconstruction, MacApp objects don't have real vtables,
+ * so this is a safe no-op that returns 0.  As we reconstruct more
+ * of the MacApp framework, specific dispatch calls can be replaced
+ * with direct C function calls instead.
+ */
+int ResourceRead_Dispatch(int func_addr, ...)
 {
-    /*
-     * This function is heavily overloaded in the original.
-     * It's used for:
-     * 1. Virtual method dispatch (vtable calls)
-     * 2. Resource data access
-     * 3. Memory block reads
-     *
-     * The actual implementation reads from a handle at an offset
-     * and calls through a function pointer found there.
-     *
-     * Full reconstruction requires vtable layout analysis
-     */
-
-    void **ptr = (void **)handle;
-    if (ptr != NULL && *ptr != NULL) {
-        /* Read function pointer at offset and call it */
-        void (*func)(void) = *(void (**)(void))((char *)*ptr + offset);
-        if (func != NULL) {
-            func();
-        }
-    }
+    /* Safe no-op — vtable dispatch not yet reconstructed */
+    return 0;
 }
