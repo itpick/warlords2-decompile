@@ -1859,7 +1859,7 @@ void FUN_10081fcc(int *param_1,long long param_2)
     *puRam10117370 = auStack_128;
     iVar2 = TrySetjmp(auStack_128);
     if (iVar2 == 0) {
-      FUN_10007f78();
+      MapRefreshAndCombat();
       *puVar1 = local_20;
     }
     else {
@@ -3694,7 +3694,7 @@ void FUN_1008535c(int *param_1,long long param_2)
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_270);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_270,auStack_278);
       uVar2 = FUN_10000360(param_1[0x2b]);
-      FUN_10000048(param_1[0x2b]);
+      LockHandle_Thunk(param_1[0x2b]);
       iVar4 = *(int *)param_1[0x2b];
       local_30 = *(short *)(iVar4 + 2);
       local_2e = *(short *)(iVar4 + 4);
@@ -4551,7 +4551,7 @@ void FUN_10086a64(int *param_1)
       local_74 = local_74 - iVar10;
       local_88 = *piVar4;
       local_84 = FUN_10000360(local_88);
-      FUN_10000048(local_88);
+      LockHandle_Thunk(local_88);
       uVar5 = GetBitMapPtr(&local_68);
       FUN_10000750(*piVar4,uVar5);
       if (((char*)0) != (char *)0x88) {
@@ -4568,7 +4568,7 @@ void FUN_10086a64(int *param_1)
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_80,&local_68);
       local_90 = *piVar2;
       local_8c = FUN_10000360(local_90);
-      FUN_10000048(local_90);
+      LockHandle_Thunk(local_90);
       uVar5 = GetBitMapPtr(&local_68);
       FUN_10000750(*piVar2,uVar5);
       if (((char*)0) != (char *)0x90) {
@@ -5095,7 +5095,7 @@ void FUN_100878fc(int *param_1)
   iVar12 = *piVar2;
   *piVar20 = iVar12;
   local_cc = FUN_10000360(iVar12);
-  FUN_10000048(*piVar20);
+  LockHandle_Thunk(*piVar20);
   iVar12 = *(int *)*piVar2;
   *puVar25 = *(short *)(iVar12 + 2);
   local_96 = *(short *)(iVar12 + 4);
@@ -5111,7 +5111,7 @@ void FUN_100878fc(int *param_1)
   }
   local_d8 = *piVar3;
   local_d4 = FUN_10000360(local_d8);
-  FUN_10000048(local_d8);
+  LockHandle_Thunk(local_d8);
   GetGWorld_Wrapper(((char*)0) + -0x58,((char*)0) + -0x54);
   iVar12 = local_11c;
   uVar4 = LockPixels_Wrapper(*(int *)(*(int *)(local_11c + -0x1474) + 0x10));
@@ -7028,7 +7028,7 @@ void FUN_1008b804(int param_1)
         FUN_10002c10();
       }
       FUN_100099b4();
-      FUN_10007f78();
+      MapRefreshAndCombat();
     }
     piVar13 = (int *)ResourceRead_Dispatch((int)piVar13 + (int)*(short *)(*piVar13 + 0x308),0x73706565);
     if (piVar13 != (int *)0x0) {

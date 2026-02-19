@@ -211,10 +211,10 @@ extern int      AllocateHandle(int size, int flags, ...);    /* NewHandle / memo
 extern void     DetachResource(void *handle);                 /* HLock - lock handle */
 #endif
 extern void     DisposeHandle_Thunk(int handle);                   /* HUnlock - unlock handle */
-extern void     FUN_10000048(int handle);                   /* SetHandleSize or similar */
-extern void     FUN_100004e0(void *handle, int size);       /* SetHandleSize */
-extern void     FUN_100db1ec(void);                         /* error check / MemError */
-extern void     FUN_10001f50(int handle);                   /* DisposeHandle_Thunk */
+extern void     LockHandle_Thunk(int handle);               /* HLock / reallocate existing handle */
+extern void     ResizeHandle(void *handle, int size);      /* ResizeHandle */
+extern void     CheckMemError(void);                        /* error check / MemError */
+extern void     FreeHandle(int handle);                     /* DisposeHandle thunk */
 
 /* abs() - wraps through a function pointer table */
 /* AbsShort at 10003768 */
@@ -344,10 +344,10 @@ static void AllocatePathfindingBuffers(void)
         *distHandle = handle;
     } else {
         if (*(int *)*distHandle == 0) {
-            FUN_100004e0((void *)*distHandle, 0x8880);
-            FUN_100db1ec();
+            ResizeHandle((void *)*distHandle, 0x8880);
+            CheckMemError();
         }
-        FUN_10000048(*distHandle);
+        LockHandle_Thunk(*distHandle);
     }
 
     /* Allocate cost map (0x4440 bytes) */
@@ -2193,7 +2193,7 @@ static void FreePathfindingBuffers(void)
     if (*gDistGridHandle != 0) {
         DisposeHandle_Thunk(*gDistGridHandle);
     }
-    FUN_10001f50(*gDistGridHandle);
+    FreeHandle(*gDistGridHandle);
 
     /* Reset initialized flag */
     *gPathfindingInitialized = 0;

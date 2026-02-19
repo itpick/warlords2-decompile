@@ -19939,7 +19939,7 @@ void FUN_100ccb1c(int param_1,int *param_2)
     if (iVar5 == 0) {
       FUN_100f16f8(*(int *)(param_1 + 4),uVar2);
       DetachResource(*(int *)(param_1 + 4));
-      FUN_100db1ec();
+      CheckMemError();
       ResourceRead_Dispatch((int)param_2 + (int)*(short *)(*param_2 + 0xe0),**(int **)(param_1 + 4),
                    uVar2);
       FUN_10001b60(*(int *)(param_1 + 4),uVar3);
@@ -21617,7 +21617,7 @@ void FUN_100cf8e4(int *param_1,long long param_2)
       ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x730) + (int)param_1,auStack_78);
       ResourceRead_Dispatch((int)*(short *)(*param_1 + 0x288) + (int)param_1,auStack_78,auStack_68);
       uVar2 = FUN_10000360(param_1[0x2b]);
-      FUN_10000048(param_1[0x2b]);
+      LockHandle_Thunk(param_1[0x2b]);
       DetachResource(param_1[0x2b]);
       if (*(char *)((int)param_1 + 0xa9) == '\0') {
         uVar3 = GetBitMapPtr(auStack_68);
@@ -21664,7 +21664,7 @@ void FUN_100cfae0(int param_1)
   *(short *)(param_1 + 0xaa) = 0xffff;
   if (*(int *)(param_1 + 0xac) != 0) {
     if (*(char *)(param_1 + 0xa9) == '\0') {
-      FUN_10001f50(*(int *)(param_1 + 0xac));
+      FreeHandle(*(int *)(param_1 + 0xac));
     }
     else {
       FUN_10001f38(*(int *)(param_1 + 0xac));
@@ -21717,7 +21717,7 @@ void FUN_100cfc24(int *param_1,short param_2,char param_3)
     if ((*(char *)(param_1 + 0x2a) != '\0') &&
        (uVar1 = GetResource_Thunk(0x6369636e,*(short *)((int)param_1 + 0xaa)), (int)uVar1 != 0)) {
       uVar2 = FUN_10000360(uVar1);
-      FUN_10000048(uVar1);
+      LockHandle_Thunk(uVar1);
       iVar3 = FUN_10001f68(*(short *)((int)param_1 + 0xaa));
       param_1[0x2b] = iVar3;
       FUN_10001b60(uVar1,uVar2);
@@ -21854,7 +21854,7 @@ void FUN_100cffdc(int *param_1,long long param_2)
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_34);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_34,auStack_3c);
       uVar1 = FUN_10000360(param_1[0x2b]);
-      FUN_10000048(param_1[0x2b]);
+      LockHandle_Thunk(param_1[0x2b]);
       local_4c = *(int *)param_1[0x2b];
       local_48 = 2;
       SetMacRect(auStack_46,0,0,0x10,0x10);
@@ -21874,7 +21874,7 @@ void FUN_100d0140(int param_1)
 {
   *(short *)(param_1 + 0xa8) = 0xffff;
   if (*(int *)(param_1 + 0xac) != 0) {
-    FUN_10001f50(*(int *)(param_1 + 0xac));
+    FreeHandle(*(int *)(param_1 + 0xac));
     *(int *)(param_1 + 0xac) = 0;
   }
   return;
@@ -22052,7 +22052,7 @@ void FUN_100d068c(int param_1)
   *(short *)(param_1 + 0xaa) = 0xffff;
   if (*(int *)(param_1 + 0xac) != 0) {
     if (*(char *)(param_1 + 0xa9) == '\0') {
-      FUN_10001f50(*(int *)(param_1 + 0xac));
+      FreeHandle(*(int *)(param_1 + 0xac));
     }
     else {
       FUN_10002da8(*(int *)(param_1 + 0xac));
@@ -22431,7 +22431,7 @@ void FUN_100d0c54(int *param_1,long long param_2)
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x730),auStack_28);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_28,auStack_30);
       uVar1 = FUN_10000360(param_1[0x2b]);
-      FUN_10000048(param_1[0x2b]);
+      LockHandle_Thunk(param_1[0x2b]);
       FUN_10000030();
       uVar2 = GetBitMapPtr(auStack_30);
       FUN_10000750(param_1[0x2b],uVar2);
@@ -22448,7 +22448,7 @@ void FUN_100d0d64(int param_1)
 {
   *(short *)(param_1 + 0xa8) = 0xffff;
   if (*(int *)(param_1 + 0xac) != 0) {
-    FUN_10001f50(*(int *)(param_1 + 0xac));
+    FreeHandle(*(int *)(param_1 + 0xac));
     *(int *)(param_1 + 0xac) = 0;
   }
   return;
@@ -27083,7 +27083,7 @@ void FUN_100d8690(int param_1,int param_2)
       if (iVar2 == 0) {
         FUN_10000ab0(*(int *)(param_1 + 0x1c),
                      param_2 << ((int)*(short *)(param_1 + 0xe) & 0x3fU));
-        FUN_100db1ec();
+        CheckMemError();
       }
       else {
         FUN_100f16f8(*(int *)(param_1 + 0x1c),

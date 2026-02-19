@@ -36,20 +36,20 @@ extern int   gCombatDisplayPieces;   /* combatDisplayPieces[8] - int array base 
 
 /* ===== Forward declarations for functions defined elsewhere ===== */
 
-extern void  FUN_10007f78(void);                     /* MapRefreshAndCombat */
-extern void  FUN_100169c0(short x, short y);         /* UpdateRuinState */
-extern void  FUN_10016df0(int heroArray);             /* ResolveHeroFightOrder */
+extern void  MapRefreshAndCombat(void);               /* MapRefreshAndCombat */
+extern void  UpdateRuinState(short x, short y);       /* UpdateRuinState */
+extern void  ResolveHeroFightOrder(int heroArray);    /* ResolveHeroFightOrder */
 extern void  AssignToDefense(int pieceIdx, int param2);  /* RemoveFromBattle */
-extern void  FUN_100214e8(int pieceAddr);             /* RemoveBattlePiece */
-extern void  FUN_1002e5c0(void *piece, short x, short y); /* HandleHeroDefeat */
-extern void  FUN_1002b91c(void);                      /* UpdateDisplayState */
+extern void  RemoveBattlePiece(int pieceAddr);        /* RemoveBattlePiece */
+extern void  HandleHeroDefeat(void *piece, short x, short y); /* HandleHeroDefeat */
+extern void  UpdateDisplayState(void);                /* UpdateDisplayState */
 extern int   LookupCityAtPos(short x, short y);          /* FindArmyAtPosition */
 extern void  ActivateAttackEvent(int siegeSlot);             /* ClearSiegeSlot */
-extern int   FUN_1000ed34(int slot, int target, int atkAddr, int defAddr); /* FindBestSiegeTarget */
+extern int   FindBestSiegeTarget(int slot, int target, int atkAddr, int defAddr); /* FindBestSiegeTarget */
 extern void  RemoveArmyFromCities(short armyIdx);             /* ClearSiegeAssignments */
-extern void  FUN_1000f308(short siegeSlot);           /* UpdateSiegeStrength */
-extern void  FUN_1001fcc0(void);                      /* RecalculateSiegePaths */
-extern void  FUN_1001ae14(int siegeSlot, int penalty); /* BreakSiege */
+void UpdateSiegeStrength(short siegeSlot); /* Forward declaration - defined later in this file */
+extern int   AI_ProductionPlanning(void);             /* AI production & siege planning */
+extern void  AI_ActivateAttackGroup(int siegeSlot, int penalty); /* BreakSiege / activate attack group */
 extern int   AbsShort(long value);                /* AbsoluteValue */
 
 /* Forward declarations for functions defined later in this file */
@@ -88,7 +88,7 @@ void RefreshMapAfterCombat(short x, short y)
             x <= *(short *)(base + 0x17c) &&
             *(short *)(base + 0x176) <= y &&
             y <= *(short *)(base + 0x17a)) {
-            FUN_10007f78(); /* MapRefreshAndCombat */
+            MapRefreshAndCombat(); /* MapRefreshAndCombat */
         }
     }
 }
@@ -118,11 +118,11 @@ void RemoveDefeatedUnit(short pieceIdx, short refreshMap)
 
     /* If this is a hero unit (type 0x1C), handle hero defeat */
     if (*(char *)(piecePtr + 2) == 0x1c) {
-        FUN_1002e5c0(piecePtr, savedX, savedY);
+        HandleHeroDefeat(piecePtr, savedX, savedY);
     }
 
     /* Remove the battle piece from the game */
-    FUN_100214e8(*battlePieceTable + pieceIdx * 0x16);
+    RemoveBattlePiece(*battlePieceTable + pieceIdx * 0x16);
 
     /* Optionally refresh the map display */
     if (refreshMap != 0) {
@@ -189,7 +189,7 @@ void CleanupCombatUnits(short refreshFlag)
             if (refreshFlag != 0 && lastX != -1) {
                 RefreshMapAfterCombat(lastX, lastY);
             }
-            FUN_1002b91c();
+            UpdateDisplayState();
             return;
         }
     } while (1);
@@ -234,7 +234,7 @@ void RemoveAllFromOrder(int orderArray, short refreshFlag)
     if (refreshFlag != 0 && lastX != -1) {
         RefreshMapAfterCombat(lastX, lastY);
     }
-    FUN_1002b91c();
+    UpdateDisplayState();
 }
 
 
@@ -591,7 +591,7 @@ int CalculateFightOrder(short armyIndex, short numPieces, int combatOrder, int f
 /*
  * ==========================================================================
  *  PruneExcessArmies
- *  Original: FUN_1001072c at 0x1001072c
+ *  Original: AI_CullWeakUnits at 0x1001072c
  *  Size: 1028 bytes
  *
  *  AI tactical army trimming. Evaluates each non-essential unit by a
@@ -777,7 +777,7 @@ void PruneExcessArmies(short armyIndex, int combatOrder)
 /*
  * ==========================================================================
  *  ExecuteArmyCombat
- *  Original: FUN_10010b30 at 0x10010b30
+ *  Original: AI_ArmyManagement at 0x10010b30
  *  Size: 2468 bytes
  *
  *  Main combat execution function. Called when an army stack enters a
@@ -948,13 +948,13 @@ int ExecuteArmyCombat(short armyIndex, short isForced)
         int heroAddr = *pieceTable + heroFoundIdx * 0x16;
         /* Set hero as selected unit pointer */
         /* *gSelectedUnitPtr = heroAddr; */
-        FUN_100169c0(*(short *)(*pieceTable + heroFoundIdx * 0x16),
+        UpdateRuinState(*(short *)(*pieceTable + heroFoundIdx * 0x16),
                      *(short *)(heroAddr + 2));
     }
 
     /* If multiple heroes, resolve hero fight order */
     if (numHeroesForSort > 1) {
-        FUN_10016df0((int)heroSlots);
+        ResolveHeroFightOrder((int)heroSlots);
     }
 
     /* Update combat flag bits: clear bits 4-5, set siege/ranged flags */
@@ -1196,7 +1196,7 @@ skip_siege_deploy:
 /*
  * ==========================================================================
  *  AutoResolveCombat
- *  Original: FUN_100114d4 at 0x100114d4
+ *  Original: AI_AssignRemainingArmies at 0x100114d4
  *  Size: 188 bytes
  *
  *  Auto-resolves remaining combats for the current player.
@@ -1407,7 +1407,7 @@ void HandleSiege(void)
 
     /* Find best army to lead the siege */
     siegeBase = *extState + emptySlot * 0x5C;
-    bestArmy = FUN_1000ed34(emptySlot, targetPlayer,
+    bestArmy = FindBestSiegeTarget(emptySlot, targetPlayer,
                             siegeBase + 0x25A, siegeBase + 0x272);
     if (bestArmy == -1) {
         ActivateAttackEvent(emptySlot);
@@ -1433,8 +1433,8 @@ void HandleSiege(void)
 
     /* Clear existing siege assignments and recalculate */
     RemoveArmyFromCities(bestArmy);
-    FUN_1000f308(emptySlot);
-    FUN_1001fcc0();
+    UpdateSiegeStrength(emptySlot);
+    AI_ProductionPlanning();
 }
 
 
@@ -1807,7 +1807,7 @@ int SelectDiplomacyTarget(short mode)
 /*
  * ==========================================================================
  *  DoFightResults
- *  Original: FUN_10011804 at 0x10011804
+ *  Original: AI_StrategicAssessment at 0x10011804
  *  Size: 2548 bytes
  *
  *  Processes fight outcomes and makes alliance/diplomacy decisions.
@@ -2196,7 +2196,7 @@ void DoFightResults(void)
             unsigned int stance = *(unsigned int *)(
                 *gameState + currentPlayer * 0x10 + siegeTarget * 2 + 0x1582);
             if (((stance >> 0x1C) & 3) == 0) {
-                FUN_1001ae14(i, 0x14); /* Break siege with 20 gold penalty */
+                AI_ActivateAttackGroup(i, 0x14); /* Break siege with 20 gold penalty */
             }
         }
         if (i == 0) break;
@@ -2258,7 +2258,7 @@ int CheckThirdPartyTreaty(short playerIdx)
 /*
  * ==========================================================================
  *  CanUnitAct
- *  Original: FUN_100121f8 at 0x100121f8
+ *  Original: AI_CheckArmyOwnership at 0x100121f8
  *  Size: 300 bytes
  *
  *  Checks whether a unit can take an action based on its owner's
@@ -2325,7 +2325,7 @@ int CanUnitAct(short armyIdx)
 /*
  * ==========================================================================
  *  TryHeroCapture
- *  Original: FUN_10012324 at 0x10012324
+ *  Original: AI_EarlyGameAttack at 0x10012324
  *  Size: 248 bytes
  *
  *  Attempts to capture a hero unit after combat. Checks various

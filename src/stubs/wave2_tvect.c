@@ -5623,7 +5623,7 @@ void FUN_10003960(int *param_1,int *param_2)
                         (long long)(int)local_26 * (long long)(int)local_28 & 0x7fffffff) << 1);
   param_1[2] = uVar2;
   **(char **)(local_4c + -0x3c) = uVar3;
-  FUN_100db1ec();
+  CheckMemError();
   return;
 }
 
@@ -5817,7 +5817,7 @@ void FUN_10003aa4()
     *piVar2 = iVar5;
     *local_3c[-0xf] = uVar7;
     ppuVar4 = local_3c;
-    FUN_100db1ec();
+    CheckMemError();
   }
   *(unsigned int *)(iVar1 + 0x28) = *(unsigned int *)(iVar1 + 0x28) & 0x7fffffff;
   *(unsigned int *)(iVar6 + 0x28) = *(unsigned int *)(iVar6 + 0x28) & 0x7fffffff;
@@ -11964,9 +11964,9 @@ void FUN_1000fc38(short param_1,short param_2)
   uVar1 = *puVar4;
   uVar2 = puVar4[1];
   if (*(char *)(puVar4 + 2) == '\x1c') {
-    FUN_1002e5c0(puVar4,uVar1,uVar2);
+    HandleHeroDefeat(puVar4,uVar1,uVar2);
   }
-  FUN_100214e8(*piVar3 + param_1 * 0x16);
+  RemoveBattlePiece(*piVar3 + param_1 * 0x16);
   if (param_2 != 0) {
     RefreshMapAfterCombat(uVar1,uVar2);
   }
@@ -12003,7 +12003,7 @@ void FUN_1000fde4(int param_1,short param_2)
   if ((param_2 != 0) && ((int)lVar6 != -1)) {
     RefreshMapAfterCombat(lVar6,uVar5);
   }
-  FUN_1002b91c();
+  UpdateDisplayState();
   return;
 }
 

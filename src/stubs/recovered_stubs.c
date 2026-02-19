@@ -270,12 +270,12 @@ extern unsigned int uRam101174f0;
 extern unsigned int uRam101174d0;
 
 /* Forward declarations */
-void FUN_10000048();
+void LockHandle_Thunk();
 void ReleaseResource_Thunk();
 void FUN_10000300();
 void DisposeGeneric();
 void FUN_10000390();
-void FUN_100004e0();
+void ResizeHandle();
 void MakeAlias();
 int FUN_100006f0();
 void CopyBits_Thunk();
@@ -310,7 +310,7 @@ int GetString();
 #endif
 void DrawNumber();
 void BlockMoveData_Thunk();
-void FUN_10001f50();
+void FreeHandle();
 void FUN_10001f98();
 int OpenDefaultComponent_Thunk();
 int TuneSetHeader_Thunk();
@@ -345,9 +345,9 @@ void FUN_1000c67c();
 int FUN_1000d910(short param_1);
 long long FUN_1000f6a0(short param_1);
 long long CanArmyEnterCity(short param_1,short param_2);
-short FUN_10015980(short param_1);
+/* short AI_GetRuinCapability(short param_1); -- clean version in ai/ai.c */
 long long GetDirection(short param_1,short param_2,short param_3,short param_4);
-void FUN_1001aea0();
+/* void AI_ActivateBestGroup(); -- clean version in ai/ai.c */
 void WriteCityRecords(long long param_1);
 void ReadCityRecords(long long param_1);
 void FUN_1001f5e8(short param_1,short param_2);
@@ -546,7 +546,7 @@ int * FUN_100ca078(int *param_1);
 int * FUN_100d7adc(int *param_1);
 void FUN_100d7ba0(int *param_1,long long param_2,short param_3);
 void FUN_100da260(int *param_1,long long param_2);
-void FUN_100db1ec();
+void CheckMemError();
 void FUN_100e1674(int *param_1,int *param_2);
 int FUN_100e8cdc();
 int * FUN_100e8cec(int *param_1);
@@ -580,30 +580,30 @@ int * FUN_101171bc(int *param_1,int *param_2);
 void FUN_10004c54();
 void DrawFullMapView();
 void FUN_100090f0();
-unsigned long long FUN_1000cf78(short param_1);
-long long FUN_1000d0c0(short param_1,short param_2);
+/* unsigned long long AI_FindArmyForHero(short param_1); -- clean version in ai/ai.c */
+/* long long AI_PlaceNewUnit(short param_1,short param_2); -- clean version in ai/ai.c */
 void FUN_1000f7bc(short param_1);
 void FUN_1000fac4();
 void RefreshMapAfterCombat(short param_1,short param_2);
 void FUN_1000fccc(short param_1);
 long long CalcArmyStrength(short param_1);
 long long FUN_1000ffe0(short param_1,short param_2,int param_3,int param_4);
-int FUN_1001072c(short param_1,int param_2);
-long long FUN_10010b30(short param_1,short param_2);
-long long FUN_100121f8(short param_1);
-long long FUN_10012324(short param_1,short param_2);
-long long FUN_1001241c();
-void FUN_100126a4();
+/* int AI_CullWeakUnits(short param_1,int param_2); -- clean version in ai/ai.c */
+/* long long AI_ArmyManagement(short param_1,short param_2); -- clean version in ai/ai.c */
+/* long long AI_CheckArmyOwnership(short param_1); -- clean version in ai/ai.c */
+/* long long AI_EarlyGameAttack(short param_1,short param_2); -- clean version in ai/ai.c */
+/* long long AI_SearchForRuins(); -- clean version in ai/ai.c */
+/* void AI_AttackNeutralArmies(); -- clean version in ai/ai.c */
 long long FUN_10012a8c(long long param_1,short param_2);
-long long FUN_10013a10(short param_1,short param_2);
-int FUN_100143b8(short param_1);
-long long FUN_10015c48(short param_1);
-long long FUN_10016344(short param_1,int param_2);
+/* long long AI_AttackCity(short param_1,short param_2); -- clean version in ai/ai.c */
+/* int AI_FindBestMovableArmy(short param_1); -- clean version in ai/ai.c */
+/* long long AI_CheckRuinAccessible(short param_1); -- clean version in ai/ai.c */
+/* long long AI_AttackEnemyArmy(short param_1,int param_2); -- clean version in ai/ai.c */
 void FUN_10016cc4(int param_1,int param_2,int param_3,short param_4);
 long long GetNeighborArmies(short param_1,int param_2,int param_3);
 void FUN_1001a12c(short param_1,short param_2);
 short ProcessSingleAssignment(short param_1,long long param_2);
-void FUN_1001ab94();
+/* void AI_CheckArmyPathsBlocked(); -- clean version in ai/ai.c */
 short FUN_1001b584(long long param_1,short *param_2,unsigned short param_3,short param_4,int *param_5);
 void FUN_1001b8e0(short param_1);
 long long FUN_1001c2dc(short param_1,short *param_2,short param_3);
@@ -615,9 +615,9 @@ long long MoveArmyToTarget(int param_1,short param_2,short param_3,unsigned shor
 long long CheckArmyEscort(short param_1);
 void FUN_1001e564(short param_1,short param_2);
 long long IsPositionReachable(short param_1,short param_2);
-void FUN_1001f758();
-void FUN_1001f894(short param_1);
-void FUN_1001f958();
+/* void AI_ResetProductionState(); -- clean version in ai/ai.c */
+/* void AI_CheckNearbyThreats(short param_1); -- clean version in ai/ai.c */
+/* void AI_PrecomputeThreats(); -- clean version in ai/ai.c */
 int FUN_1002122c(short param_1,short param_2,short *param_3);
 void FUN_1002279c();
 void FUN_10025f2c();
@@ -681,7 +681,7 @@ void FUN_1003c838();
 void FUN_10064850(short param_1,short param_2);
 
 /* Address: 0x10000048 Size: 24 bytes */
-void FUN_10000048()
+void LockHandle_Thunk()
 
 {
 
@@ -732,7 +732,7 @@ void FUN_10000390()
 }
 
 /* Address: 0x100004e0 Size: 24 bytes */
-void FUN_100004e0()
+void ResizeHandle()
 
 {
 
@@ -1036,7 +1036,7 @@ void BlockMoveData_Thunk()
 }
 
 /* Address: 0x10001f50 Size: 24 bytes */
-void FUN_10001f50()
+void FreeHandle()
 
 {
 
@@ -2031,23 +2031,8 @@ long long FUN_1000f708(short param_1,short param_2)
 }
 
 /* Address: 0x10015980 Size: 72 bytes */
-short FUN_10015980(short param_1)
-
-{
-  int *ppuVar1;
-  int iVar2;
-  short uVar3;
-  
-  ppuVar1 = 0 /* TVect base */;
-  iVar2 = FUN_10015904(param_1);
-  if (iVar2 == -1) {
-    uVar3 = 0xffff;
-  }
-  else {
-    uVar3 = *(short *)((*(int*)((char*)ppuVar1 - 0x6d9)) + iVar2 * 2);
-  }
-  return uVar3;
-}
+/* Address: 0x10015980 Size: 72 bytes */
+/* AI_GetRuinCapability - clean version in ai/ai.c */
 
 /* Address: 0x100184dc Size: 152 bytes */
 long long GetDirection(short param_1,short param_2,short param_3,short param_4)
@@ -2081,30 +2066,8 @@ long long GetDirection(short param_1,short param_2,short param_3,short param_4)
 }
 
 /* Address: 0x1001aea0 Size: 152 bytes */
-void FUN_1001aea0()
-
-{
-  short sVar1;
-  short sVar2;
-  long long lVar3;
-  short sVar4;
-  
-  sVar1 = *(short *)(*piRam10117468 + 0x24a);
-  lVar3 = -1;
-  sVar4 = -1;
-  while (sVar1 != 0) {
-    sVar1 = sVar1 + -1;
-    sVar2 = *(short *)(*piRam10117468 + sVar1 * 0x5c + 0x24c);
-    if ((sVar2 != 0) && (sVar4 < sVar2)) {
-      lVar3 = (long long)sVar1;
-      sVar4 = sVar2;
-    }
-  }
-  if ((int)lVar3 != -1) {
-    FUN_1001ae14(lVar3,2);
-  }
-  return;
-}
+/* Address: 0x1001aea0 Size: 152 bytes */
+/* AI_ActivateBestGroup - clean version in ai/ai.c */
 
 /* Address: 0x1001e330 Size: 188 bytes */
 void FUN_1001e330(long long param_1)
@@ -13057,7 +13020,7 @@ LAB_1003e634:
     FUN_1003e0b0();
     if (*(short *)(**(int **)(uVar19 - 0x544) + 0x124) == 0) {
       RefreshDisplay(1,1,0);
-      FUN_10007f78();
+      MapRefreshAndCombat();
     }
     else {
       piVar18 = *(int **)(uVar19 - 0x14f4);
@@ -40867,7 +40830,7 @@ void FUN_1003f674(short param_1,short param_2,short param_3)
 {
   FUN_1003dc28();
   if (param_1 != 0) {
-    FUN_10007f78();
+    MapRefreshAndCombat();
   }
   if (param_2 != 0) {
     RefreshDisplay(1,1,0);
@@ -41165,10 +41128,10 @@ void FUN_100424e4()
   }
   else {
     if (*piVar1 == 0) {
-      FUN_100004e0(piVar1,0x8880);
-      FUN_100db1ec();
+      ResizeHandle(piVar1,0x8880);
+      CheckMemError();
     }
-    FUN_10000048(*piVar4);
+    LockHandle_Thunk(*piVar4);
   }
   if (*piVar3 == 0) {
     iVar5 = AllocateHandle(0x4440,0,0);
@@ -89274,7 +89237,7 @@ void FUN_100b4c68()
         uVar10 = FUN_100ef9b8(puVar6);
         uVar2 = FUN_10001c20(puVar6);
         iVar5 = local_174;
-        FUN_100db1ec();
+        CheckMemError();
         sVar11 = (short)((uVar2 & 0xffffffff) / 0xc);
         puVar12 = (int *)*puVar6;
         uVar3 = FUN_100eecf8(*(int *)(iVar5 + -0xed0));
@@ -89600,7 +89563,7 @@ void FUN_100da260(int *param_1,long long param_2)
 
 
 /* Address: 0x100db1ec Size: 64 bytes */
-void FUN_100db1ec()
+void CheckMemError()
 
 {
   long long uVar1;
@@ -116619,90 +116582,12 @@ void FUN_100090f0()
 
 
 /* Address: 0x1000cf78 Size: 328 bytes */
-unsigned long long FUN_1000cf78(short param_1)
-
-{
-  int bVar1;
-  unsigned char bVar2;
-  short sVar3;
-  int *piVar4;
-  int *piVar5;
-  unsigned long long uVar6;
-  int iVar7;
-  int bVar8;
-  unsigned int uVar9;
-  unsigned long long uVar10;
-  char auStack_20 [32];
-  
-  piVar5 = piRam10117468;
-  piVar4 = piRam1011735c;
-  if (*(short *)(*piRam1011735c + 0x1602) == 0) {
-    uVar6 = 0xffffffffffffffff;
-  }
-  else {
-    sVar3 = *(short *)(*piRam1011735c + 0x1602);
-    uVar6 = 0xffffffffffffffff;
-    uVar9 = 0xffffffff;
-    do {
-      sVar3 = sVar3 + -1;
-      uVar10 = (unsigned long long)sVar3;
-      iVar7 = *piVar4;
-      if (*(char *)(iVar7 + (int)(((uVar10 & 0x7ffffff) * 0x20 + uVar10 & 0xffffffff) << 1) + 0x1619
-                   ) == (char)*(short *)(iVar7 + 0x110)) {
-        bVar8 = true;
-        iVar7 = 3;
-        do {
-          if ((int)*(char *)(*piVar4 + (int)(((uVar10 & 0x7ffffff) * 0x20 + uVar10 & 0xffffffff) <<
-                                            1) + iVar7 + 0x161a) == (int)param_1) {
-            bVar8 = false;
-          }
-          bVar1 = iVar7 != 0;
-          iVar7 = (int)(short)((short)iVar7 + -1);
-        } while (bVar1);
-        if ((((bVar8) && (*(char *)(*piVar5 + (int)sVar3 + 0x56) != '\x02')) &&
-            (iVar7 = GetArmyInfo(uVar10,auStack_20), iVar7 == 0)) &&
-           (bVar2 = *(unsigned char *)((int)sVar3 + *piVar5 + 0xba), (int)uVar9 < (int)(unsigned int)bVar2)) {
-          uVar6 = uVar10;
-          uVar9 = (unsigned int)bVar2;
-        }
-      }
-    } while (sVar3 != 0);
-  }
-  return uVar6;
-}
+/* Address: 0x1000cf78 Size: 328 bytes */
+/* AI_FindArmyForHero - clean version in ai/ai.c */
 
 /* Address: 0x1000d0c0 Size: 228 bytes */
-long long FUN_1000d0c0(short param_1,short param_2)
-
-{
-  int iVar1;
-  int *piVar2;
-  int *piVar3;
-  long long uVar4;
-  long long uVar5;
-  int iVar6;
-  char auStack_20 [2];
-  char auStack_1e [2];
-  char auStack_1c [2];
-  char auStack_1a [2];
-  char auStack_18 [24];
-  
-  piVar3 = piRam10117468;
-  piVar2 = piRam1011735c;
-  iVar6 = (int)param_2;
-  uVar4 = CreateUnitTemplate(param_1,auStack_20,auStack_1e,auStack_1c,auStack_1a,auStack_18);
-  LockUnitData();
-  uVar5 = FindArmySlot(iVar6);
-  PlaceUnitInArmy(iVar6,uVar5,uVar4);
-  SortArmyUnits(iVar6);
-  iVar1 = *piVar3;
-  *(short *)(iVar1 + 0x16) = *(short *)(iVar1 + 0x16) + 1;
-  *(char *)(*piVar2 + iVar6 * 0x42 + 0x1631) = 0;
-  *(short *)(iVar6 * 0x42 + *piVar2 + 0x1636) = 0;
-  *(char *)((int)param_2 + *piVar3 + 0x56) = 5;
-  UnlockUnitData();
-  return 1;
-}
+/* Address: 0x1000d0c0 Size: 228 bytes */
+/* AI_PlaceNewUnit - clean version in ai/ai.c */
 
 /* Address: 0x1000f7bc Size: 776 bytes */
 void FUN_1000f7bc(short param_1)
@@ -116848,7 +116733,7 @@ void FUN_1000fba8(short param_1,short param_2)
       (iVar1 = *piRam1011735c, *(short *)(iVar1 + 0x178) <= param_1)) &&
      (((param_1 <= *(short *)(iVar1 + 0x17c) && (*(short *)(iVar1 + 0x176) <= param_2)) &&
       (param_2 <= *(short *)(iVar1 + 0x17a))))) {
-    FUN_10007f78();
+    MapRefreshAndCombat();
   }
   return;
 }
@@ -116906,7 +116791,7 @@ void FUN_1000fccc(short param_1)
       if ((param_1 != 0) && ((int)lVar10 != -1)) {
         RefreshMapAfterCombat(lVar10,sVar9);
       }
-      FUN_1002b91c();
+      UpdateDisplayState();
       return;
     }
   } while( true );
@@ -124006,514 +123891,12 @@ long long FUN_1000ffe0(short param_1,short param_2,int param_3,int param_4)
 
 
 /* Address: 0x1001072c Size: 1028 bytes */
-int FUN_1001072c(short param_1,int param_2)
-
-{
-  int bVar1;
-  char cVar2;
-  int iVar3;
-  int *piVar4;
-  int *piVar5;
-  int *piVar6;
-  int iVar7;
-  int iVar8;
-  int iVar9;
-  int iVar10;
-  short sVar11;
-  int iVar12;
-  short sVar13;
-  short sVar14;
-  int iVar15;
-  int iVar16;
-  int iVar17;
-  char auStack_80 [26];
-  short local_66;
-  short local_64;
-  short local_62;
-  short local_60;
-  short local_58;
-  short local_56;
-  short local_54;
-  short local_52;
-  short local_4e;
-  short local_4a;
-  short local_48;
-  short local_46;
-  short local_40;
-  short local_3e;
-  
-  iVar8 = iRam10117630;
-  iVar7 = iRam1011762c;
-  piVar6 = piRam10117364;
-  piVar5 = piRam10117360;
-  piVar4 = piRam1011735c;
-  iVar9 = CalcArmyStrength((int)param_1);
-  iVar10 = *piVar4 + param_1 * 0x42;
-  iVar10 = FindNearestEnemy(*(short *)(iVar10 + 0x1604),*(short *)(iVar10 + 0x1606),
-                        0xffffffffffffffff);
-  iVar16 = 0;
-  iVar15 = 0;
-  sVar14 = 0;
-  sVar13 = 0;
-  if (iVar10 < 10) {
-    iVar9 = (int)(short)((short)iVar9 + 4);
-  }
-  iVar10 = *(short *)(*piVar4 + 0x110) * 2;
-  if (*(short *)(iVar10 + iVar7) < *(short *)(iVar10 + iVar8)) {
-    local_40 = 2;
-    sVar11 = (short)iVar9 + -4;
-    iVar9 = (int)sVar11;
-    if (sVar11 < 2) {
-      iVar9 = 2;
-    }
-  }
-  iVar10 = 0x1f;
-  do {
-    sVar11 = *(short *)(param_2 + iVar10 * 2);
-    if (sVar11 != -1) {
-      if (*(char *)(*piVar5 + sVar11 * 0x16 + 4) == '\x1c') {
-        sVar13 = sVar13 + 1;
-      }
-      if (*(char *)(*piVar6 + *(char *)(*piVar5 + sVar11 * 0x16 + 4) * 6 + 4) != '\0') {
-        sVar14 = sVar14 + 1;
-      }
-      iVar16 = (int)(short)((short)iVar16 + 1);
-    }
-    bVar1 = iVar10 != 0;
-    iVar10 = (int)(short)((short)iVar10 + -1);
-  } while (bVar1);
-  if ((sVar13 == 0) || (0xf < iVar16)) {
-    if ((sVar14 != 0) && (local_3e = 4, iVar9 < 4)) {
-      iVar9 = 4;
-    }
-    if (iVar9 < iVar16) {
-      while( true ) {
-        iVar17 = -1;
-        sVar13 = 10000;
-        iVar10 = 0x1f;
-        do {
-          sVar14 = *(short *)(param_2 + iVar10 * 2);
-          if (sVar14 != -1) {
-            iVar12 = *piVar5 + sVar14 * 0x16;
-            cVar2 = *(char *)(iVar12 + 4);
-            if (((*(char *)(*piVar6 + cVar2 * 6 + 4) == '\0') && (cVar2 != '\x1c')) &&
-               ((iVar3 = *(short *)(*piVar4 + 0x110) * 2,
-                *(short *)(iVar3 + iVar7) < *(short *)(iVar3 + iVar8) ||
-                (*(char *)(iVar12 + 8) < '\x04')))) {
-              iVar12 = sVar14 * 0x16;
-              GetUnitStats(*(char *)(*piVar5 + iVar12 + 4),auStack_80);
-              cVar2 = *(char *)(iVar12 + *piVar5 + 8);
-              sVar14 = (short)cVar2;
-              if (399 < local_62) {
-                sVar14 = cVar2 + 1;
-              }
-              if (799 < local_62) {
-                sVar14 = sVar14 + 1;
-              }
-              if (0xb < local_64) {
-                sVar14 = sVar14 + 1;
-              }
-              if (0xf < local_64) {
-                sVar14 = sVar14 + 1;
-              }
-              if (local_4a != 0) {
-                sVar14 = sVar14 + 1;
-              }
-              if ((local_48 != 0) || (local_46 != 0)) {
-                sVar14 = sVar14 + 1;
-              }
-              if (((local_52 != 0) || (local_54 != 0)) || (local_56 != 0)) {
-                sVar14 = sVar14 + 1;
-              }
-              if (local_58 != 0) {
-                sVar14 = sVar14 + 1;
-              }
-              if (local_60 != 0) {
-                sVar14 = sVar14 + 1;
-              }
-              if (local_4e != 0) {
-                sVar14 = sVar14 + 2;
-              }
-              if (5 < local_66) {
-                sVar14 = sVar14 + -1;
-              }
-              if (10 < local_66) {
-                sVar14 = sVar14 + -1;
-              }
-              if (0xf < local_66) {
-                sVar14 = sVar14 + -1;
-              }
-              sVar11 = RandomRange(1,2,0);
-              if ((short)(sVar14 + sVar11) < sVar13) {
-                iVar17 = iVar10;
-                sVar13 = sVar14 + sVar11;
-              }
-            }
-          }
-          bVar1 = iVar10 != 0;
-          iVar10 = (int)(short)((short)iVar10 + -1);
-        } while (bVar1);
-        if ((iVar16 <= iVar9 + iVar15) || (iVar17 == -1)) break;
-        DisbandUnit(*(short *)(param_2 + iVar17 * 2),0);
-        *(short *)(param_2 + iVar17 * 2) = 0xffff;
-        iVar15 = (int)(short)((short)iVar15 + 1);
-      }
-    }
-  }
-  return 0;
-}
+/* Address: 0x1001072c Size: 1028 bytes */
+/* AI_CullWeakUnits - clean version in ai/ai.c */
 
 /* Address: 0x10010b30 Size: 2468 bytes */
-long long FUN_10010b30(short param_1,short param_2)
-
-{
-  int bVar1;
-  char cVar2;
-  short sVar3;
-  int *piVar4;
-  unsigned int uVar5;
-  int iVar6;
-  int *piVar7;
-  int iVar8;
-  int iVar9;
-  int *piVar10;
-  int *piVar11;
-  unsigned int *puVar12;
-  unsigned long long uVar13;
-  int iVar14;
-  unsigned int uVar15;
-  int iVar17;
-  unsigned long long uVar16;
-  short sVar18;
-  short sVar19;
-  short sVar20;
-  long long lVar21;
-  short sVar22;
-  short sVar23;
-  unsigned long long uVar24;
-  unsigned long long uVar25;
-  long long lVar26;
-  unsigned long long uVar27;
-  int iVar28;
-  int iVar29;
-  int iVar30;
-  int iVar31;
-  short sStack0000001e;
-  short local_c0 [8];
-  short *local_b0;
-  short local_ac [32];
-  int local_6c;
-  unsigned int local_68;
-  short local_64;
-  short local_62;
-  int local_60;
-  int local_5c;
-  int local_58;
-  short local_54;
-  unsigned int local_50;
-  int local_4c;
-  int local_48;
-  
-  puVar12 = puRam10117468;
-  piVar7 = piRam10117364;
-  piVar11 = piRam10117360;
-  piVar10 = piRam1011735c;
-  uVar16 = ZEXT48(((char*)0));
-  uVar13 = ZEXT48(0 /* TVect base */);
-  uVar27 = (unsigned long long)param_1;
-  uVar24 = uVar16 - 0x108;
-  iVar14 = *piRam1011735c + (int)(((uVar27 & 0x7ffffff) * 0x20 + uVar27 & 0xffffffff) << 1);
-  sVar23 = *(short *)(iVar14 + 0x1604);
-  sVar20 = *(short *)(iVar14 + 0x1606);
-  uVar25 = (unsigned long long)sVar20;
-  cVar2 = *(char *)(*puRam10117468 + (int)param_1 + 0x182);
-  iVar14 = -1;
-  sVar19 = 0;
-  iVar30 = 0;
-  lVar26 = 0;
-  sVar18 = 0;
-  sVar22 = 0;
-  if ((long long)uVar27 < 0) {
-    return 0;
-  }
-  if ((int)*(short *)(*piRam1011735c + 0x1602) <= (int)param_1) {
-    return 0;
-  }
-  local_b0 = local_c0;
-  iVar29 = 7;
-  do {
-    local_b0[iVar29] = -1;
-    bVar1 = iVar29 != 0;
-    iVar29 = (int)(short)((short)iVar29 + -1);
-  } while (bVar1);
-  *(unsigned char *)(*puVar12 + (int)param_1 + 0x11e) = *(unsigned char *)(*puVar12 + (int)param_1 + 0x11e) | 4;
-  iVar29 = 0x1f;
-  do {
-    *(short *)(iVar29 * 2 + (unsigned int)uVar24) = 0xffff;
-    local_ac[iVar29] = -1;
-    bVar1 = iVar29 != 0;
-    iVar29 = (int)(short)((short)iVar29 + -1);
-  } while (bVar1);
-  *(char *)(*puVar12 + (int)param_1 + 0x182) = 0;
-  sVar3 = *(short *)(*piVar10 + 0x182);
-  iVar29 = 0;
-  sStack0000001e = param_2;
-  if (sVar3 != 0) {
-    local_6c = 0xffffffff;
-    sVar22 = 0;
-    local_68 = (unsigned int)uVar24;
-    sVar19 = 0;
-    sVar18 = 0;
-    do {
-      sVar3 = sVar3 + -1;
-      iVar28 = (int)sVar3;
-      iVar31 = *piVar11 + iVar28 * 0x16;
-      iVar17 = (int)*(short *)(*piVar11 + iVar28 * 0x16);
-      if ((((sVar23 <= iVar17) && (iVar17 <= sVar23 + 1)) &&
-          (iVar17 = (int)*(short *)(iVar31 + 2), sVar20 <= iVar17)) && (iVar17 <= sVar20 + 1)) {
-        if (*(char *)(iVar31 + 5) != (char)*(short *)(*piVar10 + 0x110)) {
-          DisbandUnit(iVar28,1);
-        }
-        *(char *)(*puVar12 + (int)param_1 + 0x182) =
-             *(char *)(*puVar12 + (int)param_1 + 0x182) + '\x01';
-        iVar17 = *piVar11 + iVar28 * 0x16;
-        uVar15 = *(unsigned int *)(iVar17 + 0xc);
-        if (((uVar15 >> 0xc & 0xf) == 1) && ((uVar15 & 0x7f) == (int)param_1)) {
-          *(unsigned int *)(iVar17 + 0xc) = uVar15 & 0xffff0fff;
-          iVar17 = *piVar11 + iVar28 * 0x16;
-          *(unsigned int *)(iVar17 + 0xc) = *(unsigned int *)(iVar17 + 0xc) & 0xffffff80;
-        }
-        if ((*(unsigned int *)(*piVar11 + iVar28 * 0x16 + 0xc) >> 0xc & 0xf) != 0) {
-          sVar19 = sVar19 + 1;
-        }
-        iVar17 = iVar30;
-        if ((*(char *)(*piVar11 + iVar28 * 0x16 + 4) == '\x1c') && (iVar30 < 8)) {
-          iVar17 = (int)(short)((short)iVar30 + 1);
-          local_c0[iVar30] = sVar3;
-          sVar22 = sVar22 + 1;
-          iVar14 = iVar28;
-        }
-        if (*(char *)(*piVar7 + *(char *)(*piVar11 + iVar28 * 0x16 + 4) * 6) != '\0') {
-          lVar26 = (long long)(short)((short)lVar26 + 1);
-        }
-        if (*(char *)(*piVar7 + *(char *)(*piVar11 + iVar28 * 0x16 + 4) * 6 + 4) != '\0') {
-          sVar18 = sVar18 + 1;
-        }
-        iVar30 = iVar17;
-        if (iVar29 < 0x20) {
-          local_ac[iVar29] = sVar3;
-          iVar29 = (int)(short)((short)iVar29 + 1);
-        }
-        else {
-          DisbandUnit(iVar28,0);
-        }
-      }
-    } while (iVar28 != 0);
-    uVar24 = (unsigned long long)local_68;
-  }
-  if (iVar14 != -1) {
-    iVar30 = *piVar11;
-    iVar17 = iVar30 + iVar14 * 0x16;
-    **(int **)((int)uVar13 + -0x3f0) = iVar17;
-    FUN_100169c0(*(short *)(iVar30 + iVar14 * 0x16),*(short *)(iVar17 + 2));
-  }
-  if (1 < sVar22) {
-    FUN_10016df0(uVar16 - 0xc0);
-  }
-  *(unsigned char *)(*puVar12 + (int)param_1 + 0x11e) = *(unsigned char *)(*puVar12 + (int)param_1 + 0x11e) & 0xcf;
-  if (sVar22 != 0) {
-    *(unsigned char *)((int)param_1 + *puVar12 + 0x11e) = *(unsigned char *)((int)param_1 + *puVar12 + 0x11e) | 0x20;
-  }
-  if (sVar18 != 0) {
-    *(unsigned char *)(*puVar12 + (int)param_1 + 0x11e) = *(unsigned char *)(*puVar12 + (int)param_1 + 0x11e) | 0x10;
-  }
-  if (0x10 < iVar29) {
-    cVar2 = '\0';
-    sVar19 = 0;
-  }
-  if ((2 < sVar19) && (*(char *)(*puVar12 + (int)param_1 + 0x56) != '\a')) {
-    return 1;
-  }
-  if ((((sStack0000001e == 0) && (sVar22 == 0)) &&
-      (cVar2 == *(char *)(*puVar12 + (int)param_1 + 0x182))) &&
-     (((iVar14 = *(short *)(*piVar10 + 0x110) * 2,
-       *(short *)(iVar14 + *(int *)((int)uVar13 + -0x270)) <
-       *(short *)(iVar14 + *(int *)((int)uVar13 + -0x274)) &&
-       (iVar14 = RandomRange(1,6,0xffffffffffffffff), iVar14 != 0)) &&
-      ((*(unsigned int *)((int)(((uVar25 & 0x1fffffff) * 8 - uVar25 & 0xffffffff) << 5) +
-                  **(int **)((int)uVar13 + -0x548) + sVar23 * 2 + 0xe2) >> 0x14 & 1) == 0)))) {
-    return 1;
-  }
-  *(char *)(*puVar12 + (int)param_1 + 0x1e6) = 0;
-  cVar2 = *(char *)((int)param_1 + *puVar12 + 0x56);
-  if (((cVar2 == '\x04') || (cVar2 == '\x05')) || (cVar2 == '\b')) {
-    iVar14 = CalcArmyStrength(uVar27);
-    if (iVar29 < 2) {
-      *(char *)((int)param_1 + *puVar12 + 0x56) = 4;
-    }
-    else if (iVar29 < iVar14) {
-      *(char *)(*puVar12 + (int)param_1 + 0x56) = 5;
-    }
-    else {
-      *(char *)(*puVar12 + (int)param_1 + 0x56) = 8;
-    }
-  }
-  uVar16 = uVar16 - 0xac;
-  local_60 = FUN_1000ffe0(uVar27,iVar29,uVar16,uVar24);
-  local_64 = (short)local_60;
-  if (sStack0000001e == 0) {
-    uVar16 = (unsigned long long)*puVar12;
-    iVar14 = *puVar12 + (int)param_1;
-    if ((8 < *(unsigned char *)(iVar14 + 0xba)) &&
-       ((((cVar2 = *(char *)(iVar14 + 0x56), cVar2 == '\x04' || (cVar2 == '\x05')) ||
-         (cVar2 == '\x06')) || (cVar2 == '\b')))) {
-      local_60 = FUN_1001072c(uVar27,uVar24);
-    }
-  }
-  local_58 = (int)uVar16;
-  iVar14 = (int)uVar24;
-  if ((0x18 < iVar29) && (iVar30 = 0x18, 0x18 < iVar29)) {
-    do {
-      sVar20 = *(short *)(iVar30 * 2 + iVar14);
-      if (sVar20 != -1) {
-        *(short *)(iVar30 * 2 + iVar14) = 0xffff;
-        DisbandUnit(sVar20,0);
-      }
-      local_58 = (int)uVar16;
-      local_60 = iVar30 + 1;
-      iVar30 = (int)(short)local_60;
-    } while ((short)local_60 < iVar29);
-  }
-  iVar30 = (int)uVar13;
-  local_5c = (int)*(short *)(*piVar10 + 0x128);
-  if (local_5c != 0) {
-    local_62 = *(short *)(*piVar10 + 0x136);
-    sVar20 = local_62;
-    if (local_62 < 2) {
-      sVar20 = 1;
-    }
-    if (sVar20 < 3) goto LAB_10011150;
-  }
-  if (iVar29 < 2) {
-    local_58 = *puVar12 + (int)param_1;
-    *(char *)(local_58 + 0x56) = 4;
-  }
-LAB_10011150:
-  uVar15 = *(unsigned int *)(iVar30 + -0x1b74);
-  uVar16 = (unsigned long long)uVar15;
-  iVar17 = *(int *)(iVar30 + -0x1b70);
-  piVar4 = *(int **)(iVar30 + -0x548);
-  iVar31 = 3;
-  do {
-    uVar24 = uVar25 + (long long)*(short *)(iVar31 * 2 + uVar15);
-    iVar8 = *piVar4 + (int)(((uVar24 & 0x1fffffff) * 8 - uVar24 & 0xffffffff) << 5);
-    iVar28 = ((int)sVar23 + (int)*(short *)(iVar31 * 2 + iVar17)) * 2;
-    *(unsigned int *)(iVar8 + iVar28) = *(unsigned int *)(iVar8 + iVar28) & 0xffefffff;
-    bVar1 = iVar31 != 0;
-    iVar31 = (int)(short)((short)iVar31 + -1);
-  } while (bVar1);
-  if (((*(short *)(*piVar10 + 0x124) != 0) && (*(char *)(*puVar12 + (int)param_1 + 0x56) == '\v'))
-     && (*(short *)(*puVar12 + 0x24) < 5)) {
-    lVar21 = (long long)(short)(2 - ((short)iVar29 - (short)lVar26));
-    if (0 < lVar21) {
-      uVar16 = lVar26 - lVar21;
-      lVar26 = (long long)(short)uVar16;
-    }
-    uVar15 = (unsigned int)uVar16;
-    sVar23 = *(short *)(*piVar10 + 0x128);
-    iVar17 = (int)sVar23;
-    if (sVar23 != 0) {
-      local_54 = *(short *)(*piVar10 + 0x136);
-      sVar23 = local_54;
-      if (local_54 < 2) {
-        sVar23 = 1;
-      }
-      if (sVar23 < 3) {
-        lVar26 = 1;
-      }
-    }
-    iVar31 = 0;
-    if (0 < iVar29) {
-      do {
-        if (0 < (int)lVar26) {
-          sVar23 = *(short *)(iVar31 * 2 + iVar14);
-          if ((sVar23 != -1) &&
-             (iVar30 = sVar23 * 0x16,
-             *(char *)(*piVar7 + *(char *)(*piVar11 + iVar30 + 4) * 6) != '\0')) {
-            *(short *)(*puVar12 + 0x24) = *(short *)(*puVar12 + 0x24) + 1;
-            iVar30 = iVar30 + *piVar11;
-            *(unsigned short *)(iVar30 + 0xc) = *(unsigned short *)(iVar30 + 0xc) | 0x20;
-            AssignToDefense((int)sVar23,0xffffffffffffffff);
-            *(short *)(iVar31 * 2 + iVar14) = 0xffff;
-            uVar16 = lVar26 - 1;
-            lVar26 = (long long)(short)uVar16;
-          }
-        }
-        iVar30 = (int)uVar13;
-        uVar15 = (unsigned int)uVar16;
-        iVar17 = iVar31 + 1;
-        iVar31 = (int)(short)iVar17;
-      } while ((short)iVar17 < iVar29);
-    }
-  }
-  uVar5 = *puVar12;
-  cVar2 = *(char *)(uVar5 + (int)param_1 + 0x56);
-  if ((cVar2 == '\x03') || (cVar2 == '\x02')) {
-    iVar31 = 1;
-    sVar23 = 8;
-  }
-  else {
-    iVar31 = (int)(short)(unsigned short)(local_64 == 0);
-    sVar23 = local_64;
-    if (local_64 == 0) {
-      sVar23 = 8;
-    }
-  }
-  iVar28 = 0;
-  if (0 < iVar29) {
-    iVar8 = *(int *)(iVar30 + -0x1b74);
-    iVar6 = *(int *)(iVar30 + -0x1b70);
-    piVar7 = *(int **)(iVar30 + -0x548);
-    do {
-      sVar20 = *(short *)(iVar28 * 2 + iVar14);
-      if (sVar20 != -1) {
-        if (iVar31 == 0) {
-          *(char *)(*puVar12 + (int)param_1 + 0x1e6) =
-               *(char *)(*puVar12 + (int)param_1 + 0x1e6) + '\x01';
-        }
-        *(short *)(iVar28 * 2 + iVar14) = 0xffff;
-        iVar30 = *piVar10 + (int)(((uVar27 & 0x7ffffff) * 0x20 + uVar27 & 0xffffffff) << 1);
-        sVar22 = *(short *)(iVar30 + 0x1604) + *(short *)(iVar31 * 2 + iVar6);
-        sVar19 = *(short *)(iVar30 + 0x1606) + *(short *)(iVar31 * 2 + iVar8);
-        iVar30 = sVar20 * 0x16;
-        *(short *)(*piVar11 + iVar30) = sVar22;
-        *(short *)(iVar30 + *piVar11 + 2) = sVar19;
-        *(short *)(iVar30 + *piVar11 + 0x14) = 0xffff;
-        *(short *)(iVar30 + *piVar11 + 0x12) = *(short *)(iVar30 + *piVar11 + 0x14);
-        *(char *)(iVar30 + *piVar11 + 0x11) = 0;
-        *(unsigned int *)(iVar30 + *piVar11 + 0xc) = *(unsigned int *)(iVar30 + *piVar11 + 0xc) & 0xfffff1ff;
-        *(char *)(iVar30 + *piVar11 + 0x10) = (char)param_1;
-        *(unsigned short *)(iVar30 + *piVar11 + 0xc) = *(unsigned short *)(iVar30 + *piVar11 + 0xc) & 0xffbf;
-        iVar30 = *piVar7 + sVar19 * 0xe0;
-        iVar9 = sVar22 * 2;
-        *(unsigned int *)(iVar30 + iVar9) = *(unsigned int *)(iVar30 + iVar9) | 0x100000;
-        sVar23 = sVar23 + -1;
-        if (sVar23 == 0) {
-          iVar31 = (int)(short)((short)iVar31 + 1);
-          sVar23 = 8;
-        }
-      }
-      sVar20 = (short)iVar28 + 1;
-      iVar28 = (int)sVar20;
-      local_50 = uVar15;
-      local_4c = iVar17;
-      local_48 = uVar5 + (int)param_1;
-    } while (sVar20 < iVar29);
-  }
-  iVar14 = *piVar10 + (int)(((uVar27 & 0x7ffffff) * 0x20 + uVar27 & 0xffffffff) << 1);
-  RefreshMapAfterCombat(*(short *)(iVar14 + 0x1604),*(short *)(iVar14 + 0x1606));
-  return 1;
-}
+/* Address: 0x10010b30 Size: 2468 bytes */
+/* AI_ArmyManagement - clean version in ai/ai.c */
 
 
 
@@ -132543,175 +131926,16 @@ LAB_10011150:
 
 
 /* Address: 0x100121f8 Size: 300 bytes */
-long long FUN_100121f8(short param_1)
-
-{
-  int bVar1;
-  char cVar2;
-  int iVar3;
-  short sVar4;
-  int iVar5;
-  int iVar6;
-  unsigned int uVar7;
-  
-  iVar5 = *piRam1011735c;
-  cVar2 = *(char *)(iVar5 + param_1 * 0x42 + 0x1619);
-  sVar4 = 0;
-  if (cVar2 == 0xf) {
-    return 1;
-  }
-  iVar6 = 7;
-  do {
-    iVar3 = *piRam1011735c;
-    if ((*(short *)(iVar3 + iVar6 * 2 + 0x138) != 0) &&
-       ((*(unsigned int *)(iVar3 + *(short *)(iVar3 + 0x110) * 0x10 + iVar6 * 2 + 0x1582) >> 0x1a & 3) == 2)
-       ) {
-      sVar4 = sVar4 + 1;
-      iVar5 = iVar6;
-    }
-    bVar1 = iVar6 != 0;
-    iVar6 = (int)(short)((short)iVar6 + -1);
-  } while (bVar1);
-  uVar7 = *(unsigned int *)(*piRam1011735c + *(short *)(*piRam1011735c + 0x110) * 0x10 + cVar2 * 2 + 0x1582)
-          >> 0x1a & 3;
-  if (uVar7 != 2) {
-    if (uVar7 == 1) {
-      if ((*(unsigned short *)(*piRam10117468 + 0xc) & 1) != 0) {
-        return 1;
-      }
-    }
-    else if ((uVar7 == 0) &&
-            (((sVar4 == 0 || ((sVar4 == 1 && (iVar5 == cVar2)))) &&
-             ((*(unsigned short *)(*piRam10117468 + 0xc) & 1) != 0)))) {
-      return 1;
-    }
-    return 0;
-  }
-  return 1;
-}
+/* Address: 0x100121f8 Size: 300 bytes */
+/* AI_CheckArmyOwnership - clean version in ai/ai.c */
 
 /* Address: 0x10012324 Size: 248 bytes */
-long long FUN_10012324(short param_1,short param_2)
-
-{
-  int iVar1;
-  short sVar2;
-  
-  if (((*(short *)(*(short *)(*piRam1011735c + 0x110) * 2 + *piRam1011735c + 0xd0) != 0) &&
-      (*(short *)(*piRam1011735c + param_2 * 2 + 0xd0) == 0)) &&
-     (*(short *)(*piRam10117468 + 0x42) != 0)) {
-    sVar2 = *(short *)(*piRam1011735c + 0x136);
-    if (sVar2 < 2) {
-      sVar2 = 1;
-    }
-    if (sVar2 < 10) {
-      if (param_1 != *(short *)(*piRam10117468 + 0x46)) {
-        iVar1 = CheckQuestCondition(param_1);
-        if (iVar1 < 200) {
-          LaunchAllianceAttack(param_1,0);
-        }
-        else {
-          LaunchAllianceDefense(param_1);
-        }
-        return 1;
-      }
-      return 0;
-    }
-  }
-  return 0;
-}
+/* Address: 0x10012324 Size: 248 bytes */
+/* AI_EarlyGameAttack - clean version in ai/ai.c */
 
 /* Address: 0x1001241c Size: 648 bytes */
-long long FUN_1001241c()
-
-{
-  char cVar1;
-  short uVar2;
-  short uVar3;
-  int *piVar4;
-  int *piVar5;
-  unsigned long long uVar6;
-  int *ppuVar7;
-  short sVar9;
-  long long uVar8;
-  int iVar10;
-  int iVar11;
-  short sVar12;
-  int iVar13;
-  
-  piVar5 = piRam1011735c;
-  piVar4 = piRam10117358;
-  uVar6 = ZEXT48(0 /* TVect base */);
-  ppuVar7 = 0 /* TVect base */;
-  uVar2 = *(short *)*puRam101176e0;
-  uVar3 = ((short *)*puRam101176e0)[1];
-  sVar12 = 10000;
-  iVar11 = -1;
-  iVar13 = 0;
-  if (0 < *(short *)(*piRam1011735c + 0x810)) {
-    do {
-      iVar10 = *piVar5 + iVar13 * 0x20;
-      if (*(short *)(iVar10 + 0x82e) != 0) {
-        if (((int)*(short *)(iVar10 + 0x830) & 1 << ((int)*(short *)(*piVar5 + 0x110) & 0x3fU)) == 0
-           ) {
-          if ((*(unsigned int *)(*piVar4 + *(short *)(iVar10 + 0x814) * 0xe0 +
-                        *(short *)(iVar10 + 0x812) * 2) >> 0x16 & 1) == 0) {
-            sVar9 = CalcDistance((int)*(short *)(iVar10 + 0x812),(int)*(short *)(iVar10 + 0x814),
-                                 uVar2,uVar3);
-            if (sVar9 < 0x23) {
-              if (iVar11 == -1) {
-                iVar10 = *piVar5 + iVar13 * 0x20;
-                if (*(char *)(iVar10 + 0x82a) == '\x02') {
-                  cVar1 = *(char *)(*(char *)(iVar10 + 0x82b) * 0x1e + *piVar5 + 0xd26);
-                  if (cVar1 == '\x05') {
-                    if (sVar9 < 0xb) {
-                      sVar9 = sVar9 + 10;
-                      if (sVar9 < sVar12) {
-                        iVar11 = iVar13;
-                        sVar12 = sVar9;
-                      }
-                    }
-                  }
-                  else if (((cVar1 == '\x06') && (sVar9 < 0x10)) &&
-                          (sVar9 = sVar9 + 10, sVar9 < sVar12)) {
-                    iVar11 = iVar13;
-                    sVar12 = sVar9;
-                  }
-                }
-              }
-              if ((*(char *)(*piVar5 + iVar13 * 0x20 + 0x82a) == '\x05') && (sVar9 < sVar12)) {
-                iVar11 = iVar13;
-                sVar12 = sVar9;
-              }
-            }
-          }
-        }
-      }
-      ppuVar7 = (int **)uVar6;
-      iVar13 = (int)(short)((short)iVar13 + 1);
-    } while (iVar13 < *(short *)(*piVar5 + 0x810));
-  }
-  if (iVar11 == -1) {
-    uVar8 = 0;
-  }
-  else {
-    iVar13 = *piVar5 + iVar11 * 0x20;
-    *(unsigned short *)(iVar13 + 0x830) =
-         *(unsigned short *)(iVar13 + 0x830) | (unsigned short)(1 << ((int)*(short *)(*piVar5 + 0x110) & 0x3fU));
-    iVar11 = iVar11 * 0x20 + *piVar5;
-    SetArmyDestination(*(short *)(*piVar5 + 0x110),*(short *)(iVar11 + 0x812),
-                 *(short *)(iVar11 + 0x814));
-    UpdateArmyDisplay(*(short *)(*piVar5 + 0x110));
-    if (((*(short *)(*piVar5 + 0x124) == 0) ||
-        ((*(short *)(*piVar5 + 0x15a) != 0 && (*(short *)(*(int*)((char*)ppuVar7 - 0x62a)) == 0)))) ||
-       (*(short *)(*piVar5 + *(short *)(*piVar5 + 0x110) * 2 + 0xd0) == 0)) {
-      CenterMapOnArmy(*(short *)(*piVar5 + 0x110));
-      RefreshDisplay(1,1,0);
-    }
-    uVar8 = 1;
-  }
-  return uVar8;
-}
+/* Address: 0x1001241c Size: 648 bytes */
+/* AI_SearchForRuins - clean version in ai/ai.c */
 
 
 
@@ -134761,144 +133985,8 @@ long long FUN_1001241c()
 
 
 /* Address: 0x100126a4 Size: 1000 bytes */
-void FUN_100126a4()
-
-{
-  int bVar1;
-  unsigned char bVar2;
-  short uVar3;
-  short uVar4;
-  short sVar5;
-  int bVar6;
-  int *piVar7;
-  int *piVar8;
-  unsigned long long uVar9;
-  int iVar10;
-  int iVar11;
-  short sVar12;
-  short sVar13;
-  short sVar14;
-  int iVar15;
-  short sVar17;
-  long long lVar16;
-  short sVar19;
-  long long lVar18;
-  unsigned long long uVar20;
-  int iVar21;
-  char auStack_58 [8];
-  unsigned char abStack_50 [8];
-  short local_48;
-  short local_46;
-  short local_44;
-  short local_42;
-  
-  piVar8 = piRam10117468;
-  piVar7 = piRam1011735c;
-  uVar9 = ZEXT48(0 /* TVect base */);
-  iVar10 = RandomRange(3,500,500);
-  iVar11 = FUN_1001241c();
-  iVar21 = (int)uVar9;
-  sVar19 = -1;
-  sVar12 = -1;
-  sVar17 = -1;
-  iVar15 = 0;
-  if (iVar11 == 0) {
-    sVar13 = *(short *)(*piVar7 + 0x1602);
-    while (sVar13 != 0) {
-      sVar13 = sVar13 + -1;
-      uVar20 = (unsigned long long)sVar13;
-      if ((*(char *)(*piVar7 + (int)(((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0xffffffff) << 1) +
-                    0x1619) == '\x0f') && ((*(unsigned char *)(*piVar8 + (int)sVar13 + 0x11e) & 1) != 0)) {
-        GetAdjacentArmies(uVar20,0,abStack_50,auStack_58);
-        bVar6 = false;
-        iVar21 = 5;
-        do {
-          bVar2 = abStack_50[iVar21];
-          if ((bVar2 != 0xff) &&
-             ((int)*(char *)(*piVar7 + (unsigned int)bVar2 * 0x42 + 0x1619) ==
-              (int)*(short *)(*piVar7 + 0x110))) {
-            bVar6 = true;
-          }
-          bVar1 = iVar21 != 0;
-          iVar21 = (int)(short)((short)iVar21 + -1);
-        } while (bVar1);
-        if (bVar6) {
-          iVar21 = *piVar7 + (int)(((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0xffffffff) << 1);
-          uVar3 = *(short *)(iVar21 + 0x1604);
-          uVar4 = *(short *)(iVar21 + 0x1606);
-          sVar5 = *(short *)(*piVar7 + 0x1602);
-          sVar14 = 0;
-          iVar21 = 1000;
-          while (sVar5 != 0) {
-            sVar5 = sVar5 + -1;
-            iVar11 = *piVar7 + sVar5 * 0x42;
-            if (*(char *)(iVar11 + 0x1619) == '\x0f') {
-              if (((*(unsigned char *)(*piVar8 + (int)sVar5 + 0x11e) & 1) != 0) &&
-                 (iVar11 = CalcDistance(uVar3,uVar4,*(short *)(iVar11 + 0x1604),
-                                        *(short *)(iVar11 + 0x1606)), iVar11 < 0x14)) {
-                sVar14 = sVar14 + 1;
-              }
-            }
-            else {
-              iVar11 = *piVar7 + sVar5 * 0x42;
-              if ((int)*(char *)(iVar11 + 0x1619) == (int)*(short *)(*piVar7 + 0x110)) {
-                iVar11 = CalcDistance(uVar3,uVar4,*(short *)(iVar11 + 0x1604),
-                                      *(short *)(iVar11 + 0x1606));
-                if (iVar11 < iVar21) {
-                  iVar21 = iVar11;
-                }
-              }
-            }
-          }
-          if ((3 < sVar14) && ((sVar12 < sVar14 || ((sVar14 == sVar12 && (iVar15 < iVar21)))))) {
-            iVar15 = *piVar7 + (int)(((uVar20 & 0x7ffffff) * 0x20 + uVar20 & 0xffffffff) << 1);
-            sVar19 = *(short *)(iVar15 + 0x1604);
-            sVar17 = *(short *)(iVar15 + 0x1606);
-            sVar12 = sVar14;
-            iVar15 = iVar21;
-          }
-        }
-      }
-      iVar21 = (int)uVar9;
-    }
-    if ((*(short *)(*piVar7 + 0x124) == 0) || (sVar19 == -1)) {
-      iVar10 = *(short *)(*piVar7 + *(short *)(*piVar7 + 0x110) * 0x14 + 0x186) + iVar10;
-      if (30000 < iVar10) {
-        iVar10 = 30000;
-      }
-      *(short *)(*piVar7 + *(short *)(*piVar7 + 0x110) * 0x14 + 0x186) = (short)iVar10;
-    }
-    else {
-      sVar12 = RandomRange(1,0xb,0xfffffffffffffffa);
-      sVar13 = RandomRange(1,0xb,0xfffffffffffffffa);
-      local_48 = 0;
-      lVar18 = (long long)(short)(sVar19 + sVar12);
-      if (lVar18 < 0) {
-        lVar18 = 0;
-      }
-      local_46 = 0;
-      lVar16 = (long long)(short)(sVar17 + sVar13);
-      if (lVar16 < 0) {
-        lVar16 = 0;
-      }
-      local_44 = (short)lVar18;
-      if (0x6e < (int)lVar18) {
-        lVar18 = 0x6f;
-      }
-      local_42 = (short)lVar16;
-      if (0x9a < (int)lVar16) {
-        lVar16 = 0x9b;
-      }
-      SpawnNeutralArmy(lVar18,lVar16);
-      if (((*(short *)(*piVar7 + 0x15a) != 0) && (**(short **)(iVar21 + -0x18a8) == 0)) ||
-         (*(short *)(*piVar7 + *(short *)(*piVar7 + 0x110) * 2 + 0xd0) == 0)) {
-        CenterMapOnArmy(*(short *)(*piVar7 + 0x110));
-        RefreshDisplay(1,1,0);
-      }
-    }
-  }
-  return;
-}
+/* Address: 0x100126a4 Size: 1000 bytes */
+/* AI_AttackNeutralArmies - clean version in ai/ai.c */
 
 long long ProcessQuestEvent();  /* forward declaration */
 
@@ -136226,101 +135314,8 @@ long long FUN_10012a8c(long long param_1,short param_2)
 
 
 /* Address: 0x10013a10 Size: 728 bytes */
-long long FUN_10013a10(short param_1,short param_2)
-
-{
-  short sVar1;
-  short sVar2;
-  int iVar3;
-  int *piVar4;
-  int *piVar5;
-  int *piVar6;
-  short *psVar7;
-  long long uVar8;
-  int iVar9;
-  short sVar10;
-  int iVar11;
-  unsigned long long uVar12;
-  int iVar13;
-  
-  iVar3 = gCombatDisplayPieces;
-  psVar7 = gHeroCount;
-  piVar6 = piRam10117364;
-  piVar5 = piRam10117360;
-  piVar4 = piRam1011735c;
-  iVar11 = (int)param_2;
-  iVar13 = *piRam1011735c + iVar11 * 0x20;
-  sVar1 = *(short *)(iVar13 + 0x812);
-  sVar2 = *(short *)(iVar13 + 0x814);
-  uVar12 = (unsigned long long)sVar2;
-  iVar13 = param_1 * 0x16;
-  iVar9 = *piRam10117360 + iVar13;
-  if (((*(short *)(*piRam10117360 + iVar13) == sVar1) && (*(short *)(iVar9 + 2) == sVar2)) &&
-     (*(char *)(iVar9 + 7) != '\0')) {
-    if (*(char *)(*piRam1011735c +
-                  (*(unsigned int *)(*piRam10117358 +
-                             (int)(((uVar12 & 0x1fffffff) * 8 - uVar12 & 0xffffffff) << 5) +
-                            sVar1 * 2) >> 0x18) + 0x711) == '\v') {
-      if ((*(char *)(*piRam1011735c + iVar11 * 0x20 + 0x82a) == '\x01') ||
-         ((*(unsigned int *)(*piRam10117358 + (int)(((uVar12 & 0x1fffffff) * 8 - uVar12 & 0xffffffff) << 5)
-                    + sVar1 * 2) >> 0x16 & 1) == 0)) {
-        *piRam101176e0 = *piRam10117360 + param_1 * 0x16;
-        ScanDefenseGrid();
-        iVar13 = *piVar4;
-        if ((*(char *)(iVar13 + iVar11 * 0x20 + 0x82a) == '\x01') &&
-           ((*(short *)(iVar13 + 0x11e) != 0 &&
-            (*(short *)(iVar13 + *(short *)(iVar13 + 0x110) * 0xc + 0x1142) == 0)))) {
-          ProcessQuestReward(1);
-        }
-        if (*(char *)(*piVar5 + param_1 * 0x16 + 4) == '\x1c') {
-          iVar13 = 0;
-          if (0 < *psVar7) {
-            do {
-              iVar9 = *(int *)(iVar13 * 4 + iVar3);
-              if (iVar9 != 0) {
-                *(unsigned short *)(iVar9 + 0xc) = *(unsigned short *)(iVar9 + 0xc) & 0xffbf;
-              }
-              sVar10 = (short)iVar13 + 1;
-              iVar13 = (int)sVar10;
-            } while (sVar10 < *psVar7);
-          }
-          iVar3 = *piVar4;
-          if ((*(short *)(iVar3 + 0x124) != 0) &&
-             (*(char *)(iVar3 + iVar11 * 0x20 + 0x82a) == '\x05')) {
-            sVar10 = *(short *)(iVar3 + 0x182);
-            while (sVar10 != 0) {
-              sVar10 = sVar10 + -1;
-              iVar3 = *piVar5;
-              iVar13 = sVar10 * 0x16;
-              iVar9 = iVar3 + iVar13;
-              if ((((*(char *)(iVar9 + 5) == (char)*(short *)(*piVar4 + 0x110)) &&
-                   ((*(unsigned int *)(iVar9 + 0xc) >> 0xc & 0xf) == 0)) &&
-                  (*(char *)(*piVar6 + *(char *)(iVar9 + 4) * 6 + 4) != '\0')) &&
-                 ((*(short *)(iVar13 + iVar3) == sVar1 && (*(short *)(iVar9 + 2) == sVar2)))) {
-                *(unsigned short *)(iVar9 + 0xc) = *(unsigned short *)(iVar9 + 0xc) | 0x20;
-                AssignToDefense((int)sVar10,0xffffffffffffffff);
-              }
-            }
-          }
-          uVar8 = 2;
-        }
-        else {
-          uVar8 = 0;
-        }
-      }
-      else {
-        uVar8 = 2;
-      }
-    }
-    else {
-      uVar8 = 2;
-    }
-  }
-  else {
-    uVar8 = 0;
-  }
-  return uVar8;
-}
+/* Address: 0x10013a10 Size: 728 bytes */
+/* AI_AttackCity - clean version in ai/ai.c */
 
 
 
@@ -138485,193 +137480,16 @@ long long FUN_10013a10(short param_1,short param_2)
 
 
 /* Address: 0x100143b8 Size: 528 bytes */
-int FUN_100143b8(short param_1)
-
-{
-  char cVar1;
-  short sVar2;
-  int iVar3;
-  int iVar4;
-  long long lVar5;
-  short sVar6;
-  int iVar7;
-  int *piVar8;
-  int *piVar9;
-  int *piVar10;
-  long long uVar11;
-  short sVar13;
-  int iVar12;
-  long long lVar14;
-  short sVar15;
-  int iVar16;
-  char auStack_30 [2];
-  short local_2e [23];
-  
-  piVar10 = piRam10117468;
-  piVar9 = piRam1011735c;
-  piVar8 = piRam10117358;
-  uVar11 = AllocInfluenceMap();
-  sVar2 = *(short *)(*piVar9 + 0x1602);
-  iVar7 = -1;
-  sVar6 = 1000;
-joined_r0x1001441c:
-  do {
-    do {
-      do {
-        if (sVar2 == 0) {
-          FreeInfluenceMap();
-          return iVar7;
-        }
-        sVar2 = sVar2 + -1;
-        iVar16 = (int)sVar2;
-        iVar12 = *piVar9;
-        iVar4 = iVar12 + iVar16 * 0x42;
-        lVar5 = -(long long)
-                 *(char *)(iVar12 + (*(unsigned int *)(*piVar8 + *(short *)(iVar4 + 0x1606) * 0xe0 +
-                                              *(short *)(iVar4 + 0x1604) * 2) >> 0x18) + 0x711);
-        lVar14 = lVar5 + 10;
-      } while ((((lVar14 + (-(unsigned long long)(lVar14 == 0) - (lVar5 + 9)) & 0xff) != 0) ||
-               (iVar3 = *piVar10, (*(unsigned char *)(iVar3 + sVar2 + 0x11e) & 1) != 0)) ||
-              (sVar2 == *(short *)(iVar3 + 0x46)));
-      cVar1 = *(char *)(iVar4 + 0x1619);
-    } while (((cVar1 != 0xf) && ((int)cVar1 != (int)*(short *)(iVar12 + 0x110))) &&
-            ((*(unsigned int *)(*(short *)(iVar12 + 0x110) * 0x10 + iVar12 + cVar1 * 2 + 0x1582) >> 0x1a & 3
-             ) != 2));
-    sVar13 = FindBestTarget(iVar16,local_2e,auStack_30,uVar11,0);
-  } while (local_2e[0] == -1);
-  iVar12 = *piVar9 + iVar16 * 0x42;
-  if ((int)*(char *)(iVar12 + 0x1619) != (int)*(short *)(*piVar9 + 0x110)) goto code_r0x10014530;
-  if (*(char *)(*piVar10 + (int)sVar2 + 0x56) == '\a') {
-    sVar15 = 10;
-  }
-  else {
-    sVar15 = 0x1e;
-  }
-  sVar13 = sVar13 + sVar15;
-  if (3 < param_1) {
-    sVar13 = sVar13 + 100;
-  }
-  goto LAB_10014584;
-code_r0x10014530:
-  iVar12 = EvaluatePosition(*(short *)(iVar12 + 0x1604),*(short *)(iVar12 + 0x1606));
-  if (0x4a < iVar12) {
-LAB_10014584:
-    if (sVar13 < sVar6) {
-      iVar7 = iVar16;
-      sVar6 = sVar13;
-    }
-  }
-  goto joined_r0x1001441c;
-}
+/* Address: 0x100143b8 Size: 528 bytes */
+/* AI_FindBestMovableArmy - clean version in ai/ai.c */
 
 /* Address: 0x10015c48 Size: 384 bytes */
-long long FUN_10015c48(short param_1)
-
-{
-  unsigned int uVar1;
-  int *piVar2;
-  int *piVar3;
-  long long uVar4;
-  int iVar5;
-  unsigned long long uVar6;
-  unsigned long long uVar7;
-  
-  piVar3 = piRam1011735c;
-  piVar2 = piRam10117358;
-  if (*(char *)(param_1 * 0x1e + *piRam1011735c + 0xd28) == '\x01') {
-    uVar7 = (unsigned long long)*(short *)(*piRam1011735c + param_1 * 0x1e + 0xd2c);
-    uVar6 = (unsigned long long)*(short *)(*piRam1011735c + param_1 * 0x1e + 0xd2e);
-    iVar5 = IsPositionReachable(uVar7,uVar6);
-    if (iVar5 == 0) {
-      uVar4 = 0;
-    }
-    else {
-      if (*(char *)(*piVar3 + (*(unsigned int *)(*piVar2 + (int)(((uVar6 & 0x1fffffff) * 8 - uVar6 &
-                                                         0xffffffff) << 5) +
-                                        (int)((uVar7 & 0xffffffff) << 1)) >> 0x18) + 0x711) == '\n')
-      {
-        iVar5 = LookupCityAtPos(uVar7,uVar6);
-        if ((int)*(char *)(*piVar3 + iVar5 * 0x42 + 0x1619) != (int)*(short *)(*piVar3 + 0x110)) {
-          return 0;
-        }
-      }
-      else {
-        uVar1 = *(unsigned int *)(*piVar2 + (int)(((uVar6 & 0x1fffffff) * 8 - uVar6 & 0xffffffff) << 5) +
-                         (int)((uVar7 & 0xffffffff) << 1));
-        if (((uVar1 >> 0x14 & 1) != 0) &&
-           ((uVar1 >> 0x10 & 0xf) != (int)*(short *)(*piVar3 + 0x110))) {
-          return 0;
-        }
-      }
-      uVar4 = 1;
-    }
-  }
-  else {
-    uVar4 = 0;
-  }
-  return uVar4;
-}
+/* Address: 0x10015c48 Size: 384 bytes */
+/* AI_CheckRuinAccessible - clean version in ai/ai.c */
 
 /* Address: 0x10016344 Size: 416 bytes */
-long long FUN_10016344(short param_1,int param_2)
-
-{
-  short sVar1;
-  int *piVar2;
-  int *piVar3;
-  int *ppuVar4;
-  unsigned int uVar5;
-  int iVar6;
-  int iVar7;
-  short sVar8;
-  int iVar9;
-  int iVar10;
-  char auStack_38 [16];
-  short local_28;
-  
-  piVar3 = piRam10117360;
-  piVar2 = piRam1011735c;
-  ppuVar4 = 0 /* TVect base */;
-  iVar10 = (int)*(short *)(param_2 + param_1 * 2);
-  sVar1 = *(short *)(param_2 + 0x38);
-  iVar6 = *piRam1011735c + sVar1 * 0x42;
-  sVar8 = *(short *)(param_2 + param_1 * 2 + 0xc);
-  iVar9 = iVar10 * 0x16;
-  CalcDistance(*(short *)(iVar6 + 0x1604),*(short *)(iVar6 + 0x1606),
-               *(short *)(*piRam10117360 + iVar9),*(short *)(*piRam10117360 + iVar9 + 2),
-               param_2);
-  iVar6 = *piVar3;
-  iVar7 = iVar9 + iVar6;
-  uVar5 = *(unsigned int *)(iVar7 + 0xc);
-  uVar5 = FindPath(*(short *)(iVar9 + iVar6),*(short *)(iVar7 + 2),auStack_38,
-                       (unsigned short)(uVar5 >> 9) & 7,(unsigned short)(uVar5 >> 0xc) & 0xf,0xc);
-  if (uVar5 != 0) {
-    if ((sVar8 != -1) && (uVar5 == *(unsigned char *)(*(int *)(*(int*)((char*)ppuVar4 - 0x10e)) + (int)sVar8 + 0x182))) {
-      iVar6 = *piVar3;
-      iVar10 = iVar10 * 0x16;
-      iVar6 = FindNearestEnemy(*(short *)(iVar6 + iVar10),*(short *)(iVar6 + iVar10 + 2),
-                           0xffffffffffffffff);
-      local_28 = *(short *)(*piVar2 + 0x136);
-      sVar8 = local_28;
-      if (local_28 < 2) {
-        sVar8 = 1;
-      }
-      if (sVar8 < 6) {
-        iVar7 = 10;
-      }
-      else {
-        iVar7 = 0xf;
-      }
-      if (iVar6 < iVar7) {
-        return 0;
-      }
-    }
-    MoveArmyToTarget(auStack_38,1,(int)sVar1,0);
-    ExecuteArmyMove(*(short *)(*(int *)(*(int*)((char*)ppuVar4 - 0x70)) + 0x12),
-                 *(short *)(*(int *)(*(int*)((char*)ppuVar4 - 0x70)) + 0x14),0);
-  }
-  return 0;
-}
+/* Address: 0x10016344 Size: 416 bytes */
+/* AI_AttackEnemyArmy - clean version in ai/ai.c */
 
 /* Address: 0x10016cc4 Size: 300 bytes */
 void FUN_10016cc4(int param_1,int param_2,int param_3,short param_4)
@@ -140310,7 +139128,7 @@ short FUN_1001a864(short param_1,long long param_2)
         else {
           if (*(char *)(*piVar4 + iVar9 + 0x56) != '\x01') goto LAB_1001aa70;
 LAB_1001a920:
-          FUN_10010b30(iVar8,1);
+/*           AI_ArmyManagement(iVar8,1); -- clean version in ai/ai.c */
           *(char *)(iVar9 + *piVar4 + 0x56) = 3;
         }
         iVar5 = GetNeighborArmies(iVar8,auStack_2c,0);
@@ -140357,47 +139175,8 @@ LAB_1001aa70:
 }
 
 /* Address: 0x1001ab94 Size: 328 bytes */
-void FUN_1001ab94()
-
-{
-  int bVar1;
-  unsigned char bVar2;
-  short sVar3;
-  int bVar4;
-  int *piVar5;
-  int *piVar6;
-  int iVar7;
-  unsigned char abStack_18 [24];
-  
-  piVar6 = piRam10117468;
-  piVar5 = piRam1011735c;
-  if (*(short *)(*piRam1011735c + 0x1602) != 0) {
-    sVar3 = *(short *)(*piRam1011735c + 0x1602);
-    do {
-      sVar3 = sVar3 + -1;
-      iVar7 = *piVar5;
-      if (((*(char *)(iVar7 + sVar3 * 0x42 + 0x1619) == (char)*(short *)(iVar7 + 0x110)) &&
-          (*(char *)(*piVar6 + (int)sVar3 + 0x56) == '\x03')) &&
-         (iVar7 = GetNeighborArmies((int)sVar3,abStack_18,0), iVar7 != 0)) {
-        bVar4 = false;
-        iVar7 = 5;
-        do {
-          bVar2 = abStack_18[iVar7];
-          if (((bVar2 != 0xff) && (*(char *)(*piVar5 + (unsigned int)bVar2 * 0x42 + 0x1619) == '\x0f')) &&
-             ((*(unsigned char *)((unsigned int)bVar2 + *piVar6 + 0x11e) & 1) == 0)) {
-            bVar4 = true;
-          }
-          bVar1 = iVar7 != 0;
-          iVar7 = (int)(short)((short)iVar7 + -1);
-        } while (bVar1);
-        if (!bVar4) {
-          *(char *)(*piVar6 + (int)sVar3 + 0x56) = 2;
-        }
-      }
-    } while (sVar3 != 0);
-  }
-  return;
-}
+/* Address: 0x1001ab94 Size: 328 bytes */
+/* AI_CheckArmyPathsBlocked - clean version in ai/ai.c */
 
 /* Address: 0x1001b584 Size: 860 bytes */
 short FUN_1001b584(long long param_1,short *param_2,unsigned short param_3,short param_4,int *param_5)
@@ -141329,13 +140108,13 @@ long long FUN_1001cd68(short param_1)
       } while (sVar1 != 0);
     }
     if (!bVar7) {
-      FUN_1001aea0();
+/*       AI_ActivateBestGroup(); -- clean version in ai/ai.c */
       return 0;
     }
   }
   iVar6 = FUN_1001af38(iVar9);
   if (iVar6 == 0) {
-    FUN_1001ae14(iVar9,0);
+    AI_ActivateAttackGroup(iVar9,0);
     return 0;
   }
   FUN_1001b198(iVar9);
@@ -141362,10 +140141,10 @@ long long FUN_1001cd68(short param_1)
     uVar5 = 0;
   }
   else {
-    FUN_10010b30(*(short *)(*piVar3 + iVar9 * 0x5c + 0x250),1);
+/*     AI_ArmyManagement(*(short *)(*piVar3 + iVar9 * 0x5c + 0x250),1); -- clean version in ai/ai.c */
     iVar6 = FUN_1001cb24(iVar9);
     if ((iVar6 != 0) && (sVar1 = *(short *)(*piVar3 + iVar9 * 0x5c + 0x250), -1 < sVar1)) {
-      FUN_10010b30(sVar1,1);
+/*       AI_ArmyManagement(sVar1,1); -- clean version in ai/ai.c */
     }
     if (*(short *)(*piVar3 + iVar9 * 0x5c + 0x24c) == 0) {
       uVar5 = 0;
@@ -143664,120 +142443,16 @@ long long IsPositionReachable(short param_1,short param_2)
 }
 
 /* Address: 0x1001f758 Size: 316 bytes */
-void FUN_1001f758()
-
-{
-  int bVar1;
-  char cVar2;
-  short sVar3;
-  int iVar4;
-  long long lVar5;
-  int bVar6;
-  int *piVar7;
-  int *piVar8;
-  int *piVar9;
-  int *piVar10;
-  long long lVar11;
-  unsigned long long uVar12;
-  int iVar13;
-  
-  piVar10 = piRam10117468;
-  piVar9 = piRam10117364;
-  piVar8 = piRam1011735c;
-  piVar7 = piRam10117358;
-  sVar3 = *(short *)(*piRam1011735c + 0x1602);
-  while (sVar3 != 0) {
-    sVar3 = sVar3 + -1;
-    uVar12 = (unsigned long long)sVar3;
-    iVar13 = *piVar8;
-    iVar4 = iVar13 + (int)(((uVar12 & 0x7ffffff) * 0x20 + uVar12 & 0xffffffff) << 1);
-    lVar5 = -(long long)
-             *(char *)(iVar13 + (*(unsigned int *)(*piVar7 + *(short *)(iVar4 + 0x1606) * 0xe0 +
-                                          *(short *)(iVar4 + 0x1604) * 2) >> 0x18) + 0x711);
-    lVar11 = lVar5 + 10;
-    if ((lVar11 + (-(unsigned long long)(lVar11 == 0) - (lVar5 + 9)) & 0xff) == 0) {
-      iVar13 = *piVar10 + (int)sVar3;
-      *(unsigned char *)(iVar13 + 0x11e) = *(unsigned char *)(iVar13 + 0x11e) & 0xfd;
-      bVar6 = false;
-      iVar13 = 3;
-      do {
-        cVar2 = *(char *)(*piVar8 + (int)(((uVar12 & 0x7ffffff) * 0x20 + uVar12 & 0xffffffff) << 1)
-                          + iVar13 + 0x161a);
-        if ((cVar2 != -1) && (*(char *)(*piVar9 + cVar2 * 6) != '\0')) {
-          bVar6 = true;
-        }
-        bVar1 = iVar13 != 0;
-        iVar13 = (int)(short)((short)iVar13 + -1);
-      } while (bVar1);
-      if (bVar6) {
-        iVar13 = *piVar10 + (int)sVar3;
-        *(unsigned char *)(iVar13 + 0x11e) = *(unsigned char *)(iVar13 + 0x11e) | 2;
-      }
-    }
-  }
-  return;
-}
+/* Address: 0x1001f758 Size: 316 bytes */
+/* AI_ResetProductionState - clean version in ai/ai.c */
 
 /* Address: 0x1001f894 Size: 196 bytes */
-void FUN_1001f894(short param_1)
-
-{
-  short sVar1;
-  short sVar2;
-  int iVar3;
-  int bVar4;
-  int bVar5;
-  short sVar6;
-  short sVar7;
-  
-  iVar3 = *piRam1011735c + param_1 * 0x42;
-  sVar1 = *(short *)(iVar3 + 0x1604);
-  sVar2 = *(short *)(iVar3 + 0x1606);
-  sVar7 = sVar1 + -1;
-  bVar4 = false;
-  bVar5 = false;
-  if ((int)sVar7 <= sVar1 + 2) {
-    do {
-      bVar4 = bVar5;
-      sVar6 = sVar2 + -1;
-      if ((int)sVar6 <= sVar2 + 2) {
-        do {
-          if ((*(unsigned int *)(*piRam10117354 + sVar6 * 0x70 + (int)sVar7) >> 0x1d & 1) != 0) {
-            bVar4 = true;
-          }
-          sVar6 = sVar6 + 1;
-        } while ((int)sVar6 <= sVar2 + 2);
-      }
-      sVar7 = sVar7 + 1;
-      bVar5 = bVar4;
-    } while ((int)sVar7 <= sVar1 + 2);
-  }
-  if (bVar4) {
-    *(unsigned char *)(*piRam10117468 + (int)param_1 + 0x11e) =
-         *(unsigned char *)(*piRam10117468 + (int)param_1 + 0x11e) & 0xfe;
-  }
-  return;
-}
+/* Address: 0x1001f894 Size: 196 bytes */
+/* AI_CheckNearbyThreats - clean version in ai/ai.c */
 
 /* Address: 0x1001f958 Size: 140 bytes */
-void FUN_1001f958()
-
-{
-  short sVar1;
-  int *piVar2;
-  
-  piVar2 = piRam10117468;
-  if (*(short *)(*piRam1011735c + 0x124) != 0) {
-    sVar1 = *(short *)(*piRam1011735c + 0x1602);
-    while (sVar1 != 0) {
-      sVar1 = sVar1 + -1;
-      if ((*(unsigned char *)(*piVar2 + (int)sVar1 + 0x11e) & 1) != 0) {
-        FUN_1001f894(sVar1);
-      }
-    }
-  }
-  return;
-}
+/* Address: 0x1001f958 Size: 140 bytes */
+/* AI_PrecomputeThreats - clean version in ai/ai.c */
 
 
 
@@ -152868,7 +151543,7 @@ short FUN_10028e10(long long param_1,short param_2,short param_3)
     *puVar29 = (int)uVar10;
     if ((uVar10 & 0xffffffff) != 0xffffffff) {
       puVar14 = (char *)AllocateBlock(uVar10);
-      FUN_100db1ec();
+      CheckMemError();
       StreamRead(piVar13,puVar14,*puVar29);
       uVar9 = FUN_100522dc(*(int *)(iVar1 + 0x15c),6,0);
       StreamWrite(uVar9,puVar14,*puVar29);
@@ -161077,7 +159752,7 @@ void FUN_1002b230(short param_1)
     uVar7 = FUN_1005f678(0xa6,10);
     uVar8 = FUN_1005f678(0xa6,9);
     FUN_1003ced4(uVar8,uVar7);
-    FUN_10007f78();
+    MapRefreshAndCombat();
   }
   iVar12 = 0;
   if (0 < *(short *)(*piVar3 + 0x1602)) {
@@ -161099,9 +159774,9 @@ void FUN_1002b230(short param_1)
     iVar10 = iVar12 + iVar11;
     if ((int)*(char *)(iVar10 + 5) == (int)*(short *)(*piVar3 + 0x110)) {
       if (*(char *)(iVar10 + 4) == '\x1c') {
-        FUN_1002e5c0(iVar10,*(short *)(iVar11 + iVar12),*(short *)(iVar10 + 2));
+        HandleHeroDefeat(iVar10,*(short *)(iVar11 + iVar12),*(short *)(iVar10 + 2));
       }
-      FUN_100214e8(*piVar4 + sVar9 * 0x16);
+      RemoveBattlePiece(*piVar4 + sVar9 * 0x16);
     }
     iVar12 = (int)uVar6;
   }
@@ -161120,7 +159795,7 @@ void FUN_1002b230(short param_1)
     } while (sVar9 < 0x70);
     CenterMapOnArmy(*(short *)(*piVar3 + 0x110));
     RefreshDisplay(1,1,0);
-    FUN_10007f78();
+    MapRefreshAndCombat();
   }
   **(int **)(iVar12 + -0x3f0) = 0;
   **(int **)(iVar12 + -0x1c0) = 0;
@@ -161130,7 +159805,7 @@ void FUN_1002b230(short param_1)
     sVar9 = (short)iVar12 + 1;
     iVar12 = (int)sVar9;
   } while (sVar9 < 8);
-  FUN_1002b91c();
+  UpdateDisplayState();
   FUN_1002c85c();
   if (param_1 == 1) {
     uVar7 = FUN_1005f678(0xa6,5);
@@ -176787,11 +175462,11 @@ LAB_1003cbf8:
                   uVar2 = *(short *)(*puVar7 + 0x110);
                   *(short *)(*puVar7 + 0x110) = (short)cVar1;
                   iVar13 = *piVar8 + iVar16;
-                  FUN_1002e5c0(iVar13,*(short *)(*piVar8 + iVar16),*(short *)(iVar13 + 2))
+                  HandleHeroDefeat(iVar13,*(short *)(*piVar8 + iVar16),*(short *)(iVar13 + 2))
                   ;
                   *(short *)(*puVar7 + 0x110) = uVar2;
                 }
-                FUN_100214e8(*piVar8 + iVar17 * 0x16);
+                RemoveBattlePiece(*piVar8 + iVar17 * 0x16);
               }
               iVar13 = (int)uVar14;
             } while (iVar17 != 0);
@@ -201865,11 +200540,11 @@ void FUN_100539e8(int param_1,short param_2,short param_3)
           } while (sVar21 < *psVar18);
         }
         puVar2 = (short *)*puVar8;
-        FUN_1002e5c0(puVar2,*puVar2,puVar2[1]);
-        FUN_100214e8(*puVar8);
+        HandleHeroDefeat(puVar2,*puVar2,puVar2[1]);
+        RemoveBattlePiece(*puVar8);
         *puVar8 = 0;
         *piVar10 = 0;
-        FUN_1002b91c();
+        UpdateDisplayState();
         if (bVar20) {
           return;
         }

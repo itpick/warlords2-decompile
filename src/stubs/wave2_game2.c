@@ -1468,7 +1468,7 @@ void FUN_100416f4(short param_1,short param_2,long long param_3,short param_4)
           sVar7 = (short)iVar4 + 1;
           iVar4 = (int)sVar7;
         } while (sVar7 < 8);
-        FUN_10007f78();
+        MapRefreshAndCombat();
       }
       else {
         iVar4 = 0;
@@ -1496,7 +1496,7 @@ void FUN_100416f4(short param_1,short param_2,long long param_3,short param_4)
           }
           uVar6 = FUN_10044728(auStack_98,sVar7,auStack_88);
           *(short *)(*(int*)((char*)ppuVar3 - 0x680)) = uVar6;
-          FUN_10007f78();
+          MapRefreshAndCombat();
           if (param_4 != 0) {
             FUN_1003dc28();
           }
@@ -1574,7 +1574,7 @@ long long FUN_100419b0(short param_1,short param_2,char param_3)
       *(short *)(*piVar6 + 0x12) = *(short *)(*piVar6 + 0x14);
     }
     if ((int)uVar9 == 0) {
-      FUN_10007f78();
+      MapRefreshAndCombat();
     }
     if ((int)uVar9 == 2) {
       if (param_3 == '\0') {
@@ -2544,7 +2544,7 @@ void FUN_100449bc()
   if (*gDistGridHandle != 0) {
     DisposeHandle_Thunk();
   }
-  FUN_10001f50(*piVar1);
+  FreeHandle(*piVar1);
   **(short **)(local_2c + -0x19fc) = 0;
   return;
 }
@@ -2593,7 +2593,7 @@ long long FUN_10044a10(int param_1,int *param_2)
       local_34 = uVar1;
       iVar4 = CreateOrResizeGWorld(param_1,sVar11,sVar10,8,0,1);
       if (iVar4 == 0) {
-        FUN_100db1ec();
+        CheckMemError();
         uVar3 = 0;
       }
       else {
@@ -6300,7 +6300,7 @@ char FUN_1004a854()
                iVar7 == 0)) {
               iVar7 = *piVar4 + iVar11 * 0x16;
               if ((*(unsigned int *)(iVar7 + 0xc) & 0x7f) == (int)*(char *)(iVar7 + 9)) {
-                FUN_100214e8(iVar7);
+                RemoveBattlePiece(iVar7);
               }
               else {
                 iVar7 = *piVar4 + iVar11 * 0x16;
@@ -6446,8 +6446,8 @@ void FUN_1004af7c()
     } while ((int)sVar5 < (int)*(char *)(*piVar2 + 800));
   }
   FUN_1004a81c();
-  FUN_1002b91c();
-  FUN_10007f78();
+  UpdateDisplayState();
+  MapRefreshAndCombat();
   return;
 }
 
@@ -12053,7 +12053,7 @@ LAB_10055fb0:
   uVar9 = FUN_100559ac();
   if ((uVar9 & 0xffffffff) == 0) {
     *piVar6 = 0;
-    FUN_10007f78();
+    MapRefreshAndCombat();
     PlayAttackHitSound();
   }
   else {
@@ -12594,7 +12594,7 @@ long long FUN_100562e0()
       iVar5 = (int)(short)((short)iVar5 + -1);
     } while (bVar1);
     *puRam10115e90 = 0;
-    FUN_10007f78();
+    MapRefreshAndCombat();
     uVar4 = 1;
   }
   return uVar4;
@@ -15159,7 +15159,7 @@ void FUN_1005c7d0(short param_1)
     }
   }
   else {
-    FUN_10007f78();
+    MapRefreshAndCombat();
   }
   ResourceRead_Dispatch((int)*(int **)(*(int *)(*(int*)((char*)ppuVar12 - 0x155)) + 0x88) +
                (int)*(short *)(**(int **)(*(int *)(*(int*)((char*)ppuVar12 - 0x155)) + 0x88) + 0x38),0,0);
@@ -29733,7 +29733,7 @@ void FUN_10070578(int *param_1,short param_2)
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x7a8),auStack_28);
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_28,auStack_30);
       uVar1 = FUN_10000360(param_1[0x2b]);
-      FUN_10000048(param_1[0x2b]);
+      LockHandle_Thunk(param_1[0x2b]);
       DetachResource(param_1[0x2b]);
       uVar2 = GetBitMapPtr(auStack_30);
       FUN_10002328(uVar2,*(short *)((int)param_1 + 0xaa),param_2,param_1[0x2b]);
@@ -30049,7 +30049,7 @@ void FUN_10070f64(int *param_1)
       ResourceRead_Dispatch((int)param_1 + (int)*(short *)(*param_1 + 0x288),auStack_74,auStack_5c);
       FUN_100b06d4(auStack_5c,param_1 + 0x2c);
       uVar1 = FUN_10000360(param_1[0x2b]);
-      FUN_10000048(param_1[0x2b]);
+      LockHandle_Thunk(param_1[0x2b]);
       DetachResource(param_1[0x2b]);
       if (*(char *)((int)param_1 + 0xa9) == '\0') {
         uVar5 = GetBitMapPtr(auStack_5c);
@@ -30844,7 +30844,7 @@ void FUN_100720d8(int *param_1)
   if (iVar7 != 0) {
     *piVar20 = iVar7;
     uVar5 = FUN_10000360(iVar7);
-    FUN_10000048(*piVar20);
+    LockHandle_Thunk(*piVar20);
     iVar7 = param_1[0x39];
     *piVar19 = iVar7;
     uVar6 = FUN_10000360(iVar7);
@@ -31715,7 +31715,7 @@ void FUN_10072660(int param_1)
   *(short *)(param_1 + 0xe0) = 0xffff;
   if (*(int *)(param_1 + 0xe4) != 0) {
     if (*(char *)(param_1 + 0xe8) == '\0') {
-      FUN_10001f50(*(int *)(param_1 + 0xe4));
+      FreeHandle(*(int *)(param_1 + 0xe4));
     }
     else {
       FUN_10001f38(*(int *)(param_1 + 0xe4));
@@ -31739,7 +31739,7 @@ void FUN_100726d0(int *param_1,short param_2,char param_3)
     uVar1 = GetResource_Thunk(0x6369636e,param_2);
     if ((int)uVar1 != 0) {
       uVar2 = FUN_10000360(uVar1);
-      FUN_10000048(uVar1);
+      LockHandle_Thunk(uVar1);
       iVar3 = FUN_10001f68(*(short *)(param_1 + 0x38));
       param_1[0x39] = iVar3;
       FUN_10001b60(uVar1,uVar2);
@@ -32112,7 +32112,7 @@ void FUN_100729fc(int *param_1)
   if (iVar3 != 0) {
     *piVar15 = iVar3;
     uVar5 = FUN_10000360(iVar3);
-    FUN_10000048(*piVar15);
+    LockHandle_Thunk(*piVar15);
     iVar3 = param_1[0x39];
     *piVar14 = iVar3;
     uVar6 = FUN_10000360(iVar3);

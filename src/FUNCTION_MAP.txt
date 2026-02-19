@@ -17,16 +17,16 @@
 10117884 | FUN_10117884 | ResourceRead/VDispatch | core/utils.c    | STUB
 
 # ===== Combat System (combat/combat.c) =====
-10010b30 | FUN_10010b30 | ExecuteArmyCombat     | combat/combat.c | agent:a190f22
+10010b30 | FUN_10010b30 | AI_ArmyManagement     | ai/ai.c         | DONE (army combat/move decisions)
 1000ffe0 | FUN_1000ffe0 | CalculateFightOrder   | combat/combat.c | agent:a190f22
-1001072c | FUN_1001072c | PruneExcessArmies     | combat/combat.c | agent:a190f22
+1001072c | FUN_1001072c | AI_CullWeakUnits      | ai/ai.c         | DONE (prune weak units from army)
 1000fc38 | FUN_1000fc38 | RemoveDefeatedUnit    | combat/combat.c | agent:a190f22
 1000fba8 | FUN_1000fba8 | RefreshMapAfterCombat | combat/combat.c | agent:a190f22
 1000fe90 | FUN_1000fe90 | CalcArmyStrength      | combat/combat.c | agent:a190f22
 1000df58 | FUN_1000df58 | SelectDiplomacyTarget | combat/combat.c | agent:a190f22
-10011804 | FUN_10011804 | DoFightResults        | combat/combat.c | agent:a190f22
+10011804 | FUN_10011804 | AI_StrategicAssessment| ai/ai.c         | DONE (diplomacy/threat evaluation)
 1000cafc | FUN_1000cafc | TurnPhase_DoFightRes  | combat/combat.c | agent:a190f22
-100164e4 | FUN_100164e4 | ProcessFightOutcomes  | combat/combat.c | agent:a190f22
+100164e4 | FUN_100164e4 | AI_HeroManagementLoop | ai/ai.c         | DONE (hero quest/exploration loop)
 10007dd4 | FUN_10007dd4 | CombatOrchestrator    | combat/combat.c | agent:a190f22
 10007f78 | FUN_10007f78 | MapRefreshAndCombat   | combat/combat.c | agent:a190f22
 10004c54 | FUN_10004c54 | BuildCombatMapTiles   | combat/combat.c | agent:a190f22
@@ -37,11 +37,67 @@
 1000f064 | FUN_1000f064 | ResolveSiege          | combat/combat.c | agent:a190f22
 
 # ===== AI System (ai/ai.c) =====
-1001f648 | FUN_1001f648 | FindNearestTarget     | ai/ai.c         | agent:ac63979
-1000cf78 | FUN_1000cf78 | AIFindBestCity        | ai/ai.c         | agent:ac63979
-1000d0c0 | FUN_1000d0c0 | AIDispatchToCity      | ai/ai.c         | agent:ac63979
-1000d1a4 | FUN_1000d1a4 | AIProcessTurn         | ai/ai.c         | agent:ac63979
-10020f94 | FUN_10020f94 | AISelectHero          | ai/ai.c         | agent:ac63979
+# AI dispatch phases (called from command handler 0x3FE-0x40B)
+10011804 | FUN_10011804 | AI_StrategicAssessment  | ai/ai.c         | DONE (diplomacy/threat evaluation)
+100164e4 | FUN_100164e4 | AI_HeroManagementLoop   | ai/ai.c         | DONE (hero quest/exploration loop)
+10013774 | FUN_10013774 | AI_AssignCityDefenders   | ai/ai.c         | DONE (assign production to cities)
+10014214 | FUN_10014214 | AI_PlanArmyMovements     | ai/ai.c         | DONE (hero quest pathfinding)
+1001d014 | FUN_1001d014 | AI_ExecuteAttackGroups   | ai/ai.c         | DONE (city production/garrison)
+100114d4 | FUN_100114d4 | AI_AssignRemainingArmies | ai/ai.c         | DONE (process unassigned armies)
+1001aa9c | FUN_1001aa9c | AI_ProcessArmyOrders     | ai/ai.c         | DONE (validate army tracking)
+1001f9e4 | FUN_1001f9e4 | AI_ProductionTurn        | ai/ai.c         | DONE (init army states per turn)
+1001fcc0 | FUN_1001fcc0 | AI_ProductionPlanning    | ai/ai.c         | DONE (AI army deployment priorities)
+10013040 | FUN_10013040 | AI_Finalize              | ai/ai.c         | DONE (process armies in matching states)
+10014d14 | FUN_10014d14 | AI_FinalPass             | ai/ai.c         | DONE (process naval units)
+10013484 | FUN_10013484 | AI_SecondaryDefense      | ai/ai.c         | DONE (unit type dispatch)
+1001497c | FUN_1001497c | AI_GroupMovement          | ai/ai.c         | DONE (process idle full-health units)
+10014bcc | FUN_10014bcc | AI_ResetUnusedUnits      | ai/ai.c         | DONE (reset unassigned units)
+# AI hero/targeting functions
+10014e44 | FUN_10014e44 | AI_SortHeroes            | ai/ai.c         | DONE (build/sort hero table)
+10015030 | FUN_10015030 | AI_CanReachCity           | ai/ai.c         | DONE (check city reachability)
+100151e8 | FUN_100151e8 | AI_AssembleHeroArmy      | ai/ai.c         | DONE (gather army for hero)
+10015324 | FUN_10015324 | AI_HandleAllianceQuest   | ai/ai.c         | DONE (process alliance quests)
+10015554 | FUN_10015554 | AI_AttackTarget          | ai/ai.c         | DONE (execute hero attack)
+100159c8 | FUN_100159c8 | AI_FindBestCityTarget    | ai/ai.c         | DONE (evaluate city targets)
+10015dc8 | FUN_10015dc8 | AI_FindBestRuinTarget    | ai/ai.c         | DONE (evaluate ruin targets)
+10015f98 | FUN_10015f98 | AI_FindBestArmyTarget    | ai/ai.c         | DONE (evaluate army targets)
+100161fc | FUN_100161fc | AI_DecideTargetType      | ai/ai.c         | DONE (choose city/ruin/army target)
+10016344 | FUN_10016344 | AI_AttackEnemyArmy       | ai/ai.c         | DONE (attack enemy army)
+# AI army management functions
+10010b30 | FUN_10010b30 | AI_ArmyManagement        | ai/ai.c         | DONE (army combat/move decisions)
+1001072c | FUN_1001072c | AI_CullWeakUnits         | ai/ai.c         | DONE (prune weak units from army)
+1000cf78 | FUN_1000cf78 | AI_FindArmyForHero       | ai/ai.c         | DONE (find army slot for hero)
+1000d0c0 | FUN_1000d0c0 | AI_PlaceNewUnit          | ai/ai.c         | DONE (place unit in army)
+1000d1a4 | FUN_1000d1a4 | AI_TryHireHero           | ai/ai.c         | DONE (attempt hero hire)
+# AI army operations
+1001ab94 | FUN_1001ab94 | AI_CheckArmyPathsBlocked | ai/ai.c         | DONE (check blocked paths)
+1001acdc | FUN_1001acdc | AI_FindNearestFriendly   | ai/ai.c         | DONE (find nearest friendly army)
+1001ae14 | FUN_1001ae14 | AI_ActivateAttackGroup   | ai/ai.c         | DONE (activate attack group)
+1001aea0 | FUN_1001aea0 | AI_ActivateBestGroup     | ai/ai.c         | DONE (find/activate best group)
+100143b8 | FUN_100143b8 | AI_FindBestMovableArmy   | ai/ai.c         | DONE (find best movable army)
+100145c8 | FUN_100145c8 | AI_ProcessSingleUnit     | ai/ai.c         | DONE (process one AI unit)
+# AI production/state functions
+1001f758 | FUN_1001f758 | AI_ResetProductionState  | ai/ai.c         | DONE (reset production state)
+1001f958 | FUN_1001f958 | AI_PrecomputeThreats     | ai/ai.c         | DONE (precompute threat data)
+1001f894 | FUN_1001f894 | AI_CheckNearbyThreats    | ai/ai.c         | DONE (check nearby threats)
+# AI combat/dispatch functions
+100121f8 | FUN_100121f8 | AI_CheckArmyOwnership    | ai/ai.c         | DONE (verify army ownership)
+10012324 | FUN_10012324 | AI_EarlyGameAttack       | ai/ai.c         | DONE (early game aggression)
+1001241c | FUN_1001241c | AI_SearchForRuins        | ai/ai.c         | DONE (search for explorable ruins)
+100126a4 | FUN_100126a4 | AI_AttackNeutralArmies   | ai/ai.c         | DONE (attack neutral armies)
+10012cc8 | FUN_10012cc8 | AI_DispatchToTarget      | ai/ai.c         | DONE (dispatch army to target)
+10013a10 | FUN_10013a10 | AI_AttackCity            | ai/ai.c         | DONE (attack a city)
+10013d0c | FUN_10013d0c | AI_ProcessCombatResult   | ai/ai.c         | DONE (process combat outcome)
+10013150 | FUN_10013150 | AI_ProcessFollowOrders   | ai/ai.c         | DONE (process follow orders)
+# AI ruin evaluation
+10015904 | FUN_10015904 | AI_GetRuinSlotIndex      | ai/ai.c         | DONE (get ruin slot index)
+10015980 | FUN_10015980 | AI_GetRuinCapability     | ai/ai.c         | DONE (get ruin capability)
+10015c48 | FUN_10015c48 | AI_CheckRuinAccessible   | ai/ai.c         | DONE (check ruin accessibility)
+# AI helper functions (in stubs, not ai.c)
+100169c0 | FUN_100169c0 | ExploreRuinsAtHeroLocation | stubs/reconstructed_2.c | DONE (explore ruins at hero)
+10016df0 | FUN_10016df0 | SortMergeHeroes          | stubs/reconstructed_2.c | DONE (sort/merge hero arrays)
+1001f648 | FUN_1001f648 | FindNearestTarget        | ai/ai.c         | agent:ac63979
+10020f94 | FUN_10020f94 | AISelectHero             | ai/ai.c         | agent:ac63979
 
 # ===== Movement & Pathfinding (movement/movement.c) =====
 1001e160 | FUN_1001e160 | MoveArmyToTarget      | movement/movement.c | agent:a9efe79
@@ -49,8 +105,8 @@
 1001eff8 | FUN_1001eff8 | CalcPathCost          | movement/movement.c | agent:a9efe79
 10043248 | FUN_10043248 | DijkstraFloodFill     | movement/movement.c | agent:a9efe79
 10018180 | FUN_10018180 | CenterViewport        | movement/movement.c | agent:a9efe79
-10015030 | FUN_10015030 | CalcNavalMove         | movement/movement.c | agent:a9efe79
-10015980 | FUN_10015980 | GetTerrainMask        | movement/movement.c | agent:a9efe79
+10015030 | FUN_10015030 | AI_CanReachCity       | ai/ai.c              | DONE (check city reachability)
+10015980 | FUN_10015980 | AI_GetRuinCapability  | ai/ai.c              | DONE (get ruin capability)
 100186cc | FUN_100186cc | ProcessArmyMove       | movement/movement.c | agent:a9efe79
 
 # ===== Economy/Production/Heroes (economy/economy.c) =====
@@ -100,6 +156,60 @@
 10011590 | FUN_10011590 | AdoptNeutralArmy      | stubs/reconstructed_2.c  | DONE (claim neutral armies)
 1000f258 | FUN_1000f258 | RemoveArmyFromCities  | economy/economy.c        | DONE (clear city army refs)
 
+# ===== Economy comment-referenced functions (newly named) =====
+1005f678 | FUN_1005f678 | GetSTRValueAt           | stubs/recovered_stubs.c  | DONE (STR# resource lookup)
+10038c60 | FUN_10038c60 | RecordGameEvent         | stubs/recovered_stubs.c  | DONE (record battle/victory/elimination events)
+10052f6c | FUN_10052f6c | DisplayFormattedMessage | stubs/recovered_stubs.c  | DONE (display formatted message dialog)
+100534c8 | FUN_100534c8 | UpdateSearchDisplay     | stubs/recovered_stubs.c  | DONE (update ruins search display)
+1002e5c0 | FUN_1002e5c0 | HandleHeroDefeat        | stubs/reconstructed_2.c  | DONE (city capture/raze/hero defeat) -> renamed
+100214e8 | FUN_100214e8 | RemoveBattlePiece       | stubs/reconstructed_2.c  | DONE (clear unit data from map) -> renamed
+1003ced4 | FUN_1003ced4 | ShowGameDialog          | stubs/recovered_stubs.c  | DONE (show end game/completion dialog)
+1001b584 | FUN_1001b584 | CreateProducedUnit      | stubs/recovered_stubs.c  | DONE (create newly produced unit)
+1001c2dc | FUN_1001c2dc | AssignProducedToArmy    | stubs/recovered_stubs.c  | DONE (assign produced unit to army)
+1004f438 | FUN_1004f438 | ConvertCityToNeutral    | stubs/stubs.c            | DONE (convert city to neutral ownership)
+10030454 | FUN_10030454 | DisplayMessagePopup     | stubs/recovered_stubs.c  | DONE (display single message popup)
+1004f620 | FUN_1004f620 | PlaceHeroOnMap          | stubs/recovered_stubs.c  | DONE (place hero on map)
+1001f5e8 | FUN_1001f5e8 | RefreshMapPosition      | stubs/recovered_stubs.c  | DONE (refresh map at position)
+1002bbd4 | FUN_1002bbd4 | RefreshDisplayState     | stubs/recovered_stubs.c  | DONE (update display state)
+1002bcd8 | FUN_1002bcd8 | FinalizeDisplayUpdate   | stubs/reconstructed_batch_a.c | DONE (finalize display update)
+1003357c | FUN_1003357c | SetArmySearchState      | stubs/recovered_stubs.c  | DONE (set army to search state)
+1005310c | FUN_1005310c | FightGuardian           | stubs/recovered_stubs.c  | DONE (fight ruins guardian)
+10053838 | FUN_10053838 | PlaceItemOnMap          | stubs/recovered_stubs.c  | DONE (place item at/near map position)
+1003c938 | FUN_1003c938 | ShowHumanPlayerMessage  | stubs/recovered_stubs.c  | DONE (display message for human player)
+1003cac4 | FUN_1003cac4 | ShowAIPlayerMessage     | stubs/recovered_stubs.c  | DONE (display message for AI player)
+10025f94 | FUN_10025f94 | ProcessMinorEvents      | stubs/recovered_stubs.c  | DONE (stub/minimal between-turn processing)
+10064850 | FUN_10064850 | UpdateMapDisplay        | stubs/recovered_stubs.c  | DONE (process map events/update display)
+10027448 | FUN_10027448 | RefreshArmyData         | stubs/reconstructed_batch_a.c | DONE (refresh army data/counts)
+1002c85c | FUN_1002c85c | ResetFogOfWar           | stubs/recovered_stubs.c  | DONE (clear/reset fog of war overlay)
+10008f70 | FUN_10008f70 | UpdateFogDisplay        | stubs/reconstructed_batch_a.c | DONE (update fog of war display)
+100090f0 | FUN_100090f0 | InitMapDisplay          | stubs/recovered_stubs.c  | DONE (initialize map display)
+100099cc | FUN_100099cc | InitMapTerrain          | stubs/recovered_stubs.c  | DONE (initialize map terrain data)
+1003956c | FUN_1003956c | InitProductionSystem    | stubs/recovered_stubs.c  | DONE (initialize production system)
+1003c068 | FUN_1003c068 | InitializeCityOwnership | stubs/recovered_stubs.c  | DONE (initialize city ownership)
+10025f2c | FUN_10025f2c | InitSpriteIndices       | stubs/recovered_stubs.c  | DONE (initialize sprite indices)
+1002cbbc | FUN_1002cbbc | InitVisibilityData      | stubs/recovered_stubs.c  | DONE (initialize visibility/fog data)
+1005bbe8 | FUN_1005bbe8 | SeedRandomGenerator     | stubs/recovered_stubs.c  | DONE (initialize random seed)
+100275ec | FUN_100275ec | FinalizeGameInit        | stubs/recovered_stubs.c  | DONE (finalize game initialization)
+10021200 | FUN_10021200 | ModifyHeroStrength      | economy/economy.c        | DONE (add modifier to hero strength)
+1000fac4 | FUN_1000fac4 | StartOfTurnArmyUpdate   | economy/economy.c        | DONE (update hero states/quest slots)
+1000f7bc | FUN_1000f7bc | AssignCityGarrisons     | economy/economy.c        | DONE (assign armies to city garrison)
+1003d094 | FUN_1003d094 | CheckVictoryConditions  | economy/economy.c        | DONE (check victory conditions)
+1003cb84 | FUN_1003cb84 | CheckPlayerElimination  | economy/economy.c        | DONE (process player elimination)
+1003d4dc | FUN_1003d4dc | AdvanceToNextPlayer     | economy/economy.c        | DONE (core turn advancement)
+1000d808 | FUN_1000d808 | StartOfTurnProcessing   | economy/economy.c        | DONE (initialize state for turn)
+1003c368 | FUN_1003c368 | GameInit                | economy/economy.c        | DONE (initialize all game state)
+1002ce38 | FUN_1002ce38 | ProcessNeutralCityGrowth| economy/economy.c        | DONE (neutral city army growth)
+10054824 | FUN_10054824 | ProcessAllyGold         | economy/economy.c        | DONE (award gold from allied events)
+1004a21c | FUN_1004a21c | GetItemName             | economy/economy.c        | DONE (retrieve item name by type ID)
+1004a178 | FUN_1004a178 | GetItemCombatStats      | economy/economy.c        | DONE (retrieve combat-relevant item stats)
+10012a8c | FUN_10012a8c | CheckQuestCompletion    | economy/economy.c        | DONE (check if hero completed quest)
+100539e8 | FUN_100539e8 | ProcessRuinsSearch      | economy/economy.c        | DONE (main ruins/temple/library search handler)
+1003c838 | FUN_1003c838 | ShuffleTurnOrder        | economy/economy.c        | DONE (set/randomize player turn order)
+1003b9f8 | FUN_1003b9f8 | ArmyTurnUpdate          | economy/economy.c        | DONE (per-turn army stat mutations)
+1004f664 | FUN_1004f664 | ProcessHeroHireReward   | economy/economy.c        | DONE (award hero score after hire)
+1001c6fc | FUN_1001c6fc | ProcessCityProduction   | economy/economy.c        | DONE (handle city army production)
+1000d1a4 | FUN_1000d1a4 | AI_TryHireHero          | ai/ai.c                  | DONE (attempt hero hire)
+
 # ===== TVect Trampolines (Mac OS Toolbox calls) =====
 # These are NOT game code - they are indirect calls to shared libraries.
 # Address range: 0x10000000 - 0x10004000 approximately
@@ -110,3 +220,21 @@
 10003768 | FUN_10003768 | abs()                 | (Toolbox)       | TVect
 10001dd0 | FUN_10001dd0 | NumToString()         | (Toolbox)       | TVect
 10003558 | FUN_10003558 | GetNamedResource()    | (Toolbox)       | TVect (kept as FUN_ to avoid Mac header collision)
+
+# ===== Newly renamed cross-module functions =====
+10007f78 | FUN_10007f78 | MapRefreshAndCombat     | stubs/stubs.c            | DONE (refresh map display after combat)
+100169c0 | FUN_100169c0 | ExploreRuinsAtHeroLocation | stubs/reconstructed_2.c | DONE (explore ruins at hero)
+10016df0 | FUN_10016df0 | SortMergeHeroes         | stubs/reconstructed_2.c  | DONE (sort/merge hero arrays)
+100214e8 | FUN_100214e8 | RemoveBattlePiece       | stubs/reconstructed_2.c  | DONE (clear unit data from battle array)
+1002e5c0 | FUN_1002e5c0 | HandleHeroDefeat        | stubs/reconstructed_2.c  | DONE (process hero defeat/removal)
+1002b91c | FUN_1002b91c | UpdateDisplayState      | stubs/reconstructed_2.c  | DONE (map ownership refresh/display)
+1000ed34 | FUN_1000ed34 | FindBestSiegeTarget     | stubs/reconstructed_1.c  | DONE (find best army for siege)
+1000f308 | FUN_1000f308 | UpdateSiegeStrength     | combat/combat.c          | DONE (recalculate siege adjacency)
+1001fcc0 | FUN_1001fcc0 | AI_ProductionPlanning   | ai/ai.c                  | DONE (AI army deployment priorities)
+1001ae14 | FUN_1001ae14 | AI_ActivateAttackGroup  | ai/ai.c                  | DONE (activate attack group / break siege)
+
+# ===== TVect Memory Management (renamed with safe non-Mac names) =====
+10000048 | FUN_10000048 | ReallocateHandle        | stubs/recovered_stubs.c  | DONE (TVect: ReallocHandle equivalent)
+100004e0 | FUN_100004e0 | ResizeHandle            | stubs/recovered_stubs.c  | DONE (TVect: SetHandleSize equivalent)
+100db1ec | FUN_100db1ec | CheckMemError           | stubs/recovered_stubs.c  | DONE (MemError check after alloc)
+10001f50 | FUN_10001f50 | FreeHandle              | stubs/recovered_stubs.c  | DONE (TVect: DisposeHandle equivalent)

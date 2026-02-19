@@ -128,80 +128,80 @@ extern int   gSelectionArray;     /* quest unit list base */
  * ================================================================ */
 
 /* Dispatch chain (14 phases) */
-static void AI_Phase_StrategicAndHero(void);         /* FUN_1000cafc [0x3FE] */
-static void AI_Phase_CityDefense(void);              /* FUN_1000cb54 [0x3FF] */
-static void AI_Phase_ArmyMovement(void);             /* FUN_1000cbb8 [0x400] */
-static void AI_Phase_ExecuteAttacks(void);           /* FUN_1000cc08 [0x401] */
-static void AI_Phase_SecondaryDefense(void);         /* FUN_1000cc58 [0x402] */
-static void AI_Phase_GroupMovement(void);            /* FUN_1000cca8 [0x403] */
-static void AI_Phase_Production(void);               /* FUN_1000ccf8 [0x404] */
-static void AI_Phase_RemainingArmies(void);          /* FUN_1000cd54 [0x405] */
-static void AI_Phase_ArmyOrders(void);               /* FUN_1000cda4 [0x406] */
-static void AI_Phase_CleanupDefense(void);           /* FUN_1000cdf4 [0x407] */
-static void AI_Phase_Finalize(void);                 /* FUN_1000ce44 [0x408] */
-static void AI_Phase_HeroSpecial(void);              /* FUN_1000ce88 [0x409] */
-static void AI_Phase_EndOfTurn(void);                /* FUN_1000ced8 [0x40A] */
-static void AI_Phase_FinalPass(void);                /* FUN_1000cf28 [0x40B] */
+static void AI_Phase_StrategicAndHero(void);         /* addr=1000cafc [0x3FE] */
+static void AI_Phase_CityDefense(void);              /* addr=1000cb54 [0x3FF] */
+static void AI_Phase_ArmyMovement(void);             /* addr=1000cbb8 [0x400] */
+static void AI_Phase_ExecuteAttacks(void);           /* addr=1000cc08 [0x401] */
+static void AI_Phase_SecondaryDefense(void);         /* addr=1000cc58 [0x402] */
+static void AI_Phase_GroupMovement(void);            /* addr=1000cca8 [0x403] */
+static void AI_Phase_Production(void);               /* addr=1000ccf8 [0x404] */
+static void AI_Phase_RemainingArmies(void);          /* addr=1000cd54 [0x405] */
+static void AI_Phase_ArmyOrders(void);               /* addr=1000cda4 [0x406] */
+static void AI_Phase_CleanupDefense(void);           /* addr=1000cdf4 [0x407] */
+static void AI_Phase_Finalize(void);                 /* addr=1000ce44 [0x408] */
+static void AI_Phase_HeroSpecial(void);              /* addr=1000ce88 [0x409] */
+static void AI_Phase_EndOfTurn(void);                /* addr=1000ced8 [0x40A] */
+static void AI_Phase_FinalPass(void);                /* addr=1000cf28 [0x40B] */
 
 /* Core AI functions */
-void   AI_StrategicAssessment(void);                 /* FUN_10011804 */
-void   AI_HeroManagementLoop(void);                  /* FUN_100164e4 */
-void   AI_AssignCityDefenders(void);                 /* FUN_10013774 */
-void   AI_PlanArmyMovements(void);                   /* FUN_10014214 */
-void   AI_ExecuteAttackGroups(void);                 /* FUN_1001d014 */
-void   AI_AssignRemainingArmies(void);               /* FUN_100114d4 */
-void   AI_ProcessArmyOrders(void);                   /* FUN_1001aa9c */
-void   AI_ProductionTurn(short playerIdx);           /* FUN_1001f9e4 */
-int    AI_ProductionPlanning(void);                  /* FUN_1001fcc0 */
-void   AI_Finalize(void);                            /* FUN_10013040 */
-void   AI_FinalPass(void);                           /* FUN_10014d14 */
+void   AI_StrategicAssessment(void);                 /* AI_StrategicAssessment */
+void   AI_HeroManagementLoop(void);                  /* AI_HeroManagementLoop */
+void   AI_AssignCityDefenders(void);                 /* AI_AssignCityDefenders */
+void   AI_PlanArmyMovements(void);                   /* AI_PlanArmyMovements */
+void   AI_ExecuteAttackGroups(void);                 /* AI_ExecuteAttackGroups */
+void   AI_AssignRemainingArmies(void);               /* AI_AssignRemainingArmies */
+void   AI_ProcessArmyOrders(void);                   /* AI_ProcessArmyOrders */
+void   AI_ProductionTurn(short playerIdx);           /* AI_ProductionTurn */
+int    AI_ProductionPlanning(void);                  /* AI_ProductionPlanning */
+void   AI_Finalize(void);                            /* AI_Finalize */
+void   AI_FinalPass(void);                           /* AI_FinalPass */
 
 /* Hero management */
-void   AI_SortHeroes(int param_1);                   /* FUN_10014e44 */
-int    AI_CanReachCity(short cityIdx, short unitIdx); /* FUN_10015030 */
-void   AI_AssembleHeroArmy(short unitIdx);           /* FUN_100151e8 */
-int    AI_HandleAllianceQuest(short heroSlot, int dataArray); /* FUN_10015324 */
+void   AI_SortHeroes(int param_1);                   /* AI_SortHeroes */
+int    AI_CanReachCity(short cityIdx, short unitIdx); /* AI_CanReachCity */
+void   AI_AssembleHeroArmy(short unitIdx);           /* AI_AssembleHeroArmy */
+int    AI_HandleAllianceQuest(short heroSlot, int dataArray); /* AI_HandleAllianceQuest */
 int    AI_AttackTarget(short heroSlot, short targetType,
-                        int dataArray, short param4); /* FUN_10015554 */
-void   AI_FindBestCityTarget(short heroSlot, int dataArray);  /* FUN_100159c8 */
-void   AI_FindBestRuinTarget(short heroSlot, int dataArray);  /* FUN_10015dc8 */
-void   AI_FindBestArmyTarget(short heroSlot, int dataArray);  /* FUN_10015f98 */
-unsigned char AI_DecideTargetType(short heroSlot, int dataArray); /* FUN_100161fc */
-int    AI_AttackEnemyArmy(short heroSlot, int dataArray);     /* FUN_10016344 */
+                        int dataArray, short param4); /* AI_AttackTarget */
+void   AI_FindBestCityTarget(short heroSlot, int dataArray);  /* AI_FindBestCityTarget */
+void   AI_FindBestRuinTarget(short heroSlot, int dataArray);  /* AI_FindBestRuinTarget */
+void   AI_FindBestArmyTarget(short heroSlot, int dataArray);  /* AI_FindBestArmyTarget */
+unsigned char AI_DecideTargetType(short heroSlot, int dataArray); /* AI_DecideTargetType */
+int    AI_AttackEnemyArmy(short heroSlot, int dataArray);     /* AI_AttackEnemyArmy */
 
 /* Army management */
-void   AI_ArmyManagement(short armyIdx, short mode); /* FUN_10010b30 */
-void   AI_CullWeakUnits(short armyIdx, int unitPool); /* FUN_1001072c */
+void   AI_ArmyManagement(short armyIdx, short mode); /* AI_ArmyManagement */
+void   AI_CullWeakUnits(short armyIdx, int unitPool); /* AI_CullWeakUnits */
 
 /* Helpers */
 void   AI_ClaimNeutralArmies(void);                  /* AdoptNeutralArmy */
 int    AI_CheckAllianceThreats(short playerIdx);     /* CheckThirdPartyTreaty */
-short  AI_FindArmyForHero(short unitType);           /* FUN_1000cf78 */
-void   AI_PlaceNewUnit(short unitType, short armyIdx); /* FUN_1000d0c0 */
-void   AI_TryHireHero(void);                         /* FUN_1000d1a4 */
-void   AI_ResetProductionState(void);                /* FUN_1001f758 */
-void   AI_PrecomputeThreats(void);                   /* FUN_1001f958 */
-void   AI_CheckArmyPathsBlocked(void);              /* FUN_1001ab94 */
-int    AI_FindNearestFriendly(short x, short y, short filterPlayer); /* FUN_1001acdc */
-void   AI_ActivateAttackGroup(short groupIdx);       /* FUN_1001ae14 */
-void   AI_ActivateBestGroup(void);                   /* FUN_1001aea0 */
-int    AI_FindBestMovableArmy(short param_1);        /* FUN_100143b8 */
-void   AI_ProcessSingleUnit(short unitIdx);          /* FUN_100145c8 */
-void   AI_GroupMovement(void);                       /* FUN_1001497c */
-void   AI_SecondaryDefense(void);                    /* FUN_10013484 */
-int    AI_CheckArmyOwnership(short armyIdx);         /* FUN_100121f8 */
-int    AI_EarlyGameAttack(short armyIdx, short targetPlayer); /* FUN_10012324 */
-int    AI_SearchForRuins(void);                      /* FUN_1001241c */
-void   AI_AttackNeutralArmies(void);                 /* FUN_100126a4 */
-void   AI_DispatchToTarget(short armyIdx);           /* FUN_10012cc8 */
-int    AI_AttackCity(short unitIdx, short cityIdx);  /* FUN_10013a10 */
-int    AI_ProcessCombatResult(short *pathBuffer);    /* FUN_10013d0c */
-void   AI_ResetUnusedUnits(void);                    /* FUN_10014bcc */
-int    AI_CheckRuinAccessible(short ruinIdx);        /* FUN_10015c48 */
-long   AI_GetRuinSlotIndex(short cityIdx);           /* FUN_10015904 */
-short  AI_GetRuinCapability(short cityIdx);          /* FUN_10015980 */
-void   AI_CheckNearbyThreats(short armyIdx);         /* FUN_1001f894 */
-int    AI_ProcessFollowOrders(int unitPtr);           /* FUN_10013150 */
+short  AI_FindArmyForHero(short unitType);           /* AI_FindArmyForHero */
+void   AI_PlaceNewUnit(short unitType, short armyIdx); /* AI_PlaceNewUnit */
+void   AI_TryHireHero(void);                         /* AI_TryHireHero */
+void   AI_ResetProductionState(void);                /* AI_ResetProductionState */
+void   AI_PrecomputeThreats(void);                   /* AI_PrecomputeThreats */
+void   AI_CheckArmyPathsBlocked(void);              /* AI_CheckArmyPathsBlocked */
+int    AI_FindNearestFriendly(short x, short y, short filterPlayer); /* AI_FindNearestFriendly */
+void   AI_ActivateAttackGroup(short groupIdx);       /* AI_ActivateAttackGroup */
+void   AI_ActivateBestGroup(void);                   /* AI_ActivateBestGroup */
+int    AI_FindBestMovableArmy(short param_1);        /* AI_FindBestMovableArmy */
+void   AI_ProcessSingleUnit(short unitIdx);          /* AI_ProcessSingleUnit */
+void   AI_GroupMovement(void);                       /* AI_GroupMovement */
+void   AI_SecondaryDefense(void);                    /* AI_SecondaryDefense */
+int    AI_CheckArmyOwnership(short armyIdx);         /* AI_CheckArmyOwnership */
+int    AI_EarlyGameAttack(short armyIdx, short targetPlayer); /* AI_EarlyGameAttack */
+int    AI_SearchForRuins(void);                      /* AI_SearchForRuins */
+void   AI_AttackNeutralArmies(void);                 /* AI_AttackNeutralArmies */
+void   AI_DispatchToTarget(short armyIdx);           /* AI_DispatchToTarget */
+int    AI_AttackCity(short unitIdx, short cityIdx);  /* AI_AttackCity */
+int    AI_ProcessCombatResult(short *pathBuffer);    /* AI_ProcessCombatResult */
+void   AI_ResetUnusedUnits(void);                    /* AI_ResetUnusedUnits */
+int    AI_CheckRuinAccessible(short ruinIdx);        /* AI_CheckRuinAccessible */
+long   AI_GetRuinSlotIndex(short cityIdx);           /* AI_GetRuinSlotIndex */
+short  AI_GetRuinCapability(short cityIdx);          /* AI_GetRuinCapability */
+void   AI_CheckNearbyThreats(short armyIdx);         /* AI_CheckNearbyThreats */
+int    AI_ProcessFollowOrders(int unitPtr);           /* AI_ProcessFollowOrders */
 
 
 /* ================================================================
@@ -212,7 +212,7 @@ int    AI_ProcessFollowOrders(int unitPtr);           /* FUN_10013150 */
  * ================================================================ */
 
 /*
- * FUN_1000cafc [cmd 0x3FE] - Phase 1: Strategic Assessment + Hero Management
+ * addr=1000cafc [cmd 0x3FE] - Phase 1: Strategic Assessment + Hero Management
  */
 static void AI_Phase_StrategicAndHero(void)
 {
@@ -224,7 +224,7 @@ static void AI_Phase_StrategicAndHero(void)
 }
 
 /*
- * FUN_1000cb54 [cmd 0x3FF] - Phase 2: City Defense (if vectoring enabled)
+ * addr=1000cb54 [cmd 0x3FF] - Phase 2: City Defense (if vectoring enabled)
  */
 static void AI_Phase_CityDefense(void)
 {
@@ -236,7 +236,7 @@ static void AI_Phase_CityDefense(void)
 }
 
 /*
- * FUN_1000cbb8 [cmd 0x400] - Phase 3: Army Movement Planning
+ * addr=1000cbb8 [cmd 0x400] - Phase 3: Army Movement Planning
  */
 static void AI_Phase_ArmyMovement(void)
 {
@@ -246,7 +246,7 @@ static void AI_Phase_ArmyMovement(void)
 }
 
 /*
- * FUN_1000cc08 [cmd 0x401] - Phase 4: Execute Attack Groups
+ * addr=1000cc08 [cmd 0x401] - Phase 4: Execute Attack Groups
  */
 static void AI_Phase_ExecuteAttacks(void)
 {
@@ -256,7 +256,7 @@ static void AI_Phase_ExecuteAttacks(void)
 }
 
 /*
- * FUN_1000cc58 [cmd 0x402] - Phase 5: Secondary Defense Pass
+ * addr=1000cc58 [cmd 0x402] - Phase 5: Secondary Defense Pass
  */
 static void AI_Phase_SecondaryDefense(void)
 {
@@ -266,7 +266,7 @@ static void AI_Phase_SecondaryDefense(void)
 }
 
 /*
- * FUN_1000cca8 [cmd 0x403] - Phase 6: Group Movement
+ * addr=1000cca8 [cmd 0x403] - Phase 6: Group Movement
  */
 static void AI_Phase_GroupMovement(void)
 {
@@ -276,7 +276,7 @@ static void AI_Phase_GroupMovement(void)
 }
 
 /*
- * FUN_1000ccf8 [cmd 0x404] - Phase 7: Production Decisions
+ * addr=1000ccf8 [cmd 0x404] - Phase 7: Production Decisions
  */
 static void AI_Phase_Production(void)
 {
@@ -286,7 +286,7 @@ static void AI_Phase_Production(void)
 }
 
 /*
- * FUN_1000cd54 [cmd 0x405] - Phase 8: Remaining Army Assignment
+ * addr=1000cd54 [cmd 0x405] - Phase 8: Remaining Army Assignment
  */
 static void AI_Phase_RemainingArmies(void)
 {
@@ -296,7 +296,7 @@ static void AI_Phase_RemainingArmies(void)
 }
 
 /*
- * FUN_1000cda4 [cmd 0x406] - Phase 9: Army Orders / Diplomacy
+ * addr=1000cda4 [cmd 0x406] - Phase 9: Army Orders / Diplomacy
  */
 static void AI_Phase_ArmyOrders(void)
 {
@@ -306,7 +306,7 @@ static void AI_Phase_ArmyOrders(void)
 }
 
 /*
- * FUN_1000cdf4 [cmd 0x407] - Phase 10: Cleanup Defense Pass
+ * addr=1000cdf4 [cmd 0x407] - Phase 10: Cleanup Defense Pass
  */
 static void AI_Phase_CleanupDefense(void)
 {
@@ -316,7 +316,7 @@ static void AI_Phase_CleanupDefense(void)
 }
 
 /*
- * FUN_1000ce44 [cmd 0x408] - Phase 11: Finalize
+ * addr=1000ce44 [cmd 0x408] - Phase 11: Finalize
  */
 static void AI_Phase_Finalize(void)
 {
@@ -325,7 +325,7 @@ static void AI_Phase_Finalize(void)
 }
 
 /*
- * FUN_1000ce88 [cmd 0x409] - Phase 12: Hero Special Actions (if vectoring enabled)
+ * addr=1000ce88 [cmd 0x409] - Phase 12: Hero Special Actions (if vectoring enabled)
  */
 static void AI_Phase_HeroSpecial(void)
 {
@@ -335,7 +335,7 @@ static void AI_Phase_HeroSpecial(void)
 }
 
 /*
- * FUN_1000ced8 [cmd 0x40A] - Phase 13: End of Turn Cleanup
+ * addr=1000ced8 [cmd 0x40A] - Phase 13: End of Turn Cleanup
  */
 static void AI_Phase_EndOfTurn(void)
 {
@@ -345,7 +345,7 @@ static void AI_Phase_EndOfTurn(void)
 }
 
 /*
- * FUN_1000cf28 [cmd 0x40B] - Phase 14: Final Pass
+ * addr=1000cf28 [cmd 0x40B] - Phase 14: Final Pass
  */
 static void AI_Phase_FinalPass(void)
 {
@@ -356,7 +356,7 @@ static void AI_Phase_FinalPass(void)
 
 
 /* ================================================================
- *  AI_FindArmyForHero (FUN_1000cf78)
+ *  AI_FindArmyForHero (AI_FindArmyForHero)
  *
  *  Finds the best army to place a newly hired hero unit into.
  *  Returns army index or -1 if none found.
@@ -420,7 +420,7 @@ short AI_FindArmyForHero(short unitType)
 
 
 /* ================================================================
- *  AI_PlaceNewUnit (FUN_1000d0c0)
+ *  AI_PlaceNewUnit (AI_PlaceNewUnit)
  *
  *  Creates a new unit of the given type and places it into the
  *  specified army. Sets army state to 5 (building up).
@@ -454,7 +454,7 @@ void AI_PlaceNewUnit(short unitType, short armyIdx)
 
 
 /* ================================================================
- *  AI_TryHireHero (FUN_1000d1a4)
+ *  AI_TryHireHero (AI_TryHireHero)
  *
  *  Attempts to hire a hero unit. Requires:
  *  - Hero hiring enabled (extState + 0x0E != 0)
@@ -521,7 +521,7 @@ void AI_TryHireHero(void)
 
 
 /* ================================================================
- *  AI_CullWeakUnits (FUN_1001072c)
+ *  AI_CullWeakUnits (AI_CullWeakUnits)
  *
  *  When an army has too many units, removes the weakest ones.
  *  Threat level determines max army size. Heroes and flyers are
@@ -691,7 +691,7 @@ void AI_CullWeakUnits(short armyIdx, int unitPool)
 
 
 /* ================================================================
- *  AI_AssignRemainingArmies (FUN_100114d4)
+ *  AI_AssignRemainingArmies (AI_AssignRemainingArmies)
  *
  *  Processes all armies not yet handled (flag bit 2 not set),
  *  calling AI_ArmyManagement on each.
@@ -835,7 +835,7 @@ int AI_CheckAllianceThreats(short playerIdx)
 
 
 /* ================================================================
- *  AI_StrategicAssessment (FUN_10011804)
+ *  AI_StrategicAssessment (AI_StrategicAssessment)
  *
  *  The most complex AI function (2548 bytes). Runs at the start of
  *  every AI turn to evaluate the global strategic situation.
@@ -1204,7 +1204,7 @@ void AI_StrategicAssessment(void)
 
 
 /* ================================================================
- *  AI_AssignCityDefenders (FUN_10013774)
+ *  AI_AssignCityDefenders (AI_AssignCityDefenders)
  *
  *  Assigns units to defend cities. Runs in two passes:
  *  pass 0 = heroes only, pass 1 = regular units.
@@ -1306,7 +1306,7 @@ void AI_AssignCityDefenders(void)
 
 
 /* ================================================================
- *  AI_PlanArmyMovements (FUN_10014214)
+ *  AI_PlanArmyMovements (AI_PlanArmyMovements)
  *
  *  Iterates over all units flagged for movement (bit 8 set).
  *  For heroes (type 0x1C), repeatedly finds paths and processes
@@ -1392,7 +1392,7 @@ void AI_PlanArmyMovements(void)
 
 
 /* ================================================================
- *  AI_ExecuteAttackGroups (FUN_1001d014)
+ *  AI_ExecuteAttackGroups (AI_ExecuteAttackGroups)
  *
  *  Executes attack group movements. First runs production planning,
  *  then converts armies in state 7 to 8, then advances each active
@@ -1447,7 +1447,7 @@ void AI_ExecuteAttackGroups(void)
 
 
 /* ================================================================
- *  AI_ProcessArmyOrders (FUN_1001aa9c)
+ *  AI_ProcessArmyOrders (AI_ProcessArmyOrders)
  *
  *  Processes army follow-orders. Counts units following each army,
  *  then processes up to 10 assignment rounds.
@@ -1496,7 +1496,7 @@ void AI_ProcessArmyOrders(void)
 
 
 /* ================================================================
- *  AI_CheckArmyPathsBlocked (FUN_1001ab94)
+ *  AI_CheckArmyPathsBlocked (AI_CheckArmyPathsBlocked)
  *
  *  Checks armies in state 3 (moving toward target) for blocked
  *  paths. If an army in state 3 has neighbors but no neutral
@@ -1552,7 +1552,7 @@ void AI_CheckArmyPathsBlocked(void)
 
 
 /* ================================================================
- *  AI_FindNearestFriendly (FUN_1001acdc)
+ *  AI_FindNearestFriendly (AI_FindNearestFriendly)
  *
  *  Finds the distance to the nearest friendly army on passable
  *  terrain. filterPlayer == -1 means find any non-current-player,
@@ -1609,7 +1609,7 @@ int AI_FindNearestFriendly(short x, short y, short filterPlayer)
 
 
 /* ================================================================
- *  AI_ActivateAttackGroup (FUN_1001ae14)
+ *  AI_ActivateAttackGroup (AI_ActivateAttackGroup)
  *
  *  Activates an attack group by setting the leader and all member
  *  armies to state 8 (ready to move).
@@ -1637,7 +1637,7 @@ void AI_ActivateAttackGroup(short groupIdx)
 
 
 /* ================================================================
- *  AI_ActivateBestGroup (FUN_1001aea0)
+ *  AI_ActivateBestGroup (AI_ActivateBestGroup)
  *
  *  Finds the attack group with the highest activity counter
  *  and activates it.
@@ -1668,7 +1668,7 @@ void AI_ActivateBestGroup(void)
 
 
 /* ================================================================
- *  AI_ResetProductionState (FUN_1001f758)
+ *  AI_ResetProductionState (AI_ResetProductionState)
  *
  *  Resets per-army flags for the production phase. Clears the
  *  "has path" flag (bit 1 of armyFlags) and sets it for armies
@@ -1726,7 +1726,7 @@ void AI_ResetProductionState(void)
 
 
 /* ================================================================
- *  AI_PrecomputeThreats (FUN_1001f958)
+ *  AI_PrecomputeThreats (AI_PrecomputeThreats)
  *
  *  For each army with the "locked" flag set (bit 0 of armyFlags),
  *  checks nearby threats in the secondary map data.
@@ -1750,7 +1750,7 @@ void AI_PrecomputeThreats(void)
 
 
 /* ================================================================
- *  AI_ProductionTurn (FUN_1001f9e4)
+ *  AI_ProductionTurn (AI_ProductionTurn)
  *
  *  Main production phase. Categorizes all armies, increments
  *  priority counters, activates idle armies, converts attacking
@@ -1850,7 +1850,7 @@ void AI_ProductionTurn(short playerIdx)
 
 
 /* ================================================================
- *  AI_Finalize (FUN_10013040)
+ *  AI_Finalize (AI_Finalize)
  *
  *  Post-attack cleanup. For armies owned by current player in
  *  certain states with enough movement remaining (> 3), dispatches
@@ -1899,7 +1899,7 @@ void AI_Finalize(void)
 
 
 /* ================================================================
- *  AI_FinalPass (FUN_10014d14)
+ *  AI_FinalPass (AI_FinalPass)
  *
  *  Final consistency pass. For armies with the 0x20 flag set in
  *  armyFlags and not in state 7, attempts one more path + combat
@@ -1956,7 +1956,7 @@ void AI_FinalPass(void)
 
 
 /* ================================================================
- *  AI_SortHeroes (FUN_10014e44)
+ *  AI_SortHeroes (AI_SortHeroes)
  *
  *  Builds a sorted list of heroes owned by the current player.
  *  For each hero, records its unit index, linked city/ruin index,
@@ -2034,7 +2034,7 @@ void AI_SortHeroes(int param_1)
 
 
 /* ================================================================
- *  AI_DecideTargetType (FUN_100161fc)
+ *  AI_DecideTargetType (AI_DecideTargetType)
  *
  *  Core decision function for hero armies. Uses dice rolls to
  *  score each potential target type and returns the best one.
@@ -2090,7 +2090,7 @@ unsigned char AI_DecideTargetType(short heroSlot, int dataArray)
 
 
 /* ================================================================
- *  AI_HeroManagementLoop (FUN_100164e4)
+ *  AI_HeroManagementLoop (AI_HeroManagementLoop)
  *
  *  Main hero processing loop. For each hero:
  *  1. Assemble best army around hero
@@ -2221,7 +2221,7 @@ void AI_HeroManagementLoop(void)
 
 
 /* ================================================================
- *  AI_ArmyManagement (FUN_10010b30, 2468 bytes)
+ *  AI_ArmyManagement (AI_ArmyManagement, 2468 bytes)
  *
  *  Core army management function. For a given army:
  *  1. Gathers all units at the army's location
@@ -2361,12 +2361,12 @@ void AI_ArmyManagement(short armyIdx, short mode)
     if (heroIdx != -1) {
         int heroBase = *unitTable + heroIdx * 0x16;
         /* Set hero as active unit pointer */
-        /* FUN_100169c0 - explore ruins at hero location */
+        /* UpdateRuinState - explore ruins at hero location */
     }
 
     /* Handle multiple heroes */
     if (heroCount > 1) {
-        /* FUN_10016df0 - sort/merge heroes */
+        /* ResolveHeroFightOrder - sort/merge heroes */
     }
 
     /* Set flag bits for hero/flyer presence */
@@ -2538,7 +2538,7 @@ void AI_ArmyManagement(short armyIdx, short mode)
 
 
 /* ================================================================
- *  AI_ProductionPlanning (FUN_1001fcc0, 2160 bytes)
+ *  AI_ProductionPlanning (AI_ProductionPlanning, 2160 bytes)
  *
  *  Computes army strength requirements and categorizes available
  *  armies into three tiers (elite/standard/basic) using flag bits
@@ -2808,12 +2808,12 @@ int AI_ProductionPlanning(void)
 
 
 /* ================================================================
- *  AI_SecondaryDefense (FUN_10013484) - STUB
+ *  AI_SecondaryDefense (AI_SecondaryDefense) - STUB
  *
  *  Secondary defense assignment pass (752 bytes).
  *  Stub — original: 752 bytes.
  * ================================================================ */
-/* FUN_10013484 (752 bytes) - Secondary defense pass.
+/* AI_SecondaryDefense (752 bytes) - Secondary defense pass.
  * Iterates over all armies owned by current player.
  * For armies in specific states, checks if they can be reassigned
  * as city defenders or redirected to threatened positions. */
@@ -2863,12 +2863,12 @@ void AI_SecondaryDefense(void)
 
 
 /* ================================================================
- *  AI_GroupMovement (FUN_1001497c) - STUB
+ *  AI_GroupMovement (AI_GroupMovement) - STUB
  *
  *  Group movement processing (592 bytes).
  *  Stub — original: 592 bytes.
  * ================================================================ */
-/* FUN_1001497c (592 bytes) - Group movement phase.
+/* AI_GroupMovement (592 bytes) - Group movement phase.
  * Processes each attack group, advancing them toward their targets.
  * Groups that reach their target or are destroyed are deactivated. */
 void AI_GroupMovement(void)
@@ -2916,36 +2916,36 @@ void AI_GroupMovement(void)
 
 
 /* ================================================================
- *  AI_FindBestCityTarget (FUN_100159c8) - STUB
- *  AI_FindBestRuinTarget (FUN_10015dc8) - STUB
- *  AI_FindBestArmyTarget (FUN_10015f98) - STUB
- *  AI_AttackTarget (FUN_10015554) - STUB
- *  AI_AttackEnemyArmy (FUN_10016344) - STUB
- *  AI_HandleAllianceQuest (FUN_10015324) - STUB
- *  AI_CanReachCity (FUN_10015030) - STUB
- *  AI_AssembleHeroArmy (FUN_100151e8) - STUB
- *  AI_AttackCity (FUN_10013a10) - STUB
- *  AI_ProcessCombatResult (FUN_10013d0c) - STUB
- *  AI_FindBestMovableArmy (FUN_100143b8) - STUB
- *  AI_ProcessSingleUnit (FUN_100145c8) - STUB
- *  AI_DispatchToTarget (FUN_10012cc8) - STUB
- *  AI_CheckArmyOwnership (FUN_100121f8) - STUB
- *  AI_EarlyGameAttack (FUN_10012324) - STUB
- *  AI_SearchForRuins (FUN_1001241c) - STUB
- *  AI_AttackNeutralArmies (FUN_100126a4) - STUB
- *  AI_ResetUnusedUnits (FUN_10014bcc) - STUB
- *  AI_CheckRuinAccessible (FUN_10015c48) - STUB
- *  AI_GetRuinSlotIndex (FUN_10015904) - STUB
- *  AI_GetRuinCapability (FUN_10015980) - STUB
- *  AI_CheckNearbyThreats (FUN_1001f894) - STUB
- *  AI_ProcessFollowOrders (FUN_10013150) - STUB
+ *  AI_FindBestCityTarget (AI_FindBestCityTarget) - STUB
+ *  AI_FindBestRuinTarget (AI_FindBestRuinTarget) - STUB
+ *  AI_FindBestArmyTarget (AI_FindBestArmyTarget) - STUB
+ *  AI_AttackTarget (AI_AttackTarget) - STUB
+ *  AI_AttackEnemyArmy (AI_AttackEnemyArmy) - STUB
+ *  AI_HandleAllianceQuest (AI_HandleAllianceQuest) - STUB
+ *  AI_CanReachCity (AI_CanReachCity) - STUB
+ *  AI_AssembleHeroArmy (AI_AssembleHeroArmy) - STUB
+ *  AI_AttackCity (AI_AttackCity) - STUB
+ *  AI_ProcessCombatResult (AI_ProcessCombatResult) - STUB
+ *  AI_FindBestMovableArmy (AI_FindBestMovableArmy) - STUB
+ *  AI_ProcessSingleUnit (AI_ProcessSingleUnit) - STUB
+ *  AI_DispatchToTarget (AI_DispatchToTarget) - STUB
+ *  AI_CheckArmyOwnership (AI_CheckArmyOwnership) - STUB
+ *  AI_EarlyGameAttack (AI_EarlyGameAttack) - STUB
+ *  AI_SearchForRuins (AI_SearchForRuins) - STUB
+ *  AI_AttackNeutralArmies (AI_AttackNeutralArmies) - STUB
+ *  AI_ResetUnusedUnits (AI_ResetUnusedUnits) - STUB
+ *  AI_CheckRuinAccessible (AI_CheckRuinAccessible) - STUB
+ *  AI_GetRuinSlotIndex (AI_GetRuinSlotIndex) - STUB
+ *  AI_GetRuinCapability (AI_GetRuinCapability) - STUB
+ *  AI_CheckNearbyThreats (AI_CheckNearbyThreats) - STUB
+ *  AI_ProcessFollowOrders (AI_ProcessFollowOrders) - STUB
  *
  *  These functions require additional analysis passes to fully
  *  reconstruct. The decompiled code has been read and their
  *  signatures and behaviors are documented in RE_ai.md.
  * ================================================================ */
 
-/* FUN_100159c8 (640 bytes) - Find best city target for a hero.
+/* AI_FindBestCityTarget (640 bytes) - Find best city target for a hero.
  * Searches for enemy/neutral cities within range. Stores best
  * city index at dataArray[0x30], distance at dataArray[0x32].
  * Also finds undefended cities: index at [0x34], distance at [0x36]. */
@@ -3015,7 +3015,7 @@ void AI_FindBestCityTarget(short heroSlot, int dataArray)
     *(short *)(dataArray + 0x36 * 2) = bestUndefDist;
 }
 
-/* FUN_10015dc8 (464 bytes) - Find best ruin target for a hero.
+/* AI_FindBestRuinTarget (464 bytes) - Find best ruin target for a hero.
  * Searches for unexplored ruins within range. Stores best ruin
  * index at dataArray[0x3C], distance at dataArray[0x3E]. */
 void AI_FindBestRuinTarget(short heroSlot, int dataArray)
@@ -3058,7 +3058,7 @@ void AI_FindBestRuinTarget(short heroSlot, int dataArray)
     *(short *)(dataArray + 0x3E * 2) = bestDist;
 }
 
-/* FUN_10015f98 (612 bytes) - Find best enemy army target for a hero.
+/* AI_FindBestArmyTarget (612 bytes) - Find best enemy army target for a hero.
  * Searches for enemy armies within 20 tiles (0x14). Stores best
  * army index at dataArray[0x38], distance at dataArray[0x3A]. */
 void AI_FindBestArmyTarget(short heroSlot, int dataArray)
@@ -3108,7 +3108,7 @@ void AI_FindBestArmyTarget(short heroSlot, int dataArray)
     *(short *)(dataArray + 0x3A * 2) = bestDist;
 }
 
-/* FUN_10015554 (944 bytes) - Execute an attack on a target.
+/* AI_AttackTarget (944 bytes) - Execute an attack on a target.
  * targetType: 1=city, 2=ruin, 3=undefended city, 4=enemy army */
 int AI_AttackTarget(short heroSlot, short targetType, int dataArray, short param4)
 {
@@ -3170,13 +3170,13 @@ int AI_AttackTarget(short heroSlot, short targetType, int dataArray, short param
     return 0;
 }
 
-/* FUN_10016344 (416 bytes) - Attack an enemy army directly. */
+/* AI_AttackEnemyArmy (416 bytes) - Attack an enemy army directly. */
 int AI_AttackEnemyArmy(short heroSlot, int dataArray)
 {
     return AI_AttackTarget(heroSlot, 4, dataArray, 0);
 }
 
-/* FUN_10015324 (560 bytes) - Handle an active alliance quest. */
+/* AI_HandleAllianceQuest (560 bytes) - Handle an active alliance quest. */
 int AI_HandleAllianceQuest(short heroSlot, int dataArray)
 {
     int   *gameState = (int *)gGameState;
@@ -3195,7 +3195,7 @@ int AI_HandleAllianceQuest(short heroSlot, int dataArray)
     return 0;
 }
 
-/* FUN_10015030 (440 bytes) - Check if army can reach a city. */
+/* AI_CanReachCity (440 bytes) - Check if army can reach a city. */
 int AI_CanReachCity(short cityIdx, short unitIdx)
 {
     int   *gameState = (int *)gGameState;
@@ -3221,7 +3221,7 @@ int AI_CanReachCity(short cityIdx, short unitIdx)
     return 0;
 }
 
-/* FUN_100151e8 (316 bytes) - Assemble best army around a hero. */
+/* AI_AssembleHeroArmy (316 bytes) - Assemble best army around a hero. */
 void AI_AssembleHeroArmy(short unitIdx)
 {
     int   *unitTable = (int *)gUnitTypeTable;
@@ -3259,7 +3259,7 @@ void AI_AssembleHeroArmy(short unitIdx)
     }
 }
 
-/* FUN_10013a10 (728 bytes) - Attack a city with a unit.
+/* AI_AttackCity (728 bytes) - Attack a city with a unit.
  * Checks if unit is at city location, handles combat, and
  * processes quest/hero special events after city capture. */
 int AI_AttackCity(short unitIdx, short cityIdx)
@@ -3309,7 +3309,7 @@ int AI_AttackCity(short unitIdx, short cityIdx)
     return 1;
 }
 
-/* FUN_10013d0c (1288 bytes) - Process result of a combat/movement step.
+/* AI_ProcessCombatResult (1288 bytes) - Process result of a combat/movement step.
  * Called after each pathfinding step during hero movement.
  * Returns: 0 = blocked/failed, 1 = combat occurred, 2 = moved freely */
 int AI_ProcessCombatResult(short *pathBuffer)
@@ -3344,7 +3344,7 @@ int AI_ProcessCombatResult(short *pathBuffer)
     }
 }
 
-/* FUN_100143b8 (528 bytes) - Find best movable army for assignment.
+/* AI_FindBestMovableArmy (528 bytes) - Find best movable army for assignment.
  * Iterates through all armies, evaluates position scores via FindBestTarget,
  * and picks the one with the lowest (best) score. Filters out moved armies,
  * the hero's own army, and enemies/non-allied. Applies bonuses for
@@ -3450,7 +3450,7 @@ int AI_FindBestMovableArmy(short param_1)
     return bestArmy;
 }
 
-/* FUN_100145c8 (948 bytes) - Process a single unit for reassignment.
+/* AI_ProcessSingleUnit (948 bytes) - Process a single unit for reassignment.
  * Checks unit strength, finds nearby units, categorizes them by type
  * (hero/infantry/mounted), removes weak units if possible, then either
  * disbands the unit or reassigns it to a movable army via influence map. */
@@ -3591,7 +3591,7 @@ void AI_ProcessSingleUnit(short unitIdx)
     }
 }
 
-/* FUN_10012cc8 (888 bytes) - Dispatch an army toward its best target.
+/* AI_DispatchToTarget (888 bytes) - Dispatch an army toward its best target.
  * Evaluates nearby armies, calculates movement costs, and picks the
  * best reachable target. Factors in early-game economy state to
  * choose between aggressive (0x41) and conservative (0x55) thresholds. */
@@ -3740,7 +3740,7 @@ void AI_DispatchToTarget(short armyIdx)
     }
 }
 
-/* FUN_100121f8 (300 bytes) - Check if an army can be engaged/attacked.
+/* AI_CheckArmyOwnership (300 bytes) - Check if an army can be engaged/attacked.
  * Returns 1 if the army belongs to a valid target (neutral, at war, or
  * lone ally). Checks diplomacy state: allied=passable, at war=attackable,
  * neutral with certain alliance conditions=attackable. */
@@ -3802,7 +3802,7 @@ int AI_CheckArmyOwnership(short armyIdx)
     return 0;
 }
 
-/* FUN_10012324 (248 bytes) - Attempt an early-game rush attack.
+/* AI_EarlyGameAttack (248 bytes) - Attempt an early-game rush attack.
  * Only activates when current player has cities but target does not,
  * the neutral army pool is available, and the game turn is < 10.
  * Dispatches the army via alliance-attack or alliance-defense depending
@@ -3851,45 +3851,45 @@ int AI_EarlyGameAttack(short armyIdx, short targetPlayer)
 
 int AI_SearchForRuins(void)
 {
-    /* Stub — original: FUN_1001241c (648 bytes) */
+    /* Stub — original: AI_SearchForRuins (648 bytes) */
     return 0;
 }
 
 void AI_AttackNeutralArmies(void)
 {
-    /* Stub — original: FUN_100126a4 (1000 bytes) */
+    /* Stub — original: AI_AttackNeutralArmies (1000 bytes) */
 }
 
 void AI_ResetUnusedUnits(void)
 {
-    /* Stub — original: FUN_10014bcc (328 bytes) */
+    /* Stub — original: AI_ResetUnusedUnits (328 bytes) */
 }
 
 int AI_CheckRuinAccessible(short ruinIdx)
 {
-    /* Stub — original: FUN_10015c48 (384 bytes) */
+    /* Stub — original: AI_CheckRuinAccessible (384 bytes) */
     return 0;
 }
 
 long AI_GetRuinSlotIndex(short cityIdx)
 {
-    /* Stub — original: FUN_10015904 (124 bytes) */
+    /* Stub — original: AI_GetRuinSlotIndex (124 bytes) */
     return -1;
 }
 
 short AI_GetRuinCapability(short cityIdx)
 {
-    /* Stub — original: FUN_10015980 (72 bytes) */
+    /* Stub — original: AI_GetRuinCapability (72 bytes) */
     return -1;
 }
 
 void AI_CheckNearbyThreats(short armyIdx)
 {
-    /* Stub — original: FUN_1001f894 (196 bytes) */
+    /* Stub — original: AI_CheckNearbyThreats (196 bytes) */
 }
 
 int AI_ProcessFollowOrders(int unitPtr)
 {
-    /* Stub — original: FUN_10013150 (820 bytes) */
+    /* Stub — original: AI_ProcessFollowOrders (820 bytes) */
     return 0;
 }

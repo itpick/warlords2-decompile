@@ -21,7 +21,7 @@ void FUN_1000848c(short, short);
 void FUN_1003d734(void);
 void AdoptNeutralArmy(void);
 short FindPrimaryThreat(int);
-void FUN_1001ab94(void);
+void AI_CheckArmyPathsBlocked(void);
 void FUN_1000fac4(void);
 int CheckArmyEscort(int);
 int FUN_1001e794(int, int, long long, int);
@@ -29,50 +29,50 @@ void FUN_1001e564(short, int);
 int GetAdjacentArmies(int, int, void *, void *);
 int RandomRange(int, int, int);
 int FindBestTarget(int, short *, void *, long long, int);
-int FUN_10010b30(int, int);
+int AI_ArmyManagement(int, int);
 void ActivateAttackEvent(int);
-int FUN_1000ed34(int, int, int, int);
+int FindBestSiegeTarget(int, int, int, int);
 void FUN_1000f064(int);
 void RemoveArmyFromCities(int);
-void FUN_1000f308(int);
+void UpdateSiegeStrength(int);
 int IsPositionReachable(int, int);
-int FUN_1001acdc(short, short, short);
+int AI_FindNearestFriendly(short, short, short);
 int EvaluatePosition(short, short);
-int FUN_10012cc8(int);
+int AI_DispatchToTarget(int);
 void MoveArmyToTarget(void *, int, long long, int);
 void ExecuteArmyMove(short, short, int);
 int FindPath(short, short, void *, int, int, int);
-int FUN_10013d0c(void *);
-int FUN_100145c8(int);
+int AI_ProcessCombatResult(void *);
+int AI_ProcessSingleUnit(int);
 int AssignToDefense(int, long long);
-void FUN_10014e44(void *);
-void FUN_100151e8(int);
-int FUN_10015324(int, void *);
-int FUN_10015030(int, int);
-void FUN_10015554(int, int, void *, int);
-void FUN_100159c8(int, void *);
-void FUN_10015dc8(int, void *);
-void FUN_10015f98(int, void *);
-int FUN_100161fc(int, void *);
+void AI_SortHeroes(void *);
+void AI_AssembleHeroArmy(int);
+int AI_HandleAllianceQuest(int, void *);
+int AI_CanReachCity(int, int);
+void AI_AttackTarget(int, int, void *, int);
+void AI_FindBestCityTarget(int, void *);
+void AI_FindBestRuinTarget(int, void *);
+void AI_FindBestArmyTarget(int, void *);
+int AI_DecideTargetType(int, void *);
 int GetNextDefender(void);
 void PrepareDefender(int);
-int FUN_10013150(void);
+int AI_ProcessFollowOrders(void);
 int CanArmyEnterCity(long long, int);
-void FUN_1001ae14(long long, int);
+void AI_ActivateAttackGroup(long long, int);
 int CheckThirdPartyTreaty(int);
 int AllocateHandle(int);
 void FUN_1000c67c(void);
 int AllocateBlock(int);
-void FUN_1001f758(void);
-void FUN_1001f958(void);
+void AI_ResetProductionState(void);
+void AI_PrecomputeThreats(void);
 int GetNeighborArmies(int, void *, int);
 int AdvanceGroupToTarget(int);
 void FUN_10039c58(int);
 void FocusObject(int);
 int ScoreUnitForHire(int);
 void CreateUnitTemplate(long long, void *, short *, void *, short *, void *);
-int FUN_1000cf78(long long);
-void FUN_1000d0c0(long long, long long);
+int AI_FindArmyForHero(long long);
+void AI_PlaceNewUnit(long long, long long);
 void FreeBlock(void *);
 #ifdef MODERN_BUILD
 void DetachResource(void *);
@@ -400,33 +400,8 @@ void FUN_1000c844(void)
  * AI: Attempt to hire a hero if treasury allows (>399 gold).
  * Rolls random, finds a suitable city, tries to create a hero unit.
  */
-void FUN_1000d1a4(void)
-{
-    int iVar5;
-    short local_20, local_1e;
-    char auStack_1c[2], auStack_1a[2];
-    char auStack_18[24];
+/* AI_TryHireHero - defined in ai/ai.c */
 
-    if (*(short *)(*gExtState + 0xe) == 0) return;
-
-    if (*(short *)(*gGameState + *(short *)(*gGameState + 0x110) * 0x14 + 0x186) > 399) {
-        iVar5 = RandomRange(1, 10, 0);
-        long long uVar3 = ScoreUnitForHire(7 < iVar5);
-        *(short *)(*gExtState + 0x10) = (short)uVar3;
-
-        if ((int)uVar3 != -1) {
-            CreateUnitTemplate(uVar3, auStack_1c, &local_1e, auStack_1a, &local_20, auStack_18);
-            if (local_1e > 2 &&
-                local_20 + 100 <= (int)*(short *)(*gGameState +
-                    *(short *)(*gGameState + 0x110) * 0x14 + 0x186)) {
-                long long uVar4 = FUN_1000cf78(uVar3);
-                if ((int)uVar4 != -1) {
-                    FUN_1000d0c0(uVar3, uVar4);
-                }
-            }
-        }
-    }
-}
 
 /*
  * addr=1000d384 size=360
@@ -443,7 +418,7 @@ int FUN_1000d384(void)
     FUN_1000fac4();
 
     if (*(short *)(*gGameState + 0x124) != 0) {
-        FUN_1001ab94();
+        AI_CheckArmyPathsBlocked();
     }
 
     int iVar8 = *gGameState;
@@ -622,7 +597,7 @@ void EndOfTurnCleanup(void)
     /* Complex AI production planning.
        Checks if production is needed (active cities vs slots),
        finds empty slots, calls ActivateAttackEvent to init,
-       FindPrimaryThreat/FUN_1000ed34 for unit selection,
+       FindPrimaryThreat/FindBestSiegeTarget for unit selection,
        sets up production queue.
        In modern build: no-op (AI logic). */
 }
@@ -630,24 +605,10 @@ void EndOfTurnCleanup(void)
 /*
  * addr=100114d4 size=188
  * Process all armies of current player that haven't been engaged (bit 2 clear).
- * Calls FUN_10010b30 for each qualifying army.
+ * Calls AI_ArmyManagement for each qualifying army.
  */
-void FUN_100114d4(void)
-{
-    short sVar1;
+/* AI_AssignRemainingArmies - defined in ai/ai.c */
 
-    if (*(short *)(*gGameState + 0x1602) == 0) return;
-
-    sVar1 = *(short *)(*gGameState + 0x1602);
-    do {
-        sVar1 = sVar1 - 1;
-        if (*(char *)(*gGameState + sVar1 * 0x42 + 0x1619) ==
-            (char)*(short *)(*gGameState + 0x110) &&
-            (*(unsigned char *)(*gExtState + (int)sVar1 + 0x11e) & 4) == 0) {
-            FUN_10010b30((int)sVar1, 0);
-        }
-    } while (sVar1 != 0);
-}
 
 /*
  * addr=10011804 size=2548
@@ -655,33 +616,17 @@ void FUN_100114d4(void)
  * sets diplomacy flags (war/peace/alliance), handles fog-of-war diplomacy.
  * Very large function with multiple loops over all 8 player slots.
  */
-void FUN_10011804(void)
-{
-    /* This is the largest function in this batch.
-       It calls AdoptNeutralArmy for initial analysis,
-       then iterates through all players evaluating:
-       - Army counts per player (total, unmoved, border)
-       - Military balance comparisons
-       - Alliance/war state changes in diplomacy table
-       - Allied victory conditions
-       - Fog-of-war diplomacy adjustments
+/* AI_StrategicAssessment - defined in ai/ai.c */
 
-       In the modern build: no-op (AI diplomacy not needed for compilation). */
-}
 
 /*
  * addr=10013040 size=272
  * AI: process armies in specific states (matching a state table).
  * For each army of current player in a matching state with 3+ moves,
- * calls FUN_10012cc8 to handle combat/movement decisions.
+ * calls AI_DispatchToTarget to handle combat/movement decisions.
  */
-void FUN_10013040(void)
-{
-    /* Checks if AI processing is off (ext->ai_processing_active == 0),
-       iterates armies, checks state against gValidArmyStateList table,
-       calls FUN_10012cc8 for qualifying armies.
-       In modern build: no-op (AI combat logic). */
-}
+/* AI_Finalize - defined in ai/ai.c */
+
 
 /*
  * addr=10013484 size=752
@@ -689,14 +634,8 @@ void FUN_10013040(void)
  * Iterates unit type definitions, evaluates their capabilities and
  * movement categories, dispatches naval/ground/hero units appropriately.
  */
-int FUN_10013484(void)
-{
-    /* Complex AI unit dispatch logic.
-       Iterates unit types, calls GetNextDefender,
-       evaluates movement categories, dispatches units.
-       Returns 1 on completion. */
-    return 1;
-}
+/* AI_SecondaryDefense - defined in ai/ai.c */
+
 
 /*
  * addr=10013774 size=668
@@ -704,58 +643,33 @@ int FUN_10013484(void)
  * Two-pass: first process hero units (type 0x1c), then regular units.
  * Checks unit class validity and capacity limits.
  */
-void FUN_10013774(void)
-{
-    /* Two-phase production assignment loop.
-       Phase 0: hero units (type == 0x1c)
-       Phase 1: regular units
-       Calls AssignToDefense for assignment,
-       tracks ground/special unit counts.
-       In modern build: no-op. */
-}
+/* AI_AssignCityDefenders - defined in ai/ai.c */
+
 
 /*
  * addr=10014214 size=420
  * AI: Process hero quest units that have the 'quest pending' flag (bit 8).
  * For hero units, attempts pathfinding to quest targets.
  */
-void FUN_10014214(void)
-{
-    /* Iterates unit types belonging to current player with
-       quest flag set (bit 0x100). For hero types (0x1c),
-       repeatedly calls FindPath and FUN_10013d0c
-       until the quest is resolved or the hero is too weak.
-       In modern build: no-op. */
-}
+/* AI_PlanArmyMovements - defined in ai/ai.c */
+
 
 /*
  * addr=1001497c size=592
  * AI: Process units that are at full health and not assigned.
  * Checks unit movement category and dispatches idle units to
- * FUN_100145c8 for assignment.
+ * AI_ProcessSingleUnit for assignment.
  */
-void FUN_1001497c(void)
-{
-    /* Iterates all unit types owned by current player.
-       For units at full health on non-city terrain,
-       checks if they're tracking an army that's been destroyed,
-       clears stale references, and dispatches idle units.
-       In modern build: no-op. */
-}
+/* AI_GroupMovement - defined in ai/ai.c */
+
 
 /*
  * addr=10014bcc size=328
  * AI: Reset and re-dispatch all units that are healthy and unassigned.
- * Clears movement category and destination, then calls FUN_100145c8.
+ * Clears movement category and destination, then calls AI_ProcessSingleUnit.
  */
-void FUN_10014bcc(void)
-{
-    /* Similar to FUN_1001497c but clears flags first.
-       For each unit type owned by current player with
-       health >= defense+2 on non-city terrain:
-       clears assignment flags and re-dispatches.
-       In modern build: no-op. */
-}
+/* AI_ResetUnusedUnits - defined in ai/ai.c */
+
 
 /*
  * addr=10014d14 size=304
@@ -763,16 +677,8 @@ void FUN_10014bcc(void)
  * that aren't garrisoned. Attempts naval pathfinding and
  * hero transport operations.
  */
-void FUN_10014d14(void)
-{
-    /* Iterates armies of current player.
-       For armies with port flag (0x20) that aren't garrisoned:
-       calls FindPath for pathfinding,
-       FUN_10013d0c for hero dispatch,
-       CheckArmyEscort for movement.
-       Sets army state to 0x0d on failure.
-       In modern build: no-op. */
-}
+/* AI_FinalPass - defined in ai/ai.c */
+
 
 /*
  * addr=100164e4 size=1148
@@ -780,17 +686,8 @@ void FUN_10014d14(void)
  * Handles hero questing, exploration, and army assignment.
  * Called during the AI's turn to manage all hero-type units.
  */
-void FUN_100164e4(void)
-{
-    /* Very large function managing AI hero behavior.
-       Calls FUN_10014e44 to build hero table,
-       then for each hero: FUN_100151e8, FUN_10010b30,
-       FUN_10015324 for quest checks,
-       FUN_10015030/FUN_10015554 for site exploration,
-       FUN_100159c8/FUN_10015dc8/FUN_10015f98/FUN_100161fc
-       for movement decisions.
-       In modern build: no-op. */
-}
+/* AI_HeroManagementLoop - defined in ai/ai.c */
+
 
 /*
  * addr=1001aa9c size=248
@@ -798,158 +695,27 @@ void FUN_100164e4(void)
  * Counts how many units are tracking each army and calls
  * ProcessSingleAssignment to rebalance if needed.
  */
-void FUN_1001aa9c(void)
-{
-    int iVar5;
-    short sVar6;
-    char acStack_70[112];  /* tracking count per army, max 100 */
+/* AI_ProcessArmyOrders - defined in ai/ai.c */
 
-    /* Zero out tracking counts */
-    for (iVar5 = 99; iVar5 >= 0; iVar5--) {
-        acStack_70[iVar5] = 0;
-    }
-
-    /* Count units tracking each army */
-    sVar6 = *(short *)(*gGameState + 0x182);
-    if (sVar6 != 0) {
-        do {
-            sVar6 = sVar6 - 1;
-            int iVar7 = *gUnitTypeTable + sVar6 * 0x16;
-            if ((int)*(char *)(iVar7 + 5) == (int)*(short *)(*gGameState + 0x110)) {
-                unsigned int uVar2 = *(unsigned int *)(iVar7 + 0xc);
-                if ((uVar2 >> 0xc & 0xf) == 1) {
-                    unsigned int idx = uVar2 & 0x7f;
-                    if (idx < (unsigned int)(int)*(short *)(*gGameState + 0x1602)) {
-                        acStack_70[idx] = acStack_70[idx] + 1;
-                    }
-                }
-            }
-        } while (sVar6 != 0);
-    }
-
-    /* Rebalance */
-    sVar6 = 0;
-    do {
-        iVar5 = ProcessSingleAssignment(sVar6, acStack_70);
-        if (iVar5 == 0) {
-            return;
-        }
-        sVar6 = sVar6 + 1;
-    } while (sVar6 < 10);
-}
 
 /*
  * addr=1001d014 size=328
  * AI: Update city production and garrison states at start of turn.
- * Calls FUN_1001fcc0 for unit capability analysis,
+ * Calls AI_ProductionPlanning for unit capability analysis,
  * transitions garrisoned armies from state 7->8,
  * and processes city production via AdvanceGroupToTarget.
  */
-void FUN_1001d014(void)
-{
-    short sVar4;
-    int iVar3, iVar5;
+/* AI_ExecuteAttackGroups - defined in ai/ai.c */
 
-    if (*(short *)*gExtState == 0) return;
-
-    FUN_1001fcc0();
-
-    /* Transition garrison armies: state 7 -> 8 (searching) */
-    sVar4 = *(short *)(*gGameState + 0x1602);
-    while (sVar4 != 0) {
-        sVar4 = sVar4 - 1;
-        iVar5 = *gGameState;
-        if ((int)*(char *)(iVar5 + sVar4 * 0x42 + 0x1619) ==
-            (int)*(short *)(iVar5 + 0x110) &&
-            *(char *)(*gExtState + (int)sVar4 + 0x56) == '\a') {
-            *(char *)(*gExtState + (int)sVar4 + 0x56) = 8;
-        }
-    }
-
-    /* Process city production */
-    if (*(short *)(*gExtState + 0x24a) != 0) {
-        iVar5 = 0;
-        if (0 < *(short *)(*gExtState + 0x24a)) {
-            do {
-                iVar3 = *gExtState + iVar5 * 0x5c;
-                if (*(short *)(iVar3 + 0x24c) != 0) {
-                    /* Set garrison army to guarding */
-                    *(char *)((int)*(short *)(iVar3 + 0x250) + *gExtState + 0x56) = 7;
-                    iVar3 = AdvanceGroupToTarget(iVar5);
-                    if (iVar3 != 0) {
-                        iVar3 = iVar5 * 0x5c + *gExtState;
-                        *(short *)(iVar3 + 0x24c) = *(short *)(iVar3 + 0x24c) + 1;
-                    }
-                }
-                sVar4 = (short)iVar5 + 1;
-                iVar5 = (int)sVar4;
-            } while (sVar4 < *(short *)(*gExtState + 0x24a));
-        }
-    }
-}
 
 /*
  * addr=1001f9e4 size=732
  * AI: Initialize army states and counts for a given player at turn start.
  * Categorizes all armies into own/enemy/neutral and sets initial states.
- * Calls FUN_1001f758 and FUN_1001f958 for preprocessing.
+ * Calls AI_ResetProductionState and AI_PrecomputeThreats for preprocessing.
  */
-void FUN_1001f9e4(short param_1)
-{
-    short sVar1;
-    int iVar6;
+/* AI_ProductionTurn - defined in ai/ai.c */
 
-    FUN_1001f758();
-    FUN_1001f958();
-
-    /* Reset army counters */
-    *(short *)(*gExtState + 8) = 0;
-    *(short *)(*gExtState + 6) = 0;
-    *(short *)(*gExtState + 4) = 0;
-    *(short *)(*gExtState + 2) = 0;
-
-    sVar1 = *(short *)(*gGameState + 0x1602);
-    while (sVar1 != 0) {
-        sVar1 = sVar1 - 1;
-
-        iVar6 = *gGameState + (sVar1 * 0x21) * 2;
-
-        /* Simplified: categorize armies as own/enemy/neutral */
-        if ((int)*(char *)(iVar6 + 0x1619) == (int)param_1) {
-            *(short *)(*gExtState + 2) = *(short *)(*gExtState + 2) + 1;
-            *(char *)(*gExtState + (int)sVar1 + 0xba) += 1;
-            if (*(char *)((int)sVar1 + *gExtState + 0x56) == '\0') {
-                *(char *)((int)sVar1 + *gExtState + 0x56) = 1;
-            }
-        } else {
-            *(char *)(*gExtState + (int)sVar1 + 0x56) = 0;
-            *(char *)((int)sVar1 + *gExtState + 0xba) = 0;
-
-            if (*(char *)(iVar6 + 0x1619) == '\x0f') {
-                *(short *)(*gExtState + 6) = *(short *)(*gExtState + 6) + 1;
-            } else {
-                *(short *)(*gExtState + 4) = *(short *)(*gExtState + 4) + 1;
-            }
-        }
-    }
-
-    /* Post-process: transition armies in state 1 to state 3 or 5 */
-    if (*(short *)(*gExtState + 2) != 0) {
-        sVar1 = *(short *)(*gGameState + 0x1602);
-        while (sVar1 != 0) {
-            sVar1 = sVar1 - 1;
-            if (*(char *)(*gExtState + (int)sVar1 + 0x56) == '\x01') {
-                iVar6 = GetNeighborArmies((int)sVar1, 0, 0);
-                if (iVar6 == 0) {
-                    *(char *)(*gExtState + (int)sVar1 + 0x56) = 5;
-                } else {
-                    *(char *)(*gExtState + (int)sVar1 + 0x56) = 3;
-                }
-            }
-        }
-        *(short *)*gExtState = *(short *)*gExtState + 1;
-    }
-}
 
 /*
  * addr=10020ec4 size=208
@@ -963,7 +729,7 @@ void HeroSpecialActions(void)
     int iVar7;
     unsigned char abStack_18[24];
 
-    FUN_1001f958();
+    AI_PrecomputeThreats();
 
     sVar3 = *(short *)(*gGameState + 0x1602);
     do {

@@ -15,7 +15,7 @@ int FUN_10009b48() { return 0; }
 int FUN_10009d38() { return 0; }
 int FUN_1000a12c() { return 0; }
 int FUN_1000d9ac() { return 0; }
-int FUN_10015904() { return 0; }
+/* AI_GetRuinSlotIndex - clean version in ai/ai.c */
 int ApplyDirectionOffset() { return 0; }
 int FUN_100230e8() { return 0; }
 int FUN_10025f98() { return 0; }
@@ -85,7 +85,7 @@ int CARRY8(int a, int b) { return ((unsigned char)a + (unsigned char)b) > 0xFF; 
 /* Missing symbols from duplicate resolution */
 
 /* Missing stubs - these are only called, never defined elsewhere */
-int FUN_10007f78() { return 0; }
+int MapRefreshAndCombat() { return 0; }
 int ConstructCommand() { return 0; }
 int AllocateHandle() { return 0; }
 

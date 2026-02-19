@@ -94,7 +94,7 @@ extern int uRam10116a54;
 extern short *_FUN_10115e4c;
 
 /* Forward declarations for functions defined in this file */
-void FUN_1002b91c(void);
+void UpdateDisplayState(void);
 unsigned long long LookupCityAtPos(short param_1,short param_2);
 void LaunchAllianceDefense(short param_1);
 void FUN_1003dc28(void);
@@ -167,10 +167,10 @@ void AdoptNeutralArmy(void)
 
 
 /* ======================================================================
- * FUN_100169c0 - City garrison logic
+ * UpdateRuinState - City garrison logic
  * Address: 0x100169c0, Size: 512 bytes
  * ====================================================================== */
-void FUN_100169c0(int param_1,short param_2)
+void UpdateRuinState(int param_1,short param_2)
 {
   int bVar1;
   short sVar2;
@@ -246,10 +246,10 @@ LAB_10016b20:
 
 
 /* ======================================================================
- * FUN_10016df0 - Unit assignment with local arrays
+ * ResolveHeroFightOrder - Unit assignment with local arrays
  * Address: 0x10016df0, Size: 784 bytes
  * ====================================================================== */
-void FUN_10016df0(int param_1)
+void ResolveHeroFightOrder(int param_1)
 {
   int bVar1;
   char cVar2;
@@ -479,31 +479,11 @@ void AssignToDefense(short param_1,short param_2)
 
 
 /* ======================================================================
- * FUN_1001ae14 - Sets army state to 8 (searching)
+ * AI_ActivateAttackGroup - Sets army state to 8 (searching)
  * Address: 0x1001ae14, Size: 140 bytes
+ * Superseded by clean reconstruction in ai/ai.c
  * ====================================================================== */
-void FUN_1001ae14(short param_1)
-{
-  int bVar1;
-  short sVar2;
-  pint *piVar3;
-  int iVar4;
-
-  piVar3 = piRam10117468;
-  *(char *)(*piRam10117468 + (int)*(short *)(*piRam10117468 + param_1 * 0x5c + 0x250) + 0x56)
-       = 8;
-  iVar4 = 3;
-  do {
-    sVar2 = *(short *)(*piVar3 + param_1 * 0x5c + iVar4 * 2 + 0x252);
-    if (sVar2 != -1) {
-      *(char *)((int)sVar2 + *piVar3 + 0x56) = 8;
-    }
-    bVar1 = iVar4 != 0;
-    iVar4 = (int)(short)((short)iVar4 + -1);
-  } while (bVar1);
-  ActivateAttackEvent();
-  return;
-}
+/* Raw Ghidra decompile removed - clean version in ai/ai.c */
 
 
 /* ======================================================================
@@ -620,10 +600,14 @@ long long LaunchAllianceAttack(short param_1,short param_2)
 
 
 /* ======================================================================
- * FUN_1001fcc0 - AI army deployment priorities (large, with gotos)
+ * AI_ProductionPlanning - AI army deployment priorities (large, with gotos)
  * Address: 0x1001fcc0, Size: 2160 bytes
+ * Superseded by clean reconstruction in ai/ai.c
  * ====================================================================== */
-int FUN_1001fcc0(void)
+/* Raw Ghidra decompile removed - clean version in ai/ai.c */
+
+#if 0  /* Original Ghidra stub preserved as comment for reference */
+int AI_ProductionPlanning_STUB(void)
 {
   int bVar1;
   int bVar2;
@@ -886,13 +870,14 @@ joined_r0x1002026c:
   }
   return iVar6 + *(int *)(iVar6 + sVar5 * 4);
 }
+#endif  /* Original Ghidra stub */
 
 
 /* ======================================================================
- * FUN_100214e8 - Clears unit data
+ * RemoveBattlePiece - Clears unit data
  * Address: 0x100214e8, Size: 60 bytes
  * ====================================================================== */
-void FUN_100214e8(short *param_1)
+void RemoveBattlePiece(short *param_1)
 {
   *(char *)(param_1 + 2) = 0xff;
   *(char *)((int)param_1 + 5) = 0xff;
@@ -1230,7 +1215,7 @@ void FUN_10029ac0(long long param_1,short param_2,char param_3,char param_4)
   FUN_1002bbd4();
   FUN_1002bcd8();
   UpdateArmyDisplay(*(short *)(*piVar8 + 0x110));
-  FUN_1002b91c();
+  UpdateDisplayState();
   FUN_10044110(*(short *)(*piVar8 + 0x110),1);
   FUN_1003e13c(*psVar6,0);
   *psVar6 = 0;
@@ -1526,10 +1511,10 @@ void FUN_1002b4e0(void)
 
 
 /* ======================================================================
- * FUN_1002b91c - Map ownership refresh
+ * UpdateDisplayState - Map ownership refresh
  * Address: 0x1002b91c, Size: 696 bytes
  * ====================================================================== */
-void FUN_1002b91c(void)
+void UpdateDisplayState(void)
 {
   short sVar1;
   unsigned int uVar2;
@@ -1654,10 +1639,10 @@ unsigned long long LookupCityAtPos(short param_1,short param_2)
 
 
 /* ======================================================================
- * FUN_1002e5c0 - City capture/raze
+ * HandleHeroDefeat - City capture/raze
  * Address: 0x1002e5c0, Size: 532 bytes
  * ====================================================================== */
-void FUN_1002e5c0(int param_1,short param_2,short param_3)
+void HandleHeroDefeat(int param_1,short param_2,short param_3)
 {
   pint *piVar1;
   short *psVar2;
@@ -1923,7 +1908,7 @@ void FUN_10033e7c(void)
           iVar2 = *piVar3 + ((short *)*piVar5)[1] * 0x70;
           sVar7 = *(short *)*piVar5;
           *(unsigned int *)(iVar2 + sVar7) = *(unsigned int *)(iVar2 + sVar7) | 0x40000000;
-          FUN_10007f78();
+          MapRefreshAndCombat();
           break;
         }
         sVar7 = (short)iVar8 + 1;

@@ -106,22 +106,22 @@ void FUN_10064850(int, int);
 void UpdateProgressBar(int);
 void YieldToEventLoop(void);
 void DispatchNextPhase(int, int);
-void FUN_10011804(void);
-void FUN_100164e4(void);
-void FUN_10013774(void);
-void FUN_10014214(void);
-void FUN_1001d014(void);
-void FUN_10013484(void);
-void FUN_1001497c(void);
-void FUN_1001f9e4(short);
-void FUN_100114d4(void);
-void FUN_1001aa9c(void);
-void FUN_10013040(void);
+void AI_StrategicAssessment(void);
+void AI_HeroManagementLoop(void);
+void AI_AssignCityDefenders(void);
+void AI_PlanArmyMovements(void);
+void AI_ExecuteAttackGroups(void);
+void AI_SecondaryDefense(void);
+void AI_GroupMovement(void);
+void AI_ProductionTurn(short);
+void AI_AssignRemainingArmies(void);
+void AI_ProcessArmyOrders(void);
+void AI_Finalize(void);
 void HeroSpecialActions(void);
 void EndOfTurnCleanup(void);
-void FUN_10014d14(void);
-void FUN_1000d1a4(void);
-void FUN_10014bcc(void);
+void AI_FinalPass(void);
+void AI_TryHireHero(void);
+void AI_ResetUnusedUnits(void);
 int FUN_1000d384(void);
 void FUN_1000d6a0(void);
 void FUN_10027448(void);
@@ -130,7 +130,7 @@ void FUN_1002c85c(void);
 void FUN_10008f70(void);
 void FUN_1003d4dc(void);
 void FUN_1000fac4(void);
-void FUN_1001ab94(void);
+void AI_CheckArmyPathsBlocked(void);
 int CheckArmyEscort(int);
 int FUN_1001e794(int, int, long long, int);
 void FUN_1001e564(short, int);
@@ -368,8 +368,8 @@ void FUN_1000c9c8(void)
 // Turn phase: process fight results
 void FUN_1000cafc(void)
 {
-    FUN_10011804();
-    FUN_100164e4();
+    AI_StrategicAssessment();
+    AI_HeroManagementLoop();
     UpdateProgressBar(0xf);
     YieldToEventLoop();
     return;
@@ -380,7 +380,7 @@ void FUN_1000cafc(void)
 void FUN_1000cb54(void)
 {
     if (*(short *)(*piRam1011735c + 0x124) != 0) {
-        FUN_10013774();
+        AI_AssignCityDefenders();
     }
     UpdateProgressBar(0x14);
     YieldToEventLoop();
@@ -391,7 +391,7 @@ void FUN_1000cb54(void)
 // Turn phase: process production/economy
 void FUN_1000cbb8(void)
 {
-    FUN_10014214();
+    AI_PlanArmyMovements();
     UpdateProgressBar(0x19);
     YieldToEventLoop();
     return;
@@ -401,7 +401,7 @@ void FUN_1000cbb8(void)
 // Turn phase: process diplomacy
 void FUN_1000cc08(void)
 {
-    FUN_1001d014();
+    AI_ExecuteAttackGroups();
     UpdateProgressBar(0x1e);
     YieldToEventLoop();
     return;
@@ -411,7 +411,7 @@ void FUN_1000cc08(void)
 // Turn phase: process combat round
 void FUN_1000cc58(void)
 {
-    FUN_10013484();
+    AI_SecondaryDefense();
     UpdateProgressBar(0x28);
     YieldToEventLoop();
     return;
@@ -421,7 +421,7 @@ void FUN_1000cc58(void)
 // Turn phase: process random events
 void FUN_1000cca8(void)
 {
-    FUN_1001497c();
+    AI_GroupMovement();
     UpdateProgressBar(0x2d);
     YieldToEventLoop();
     return;
@@ -431,7 +431,7 @@ void FUN_1000cca8(void)
 // Turn phase: process scoring for current player
 void FUN_1000ccf8(void)
 {
-    FUN_1001f9e4(*(short *)(*piRam1011735c + 0x110));
+    AI_ProductionTurn(*(short *)(*piRam1011735c + 0x110));
     UpdateProgressBar(0x32);
     YieldToEventLoop();
     return;
@@ -441,7 +441,7 @@ void FUN_1000ccf8(void)
 // Turn phase: process hero movement
 void FUN_1000cd54(void)
 {
-    FUN_100114d4();
+    AI_AssignRemainingArmies();
     UpdateProgressBar(0x37);
     YieldToEventLoop();
     return;
@@ -451,7 +451,7 @@ void FUN_1000cd54(void)
 // Turn phase: process alliance actions
 void FUN_1000cda4(void)
 {
-    FUN_1001aa9c();
+    AI_ProcessArmyOrders();
     UpdateProgressBar(0x3c);
     YieldToEventLoop();
     return;
@@ -461,7 +461,7 @@ void FUN_1000cda4(void)
 // Turn phase: second combat round processing
 void FUN_1000cdf4(void)
 {
-    FUN_10013484();
+    AI_SecondaryDefense();
     UpdateProgressBar(0x41);
     YieldToEventLoop();
     return;
@@ -471,7 +471,7 @@ void FUN_1000cdf4(void)
 // Turn phase: post-combat cleanup
 void FUN_1000ce44(void)
 {
-    FUN_10013040();
+    AI_Finalize();
     YieldToEventLoop();
     return;
 }
@@ -500,7 +500,7 @@ void FUN_1000ced8(void)
 // Turn phase: process city defense
 void FUN_1000cf28(void)
 {
-    FUN_10014d14();
+    AI_FinalPass();
     UpdateProgressBar(0x4b);
     YieldToEventLoop();
     return;
@@ -510,7 +510,7 @@ void FUN_1000cf28(void)
 // Turn phase: AI process turn (hero generation/dispatch)
 void FUN_1000d2e8(void)
 {
-    FUN_1000d1a4();
+    AI_TryHireHero();
     UpdateProgressBar(0x50);
     YieldToEventLoop();
     return;
@@ -520,7 +520,7 @@ void FUN_1000d2e8(void)
 // Turn phase: process unit upkeep
 void FUN_1000d334(void)
 {
-    FUN_10014bcc();
+    AI_ResetUnusedUnits();
     UpdateProgressBar(0x55);
     YieldToEventLoop();
     return;
@@ -668,7 +668,7 @@ void ActivateAttackEvent(short param_1)
 // AI target selection - finds the best enemy to attack by evaluating
 // army positions, army strengths, city counts, diplomacy, and distance.
 // Returns the chosen target player index, or -1 if no valid target.
-long long FUN_1000ed34(long long param_1, short param_2, short *param_3, short *param_4)
+long long FindBestSiegeTarget(long long param_1, short param_2, short *param_3, short *param_4)
 {
     short sVar1;
     short sVar2;
@@ -807,45 +807,5 @@ long long FUN_1000ed34(long long param_1, short param_2, short *param_3, short *
 /* Raw Ghidra decompile removed - clean version in economy/economy.c */
 
 // Address: 0x1000f308 | Size: 260 bytes
-// Updates city border defense counts by examining neighbor army adjacency.
-// For each army slot in the city's defense grid, counts how many
-// neighboring armies belong to the city owner.
-void FUN_1000f308(short param_1)
-{
-    int bVar1;
-    unsigned char bVar2;
-    short sVar3;
-    int *piVar4;
-    int *piVar5;
-    int iVar6;
-    short sVar7;
-    int iVar8;
-    char auStack_30[8];
-    unsigned char abStack_28[40];
-
-    piVar5 = piRam10117468;
-    piVar4 = piRam1011735c;
-    sVar3 = *(short *)(*piRam10117468 + param_1 * 0x5c + 0x24e);
-    iVar8 = 0;
-    do {
-        sVar7 = *(short *)(*piVar5 + param_1 * 0x5c + iVar8 * 2 + 0x25a);
-        if (sVar7 != -1) {
-            GetAdjacentArmies(sVar7, 0, (int)abStack_28, (int)auStack_30);
-            sVar7 = 0;
-            iVar6 = 5;
-            do {
-                bVar2 = abStack_28[iVar6];
-                if ((bVar2 != 0xff) && ((int)*(char *)(*piVar4 + (unsigned int)bVar2 * 0x42 + 0x1619) == (int)sVar3)
-                   ) {
-                    sVar7 = sVar7 + 1;
-                }
-                bVar1 = iVar6 != 0;
-                iVar6 = (int)(short)((short)iVar6 + -1);
-            } while (bVar1);
-            *(short *)(*piVar5 + param_1 * 0x5c + iVar8 * 2 + 0x27e) = sVar7;
-        }
-        sVar7 = (short)iVar8 + 1;
-        iVar8 = (int)sVar7;
-    } while (sVar7 < 6);
-    return;
-}
+// Superseded by clean reconstruction in combat/combat.c as UpdateSiegeStrength
+/* Raw Ghidra decompile removed - clean version in combat/combat.c */

@@ -113,7 +113,7 @@ extern char *pcRam101161c8;
 /* psRam101176fc -> gAIPathThreshold (already in wl2_globals.h as macro) */
 
 /* Forward declarations */
-void FUN_1002b91c(void);
+void UpdateDisplayState(void);
 unsigned long long LookupCityAtPos(short, short);
 void FUN_10025758(short, short, short);
 int FUN_1005f50c(short, short, short);
@@ -154,7 +154,7 @@ void FUN_10040fb8(void)
       iVar4 = (int)sVar6;
     } while (sVar6 < 8);
     FUN_1002c85c();
-    FUN_10007f78();
+    MapRefreshAndCombat();
     FUN_1003d6c4();
     sVar6 = 0;
     iVar5 = 0;
@@ -207,7 +207,7 @@ void FUN_100410ec(void)
     } while (sVar7 < 8);
     FUN_100013f8(0xffffffffffffffffLL, 0);
     UpdateArmyDisplay(*(unsigned short *)(*piVar5 + 0x110));
-    FUN_1002b91c();
+    UpdateDisplayState();
     FUN_10044110(*(unsigned short *)(*piVar5 + 0x110), 1);
     FUN_10027040();
     FUN_1006616c();
@@ -820,7 +820,7 @@ void ScanDefenseGrid(void)
           bVar9 = 1;
         }
         if (bVar9) {
-          FUN_100126a4(unaff_r31);
+          AI_AttackNeutralArmies(unaff_r31);
           iVar11 = *piVar6 + (int)(((uVar12 & 0x1fffffff) * 8 - uVar12 & 0xffffffff) << 5);
           iVar4 = (int)((uVar13 & 0xffffffff) << 1);
           *(unsigned int *)(iVar11 + iVar4) = *(unsigned int *)(iVar11 + iVar4) | 0x400000;
