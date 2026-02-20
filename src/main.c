@@ -258,10 +258,10 @@ static Boolean       sMapColorLoaded = false;
 #define MINIMAP_PAL_SIZE 17
 static RGBColor sMinimapPalette[MINIMAP_PAL_SIZE] = {
     {0xFFFF, 0xFFFF, 0xFFFF},  /*  0 white */
-    {0x9999, 0x8888, 0x9999},  /*  1 light gray-purple */
-    {0x8888, 0x7777, 0x8888},  /*  2 gray-purple */
-    {0x7777, 0x6666, 0x7777},  /*  3 dark gray-purple (mountains) */
-    {0x5555, 0x4444, 0x5555},  /*  4 darker gray-purple */
+    {0x8FFF, 0x8FFF, 0x8FFF},  /*  1 light gray */
+    {0x8FFF, 0x8FFF, 0x8FFF},  /*  2 gray (same as 1) */
+    {0x6FFF, 0x6FFF, 0x6FFF},  /*  3 dark gray (mountains) */
+    {0x4FFF, 0x4FFF, 0x4FFF},  /*  4 darker gray */
     {0x428F, 0xBD6F, 0xFFFF},  /*  5 light blue (water/shore) */
     {0x0000, 0x51EB, 0xCF5B},  /*  6 blue (deep water) */
     {0xFFFF, 0xDEB7, 0x1C28},  /*  7 yellow */
@@ -1196,14 +1196,15 @@ static void LoadTerrainSprites(void)
         }
     }
 
-    /* Load shield cicn 30600-30607 from Grasslands resource file */
+    /* Try loading shield cicn 30600-30607 from terrain resource file.
+     * Don't set sShieldsLoaded here — LoadShieldIcons() will try
+     * built-in cicn 3020-3027 as fallback later. */
     {
         short si;
         for (si = 0; si < MAX_FACTIONS; si++) {
             if (sShieldIcons[si] == NULL)
                 sShieldIcons[si] = GetCIcon(30600 + si);
         }
-        sShieldsLoaded = true;
     }
 
     UseResFile(oldResFile);
@@ -1439,12 +1440,12 @@ static void LoadShieldIcons(void)
     if (sShieldsLoaded)
         return;
 
-    for (i = 0; i < MAX_FACTIONS; i++)
-        sShieldIcons[i] = NULL;
-
     /* Try built-in shields first (cicn 3020-3027, 33x33, in app rsrc fork),
-       then fall back to Elemental Shields (cicn 30600-30607, 39x36, merged) */
+       then fall back to Elemental Shields (cicn 30600-30607, 39x36, merged).
+       Don't NULL out shields already loaded from terrain resource file. */
     for (i = 0; i < MAX_FACTIONS; i++) {
+        if (sShieldIcons[i] != NULL)
+            continue;  /* already loaded from terrain resource */
         sShieldIcons[i] = GetCIcon(3020 + i);
         if (sShieldIcons[i] == NULL)
             sShieldIcons[i] = GetCIcon(30600 + i);
@@ -4919,16 +4920,7 @@ static void DrawMapInWindow(WindowPtr win)
                         FrameRect(&barRect);
                     }
                 } else {
-                    /* Fallback: colored oval */
-                    Rect armyRect;
-                    RGBColor black = {0x0000, 0x0000, 0x0000};
-                    SetRect(&armyRect, screenX + 6, screenY + 6,
-                            screenX + TERRAIN_TILE_W - 6,
-                            screenY + TERRAIN_TILE_H - 6);
-                    RGBForeColor(&sPlayerColors[colorIdx]);
-                    PaintOval(&armyRect);
-                    RGBForeColor(&black);
-                    FrameOval(&armyRect);
+                    /* No army sprites loaded — skip drawing */
                 }
             }
         }
@@ -5555,34 +5547,25 @@ static void DrawMapInWindow(WindowPtr win)
         NumToString((long)turn, numStr);
         DrawString(numStr);
 
-        /* Small shields */
+        /* Small shields — always draw all factions */
         shieldX = fullPort.left + 48;
         for (fi = 0; fi < factionCount; fi++) {
             Rect sR;
-            short alive = *(short *)(scnData + 0x138 + fi * 2);
             SetRect(&sR, shieldX, fullPort.bottom - SHIELD_ICON_H - 2,
                     shieldX + SHIELD_ICON_W, fullPort.bottom - 2);
-
-            /* Highlight current player */
-            if (fi == curPlayer) {
-                RGBForeColor(&white);
-                FrameRect(&sR);
-            }
 
             if (sShieldsLoaded && sShieldIcons[fi] != NULL) {
                 PlotCIcon(&sR, sShieldIcons[fi]);
             } else {
+                /* Fallback: colored rectangle */
                 RGBForeColor(&sPlayerColors[fi + 1]);
                 PaintRect(&sR);
             }
 
-            /* Dim dead players */
-            if (!alive) {
-                RGBColor dim = {0x8888, 0x8888, 0x8888};
-                RGBForeColor(&dim);
-                PenMode(subOver);
-                PaintRect(&sR);
-                PenMode(srcCopy);
+            /* White border on current player */
+            if (fi == curPlayer) {
+                RGBForeColor(&white);
+                FrameRect(&sR);
             }
 
             shieldX += SHIELD_ICON_W + 2;
@@ -5807,10 +5790,10 @@ static void ToggleMinimapZoom(void)
 
         SizeWindow(overWin, newW, newH, true);
 
-        /* Info panel goes below minimap */
+        /* Info panel goes below minimap, moderate height */
         infoTop = 40 + newH + 2;
         MoveWindow(infoWin, 514, infoTop, false);
-        SizeWindow(infoWin, newW, 500 - infoTop, true);
+        SizeWindow(infoWin, newW, 160, true);
     }
 
     /* Force redraw of both windows */
@@ -18511,12 +18494,12 @@ static void HandleUpdate(EventRecord *event)
                         myCities++;
                 }
 
-                /* Count armies */
+                /* Count armies (owner byte at army+0x15) */
                 armyCount = *(short *)(gs + 0x1602);
                 if (armyCount > 200) armyCount = 200;
                 for (ci = 0; ci < armyCount; ci++) {
                     unsigned char *army = gs + 0x1604 + ci * 0x42;
-                    if (*(short *)(army + 0x02) == curPlayer)
+                    if ((short)(unsigned char)army[0x15] == curPlayer)
                         myArmies++;
                 }
 
@@ -18834,25 +18817,26 @@ int main(void)
             48, (WindowPtr)-1L, true, 0);
 
         /* Info panel window — floating palette (WDEF 3 = Infinity Windoid)
-         * Below minimap, extending to bottom of screen area. */
+         * Below minimap, moderate height. */
         {
             short infoTop = overRect.bottom + 2;
-            SetRect(&infoRect, 514, infoTop, overRect.right, 500);
+            SetRect(&infoRect, 514, infoTop, overRect.right, infoTop + 160);
         }
         *gInfoWindow = (pint)NewCWindow(
             NULL, &infoRect,
             "\pInfo", true,
             48, (WindowPtr)-1L, true, 0);
 
-        /* Status window — gold/cities/armies, plainDBox below the map.
-         * procID 2 = plainDBox (no title bar, thin border). */
+        /* Status window — gold/cities/armies on marble, below main map.
+         * procID 48 = floating palette (WDEF 3) with small title bar.
+         * +12px gap below main map to avoid overlap. */
         {
             Rect statusRect;
-            SetRect(&statusRect, 2, mainRect.bottom + 2, 510, mainRect.bottom + 42);
+            SetRect(&statusRect, 2, mainRect.bottom + 12, 510, mainRect.bottom + 92);
             *gStatusWindow = (pint)NewCWindow(
                 NULL, &statusRect,
-                "\p", true,
-                2 /* plainDBox */, (WindowPtr)-1L, false, 0);
+                "\pStatus", true,
+                48, (WindowPtr)-1L, true, 0);
         }
     }
 
