@@ -4323,7 +4323,8 @@ static Boolean ShowGameSetup(void)
     if (beginGame && *gGameState != 0) {
         unsigned char *gs = (unsigned char *)*gGameState;
 
-        /* Current player = selected side */
+        /* Faction count and current player */
+        *(short *)(gs + 0x10C) = factionCount;
         *(short *)(gs + 0x110) = selectedSide;
 
         /* Player types: human vs AI */
