@@ -161,8 +161,8 @@ int FUN_10000a98() { return 0; }
 /* addr=100012c0 size=24  TVect trampoline -> puRam10115334 */
 int StringLength() { return 0; }
 
-/* addr=10001338 size=24  TVect trampoline -> puRam10115530 */
-int FUN_10001338() { return 0; }
+/* addr=10001338 size=24  TVect trampoline -> NewPtr (puRam10115530) */
+int FUN_10001338(int size) { return (int)NewPtr(size); }
 
 /* addr=100014a0 size=24  TVect trampoline -> puRam1011568c */
 int FUN_100014a0() { return 0; }

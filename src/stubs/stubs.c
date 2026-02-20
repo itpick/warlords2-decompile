@@ -63,7 +63,11 @@ int FUN_1011() { return 0; }
 int FUN_1001e794() { return 0; }
 int FUN_1003206c() { return 0; }
 int FUN_10047a64() { return 0; }
-int RefreshDisplay() { return 0; }
+/* RefreshDisplay - wrapper that calls the real DrawMapViewport in rendering.c */
+extern void DrawMapViewport(short redrawMode, short forceRedraw, short *dirtyRect);
+void RefreshDisplay(int a, int b, int c) {
+    DrawMapViewport((short)a, (short)b, (short *)(long)c);
+}
 int FUN_100c3c94() { return 0; }
 int FUN_100d8b0c() { return 0; }
 int FUN_100f0f78() { return 0; }
@@ -88,6 +92,7 @@ int CARRY8(int a, int b) { return ((unsigned char)a + (unsigned char)b) > 0xFF; 
 int MapRefreshAndCombat() { return 0; }
 int ConstructCommand() { return 0; }
 int AllocateHandle() { return 0; }
+/* UpdateMapDisplay - placeholder until real impl is reconstructed */
 void UpdateMapDisplay(short a, short b) { (void)a; (void)b; }
 
 /* High-address function stubs (globals/data region) */

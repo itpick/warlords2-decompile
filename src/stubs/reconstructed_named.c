@@ -810,8 +810,7 @@ void *GetCityByIndex(short cityIndex)
 int GetGWorld_Wrapper(int *port, int *gdh)
 {
     /* Mac OS Toolbox wrapper - GetGWorld */
-    if (port) *port = 0;
-    if (gdh) *gdh = 0;
+    GetGWorld((GWorldPtr *)port, (GDHandle *)gdh);
     return 0;
 }
 
@@ -1180,9 +1179,8 @@ int NewGWorld_Wrapper(int *gw, int depth, Rect *r, int cTable,
  * ========================================================================= */
 int FUN_100f56e4(int byteCount)
 {
-    /* NewPtr_Thunk - calls FUN_100f5640 */
-    FUN_100f5640();
-    return 0;
+    /* NewPtr_Thunk - allocate memory */
+    return (int)NewPtr(byteCount);
 }
 
 

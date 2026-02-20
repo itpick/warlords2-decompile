@@ -2,123 +2,240 @@
  * main.c - Entry point for Warlords II (Reconstructed)
  *
  * Classic Mac OS PPC application entry point.
- * Initializes the Mac Toolbox, calls DoPostCreate for MacApp framework
- * initialization, then runs a proper Mac event loop with menu dispatch,
- * window management, and update/activate event handling.
+ * Creates 3 game windows (main map, overview minimap, info panel)
+ * and menus directly, bypassing the MacApp framework.
+ * Prompts the user to open a scenario file via StandardGetFile,
+ * loads MAP/SCN data via Resource Manager, and renders a terrain
+ * color grid in the main window.
  */
 
 #include "warlords2.h"
 
 #ifndef MODERN_BUILD
 
-/*
- * BuildMenuBar - Create menus programmatically using NewMenu/AppendMenu.
- * Avoids needing to parse CMNU resources (MacApp command menu format).
- */
-static void BuildMenuBar(void)
+#include <StandardFile.h>
+
+/* Window and buffer globals */
+extern int  *gMainGameWindow;    /* piRam10116208 */
+extern int  *gOverviewWindow;    /* piRam10115fa4 */
+extern int  *gInfoWindow;        /* piRam10116200 */
+extern pint *gGameState;         /* piRam1011735c */
+extern pint *gMapTiles;          /* piRam10117358 */
+
+/* App state */
+static Boolean sDone      = false;
+
+/* Map loading state */
+static Boolean sMapLoaded = false;
+static short   sMapWidth  = 0;
+static short   sMapHeight = 0;
+
+/* Terrain color table: maps terrain byte value to RGB.
+ * Terrain types 0-8 roughly correspond to:
+ *   0=road/open, 1=plains, 2=forest, 3=hills, 4=mountain,
+ *   5=swamp, 6=shore/coast, 7=shallow water, 8=deep water
+ * These are approximate - the real game uses indexed sprites. */
+static RGBColor sTerrainColors[] = {
+    { 0xCC00, 0xCC00, 0x9900 },  /* 0: tan/road */
+    { 0x6600, 0xCC00, 0x3300 },  /* 1: green/plains */
+    { 0x0000, 0x8800, 0x0000 },  /* 2: dark green/forest */
+    { 0x9900, 0x8800, 0x6600 },  /* 3: brown/hills */
+    { 0x7700, 0x7700, 0x7700 },  /* 4: gray/mountain */
+    { 0x6600, 0x9900, 0x6600 },  /* 5: olive/swamp */
+    { 0xDD00, 0xCC00, 0x8800 },  /* 6: sand/coast */
+    { 0x3300, 0x6600, 0xCC00 },  /* 7: light blue/shallow */
+    { 0x0000, 0x3300, 0x9900 },  /* 8: dark blue/deep water */
+};
+#define NUM_TERRAIN_COLORS 9
+
+
+/* ===================================================================
+ * TryLoadScenario — Open a file and load MAP resource directly
+ * =================================================================== */
+static void TryLoadScenario(void)
 {
-    MenuHandle m;
+    StandardFileReply reply;
+    short             refNum;
+    Handle            mapHdl;
 
-    /* Apple menu (ID 1) */
-    m = NewMenu(1, "\p\x14");  /* Apple logo character */
-    AppendMenu(m, "\pAbout Warlords II\xc9");
-    AppendMenu(m, "\p(-");
-    InsertMenu(m, 0);
-    AppendResMenu(m, 'DRVR');
+    /* Let user pick any file */
+    StandardGetFile(NULL, -1, NULL, &reply);
 
-    /* File menu (ID 2) */
-    m = NewMenu(2, "\pFile");
-    AppendMenu(m, "\pNew");
-    AppendMenu(m, "\pOpen\xc9/O");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pClose/W");
-    AppendMenu(m, "\pSave/S");
-    AppendMenu(m, "\pSave As\xc9");
-    AppendMenu(m, "\pRevert");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pQuit/Q");
-    InsertMenu(m, 0);
+    if (!reply.sfGood)
+        return;
 
-    /* Edit menu (ID 3) */
-    m = NewMenu(3, "\pEdit");
-    AppendMenu(m, "\pUndo/Z");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pCut/X");
-    AppendMenu(m, "\pCopy/C");
-    AppendMenu(m, "\pPaste/V");
-    AppendMenu(m, "\pClear");
-    AppendMenu(m, "\pSelect All/A");
-    InsertMenu(m, 0);
+    /* Open the file's resource fork */
+    refNum = FSpOpenResFile(&reply.sfFile, fsRdPerm);
+    if (refNum == -1)
+        return;
 
-    /* Orders menu (ID 4) */
-    m = NewMenu(4, "\pOrders");
-    AppendMenu(m, "\pBuild");
-    AppendMenu(m, "\pRaze");
-    AppendMenu(m, "\pDefend");
-    AppendMenu(m, "\pSearch Ruins");
-    AppendMenu(m, "\pNext Army/N");
-    AppendMenu(m, "\pWait/K");
-    AppendMenu(m, "\pSkip turn");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pDrop Items");
-    AppendMenu(m, "\pUse Item");
-    AppendMenu(m, "\pTake Items");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pSelect All in Stack");
-    AppendMenu(m, "\pSelect All in City");
-    AppendMenu(m, "\pDeselect");
-    AppendMenu(m, "\pSet Production/P");
-    InsertMenu(m, 0);
+    UseResFile(refNum);
 
-    /* Reports menu (ID 5) */
-    m = NewMenu(5, "\pReports");
-    AppendMenu(m, "\pArmy Report");
-    AppendMenu(m, "\pCity Report");
-    AppendMenu(m, "\pGold Report");
-    AppendMenu(m, "\pWinning Report");
-    AppendMenu(m, "\pHero Report");
-    AppendMenu(m, "\pItem Report");
-    InsertMenu(m, 0);
+    /* Try to load MAP resource (type 'MAP ', ID 10000) */
+    mapHdl = Get1Resource('MAP ', 10000);
+    if (mapHdl != NULL) {
+        long mapSize = GetHandleSize(mapHdl);
 
-    /* Heroes menu (ID 6) */
-    m = NewMenu(6, "\pHeroes");
-    AppendMenu(m, "\pHero Abilities");
-    AppendMenu(m, "\pHero Items");
-    AppendMenu(m, "\pHero Info");
-    InsertMenu(m, 0);
+        HLock(mapHdl);
 
-    /* View menu (ID 7) */
-    m = NewMenu(7, "\pView");
-    AppendMenu(m, "\pZoom In/+");
-    AppendMenu(m, "\pZoom Out/-");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pCenter on Army");
-    AppendMenu(m, "\pFind City\xc9");
-    AppendMenu(m, "\pOverview Map");
-    InsertMenu(m, 0);
+        /* Allocate map buffer if DoPostCreate didn't */
+        if (*gMapTiles == 0) {
+            *gMapTiles = (int)NewPtr(0x8880);
+        }
 
-    /* History menu (ID 8) */
-    m = NewMenu(8, "\pHistory");
-    AppendMenu(m, "\pReplay Turn");
-    AppendMenu(m, "\pView Battle Log");
-    AppendMenu(m, "\pView Diplomacy");
-    InsertMenu(m, 0);
+        if (*gMapTiles != 0) {
+            /* Copy MAP data - clamp to buffer size */
+            long copySize = mapSize;
+            if (copySize > 0x8880) copySize = 0x8880;
+            BlockMoveData(*mapHdl, (void *)*gMapTiles, copySize);
 
-    /* Game menu (ID 9) */
-    m = NewMenu(9, "\pGame");
-    AppendMenu(m, "\pNew Game\xc9");
-    AppendMenu(m, "\pPreferences\xc9");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pEnd Turn/E");
-    AppendMenu(m, "\p(-");
-    AppendMenu(m, "\pSurrender");
-    InsertMenu(m, 0);
+            sMapLoaded = true;
+            /* Standard map: 112 wide x 156 tall */
+            sMapWidth  = 112;
+            sMapHeight = (short)(copySize / (112 * 2));
+            if (sMapHeight > 156) sMapHeight = 156;
+        }
 
-    DrawMenuBar();
+        HUnlock(mapHdl);
+        ReleaseResource(mapHdl);
+    }
+
+    /* Also try to load SCN resource into game state */
+    {
+        Handle scnHdl = Get1Resource('SCN ', 10000);
+        if (scnHdl != NULL) {
+            long scnSize = GetHandleSize(scnHdl);
+            HLock(scnHdl);
+
+            if (*gGameState == 0) {
+                *gGameState = (int)NewPtr(0x2FCC);
+            }
+            if (*gGameState != 0) {
+                long copySize = scnSize;
+                if (copySize > 0x2FCC) copySize = 0x2FCC;
+                BlockMoveData(*scnHdl, (void *)*gGameState, copySize);
+            }
+            HUnlock(scnHdl);
+            ReleaseResource(scnHdl);
+        }
+    }
+
+    CloseResFile(refNum);
+
+    /* Force redraw of all windows */
+    if (sMapLoaded) {
+        if (*gMainGameWindow != 0)
+            InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+        if (*gOverviewWindow != 0)
+            InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
+    }
 }
 
 
-/* HandleMenuChoice — translate MenuSelect/MenuKey result */
+/* ===================================================================
+ * DrawMapInWindow — Draw terrain minimap directly using QuickDraw
+ * =================================================================== */
+static void DrawMapInWindow(WindowPtr win)
+{
+    unsigned char *mapData;
+    Rect           winRect;
+    short          x, y;
+    short          pixW, pixH;
+    short          offsetX, offsetY;
+
+    if (!sMapLoaded || *gMapTiles == 0)
+        return;
+
+    mapData = (unsigned char *)*gMapTiles;
+    winRect = win->portRect;
+
+    /* Calculate pixel size: fit map in window
+     * Map is 112 x N tiles. Scale to fit. */
+    pixW = (winRect.right - winRect.left) / sMapWidth;
+    pixH = (winRect.bottom - winRect.top) / sMapHeight;
+    if (pixW < 1) pixW = 1;
+    if (pixH < 1) pixH = 1;
+    /* Use the smaller dimension to keep square pixels */
+    if (pixH < pixW) pixW = pixH;
+    if (pixW < pixH) pixH = pixW;
+
+    /* Center in window */
+    offsetX = winRect.left + ((winRect.right - winRect.left) - sMapWidth * pixW) / 2;
+    offsetY = winRect.top + ((winRect.bottom - winRect.top) - sMapHeight * pixH) / 2;
+
+    for (y = 0; y < sMapHeight; y++) {
+        for (x = 0; x < sMapWidth; x++) {
+            /* Each tile is 2 bytes. On PPC (big-endian):
+             * byte 0 (high) = terrain/flags, byte 1 (low) = graphic index.
+             * The upper nibble of byte 0 often encodes terrain type. */
+            unsigned short tileOffset = y * (112 * 2) + x * 2;
+            unsigned char  hi = mapData[tileOffset];
+            /* Try terrain from upper nibble of high byte */
+            short terrainIdx = (hi >> 4) & 0x0F;
+            if (terrainIdx >= NUM_TERRAIN_COLORS)
+                terrainIdx = 0;
+
+            RGBForeColor(&sTerrainColors[terrainIdx]);
+
+            {
+                Rect pixRect;
+                SetRect(&pixRect,
+                    offsetX + x * pixW,
+                    offsetY + y * pixH,
+                    offsetX + x * pixW + pixW,
+                    offsetY + y * pixH + pixH);
+                PaintRect(&pixRect);
+            }
+        }
+    }
+
+    /* Label */
+    {
+        RGBColor black = { 0, 0, 0 };
+        RGBForeColor(&black);
+        TextFont(3);   /* Geneva */
+        TextSize(9);
+        MoveTo(winRect.left + 4, winRect.bottom - 4);
+        DrawString("\pMap loaded - terrain view");
+    }
+}
+
+
+/* ===================================================================
+ * DrawOverviewInWindow — Simple minimap in overview window
+ * =================================================================== */
+static void DrawOverviewInWindow(WindowPtr win)
+{
+    unsigned char *mapData;
+    Rect           r;
+    short          x, y;
+
+    if (!sMapLoaded || *gMapTiles == 0)
+        return;
+
+    mapData = (unsigned char *)*gMapTiles;
+    r = win->portRect;
+
+    /* Draw 1 pixel per tile */
+    for (y = 0; y < sMapHeight && y < (r.bottom - r.top); y++) {
+        for (x = 0; x < sMapWidth && x < (r.right - r.left); x++) {
+            unsigned short tileOffset = y * (112 * 2) + x * 2;
+            unsigned char  hi = mapData[tileOffset];
+            short terrainIdx = (hi >> 4) & 0x0F;
+            if (terrainIdx >= NUM_TERRAIN_COLORS)
+                terrainIdx = 0;
+
+            RGBForeColor(&sTerrainColors[terrainIdx]);
+            MoveTo(r.left + x, r.top + y);
+            LineTo(r.left + x, r.top + y);
+        }
+    }
+}
+
+
+/* ===================================================================
+ * HandleMenuChoice — translate MenuSelect/MenuKey result
+ * =================================================================== */
 static void HandleMenuChoice(long menuResult)
 {
     short menuID   = (short)((menuResult >> 16) & 0xFFFF);
@@ -127,15 +244,20 @@ static void HandleMenuChoice(long menuResult)
     if (menuID == 0)
         return;
 
-    /* For now, just highlight and unhighlight — no game logic yet.
-     * DoMenuCommand requires fully initialized game state (document object,
-     * global pointers, etc.) which we don't have without MacApp framework. */
+    /* File menu (ID 2): item 1 = Open, item 3 = Quit */
+    if (menuID == 2 && menuItem == 1) {
+        TryLoadScenario();
+    } else if (menuID == 2 && menuItem == 3) {
+        sDone = true;
+    }
 
     HiliteMenu(0);
 }
 
 
-/* HandleMouseDown — route mouseDown to appropriate handler */
+/* ===================================================================
+ * HandleMouseDown — route mouseDown to appropriate handler
+ * =================================================================== */
 static void HandleMouseDown(EventRecord *event)
 {
     WindowPtr   whichWindow;
@@ -154,7 +276,6 @@ static void HandleMouseDown(EventRecord *event)
 
     case inGoAway:
         if (TrackGoAway(whichWindow, event->where)) {
-            /* Hide rather than close — game windows stay alive */
             HideWindow(whichWindow);
         }
         break;
@@ -163,9 +284,6 @@ static void HandleMouseDown(EventRecord *event)
         if (whichWindow != FrontWindow()) {
             SelectWindow(whichWindow);
         }
-        /* Content clicks in the map window could drive game interaction.
-         * The original routed these through MacApp's TView::DoMouseCommand.
-         * For now, just ensure the window comes to front. */
         break;
 
     case inSysWindow:
@@ -175,23 +293,65 @@ static void HandleMouseDown(EventRecord *event)
 }
 
 
-/* HandleUpdateEvent — redraw window contents */
+/* ===================================================================
+ * HandleUpdate — redraw window contents
+ * =================================================================== */
 static void HandleUpdate(EventRecord *event)
 {
     WindowPtr win = (WindowPtr)event->message;
+    Rect      r;
 
+    SetPort(win);
     BeginUpdate(win);
-    /* The original MacApp framework called TView::Draw for each view.
-     * For now, just erase to white so the window isn't garbled. */
-    EraseRect(&win->portRect);
+
+    r = win->portRect;
+    EraseRect(&r);
+
+    if (gMainGameWindow != NULL &&
+        win == (WindowPtr)*gMainGameWindow) {
+        if (sMapLoaded) {
+            DrawMapInWindow(win);
+        } else {
+            /* Show title art until a scenario is loaded */
+            PicHandle pic = (PicHandle)GetResource('PICT', 1000);
+            if (pic != NULL) {
+                DrawPicture(pic, &r);
+            }
+            TextFont(3);
+            TextSize(9);
+            MoveTo(r.left + 4, r.bottom - 4);
+            DrawString("\pUse File > Open to load a scenario");
+        }
+    }
+    else if (gOverviewWindow != NULL &&
+             win == (WindowPtr)*gOverviewWindow) {
+        if (sMapLoaded) {
+            DrawOverviewInWindow(win);
+        } else {
+            TextFont(3);
+            TextSize(9);
+            MoveTo(r.left + 4, r.top + 14);
+            DrawString("\pOverview");
+        }
+    }
+    else if (gInfoWindow != NULL &&
+             win == (WindowPtr)*gInfoWindow) {
+        TextFont(3);
+        TextSize(9);
+        MoveTo(r.left + 4, r.top + 14);
+        DrawString("\pInfo Panel");
+    }
+
     EndUpdate(win);
 }
 
 
+/* ===================================================================
+ * main — Application entry point
+ * =================================================================== */
 int main(void)
 {
     EventRecord event;
-    Boolean     done = false;
 
     /* Classic Mac OS Toolbox initialization sequence */
     InitGraf(&qd.thePort);
@@ -204,7 +364,6 @@ int main(void)
     InitCursor();
 
     /* === Splash Screen === */
-    /* Show PICT 1000 (title artwork) in a centered window */
     {
         PicHandle   splashPic;
         WindowPtr   splashWin;
@@ -214,8 +373,6 @@ int main(void)
         splashPic = (PicHandle)GetResource('PICT', 1000);
         if (splashPic != NULL) {
             picRect = (*splashPic)->picFrame;
-
-            /* Center on screen */
             {
                 short pw = picRect.right - picRect.left;
                 short ph = picRect.bottom - picRect.top;
@@ -223,14 +380,11 @@ int main(void)
                 short sy = (qd.screenBits.bounds.bottom - ph) / 2;
                 SetRect(&winRect, sx, sy, sx + pw, sy + ph);
             }
-
             splashWin = NewCWindow(NULL, &winRect, "\p", true,
                                    plainDBox, (WindowPtr)-1L, false, 0);
             if (splashWin != NULL) {
                 SetPort(splashWin);
                 DrawPicture(splashPic, &splashWin->portRect);
-
-                /* Wait for click or keypress */
                 while (1) {
                     WaitNextEvent(everyEvent, &splashEvt, 60, NULL);
                     if (splashEvt.what == mouseDown ||
@@ -243,23 +397,67 @@ int main(void)
     }
 
     /* === 256-Color Prompt (ALRT 1010) === */
-    /* "Would you like the screen changed to 256 colors?" */
     Alert(1010, NULL);
 
-    /* Build menus programmatically (avoids CMNU parsing) */
-    BuildMenuBar();
-
-    /* Create main game window */
+    /* === Create windows and menus directly (bypass MacApp framework) === */
     {
-        Rect mainRect;
+        Rect    mainRect, overRect, infoRect;
+
+        /* Build menus programmatically (CMNU resources are MacApp-only) */
+        {
+            MenuHandle appleMenu, fileMenu, editMenu;
+
+            appleMenu = NewMenu(1, "\p\024");  /* Apple menu (0x14 = apple icon) */
+            AppendMenu(appleMenu, "\pAbout Warlords II...");
+            AppendResMenu(appleMenu, 'DRVR');
+            InsertMenu(appleMenu, 0);
+
+            fileMenu = NewMenu(2, "\pFile");
+            AppendMenu(fileMenu, "\pOpen.../O;(-;Quit/Q");
+            InsertMenu(fileMenu, 0);
+
+            editMenu = NewMenu(3, "\pEdit");
+            AppendMenu(editMenu, "\pUndo/Z;(-;Cut/X;Copy/C;Paste/V;Clear");
+            InsertMenu(editMenu, 0);
+
+            DrawMenuBar();
+        }
+
+        /* Main game window */
         SetRect(&mainRect, 2, 40, 510, 382);
-        NewCWindow(NULL, &mainRect, "\pWarlords II", true,
-                   documentProc, (WindowPtr)-1L, false, 0);
+        *gMainGameWindow = (pint)NewCWindow(
+            NULL, &mainRect,
+            "\pWarlords II", true,
+            documentProc, (WindowPtr)-1L, false, 0);
+
+        /* Overview (minimap) window */
+        SetRect(&overRect, 514, 40, 638, 200);
+        *gOverviewWindow = (pint)NewCWindow(
+            NULL, &overRect,
+            "\pOverview", true,
+            documentProc, (WindowPtr)-1L, false, 0);
+
+        /* Info panel window */
+        SetRect(&infoRect, 514, 204, 638, 382);
+        *gInfoWindow = (pint)NewCWindow(
+            NULL, &infoRect,
+            "\pInfo", true,
+            documentProc, (WindowPtr)-1L, false, 0);
+
+        /* Allocate game data buffers manually */
+        *gGameState = (pint)NewPtrClear(0x2FCC);
+        *gMapTiles  = (pint)NewPtrClear(0x8880);
     }
 
-    /* Main event loop — replaces MacApp's TApplication::Run().
-     * Handles mouse, keyboard, update, activate, and Apple Events. */
-    while (!done) {
+    /* Bring game windows to front */
+    if (*gMainGameWindow != 0)
+        SelectWindow((WindowPtr)*gMainGameWindow);
+
+    /* === Prompt user to load a scenario file === */
+    TryLoadScenario();
+
+    /* Main event loop */
+    while (!sDone) {
         WaitNextEvent(everyEvent, &event, 6, NULL);
 
         switch (event.what) {
@@ -272,9 +470,10 @@ int main(void)
             if (event.modifiers & cmdKey) {
                 char key = event.message & charCodeMask;
                 if (key == 'q' || key == 'Q') {
-                    done = true;
+                    sDone = true;
+                } else if (key == 'o' || key == 'O') {
+                    TryLoadScenario();
                 } else {
-                    /* Route Cmd+key through MenuKey for menu shortcuts */
                     HandleMenuChoice(MenuKey(key));
                 }
             }
@@ -287,14 +486,12 @@ int main(void)
         case activateEvt: {
             WindowPtr win = (WindowPtr)event.message;
             if (event.modifiers & activeFlag) {
-                /* Window activated — could refresh game state */
                 SelectWindow(win);
             }
             break;
         }
 
         case kHighLevelEvent:
-            /* Handle AppleEvents (required for System 7+) */
             break;
         }
     }
@@ -304,7 +501,6 @@ int main(void)
 
 #else /* MODERN_BUILD */
 
-/* Modern build: structural verification only — no Mac Toolbox available */
 int main(int argc, char **argv)
 {
     (void)argc;
