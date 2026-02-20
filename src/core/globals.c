@@ -7,10 +7,15 @@
 
 #include "warlords2.h"
 
-/* Core game data pointers (Mac OS Handles - pointer to master pointer) */
-pint         *gGameState         = NULL;    /* 0x1011735c */
+/* Core game data pointers (Mac OS Handles - pointer to master pointer).
+ * Each global is a pointer-to-int that the game uses as a level of
+ * indirection: *gGameState gives the base address of the allocated buffer.
+ * We provide static backing storage so dereferencing is safe. */
+static pint  _s_gGameState       = 0;
+pint         *gGameState         = &_s_gGameState;  /* 0x1011735c */
 pint         *gExtState          = NULL;    /* 0x10117468 */
-pint         *gMapTiles          = NULL;    /* 0x10117358 */
+static pint  _s_gMapTiles        = 0;
+pint         *gMapTiles          = &_s_gMapTiles;   /* 0x10117358 */
 pint         *gUnitTypeTable     = NULL;    /* 0x10117360 */
 pint         *gUnitClassTable    = NULL;    /* 0x10117364 */
 pint         *gUnitInstanceTable = NULL;    /* 0x101175d0 */

@@ -58,7 +58,7 @@ ifeq ($(PLATFORM),powerpc)
     # Note: --whole-archive was removed because it drags in all of newlib/libgcc,
     # creating PEF imports (arc4random, getentropy, regcomp, etc.) that don't
     # exist in Mac OS 9, causing the PEF loader to fail at launch.
-    LDFLAGS = -lInterfaceLib -lMathLib
+    LDFLAGS = -lInterfaceLib -lMathLib -lQuickTimeLib
     TARGET = warlords2_ppc
     MAKEPEF = MakePEF
 else
