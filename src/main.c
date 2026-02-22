@@ -2064,55 +2064,26 @@ static void LoadCitySprites(void)
 static void LoadShieldIcons(void)
 {
     short i;
-    short oldResFile;
-    FSSpec shieldSpec;
-    OSErr err;
 
     if (sShieldsLoaded)
         return;
 
-    /* Open the Elemental Shields resource file */
-    {
-        short vRefNum;
-        long dirID;
-        err = HGetVol(NULL, &vRefNum, &dirID);
-        if (err == noErr)
-            err = FSMakeFSSpec(vRefNum, dirID,
-                               "\p:Shields:Elemental Shields", &shieldSpec);
-    }
-
-    if (err == noErr) {
-        oldResFile = CurResFile();
-        sShieldResFile = FSpOpenResFile(&shieldSpec, fsRdPerm);
-        if (sShieldResFile != -1) {
-            UseResFile(sShieldResFile);
-
-            /* Load cicn 30600-30607 from the shield set file.
-             * These replace any terrain-loaded icons. */
-            for (i = 0; i < MAX_FACTIONS; i++) {
-                CIconHandle sh = GetCIcon(30600 + i);
-                if (sh != NULL) {
-                    if (sShieldIcons[i] != NULL)
-                        DisposeCIcon(sShieldIcons[i]);
-                    sShieldIcons[i] = sh;
-                }
-            }
-
-            /* Load big shield sprite sheet (PICT 15009, 288x59) */
-            sShieldBigGW = LoadPICTIntoGWorld(15009);
-
-            /* Load small shield sprite sheet (PICT 15010, 368x64) */
-            sShieldSmallGW = LoadPICTIntoGWorld(15010);
-
-            UseResFile(oldResFile);
+    /* Load default shields: cicn 3020-3027 baked into the app resource fork.
+     * These are the non-Spectremia default shield set. */
+    for (i = 0; i < MAX_FACTIONS; i++) {
+        CIconHandle sh = GetCIcon(3020 + i);
+        if (sh != NULL) {
+            if (sShieldIcons[i] != NULL)
+                DisposeCIcon(sShieldIcons[i]);
+            sShieldIcons[i] = sh;
         }
     }
 
-    /* Fill any remaining NULL slots from whatever is in the resource chain */
-    for (i = 0; i < MAX_FACTIONS; i++) {
-        if (sShieldIcons[i] == NULL)
-            sShieldIcons[i] = GetCIcon(30600 + i);
-    }
+    /* Load big/small shield sprite sheets from main app resources if available */
+    if (sShieldBigGW == NULL)
+        sShieldBigGW = LoadPICTIntoGWorld(15009);
+    if (sShieldSmallGW == NULL)
+        sShieldSmallGW = LoadPICTIntoGWorld(15010);
 
     sShieldsLoaded = true;
 }
