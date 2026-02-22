@@ -37,11 +37,9 @@ dd if="$ORIG_RSRC" of="Warlords II/..namedfork/rsrc" bs=65536 2>/dev/null
 Rez -I "$RINCLUDES" warlords2.r -a -o "Warlords II" -t APPL -c War2
 
 echo "=== Shield resources ==="
-echo "  Using built-in cicn 3020-3027 from original resource fork (skipping merge)"
-# merge_shields.py rebuilds the entire resource fork which can corrupt cicn data.
-# The built-in cicn 3020-3027 are already in the original fork (copied by dd).
-# SHIELDS_RSRC="../Warlords II/Shields/Elemental Shields/..namedfork/rsrc"
-# python3 merge_shields.py "$SHIELDS_RSRC" "Warlords II/..namedfork/rsrc"
+echo "  Shields loaded at runtime from Shields folder (OpenResFile)"
+# merge_shields.py rebuilds the entire resource fork which corrupts other resources.
+# Instead, LoadShieldIcons() opens the Shields resource file at runtime.
 
 echo "=== Deploying to SheepShaver ==="
 ditto "Warlords II" "$DEST"

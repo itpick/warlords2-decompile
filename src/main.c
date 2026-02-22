@@ -154,6 +154,202 @@ static void CleanupSoundSystem(void)
     }
 }
 
+/* ===== Music System (QuickTime Tune Player) ===== */
+/* Music state constants for LoadAndPlayMusic dispatcher */
+#define MUSIC_STATE_TITLE    0
+#define MUSIC_STATE_TURN     1
+#define MUSIC_STATE_BATTLE   3
+#define MUSIC_STATE_VICTORY  4
+
+/* Types and forward declarations for Component Manager / QTMA
+ * (not in Retro68 multiversal headers) */
+typedef long ComponentResult;
+typedef void *TuneCallBackUPP;
+
+extern pascal ComponentInstance OpenDefaultComponent(OSType componentType, OSType componentSubType);
+extern pascal OSErr CloseComponent(ComponentInstance aComponentInstance);
+extern pascal ComponentResult TuneSetHeader(ComponentInstance tp, unsigned long *header);
+extern pascal ComponentResult TunePreroll(ComponentInstance tp);
+extern pascal ComponentResult TuneQueue(ComponentInstance tp, unsigned long *tuneData,
+    Fixed tuneRate, unsigned long tuneStartPosition, unsigned long tuneStopPosition,
+    unsigned long queueFlags, TuneCallBackUPP callBackProc, long refCon);
+extern pascal ComponentResult TuneSetVolume(ComponentInstance tp, Fixed volume);
+extern pascal ComponentResult TuneStop(ComponentInstance tp, long stopFlag);
+
+static ComponentInstance gTunePlayer = NULL;
+static Handle gTuneDataH = NULL;
+static Handle gTuneHeaderH = NULL;
+static short gCurrentMusicState = -1;
+static Boolean gMusicEnabled = true;
+
+/* Voice narration channel (separate from SFX) */
+static SndChannelPtr sVoiceChannel = NULL;
+
+/* Voice snd resource IDs (verified from resource fork) */
+#define SND_VBEGIN    1008  /* VBEGIN  - game start narration */
+#define SND_VGOLD00   1009  /* VGOLD00 - gold/treasury narration */
+#define SND_VGOLD01   1010  /* VGOLD01 - gold/treasury narration */
+#define SND_VGOLD01A  1011  /* VGOLD01A - gold/treasury variant */
+#define SND_VGREET0   1012  /* VGREET0 - turn greeting */
+#define SND_VHERO00   1013  /* VHERO00 - hero event */
+#define SND_VHERO01   1014  /* VHERO01 - hero event */
+#define SND_VLOSE05   1015  /* VLOSE05 - losing <=5% territory */
+#define SND_VLOSE10   1016  /* VLOSE10 */
+#define SND_VLOSE15   1017  /* VLOSE15 */
+#define SND_VLOSE20   1018  /* VLOSE20 */
+#define SND_VLOSE25   1019  /* VLOSE25 */
+#define SND_VLOSE35   1020  /* VLOSE35 - losing heavily */
+#define SND_VMESS00   1021  /* VMESS00 - random event narration */
+#define SND_VMESS01   1022  /* VMESS01 */
+#define SND_VMESS02   1023  /* VMESS02 */
+#define SND_VMESS03   1024  /* VMESS03 */
+#define SND_VMOMENT   1025  /* VMOMENT - loading/processing */
+#define SND_VQUIT     1026  /* VQUIT   - game quit */
+#define SND_VWIN05    1027  /* VWIN05  - winning 5% territory */
+#define SND_VWIN05A   1028  /* VWIN05A - winning variant */
+#define SND_VWIN10    1029  /* VWIN10  */
+#define SND_VWIN15    1030  /* VWIN15  */
+#define SND_VWIN20    1031  /* VWIN20  */
+#define SND_VWIN25    1032  /* VWIN25  */
+#define SND_VWIN30    1033  /* VWIN30  */
+#define SND_VWIN35    1034  /* VWIN35  - dominating */
+
+static void StopMusic(void)
+{
+    if (gTunePlayer != NULL) {
+        TuneStop(gTunePlayer, 0);
+    }
+    if (gTuneDataH != NULL) {
+        DisposeHandle(gTuneDataH);
+        gTuneDataH = NULL;
+    }
+    if (gTuneHeaderH != NULL) {
+        DisposeHandle(gTuneHeaderH);
+        gTuneHeaderH = NULL;
+    }
+}
+
+static void InitMusicSystem(void)
+{
+    gTunePlayer = OpenDefaultComponent('tune', 0);
+    if (gTunePlayer == NULL) {
+        /* QTMA TunePlayer not available — music disabled */
+        gMusicEnabled = false;
+    }
+}
+
+static void CleanupMusicSystem(void)
+{
+    StopMusic();
+    if (gTunePlayer != NULL) {
+        CloseComponent(gTunePlayer);
+        gTunePlayer = NULL;
+    }
+}
+
+/* Tune/Head resource IDs (verified from resource fork):
+ * 1000-1023: RINT0-RINT23 (in-game tracks)
+ * 1024: RSTARTUP (title music)
+ * 1025: RANIM (animation music) */
+#define TUNE_RSTARTUP  1024
+#define TUNE_RANIM     1025
+#define TUNE_RINT_BASE 1000  /* RINT0=1000 .. RINT23=1023 */
+#define TUNE_RINT_COUNT 24
+
+static void LoadAndPlayMusic(short state)
+{
+    Handle tuneH, headH;
+    long fixedVol;
+    short tuneID;
+
+    if (!gMusicEnabled || sSoundMusic == 0) return;
+    if (gTunePlayer == NULL) return;
+    if (state == gCurrentMusicState) return;
+
+    /* Stop current music */
+    StopMusic();
+    gCurrentMusicState = state;
+
+    /* Pick tune resource ID based on game state */
+    switch (state) {
+        case MUSIC_STATE_TITLE:
+            tuneID = TUNE_RSTARTUP;  /* 1024 = RSTARTUP */
+            break;
+        case MUSIC_STATE_TURN:
+            /* Random from RINT0-RINT23 (24 in-game tracks) */
+            tuneID = TUNE_RINT_BASE + (short)(TickCount() % TUNE_RINT_COUNT);
+            break;
+        case MUSIC_STATE_BATTLE:
+            tuneID = TUNE_RINT_BASE + 8;  /* RINT8 */
+            break;
+        case MUSIC_STATE_VICTORY:
+            tuneID = TUNE_RINT_BASE + 9;  /* RINT9 */
+            break;
+        default:
+            return;
+    }
+
+    /* Load Tune and Head resources by ID (searches all open resource files) */
+    tuneH = GetResource('Tune', tuneID);
+    if (tuneH == NULL) return;
+    headH = GetResource('Head', tuneID);
+    if (headH == NULL) return;
+
+    HLock(tuneH);
+    DetachResource(tuneH);
+    gTuneDataH = tuneH;
+
+    HLock(headH);
+    DetachResource(headH);
+    gTuneHeaderH = headH;
+
+    /* Set header and preroll */
+    TuneSetHeader(gTunePlayer, (unsigned long *)*gTuneHeaderH);
+    TunePreroll(gTunePlayer);
+
+    /* Volume: match original formula from sound.c
+     * vol = (sSoundMusic * 4 - sSoundMusic) << 11  (for sSoundMusic in 0-10) */
+    fixedVol = ((long)sSoundMusic * 3L) << 11;
+    TuneSetVolume(gTunePlayer, fixedVol);
+
+    /* Queue for playback: -1 = play to end, queueFlags=0 = no loop */
+    TuneQueue(gTunePlayer, (unsigned long *)*gTuneDataH,
+              (Fixed)0x10000L, /* time scale */
+              0,               /* tuneStartPosition */
+              (unsigned long)-1L,  /* tuneStopPosition: -1 = play to end */
+              0,               /* queueFlags: 0 = play once */
+              (TuneCallBackUPP)NULL, 0);
+
+    /* Set volume again after queue (matches original pattern) */
+    TuneSetVolume(gTunePlayer, fixedVol);
+}
+
+/* PlayVoice — play a voice narration snd on the voice channel */
+static void PlayVoice(short sndID)
+{
+    Handle sndH;
+
+    if (sSoundMaster == 0) return;
+
+    if (sVoiceChannel == NULL)
+        SndNewChannel(&sVoiceChannel, sampledSynth, 0, NULL);
+    if (sVoiceChannel == NULL) return;
+
+    sndH = GetResource('snd ', sndID);
+    if (sndH != NULL) {
+        HLock(sndH);
+        SndPlay(sVoiceChannel, sndH, true);
+    }
+}
+
+static void CleanupVoiceSystem(void)
+{
+    if (sVoiceChannel != NULL) {
+        SndDisposeChannel(sVoiceChannel, true);
+        sVoiceChannel = NULL;
+    }
+}
+
 /* ===== Quest System ===== */
 #define QUEST_NONE      0
 #define QUEST_CAPTURE   1  /* Capture specific city */
@@ -217,16 +413,206 @@ static const ItemDef sItemTable[MAX_ITEMS] = {
     {"Horn of Plenty",    7, 6}
 };
 
+/* ===== Resource String Loading System ===== */
+/* STR# resource IDs */
+#define STR_COMMON_BUTTONS  1000   /* Cancel, OK, No, Yes, Done, Quest, Reject */
+#define STR_CITY_DIALOG     3300   /* City dialog labels (17 strings) */
+#define STR_HERO_DIPLO      3200   /* Hero/diplomacy labels (12 strings) */
+#define STR_CITY_CAPTURE    3800   /* Occupy, Pillage, Sack, Raze */
+#define STR_STACK_INFO      3600   /* Stack info labels (9 strings) */
+#define STR_HERO_INFO       4000   /* Hero info labels (4 strings) */
+#define STR_SEARCH_TEMPLE   4100   /* Searching/temple labels (2 strings) */
+#define STR_COMBAT          3500   /* Combat/battle labels (20 strings) */
+#define STR_QUEST           3700   /* Quest dialog labels (16 strings) */
+#define STR_GAME_SETUP      3100   /* Game setup labels (20 strings) */
+#define STR_GAME_SETTINGS   3900   /* Game settings labels (20 strings) */
+#define STR_REPORT          3400   /* Report dialog labels (20 strings) */
+#define STR_VICTORY         4200   /* Victory/defeat labels (10 strings) */
+#define STR_MISC            4300   /* Miscellaneous labels (20 strings) */
+
+/* Cached string tables - loaded once on first use */
+#define MAX_CACHED_STRINGS 80
+
+typedef struct {
+    short strListID;
+    short count;
+    Str255 strings[MAX_CACHED_STRINGS];
+    Boolean loaded;
+} CachedStringTable;
+
+static CachedStringTable sStrCache[] = {
+    { 1000, 7,  {}, false },  /* Common buttons */
+    { 3300, 33, {}, false },  /* City dialog */
+    { 3200, 23, {}, false },  /* Hero/diplomacy */
+    { 3800, 7,  {}, false },  /* City capture */
+    { 3600, 17, {}, false },  /* Stack info */
+    { 4000, 4,  {}, false },  /* Hero info */
+    { 4100, 16, {}, false },  /* Search/temple */
+    { 3500, 21, {}, false },  /* Combat */
+    { 3700, 16, {}, false },  /* Quest */
+    { 3100, 21, {}, false },  /* Game setup */
+    { 3900, 30, {}, false },  /* Game settings */
+    { 3400, 20, {}, false },  /* Report */
+    { 4200, 22, {}, false },  /* Victory */
+    { 4300, 77, {}, false },  /* Misc */
+};
+#define STR_CACHE_COUNT  14
+
+/* Load a single string from a STR# resource.
+ * index is 0-based; GetIndString uses 1-based indexing. */
+static void LoadSTRString(short strListID, short index, Str255 outStr)
+{
+    GetIndString(outStr, strListID, index + 1);
+    /* If resource missing, outStr[0] will be 0 (empty Pascal string) */
+}
+
+/* Get a cached string from a STR# resource table.
+ * Returns pointer to Pascal string, or fallback if resource unavailable. */
+static const unsigned char *GetCachedString(short strListID, short index,
+                                            const unsigned char *fallback)
+{
+    short i;
+    for (i = 0; i < STR_CACHE_COUNT; i++) {
+        if (sStrCache[i].strListID == strListID) {
+            if (!sStrCache[i].loaded) {
+                short j;
+                for (j = 0; j < sStrCache[i].count && j < MAX_CACHED_STRINGS; j++) {
+                    GetIndString(sStrCache[i].strings[j], strListID, j + 1);
+                }
+                sStrCache[i].loaded = true;
+            }
+            if (index >= 0 && index < sStrCache[i].count &&
+                sStrCache[i].strings[index][0] > 0) {
+                return sStrCache[i].strings[index];
+            }
+            return fallback;
+        }
+    }
+    return fallback;
+}
+
+/* ===== DAT 1000 Master String Table ===== */
+/* Contains all in-game text: defeat/victory messages, military advisor quotes,
+ * terrain descriptions, combat bonus text, loading screen messages.
+ * Stored as null-delimited strings in a single resource. */
+#define DAT_MASTER_STRINGS  1000
+#define MAX_DAT_STRINGS     256
+#define MAX_DAT_STRING_LEN  128
+
+static char sDATStrings[MAX_DAT_STRINGS][MAX_DAT_STRING_LEN];
+static short sDATStringCount = 0;
+static Boolean sDATStringsLoaded = false;
+
+static void LoadDATMasterStrings(void)
+{
+    Handle h;
+    if (sDATStringsLoaded) return;
+    sDATStringsLoaded = true;
+
+    h = GetResource('DAT ', DAT_MASTER_STRINGS);
+    if (h == NULL) return;
+
+    HLock(h);
+    {
+        long size = GetHandleSize(h);
+        const char *p = (const char *)*h;
+        const char *end = p + size;
+        short idx = 0;
+
+        while (p < end && idx < MAX_DAT_STRINGS) {
+            short len = 0;
+            while (p + len < end && p[len] != '\0' && len < MAX_DAT_STRING_LEN - 1)
+                len++;
+            if (len > 0) {
+                BlockMoveData(p, sDATStrings[idx], len);
+                sDATStrings[idx][len] = '\0';
+                idx++;
+            }
+            p += len;
+            if (p < end && *p == '\0') p++;  /* skip null terminator */
+        }
+        sDATStringCount = idx;
+    }
+    HUnlock(h);
+}
+
+/* Get a string from the DAT 1000 master table as a Pascal string */
+static void GetDATString(short index, Str255 outStr, const char *fallback)
+{
+    if (!sDATStringsLoaded) LoadDATMasterStrings();
+    if (index >= 0 && index < sDATStringCount && sDATStrings[index][0] != '\0') {
+        short len = 0;
+        while (len < 255 && sDATStrings[index][len] != '\0') len++;
+        outStr[0] = (unsigned char)len;
+        BlockMoveData(sDATStrings[index], outStr + 1, len);
+    } else if (fallback) {
+        short len = 0;
+        while (len < 255 && fallback[len] != '\0') len++;
+        outStr[0] = (unsigned char)len;
+        BlockMoveData(fallback, outStr + 1, len);
+    } else {
+        outStr[0] = 0;
+    }
+}
+
+/* ===== DAT 1011 Item Definitions ===== */
+/* Contains 39 ruin items with names, category codes, and bonus values.
+ * If loaded successfully, overrides the hardcoded sItemTable names. */
+#define DAT_ITEM_DEFS  1011
+
+static Boolean sDAT1011Loaded = false;
+
+static void LoadDATItemDefs(void)
+{
+    Handle h;
+    if (sDAT1011Loaded) return;
+    sDAT1011Loaded = true;
+
+    h = GetResource('DAT ', DAT_ITEM_DEFS);
+    if (h == NULL) return;
+
+    HLock(h);
+    {
+        long size = GetHandleSize(h);
+        const unsigned char *p = (const unsigned char *)*h;
+        short idx = 0;
+
+        /* DAT 1011 format: each entry is a packed record with a Pascal-style
+         * name string followed by type and value fields.
+         * Try parsing as: [name_len] [name_bytes...] [type:2] [value:2]
+         * If that doesn't work, fall back to null-terminated strings. */
+        while ((const char *)p < (const char *)*h + size && idx < MAX_ITEMS) {
+            short nameLen = (short)*p;
+            if (nameLen > 0 && nameLen < 20 &&
+                (const char *)p + 1 + nameLen + 4 <= (const char *)*h + size) {
+                /* Pascal-style entry */
+                ItemDef *item = (ItemDef *)&sItemTable[idx];  /* cast away const to update */
+                short copyLen = nameLen < 19 ? nameLen : 19;
+                BlockMoveData(p + 1, item->name, copyLen);
+                item->name[copyLen] = '\0';
+                item->type = *(short *)(p + 1 + nameLen);
+                item->value = *(short *)(p + 1 + nameLen + 2);
+                p += 1 + nameLen + 4;
+                idx++;
+            } else {
+                /* Skip unknown data */
+                break;
+            }
+        }
+    }
+    HUnlock(h);
+}
+
 /* Player colors for faction borders and city/temple owner dots */
 static RGBColor sPlayerColors[9] = {
     {0xFFFF,0xFFFF,0xFFFF},  /* 0 white */
-    {0x0000,0x0000,0xFFFF},  /* 1 blue */
-    {0x0000,0xBBBB,0x0000},  /* 2 green */
-    {0xFFFF,0xFFFF,0x0000},  /* 3 yellow */
-    {0xFFFF,0x0000,0x0000},  /* 4 red */
-    {0xFFFF,0x7FFF,0x0000},  /* 5 orange */
-    {0x9999,0x0000,0x6666},  /* 6 purple */
-    {0x0000,0xFFFF,0xFFFF},  /* 7 cyan */
+    {0x0000,0x0000,0xDDDD},  /* 1 blue   - pltt idx 233 #0000dd */
+    {0x0000,0xBBBB,0x0000},  /* 2 green  - pltt idx 228 #00bb00 */
+    {0xFFFF,0xFFFF,0x0000},  /* 3 yellow - pltt idx 242 #ffff00 */
+    {0xDDDD,0x0000,0x0000},  /* 4 red    - pltt idx 243 #dd0000 */
+    {0xFFFF,0x7F7F,0x0000},  /* 5 orange - pltt idx 8   #ff7f00 */
+    {0x9999,0x0000,0x6666},  /* 6 purple - pltt idx 240 #990066 */
+    {0x9999,0xFFFF,0xFFFF},  /* 7 cyan   - pltt idx 231 #99ffff */
     {0x6666,0x6666,0x6666},  /* 8 neutral - gray */
 };
 
@@ -242,6 +628,8 @@ static RGBColor sPlayerColors[9] = {
 #define TERRAIN_TILES_PER_SHEET  96  /* 16 * 6 */
 static GWorldPtr sTerrainGW   = NULL;   /* PICT 30022: tiles 0-95 */
 static GWorldPtr sTerrainGW2  = NULL;   /* PICT 30023: tiles 96-191 */
+static GWorldPtr sRoadGW      = NULL;   /* PICT 30021: road/overlay sprites (16x2 grid) */
+static RGBColor  sRoadBgColor;          /* road sprite sheet background color for mode 36 */
 static Boolean   sTerrainLoaded = false;
 static short     sTerrainResFile = -1;
 static GWorldPtr sMarbleGW    = NULL;   /* PICT 1001 "MARBLE" background */
@@ -284,15 +672,20 @@ static RGBColor sMinimapPalette[MINIMAP_PAL_SIZE] = {
 #define ARMY_SHEETS    10
 #define ARMY_PICT_BASE 20000
 static GWorldPtr sArmyGW[ARMY_SHEETS];
+static RGBColor  sArmyBgColor[ARMY_SHEETS]; /* per-sheet bg for mode 36 transparency */
 static Boolean   sArmyLoaded = false;
 
 /* Status bar icons from app resource fork (cicn 1005-1009) */
 static CIconHandle sStatusIcons[5] = {NULL, NULL, NULL, NULL, NULL};
 static Boolean     sStatusIconsLoaded = false;
 
-/* Status bar icon PICTs as GWorlds (PICT 1005-1009 fallback) */
-static GWorldPtr   sStatusPictGW[5] = {NULL, NULL, NULL, NULL, NULL};
-static Boolean     sStatusPictsLoaded = false;
+/* ABITS sprite sheet: PICT 10004 (544x40, 34 cols x 2 rows, 16x20 cells) */
+#define ABITS_CELL_W 16
+#define ABITS_CELL_H 20
+#define ABITS_COLS   34
+static GWorldPtr   sAbitsGW = NULL;
+static Boolean     sAbitsLoaded = false;
+static RGBColor    sAbitsBgColor;  /* corner pixel for mode 36 transparency */
 
 /* Army set selection: stores available army set names from Armies folder.
  * The user picks one during game setup; LoadArmySprites uses it. */
@@ -304,6 +697,7 @@ static short sSelectedArmySet = 0;  /* index into sArmySetNames */
 /* City sprite sheet: PICT 25000 from Cities folder (640x240, 20x8 grid). */
 #define CITY_PICT_ID 25000
 static GWorldPtr sCityGW = NULL;
+static RGBColor  sCityBgColor;   /* city sprite bg for mode 36 transparency */
 static Boolean   sCityLoaded = false;
 
 /* Viewport state for scrolled map view */
@@ -570,31 +964,56 @@ static short GetProductionTurns(short unitType)
 /* Main map chrome dimensions */
 #define SCROLLBAR_W    16   /* width of right scrollbar track */
 #define SCROLLBAR_H    18   /* height of bottom bar (compact shield area + padding) */
-#define SHIELD_ICON_W  15   /* width per shield slot (scaled down from native 33x33) */
-#define SHIELD_ICON_H  14   /* height per shield icon (scaled down from native 33x33) */
-#define SHIELD_AREA_W  (MAX_FACTIONS * SHIELD_ICON_W + 4)
+#define SHIELD_ICON_W  13   /* width per shield slot (scaled down from native 33x33) */
+#define SHIELD_ICON_H  13   /* height per shield icon (scaled down from native 33x33) */
+#define SHIELD_GAP      3   /* pixels between each shield icon */
+#define SHIELD_AREA_W  (MAX_FACTIONS * SHIELD_ICON_W + (MAX_FACTIONS - 1) * SHIELD_GAP + 3)
 
 /* Shield icons: cicn 3020-3027 built-in, fallback to 30600-30607 Elemental Shields */
 static CIconHandle sShieldIcons[MAX_FACTIONS];
 static Boolean     sShieldsLoaded = false;
 
+/* Native Mac scrollbar controls for main game window */
+static ControlHandle sVScrollBar = NULL;
+static ControlHandle sHScrollBar = NULL;
+
 /* Display depth save/restore for 256-color switching */
 static short       sOriginalDepth = 0;  /* 0 = not changed */
 
-/* Info panel button icons: cicn 2000-2025 (27x27 pixels each).
- * Layout: 4 columns x 7 rows grid. Each button maps to a game command
- * via the Shor 2000 resource (shortcut assignments). */
-#define NUM_BUTTON_ICONS 26
-#define BUTTON_ICON_SIZE 16   /* drawn size (native cicn is 27x27, scaled down) */
-#define BUTTON_COLS      4
-#define BUTTON_PADDING   1    /* pixels between buttons */
-#define BUTTON_MARGIN    3    /* margin around grid */
-static CIconHandle sButtonIcons[NUM_BUTTON_ICONS];
-static Boolean     sButtonIconsLoaded = false;
+/* Color cursors (crsr resources) */
+static CCrsrHandle sDefaultCursor = NULL;    /* crsr 1000: default game cursor */
+static CCrsrHandle sMinimapCursor = NULL;    /* crsr 1001: minimap crosshair */
+static CCrsrHandle sTargetCursor  = NULL;    /* crsr 1002: movement target */
+static CCrsrHandle sHandCursor    = NULL;    /* crsr 1003: map scrolling */
+
+/* Control panel layout (View 1008): 224x114 pixels.
+ * Fixed-function buttons: cicn 1000-1005 (14x14), cicn 1011-1019 (8x8 arrows),
+ * cicn 1020 (14x14 diplomacy).  4 configurable shortcut slots from cicn 2000-2025.
+ * Original had T3DIconButton, T3DScrollIconButton, T3DDiamondIconButton classes. */
+#define NUM_SHORTCUT_ICONS 26   /* total possible shortcuts (only 4 displayed) */
+#define NUM_CMD_ICONS      6    /* cicn 1000-1005: command buttons */
+#define NUM_SCROLL_ICONS   9    /* cicn 1011-1019: 3x3 directional pad */
+#define NUM_SHORTCUT_SLOTS 4    /* visible shortcut slots at bottom */
+static CIconHandle sShortcutIcons[NUM_SHORTCUT_ICONS]; /* cicn 2000-2025 */
+static CIconHandle sCmdIcons[NUM_CMD_ICONS];           /* cicn 1000-1005 */
+static CIconHandle sScrollIcons[NUM_SCROLL_ICONS];     /* cicn 1011-1019 */
+static CIconHandle sDiplomIcon = NULL;                 /* cicn 1020 */
+static CIconHandle sSwordsIcon = NULL;                 /* cicn 1007 crossed swords */
+static Boolean     sCtrlIconsLoaded = false;
+
+/* Dialog cicn icons */
+static CIconHandle sCityTabIcons[4] = {NULL, NULL, NULL, NULL};    /* cicn 3300-3303 */
+static CIconHandle sStackTypeIcons[8] = {NULL};                     /* cicn 3500-3507 */
+static CIconHandle sDiploStateIcons[3] = {NULL, NULL, NULL};       /* cicn 4300-4302 */
+static CIconHandle sRuinIcons[2] = {NULL, NULL};                   /* cicn 3700-3701 */
+static Boolean     sDialogIconsLoaded = false;
+/* Which 4 of the 26 shortcuts are shown in the bottom slots */
+static short sShortcutSlot[NUM_SHORTCUT_SLOTS] = {23, 0, 20, 24};
+    /* Default: Move All, Search, End Turn, Save+End */
 
 /* Shor 2000 button-to-command mapping (decoded from resource).
  * Index i -> cicn (2000+i) maps to command sButtonCommands[i]. */
-static unsigned short sButtonCommands[NUM_BUTTON_ICONS] = {
+static unsigned short sButtonCommands[NUM_SHORTCUT_ICONS] = {
     0x057B, /* 0:  Move All Armies */
     0x0584, /* 1:  Disband Group */
     0x0585, /* 2:  Change Signpost */
@@ -714,11 +1133,12 @@ static void GameInit(void)
     }
 
     /* --- Initialize diplomacy table (0x1582, 8x8 matrix of shorts) --- */
-    /* 0 = at war, 1 = peace. Default: each player at peace with self only.
-     * Table is 128 bytes: 8 rows x 8 cols x 2 bytes per entry. */
+    /* Original encoding: 0x2800 = at peace, 0x0000 = at war.
+     * Table is 128 bytes: 8 rows x 8 cols x 2 bytes per entry.
+     * All entries default to 0x2800 (at peace). */
     for (i = 0; i < 8; i++) {
         for (j = 0; j < 8; j++) {
-            *(short *)(gs + 0x1582 + (i * 8 + j) * 2) = (i == j) ? 1 : 0;
+            *(short *)(gs + 0x1582 + (i * 8 + j) * 2) = 0x2800;
         }
     }
 
@@ -783,6 +1203,34 @@ static void GameInit(void)
         }
     }
 
+    /* --- Write per-player capital coordinates to stats block --- */
+    /* Scan city records to find each player's capital (first city they own).
+     * Per-player stats at gs + 0x186 + p*0x14:
+     *   +0x04: capital_x, +0x06: capital_y
+     *   +0x0E: start_x,   +0x10: start_y   */
+    {
+        short cityCount = *(short *)(gs + 0x810);
+        if (cityCount > 40) cityCount = 40;
+        for (i = 0; i < 8; i++) {
+            unsigned char *pstat = gs + 0x186 + i * 0x14;
+            Boolean foundCap = false;
+            for (j = 0; j < cityCount && !foundCap; j++) {
+                unsigned char *city = gs + 0x812 + j * 0x20;
+                short cOwner = *(short *)(city + 0x04);
+                short sType  = (short)(unsigned char)city[0x18];
+                if (cOwner == i && sType == 0) {  /* city owned by player i */
+                    short capX = *(short *)(city + 0x00);
+                    short capY = *(short *)(city + 0x02);
+                    *(short *)(pstat + 0x04) = capX;  /* capital_x */
+                    *(short *)(pstat + 0x06) = capY;  /* capital_y */
+                    *(short *)(pstat + 0x0E) = capX;  /* start_x */
+                    *(short *)(pstat + 0x10) = capY;  /* start_y */
+                    foundCap = true;
+                }
+            }
+        }
+    }
+
     /* --- Initialize army records --- */
     {
         short armyCount = *(short *)(gs + 0x1602);
@@ -807,31 +1255,36 @@ static void GameInit(void)
 
             /* Set army as not having moved */
             army[0x30] = 0;
+
+            /* Set initial movement points from base movement */
+            army[0x2e] = army[0x1a];  /* current_mp = base_mp of first unit */
         }
     }
 
-    /* --- Center viewport on current player's first army or capital --- */
+    /* --- Center viewport on current player's capital city --- */
     {
         short currentPlayer = *(short *)(gs + 0x110);
-        short armyCount = *(short *)(gs + 0x1602);
-        Boolean found = false;
+        unsigned char *pstat = gs + 0x186 + currentPlayer * 0x14;
+        short capX = *(short *)(pstat + 0x04);
+        short capY = *(short *)(pstat + 0x06);
 
-        /* Find first army belonging to current player */
-        for (i = 0; i < armyCount && !found; i++) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
-            short owner = (short)(unsigned char)army[0x15];  /* owner byte at +0x15 */
-            if (owner == currentPlayer) {
-                short ax = *(short *)(army + 0x00);
-                short ay = *(short *)(army + 0x02);
-                sViewportX = ax - 7;  /* center roughly */
-                sViewportY = ay - 5;
-                found = true;
+        if (capX > 0 || capY > 0) {
+            /* Center on capital */
+            sViewportX = capX - 7;
+            sViewportY = capY - 5;
+        } else {
+            /* Fallback: find first army */
+            short armyCount = *(short *)(gs + 0x1602);
+            Boolean found = false;
+            for (i = 0; i < armyCount && !found; i++) {
+                unsigned char *army = gs + 0x1604 + i * 0x42;
+                if ((short)(unsigned char)army[0x15] == currentPlayer) {
+                    sViewportX = *(short *)(army + 0x00) - 7;
+                    sViewportY = *(short *)(army + 0x02) - 5;
+                    found = true;
+                }
             }
-        }
-
-        if (!found) {
-            sViewportX = 0;
-            sViewportY = 0;
+            if (!found) { sViewportX = 0; sViewportY = 0; }
         }
 
         /* Clamp viewport */
@@ -939,7 +1392,7 @@ static void TryLoadScenario(void)
             HLock(rdHdl);
 
             if (*gRoadData == 0) {
-                *gRoadData = (int)NewPtr(0x4440);
+                *gRoadData = (pint)NewPtrClear(0x4440);
             }
             if (*gRoadData != 0) {
                 long copySize = rdSize;
@@ -1112,16 +1565,11 @@ static void DrawMarbleBackground(Rect *r)
 {
     if (sMarbleGW != NULL) {
         PixMapHandle mPix = GetGWorldPixMap(sMarbleGW);
-        CGrafPtr  destPort;
-        GDHandle  destDev;
-        PixMapHandle destPix;
+        GrafPtr curPort;
         Rect mBounds;
         short mx, my, mw, mh;
 
-        GetGWorld(&destPort, &destDev);
-        destPix = GetGWorldPixMap((GWorldPtr)destPort);
-        LockPixels(destPix);
-
+        GetPort(&curPort);
         LockPixels(mPix);
         mBounds = (**mPix).bounds;
         mw = mBounds.right - mBounds.left;
@@ -1137,12 +1585,11 @@ static void DrawMarbleBackground(Rect *r)
                 SetRect(&srcR, 0, 0, dw, dh);
                 SetRect(&dstR, mx, my, mx + dw, my + dh);
                 CopyBits((BitMap *)*mPix,
-                         (BitMap *)*destPix,
+                         &curPort->portBits,
                          &srcR, &dstR, srcCopy, NULL);
             }
         }
         UnlockPixels(mPix);
-        UnlockPixels(destPix);
     } else {
         RGBColor gray = {0x8888, 0x8888, 0x8888};
         RGBForeColor(&gray);
@@ -1181,6 +1628,25 @@ static void LoadTerrainSprites(void)
     /* Load terrain tile sheets (640x240 each, 16x6 grid of 40x40 tiles) */
     sTerrainGW  = LoadPICTIntoGWorld(30022);  /* tiles 0-95 */
     sTerrainGW2 = LoadPICTIntoGWorld(30023);  /* tiles 96-191 */
+
+    /* Load road/overlay sprite sheet (640x80, 16x2 grid of 40x40 tiles).
+     * Tiles 0-16: road segments (RD values 1-17 map to tiles 0-16).
+     * Tiles 17-31: special location sprites (ruins, temples, towers). */
+    sRoadGW = LoadPICTIntoGWorld(30021);
+
+    /* Sample road sprite sheet background color for transparent CopyBits.
+     * Mode 36 compares against the DESTINATION port's RGBBackColor,
+     * so we store the color here and set it on the window before blitting. */
+    if (sRoadGW != NULL) {
+        CGrafPtr sp;
+        GDHandle sd;
+        GetGWorld(&sp, &sd);
+        SetGWorld(sRoadGW, NULL);
+        LockPixels(GetGWorldPixMap(sRoadGW));
+        GetCPixel(0, 0, &sRoadBgColor);
+        UnlockPixels(GetGWorldPixMap(sRoadGW));
+        SetGWorld(sp, sd);
+    }
 
     /* Load MAPCOLOR data (DAT 30020) for minimap per-tile colors */
     {
@@ -1372,6 +1838,9 @@ static void LoadArmySprites(void)
                 LockPixels(GetGWorldPixMap(sArmyGW[i]));
                 EraseRect(&bounds);
                 DrawPicture(pic, &bounds);
+                /* Sample pixel (0,0) — the sprite sheet background color.
+                 * Store it so we can set destination bg before mode 36 CopyBits. */
+                GetCPixel(0, 0, &sArmyBgColor[i]);
                 UnlockPixels(GetGWorldPixMap(sArmyGW[i]));
                 SetGWorld(savedPort, savedDevice);
             }
@@ -1421,6 +1890,20 @@ static void LoadCitySprites(void)
 
     sCityGW = LoadPICTIntoGWorld(CITY_PICT_ID);
 
+    /* Sample city sprite background color for transparent-mode CopyBits.
+     * Mode 36 compares against the DESTINATION port's RGBBackColor,
+     * so we store the color and set it on the window before blitting. */
+    if (sCityGW != NULL) {
+        CGrafPtr sp;
+        GDHandle sd;
+        GetGWorld(&sp, &sd);
+        SetGWorld(sCityGW, NULL);
+        LockPixels(GetGWorldPixMap(sCityGW));
+        GetCPixel(0, 0, &sCityBgColor);
+        UnlockPixels(GetGWorldPixMap(sCityGW));
+        SetGWorld(sp, sd);
+    }
+
     CloseResFile(cityResFile);
     UseResFile(oldResFile);
     sCityLoaded = (sCityGW != NULL);
@@ -1429,49 +1912,163 @@ static void LoadCitySprites(void)
 /* ===================================================================
  * LoadShieldIcons — Load Elemental Shield cicn resources
  *
- * Loads cicn 30600-30607 (one per player, 39x36 pixels each).
- * These are merged into the app's resource fork at build time
- * by merge_shields.py. Drawn at the bottom of the main map.
+ * Opens the Elemental Shields resource file at runtime to load
+ * cicn 30600-30607 (one per player, 39x36 pixels each).
+ * Falls back to built-in cicn 3020-3027 (33x33) from app resource fork.
  * =================================================================== */
 static void LoadShieldIcons(void)
 {
     short i;
+    short oldResFile, shieldResFile = -1;
 
     if (sShieldsLoaded)
         return;
 
-    /* Try built-in shields first (cicn 3020-3027, 33x33, in app rsrc fork),
-       then fall back to Elemental Shields (cicn 30600-30607, 39x36, merged).
-       Don't NULL out shields already loaded from terrain resource file. */
-    for (i = 0; i < MAX_FACTIONS; i++) {
-        if (sShieldIcons[i] != NULL)
-            continue;  /* already loaded from terrain resource */
-        sShieldIcons[i] = GetCIcon(3020 + i);
-        if (sShieldIcons[i] == NULL)
+    /* Try to open the Elemental Shields resource file */
+    oldResFile = CurResFile();
+    {
+        shieldResFile = OpenResFile("\p:Shields:Elemental Shields");
+    }
+
+    if (shieldResFile != -1) {
+        UseResFile(shieldResFile);
+        for (i = 0; i < MAX_FACTIONS; i++) {
+            if (sShieldIcons[i] != NULL)
+                continue;
             sShieldIcons[i] = GetCIcon(30600 + i);
+        }
+        CloseResFile(shieldResFile);
+    }
+
+    /* Fall back to built-in shields (cicn 3020-3027) for any that failed */
+    UseResFile(oldResFile);
+    for (i = 0; i < MAX_FACTIONS; i++) {
+        if (sShieldIcons[i] == NULL)
+            sShieldIcons[i] = GetCIcon(3020 + i);
     }
 
     sShieldsLoaded = true;
+}
+
+/* ===================================================================
+ * RemapShieldColors — Remap cicn CLUTs to nearest game palette entries
+ *
+ * At screen depths > 8-bit, PlotCIcon uses raw cicn CLUT colors directly.
+ * At 8-bit, it maps them to the nearest device CLUT entry (from pltt 1000).
+ * To get the authentic 256-color look at any depth, we modify each shield
+ * icon's embedded CLUT entries to be the nearest pltt 1000 palette color.
+ * =================================================================== */
+static void RemapShieldColors(void)
+{
+    PaletteHandle gamePal;
+    short         numPalColors, i, j, k;
+    RGBColor      palColors[256];
+
+    gamePal = GetNewPalette(1000);
+    if (gamePal == NULL) return;
+
+    numPalColors = (**gamePal).pmEntries;
+    if (numPalColors <= 0) return;
+    if (numPalColors > 256) numPalColors = 256;
+
+    /* Cache palette colors */
+    for (i = 0; i < numPalColors; i++)
+        GetEntryColor(gamePal, i, &palColors[i]);
+
+    /* Remap each shield icon's CLUT to nearest palette colors */
+    for (i = 0; i < MAX_FACTIONS; i++) {
+        CTabHandle ctab;
+        short      numEntries;
+
+        if (sShieldIcons[i] == NULL) continue;
+
+        ctab = (**sShieldIcons[i]).iconPMap.pmTable;
+        if (ctab == NULL) continue;
+
+        numEntries = (**ctab).ctSize + 1;
+
+        for (j = 0; j < numEntries; j++) {
+            RGBColor orig = (**ctab).ctTable[j].rgb;
+            long     bestDist = 0x7FFFFFFF;
+            short    bestIdx = 0;
+
+            /* Find nearest palette color (Euclidean distance in RGB) */
+            for (k = 0; k < numPalColors; k++) {
+                long dr = ((long)(orig.red   >> 8) - (long)(palColors[k].red   >> 8));
+                long dg = ((long)(orig.green >> 8) - (long)(palColors[k].green >> 8));
+                long db = ((long)(orig.blue  >> 8) - (long)(palColors[k].blue  >> 8));
+                long dist = dr*dr + dg*dg + db*db;
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx = k;
+                }
+            }
+
+            /* Replace CLUT entry with nearest palette color */
+            (**ctab).ctTable[j].rgb = palColors[bestIdx];
+        }
+
+        /* Bump ctSeed so QuickDraw knows the table changed */
+        (**ctab).ctSeed = GetCTSeed();
+    }
 }
 
 
 /* ===================================================================
  * LoadButtonIcons — Load info panel button cicn resources
  *
- * Loads cicn 2000-2025 (26 shortcut button icons, 27x27 pixels each).
- * These are in the app's main resource fork.
+ * Loads control panel icons: cicn 1000-1005 (commands), cicn 1011-1019
+ * (scroll arrows), cicn 1020 (diplomacy), cicn 2000-2025 (shortcuts).
  * =================================================================== */
 static void LoadButtonIcons(void)
 {
     short i;
 
-    if (sButtonIconsLoaded)
+    if (sCtrlIconsLoaded)
         return;
 
-    for (i = 0; i < NUM_BUTTON_ICONS; i++)
-        sButtonIcons[i] = GetCIcon(2000 + i);
+    /* Command buttons: cicn 1000-1005 */
+    for (i = 0; i < NUM_CMD_ICONS; i++)
+        sCmdIcons[i] = GetCIcon(1000 + i);
 
-    sButtonIconsLoaded = true;
+    /* Scroll arrows: cicn 1011-1019 (3x3 directional pad) */
+    for (i = 0; i < NUM_SCROLL_ICONS; i++)
+        sScrollIcons[i] = GetCIcon(1011 + i);
+
+    /* Diplomacy icon */
+    sDiplomIcon = GetCIcon(1020);
+    sSwordsIcon = GetCIcon(1007);
+
+    /* Shortcut icons (26 total, only 4 displayed at a time) */
+    for (i = 0; i < NUM_SHORTCUT_ICONS; i++)
+        sShortcutIcons[i] = GetCIcon(2000 + i);
+
+    sCtrlIconsLoaded = true;
+}
+
+static void LoadDialogIcons(void)
+{
+    short i;
+
+    if (sDialogIconsLoaded) return;
+
+    /* City dialog tab icons: cicn 3300-3303 */
+    for (i = 0; i < 4; i++)
+        sCityTabIcons[i] = GetCIcon(3300 + i);
+
+    /* Stack info unit type icons: cicn 3500-3507 */
+    for (i = 0; i < 8; i++)
+        sStackTypeIcons[i] = GetCIcon(3500 + i);
+
+    /* Diplomacy state icons: cicn 4300-4302 (war/peace/allied) */
+    for (i = 0; i < 3; i++)
+        sDiploStateIcons[i] = GetCIcon(4300 + i);
+
+    /* Ruin status icons: cicn 3700 (unsearched), 3701 (searched) */
+    for (i = 0; i < 2; i++)
+        sRuinIcons[i] = GetCIcon(3700 + i);
+
+    sDialogIconsLoaded = true;
 }
 
 
@@ -2032,7 +2629,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     rx = ax; ry = ay;
                     while (rx != bx || ry != by) {
                         if (rx >= 0 && rx < 112 && ry >= 0 && ry < 156) {
-                            /* Only place road on land */
+                            /* Only place road on land — mark as boolean 1 first */
                             if (terrain[ry * 112 + rx] != TT_WATER)
                                 roadBuf[ry * 112 + rx] = 1;
                         }
@@ -2045,6 +2642,41 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     /* Mark destination */
                     if (bx >= 0 && bx < 112 && by >= 0 && by < 156)
                         roadBuf[by * 112 + bx] = 1;
+                }
+            }
+        }
+
+        /* --- Autotile pass: convert boolean road flags to proper tile indices ---
+         * For each road tile, check 4 cardinal neighbors to build a 4-bit mask:
+         *   bit0=N, bit1=E, bit2=S, bit3=W
+         * Then look up the correct RD value (1-17) from the autotile table.
+         * Confirmed from original SCN resource dumps (Erythea et al.):
+         *   1=E+W horiz, 2=N+S vert, 3=crossroad, 4-7=T-junctions,
+         *   8-11=corners, 12-15=dead-ends, 16-17=variants */
+        if (roadBuf != NULL) {
+            /* Autotile lookup: index by 4-bit neighbor mask (N=1,E=2,S=4,W=8) */
+            static const unsigned char kAutoTile[16] = {
+                /*  0=none  */ 1,   /*  1=N     */ 15,
+                /*  2=E     */ 14,  /*  3=N+E   */ 10,
+                /*  4=S     */ 13,  /*  5=N+S   */ 2,
+                /*  6=E+S   */ 11,  /*  7=N+E+S */ 7,
+                /*  8=W     */ 12,  /*  9=N+W   */ 9,
+                /* 10=E+W   */ 1,   /* 11=N+E+W */ 6,
+                /* 12=S+W   */ 8,   /* 13=N+S+W */ 5,
+                /* 14=E+S+W */ 4,   /* 15=all   */ 3
+            };
+            short rx, ry;
+            for (ry = 0; ry < 156; ry++) {
+                for (rx = 0; rx < 112; rx++) {
+                    short idx = ry * 112 + rx;
+                    unsigned char mask;
+                    if (roadBuf[idx] == 0) continue;
+                    mask = 0;
+                    if (ry > 0   && roadBuf[(ry-1) * 112 + rx] != 0) mask |= 1; /* N */
+                    if (rx < 111 && roadBuf[ry * 112 + rx + 1]  != 0) mask |= 2; /* E */
+                    if (ry < 155 && roadBuf[(ry+1) * 112 + rx] != 0) mask |= 4; /* S */
+                    if (rx > 0   && roadBuf[ry * 112 + rx - 1]  != 0) mask |= 8; /* W */
+                    roadBuf[idx] = kAutoTile[mask];
                 }
             }
         }
@@ -2095,30 +2727,30 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             army[0x04 + j] = 0;
 
             /* Sprite and owner */
-            army[0x14] = 0;   /* Light Infantry sprite */
+            army[0x14] = 2;   /* sprite type 2 */
             army[0x15] = i;   /* owner = faction index */
 
-            /* 2 Light Infantry units, slots 2-3 empty */
-            army[0x16] = 0;     /* unit_types[0] = Light Infantry */
-            army[0x17] = 0;     /* unit_types[1] = Light Infantry */
-            army[0x18] = 0xFF;  /* unit_types[2] = empty */
-            army[0x19] = 0xFF;  /* unit_types[3] = empty */
+            /* 4 mixed units matching original Warlords II starting army */
+            army[0x16] = 11;    /* unit_types[0] = type 11 */
+            army[0x17] = 2;     /* unit_types[1] = type 2 */
+            army[0x18] = 1;     /* unit_types[2] = Heavy Infantry */
+            army[0x19] = 8;     /* unit_types[3] = type 8 */
 
             /* Movement points */
             army[0x1a] = 10;  army[0x1b] = 10;
-            army[0x1c] = 0;   army[0x1d] = 0;
+            army[0x1c] = 8;   army[0x1d] = 6;
 
             /* Hit points */
-            army[0x1e] = 3;   army[0x1f] = 3;
-            army[0x20] = 0;   army[0x21] = 0;
+            army[0x1e] = 5;   army[0x1f] = 5;
+            army[0x20] = 4;   army[0x21] = 6;
 
             /* Bonus and experience = 0 (already zeroed) */
 
             /* Strength display */
-            *(short *)(army + 0x2a) = 6;  /* 2 units × 3 HP */
+            *(short *)(army + 0x2a) = 35;  /* sum of HPs * factor */
 
             /* Active unit type */
-            army[0x2c] = 0;   /* Light Infantry */
+            army[0x2c] = 11;  /* type 11 */
 
             /* Origin player */
             army[0x2f] = i;
@@ -2136,6 +2768,67 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
             armyIdx++;
         }
+        /* Create neutral garrison armies at every non-capital city */
+        /* Vary composition based on city index to match original Warlords II */
+        for (i = 8; i < cityCount && armyIdx < 100; i++) {
+            unsigned char *city = gs + 0x812 + i * 0x20;
+            short sType = (short)(unsigned char)city[0x18];
+            short cx, cy;
+            unsigned char *army;
+            short j2;
+
+            /* Skip ruins and non-city sites */
+            if (sType == 2 || sType == 5 || sType == 6) continue;
+
+            cx = *(short *)(city + 0x00);
+            cy = *(short *)(city + 0x02);
+
+            army = gs + 0x1604 + armyIdx * 0x42;
+            for (j2 = 0; j2 < 0x42; j2++) army[j2] = 0;
+
+            *(short *)(army + 0x00) = cx;
+            *(short *)(army + 0x02) = cy;
+            army[0x15] = 0x0F;   /* neutral owner */
+            army[0x2d] = 3;      /* fortified */
+            army[0x2f] = 0x0F;   /* origin = neutral */
+
+            if ((i % 2) == 0) {
+                /* Setup A (even cities): stronger garrison, strength 22 */
+                army[0x14] = 2;      /* sprite type 2 */
+                army[0x16] = 11;     /* unit_types[0] = type 11 */
+                army[0x17] = 2;      /* unit_types[1] = type 2 */
+                army[0x18] = 7;      /* unit_types[2] = type 7 */
+                army[0x19] = 0xFF;   /* slot 3 empty */
+                army[0x1a] = 10;     /* movement[0] */
+                army[0x1b] = 10;     /* movement[1] */
+                army[0x1c] = 8;      /* movement[2] */
+                army[0x1d] = 0;      /* movement[3] */
+                army[0x1e] = 5;      /* HP[0] */
+                army[0x1f] = 5;      /* HP[1] */
+                army[0x20] = 4;      /* HP[2] */
+                army[0x21] = 0;      /* HP[3] */
+                *(short *)(army + 0x2a) = 22;  /* strength display */
+            } else {
+                /* Setup B (odd cities): single Heavy Infantry, strength 16 */
+                army[0x14] = 2;      /* Heavy Infantry sprite */
+                army[0x16] = 1;      /* unit_types[0] = Heavy Infantry */
+                army[0x17] = 0xFF;   /* slot 1 empty */
+                army[0x18] = 0xFF;   /* slot 2 empty */
+                army[0x19] = 0xFF;   /* slot 3 empty */
+                army[0x1a] = 8;      /* movement[0] */
+                army[0x1b] = 0;      /* movement[1] */
+                army[0x1c] = 0;      /* movement[2] */
+                army[0x1d] = 0;      /* movement[3] */
+                army[0x1e] = 4;      /* HP[0] */
+                army[0x1f] = 0;      /* HP[1] */
+                army[0x20] = 0;      /* HP[2] */
+                army[0x21] = 0;      /* HP[3] */
+                *(short *)(army + 0x2a) = 16;  /* strength display */
+            }
+
+            armyIdx++;
+        }
+
         *(short *)(gs + 0x1602) = armyIdx;
     }
 
@@ -2210,12 +2903,12 @@ static Boolean ShowScenarioSelection(void)
         return false;
     }
 
-    /* Center a 460x340 window on screen */
+    /* Center a 480x360 window on screen (matches PICT 3000) */
     SetRect(&winRect,
-        (screenRect.right - 460) / 2,
-        (screenRect.bottom - 340) / 2,
-        (screenRect.right - 460) / 2 + 460,
-        (screenRect.bottom - 340) / 2 + 340);
+        (screenRect.right - 480) / 2,
+        (screenRect.bottom - 360) / 2,
+        (screenRect.right - 480) / 2 + 480,
+        (screenRect.bottom - 360) / 2 + 360);
 
     scenWin = NewCWindow(NULL, &winRect, "\p", true,
                           plainDBox, (WindowPtr)-1L, false, 0);
@@ -2227,11 +2920,11 @@ static Boolean ShowScenarioSelection(void)
     /* Create offscreen buffer for flicker-free drawing */
     {
         Rect obounds;
-        SetRect(&obounds, 0, 0, 460, 340);
+        SetRect(&obounds, 0, 0, 480, 360);
         NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
     }
 
-    /* Calculate list area */
+    /* Calculate list area (left side of scenario screen) */
     SetRect(&listRect, 20, 60, 220, 290);
     visibleItems = (listRect.bottom - listRect.top) / lineHeight;
 
@@ -2249,7 +2942,7 @@ static Boolean ShowScenarioSelection(void)
                 Rect r;
                 CGrafPtr savedPort;
                 GDHandle savedDevice;
-                SetRect(&r, 0, 0, 460, 340);
+                SetRect(&r, 0, 0, 480, 360);
 
                 /* Draw into offscreen buffer for flicker-free rendering */
                 if (offscreen != NULL) {
@@ -2258,24 +2951,14 @@ static Boolean ShowScenarioSelection(void)
                     LockPixels(GetGWorldPixMap(offscreen));
                 }
 
-                /* Dark background */
+                /* PICT 3000: scenario selection background (crystal ball + dragons) */
                 {
-                    DrawMarbleBackground(&r);
-                }
-
-                /* Title */
-                {
-                    RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
-                    RGBForeColor(&gold);
-                    TextFont(2);
-                    TextSize(18);
-                    TextFace(bold);
-                    MoveTo(20, 30);
-                    DrawString("\pScenario");
-                    TextSize(10);
-                    TextFace(0);
-                    MoveTo(20, 48);
-                    DrawString("\pChoose a Scenario from this list");
+                    PicHandle bgPict = GetPicture(3000);
+                    if (bgPict != NULL) {
+                        DrawPicture(bgPict, &r);
+                    } else {
+                        DrawMarbleBackground(&r);
+                    }
                 }
 
                 /* List background */
@@ -2313,10 +2996,11 @@ static Boolean ShowScenarioSelection(void)
                     DrawString(sScenarioNames[itemIdx]);
                 }
 
-                /* Scenario info from SCEN resource */
+                /* Scenario info from SCEN resource — values drawn in crystal ball area.
+                 * PICT 3000 already has the labels (Name, Description, Cities, Ruins, Players)
+                 * so we only draw the actual data values here. */
                 if (selectedIdx >= 0 && selectedIdx < sScenarioCount) {
-                    RGBColor labelColor = {0xFFFF, 0xCCCC, 0x3333};
-                    RGBColor valueColor = {0xCCCC, 0xDDDD, 0xFFFF};
+                    RGBColor valueColor = {0xFFFF, 0xFFFF, 0xFFFF};
                     short refNum = FSpOpenResFile(&sScenarioSpecs[selectedIdx], fsRdPerm);
                     if (refNum != -1) {
                         Handle scenHdl;
@@ -2330,16 +3014,6 @@ static Boolean ShowScenarioSelection(void)
                             short cities, ruins, players;
                             Str255 numStr;
 
-                            /* Parse SCEN (84 bytes):
-                             *  0-19: long name (20B, null-padded)
-                             * 20-27: short name (8B)
-                             * 28-57: description (~30B, null-terminated)
-                             * 58-59: terrain types? (byte + pad)
-                             * 60-67: short name copy (8B)
-                             * 68-75: short name copy (8B)
-                             *    76: cities (byte), 77: pad
-                             *    78: ruins (byte),  79: pad
-                             *    80: players (byte), 81: pad */
                             BlockMoveData(sc, nameBuf, 20);
                             nameBuf[20] = 0;
                             BlockMoveData(sc + 28, descBuf, 32);
@@ -2348,32 +3022,19 @@ static Boolean ShowScenarioSelection(void)
                             ruins   = (short)sc[78];
                             players = (short)sc[80];
 
-                            /* Name */
-                            TextFont(2);
-                            TextSize(14);
-                            TextFace(bold);
-                            RGBForeColor(&labelColor);
-                            MoveTo(240, 80);
-                            DrawString("\pName");
+                            /* Draw values in the crystal ball area (right side) */
                             TextFont(3);
                             TextSize(10);
-                            TextFace(italic);
+                            TextFace(bold);
                             RGBForeColor(&valueColor);
-                            MoveTo(240, 96);
+
+                            /* Name value */
+                            MoveTo(290, 70);
                             DrawString(sScenarioNames[selectedIdx]);
 
-                            /* Description */
-                            TextFont(2);
-                            TextSize(14);
-                            TextFace(bold);
-                            RGBForeColor(&labelColor);
-                            MoveTo(240, 126);
-                            DrawString("\pDescription");
-                            TextFont(3);
-                            TextSize(10);
+                            /* Description value */
                             TextFace(0);
-                            RGBForeColor(&valueColor);
-                            MoveTo(240, 142);
+                            MoveTo(290, 143);
                             {
                                 Str255 pDesc;
                                 short dlen = 0;
@@ -2383,40 +3044,22 @@ static Boolean ShowScenarioSelection(void)
                                 DrawString(pDesc);
                             }
 
-                            /* Cities & Ruins */
-                            TextFont(2);
-                            TextSize(14);
-                            TextFace(bold);
-                            RGBForeColor(&labelColor);
-                            MoveTo(240, 180);
-                            DrawString("\pCities");
-                            MoveTo(340, 180);
-                            DrawString("\pRuins");
-
-                            TextFont(3);
+                            /* Cities value */
                             TextSize(12);
-                            TextFace(0);
-                            RGBForeColor(&valueColor);
+                            TextFace(bold);
                             NumToString((long)cities, numStr);
-                            MoveTo(260, 198);
-                            DrawString(numStr);
-                            NumToString((long)ruins, numStr);
-                            MoveTo(360, 198);
+                            MoveTo(300, 210);
                             DrawString(numStr);
 
-                            /* Players */
-                            TextFont(2);
+                            /* Ruins value */
+                            NumToString((long)ruins, numStr);
+                            MoveTo(380, 210);
+                            DrawString(numStr);
+
+                            /* Players value */
                             TextSize(14);
-                            TextFace(bold);
-                            RGBForeColor(&labelColor);
-                            MoveTo(290, 230);
-                            DrawString("\pPlayers");
-                            TextFont(3);
-                            TextSize(18);
-                            TextFace(0);
-                            RGBForeColor(&valueColor);
                             NumToString((long)players, numStr);
-                            MoveTo(310, 252);
+                            MoveTo(335, 250);
                             DrawString(numStr);
 
                             HUnlock(scenHdl);
@@ -2432,8 +3075,8 @@ static Boolean ShowScenarioSelection(void)
                     RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
                     Rect useBtnRect, randBtnRect;
 
-                    SetRect(&randBtnRect, 30, 298, 210, 318);
-                    SetRect(&useBtnRect, 30, 320, 210, 338);
+                    SetRect(&randBtnRect, 30, 308, 210, 328);
+                    SetRect(&useBtnRect, 30, 332, 210, 350);
 
                     /* "Use Random Map..." */
                     RGBForeColor(&white);
@@ -2444,7 +3087,7 @@ static Boolean ShowScenarioSelection(void)
                     TextSize(10);
                     TextFace(0);
                     MoveTo(randBtnRect.left + 30, randBtnRect.bottom - 5);
-                    DrawString("\pUse Random Map...");
+                    DrawString(GetCachedString(STR_GAME_SETUP, 19, "\pUse Random Map..."));
 
                     /* "Use Selected Scenario" */
                     RGBForeColor(&white);
@@ -2456,7 +3099,7 @@ static Boolean ShowScenarioSelection(void)
                     PenSize(1, 1);
                     TextFace(bold);
                     MoveTo(useBtnRect.left + 16, useBtnRect.bottom - 5);
-                    DrawString("\pUse Selected Scenario");
+                    DrawString(GetCachedString(STR_GAME_SETUP, 20, "\pUse Selected Scenario"));
                 }
 
                 /* Blit offscreen buffer to window */
@@ -2477,6 +3120,21 @@ static Boolean ShowScenarioSelection(void)
             WaitNextEvent(everyEvent, &evt, 30, NULL);
 
             if (evt.what == mouseDown) {
+                WindowPtr clickWin;
+                short partCode = FindWindow(evt.where, &clickWin);
+
+                if (partCode == inMenuBar) {
+                    long menuResult = MenuSelect(evt.where);
+                    short menuID = (menuResult >> 16) & 0xFFFF;
+                    short menuItem = menuResult & 0xFFFF;
+                    if (menuID == 2 && menuItem == 9) {
+                        /* File > Quit */
+                        DisposeWindow(scenWin);
+                        if (offscreen != NULL) DisposeGWorld(offscreen);
+                        ExitToShell();
+                    }
+                    HiliteMenu(0);
+                } else {
                 Point localPt = evt.where;
                 SetPort(scenWin);
                 GlobalToLocal(&localPt);
@@ -2499,7 +3157,7 @@ static Boolean ShowScenarioSelection(void)
                 /* Check "Use Selected Scenario" button */
                 {
                     Rect useBtnRect;
-                    SetRect(&useBtnRect, 30, 320, 210, 338);
+                    SetRect(&useBtnRect, 30, 332, 210, 350);
                     if (PtInRect(localPt, &useBtnRect)) {
                         done = true;
                         loaded = true;
@@ -2509,16 +3167,25 @@ static Boolean ShowScenarioSelection(void)
                 /* Check "Use Random Map..." button */
                 {
                     Rect randBtnRect;
-                    SetRect(&randBtnRect, 30, 298, 210, 318);
+                    SetRect(&randBtnRect, 30, 308, 210, 328);
                     if (PtInRect(localPt, &randBtnRect)) {
                         done = true;
                         loaded = true;
                         useRandomMap = true;
                     }
                 }
+                } /* end else (not inMenuBar) */
             }
             else if (evt.what == keyDown) {
                 char key = evt.message & charCodeMask;
+
+                /* Cmd+Q = Quit */
+                if ((evt.modifiers & cmdKey) && (key == 'q' || key == 'Q')) {
+                    DisposeWindow(scenWin);
+                    if (offscreen != NULL) DisposeGWorld(offscreen);
+                    ExitToShell();
+                }
+
                 /* Ignore keypresses in the first second to avoid
                  * stale Return from the 256-color Alert */
                 if ((TickCount() - startTick) < 60)
@@ -2551,6 +3218,7 @@ static Boolean ShowScenarioSelection(void)
 
     /* Play splash sound at load start */
     PlaySound(SND_SPLASH);
+    PlayVoice(SND_VMOMENT);
 
     /* Show loading screen with progress bar (matches original's PPob 1010 layout).
      * Original uses 6 text labels + progress bar advancing 0%→20%→60%→100%. */
@@ -2564,7 +3232,7 @@ static Boolean ShowScenarioSelection(void)
         short pct;
 
         SetPort(scenWin);
-        SetRect(&r, 0, 0, 460, 340);
+        SetRect(&r, 0, 0, 480, 360);
 
         /* Draw loading screen background */
         DrawMarbleBackground(&r);
@@ -2575,9 +3243,9 @@ static Boolean ShowScenarioSelection(void)
         TextFace(bold);
         RGBForeColor(&gold);
         {
-            short tw = StringWidth("\pLoading Scenario");
-            MoveTo((460 - tw) / 2, 100);
-            DrawString("\pLoading Scenario");
+            short tw = StringWidth(GetCachedString(STR_MISC, 24, "\pLoading Scenario"));
+            MoveTo((480 - tw) / 2, 100);
+            DrawString(GetCachedString(STR_MISC, 24, "\pLoading Scenario"));
         }
 
         /* Scenario name */
@@ -2587,7 +3255,7 @@ static Boolean ShowScenarioSelection(void)
         RGBForeColor(&ltBlue);
         {
             short nameW = StringWidth(sScenarioNames[selectedIdx]);
-            MoveTo((460 - nameW) / 2, 130);
+            MoveTo((480 - nameW) / 2, 130);
             DrawString(sScenarioNames[selectedIdx]);
         }
 
@@ -2597,7 +3265,7 @@ static Boolean ShowScenarioSelection(void)
         TextFace(0);
         RGBForeColor(&ltBlue);
         MoveTo(barLeft, barTop - 6);
-        DrawString("\pReading scenario data...");
+        DrawString(GetCachedString(STR_MISC, 25, "\pReading scenario data..."));
 
         /* Progress bar frame */
         SetRect(&barFrame, barLeft, barTop, barRight, barTop + barH);
@@ -2620,7 +3288,7 @@ static Boolean ShowScenarioSelection(void)
             RGBForeColor(&white);
             TextFont(3); TextSize(10); TextFace(bold);
             pctW = StringWidth(pctStr);
-            MoveTo((460 - pctW) / 2, barTop + barH + 16);
+            MoveTo((480 - pctW) / 2, barTop + barH + 16);
             DrawString(pctStr);
         }
     }
@@ -2696,7 +3364,7 @@ static Boolean ShowScenarioSelection(void)
                     long rdSize = GetHandleSize(rdHdl);
                     HLock(rdHdl);
                     if (*gRoadData == 0)
-                        *gRoadData = (pint)NewPtr(0x4440);
+                        *gRoadData = (pint)NewPtrClear(0x4440);
                     if (*gRoadData != 0) {
                         long copySize = rdSize;
                         if (copySize > 0x4440) copySize = 0x4440;
@@ -2779,9 +3447,9 @@ static Boolean ShowScenarioSelection(void)
         TextFace(bold);
         RGBForeColor(&gold);
         {
-            short tw = StringWidth("\pGenerating Random Map");
+            short tw = StringWidth(GetCachedString(STR_MISC, 26, "\pGenerating Random Map"));
             MoveTo((460 - tw) / 2, 100);
-            DrawString("\pGenerating Random Map");
+            DrawString(GetCachedString(STR_MISC, 26, "\pGenerating Random Map"));
         }
 
         /* Status text */
@@ -2790,7 +3458,7 @@ static Boolean ShowScenarioSelection(void)
         TextFace(0);
         RGBForeColor(&ltBlue);
         MoveTo(barLeft, barTop - 6);
-        DrawString("\pCreating terrain and placing cities...");
+        DrawString(GetCachedString(STR_MISC, 27, "\pCreating terrain and placing cities..."));
 
         /* Progress bar frame */
         SetRect(&barFrame, barLeft, barTop, barRight, barTop + barH);
@@ -3033,7 +3701,7 @@ static void ShowEditOptions(void)
                     TextSize(18);
                     TextFace(bold);
                     MoveTo(20, 28);
-                    DrawString("\pEdit Options");
+                    DrawString(GetCachedString(STR_GAME_SETTINGS, 20, "\pEdit Options"));
                 }
 
                 /* === Left column: Presets === */
@@ -3054,7 +3722,7 @@ static void ShowEditOptions(void)
                     TextSize(12);
                     TextFace(bold);
                     MoveTo(20, 50);
-                    DrawString("\pPresets");
+                    DrawString(GetCachedString(STR_GAME_SETTINGS, 21, "\pPresets"));
 
                     SetRect(&listRect, 20, 56, 150, 110);
                     RGBForeColor(&listBg);
@@ -3092,7 +3760,7 @@ static void ShowEditOptions(void)
                     TextSize(12);
                     TextFace(bold);
                     MoveTo(170, 50);
-                    DrawString("\pAffecting Difficulty");
+                    DrawString(GetCachedString(STR_GAME_SETTINGS, 22, "\pAffecting Difficulty"));
 
                     /* Neutral Cities radio group */
                     RGBForeColor(&white);
@@ -3101,7 +3769,7 @@ static void ShowEditOptions(void)
                     TextFace(0);
 
                     MoveTo(175, 70);
-                    DrawString("\pNeutral Cities:");
+                    DrawString(GetCachedString(STR_GAME_SETTINGS, 23, "\pNeutral Cities:"));
                     yBase = 76;
                     {
                         static const unsigned char *ncLabels[3] = {
@@ -3125,7 +3793,7 @@ static void ShowEditOptions(void)
 
                     /* Razing Cities radio group */
                     MoveTo(300, 70);
-                    DrawString("\pRazing Cities:");
+                    DrawString(GetCachedString(STR_GAME_SETTINGS, 24, "\pRazing Cities:"));
                     yBase = 76;
                     {
                         static const unsigned char *rcLabels[3] = {
@@ -3185,7 +3853,7 @@ static void ShowEditOptions(void)
                     TextSize(12);
                     TextFace(bold);
                     MoveTo(170, 236);
-                    DrawString("\pNot Affecting Difficulty");
+                    DrawString(GetCachedString(STR_GAME_SETTINGS, 25, "\pNot Affecting Difficulty"));
 
                     TextFont(3);
                     TextSize(10);
@@ -3234,7 +3902,7 @@ static void ShowEditOptions(void)
                     TextSize(10);
                     TextFace(0);
                     MoveTo(cancelBtn.left + 14, cancelBtn.bottom - 5);
-                    DrawString("\pCancel");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
 
                     /* OK (default) */
                     RGBForeColor(&white);
@@ -3246,7 +3914,7 @@ static void ShowEditOptions(void)
                     PenSize(1, 1);
                     TextFace(bold);
                     MoveTo(okBtn.left + 10, okBtn.bottom - 5);
-                    DrawString("\pOK");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 }
 
                 /* Blit offscreen to window */
@@ -3516,7 +4184,7 @@ static Boolean ShowGameSetup(void)
                     TextSize(18);
                     TextFace(bold);
                     MoveTo(20, 30);
-                    DrawString("\pGame Setup");
+                    DrawString(GetCachedString(STR_GAME_SETUP, 0, "\pGame Setup"));
                 }
 
                 if (!showMoreChoices) {
@@ -3530,7 +4198,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(12);
                         TextFace(bold);
                         MoveTo(30, 60);
-                        DrawString("\pSide to play");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 1, "\pSide to play"));
                     }
 
                     /* Faction radio buttons */
@@ -3572,7 +4240,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(12);
                         TextFace(bold);
                         MoveTo(260, 60);
-                        DrawString("\pComputer Skill");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 2, "\pComputer Skill"));
                     }
 
                     /* Skill level radio buttons */
@@ -3595,9 +4263,9 @@ static Boolean ShowGameSetup(void)
                         }
 
                         MoveTo(282, yPos);
-                        if (i == 0) DrawString("\pKnight");
-                        else if (i == 1) DrawString("\pLord");
-                        else DrawString("\pWarlord");
+                        if (i == 0) DrawString(GetCachedString(STR_GAME_SETUP, 3, "\pKnight"));
+                        else if (i == 1) DrawString(GetCachedString(STR_GAME_SETUP, 4, "\pLord"));
+                        else DrawString(GetCachedString(STR_GAME_SETUP, 5, "\pWarlord"));
                     }
 
                     /* "Options" label */
@@ -3608,7 +4276,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(12);
                         TextFace(bold);
                         MoveTo(260, 160);
-                        DrawString("\pOptions");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 6, "\pOptions"));
                     }
 
                     /* Preset dropdown */
@@ -3642,7 +4310,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(10);
                         TextFace(0);
                         MoveTo(editOptBtn.left + 18, editOptBtn.bottom - 5);
-                        DrawString("\pEdit Options...");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 7, "\pEdit Options..."));
                     }
 
                     /* Difficulty rating */
@@ -3655,7 +4323,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(10);
                         TextFace(0);
                         MoveTo(260, 240);
-                        DrawString("\pDifficulty Rating: ");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 8, "\pDifficulty Rating: "));
                         NumToString((long)rating, numStr);
                         DrawString(numStr);
                         DrawString("\p%");
@@ -3672,7 +4340,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(12);
                         TextFace(bold);
                         MoveTo(30, 260);
-                        DrawString("\pArmy Set");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 9, "\pArmy Set"));
 
                         SetRect(&armyDropRect, 30, 268, 220, 286);
                         RGBForeColor(&white);
@@ -3711,7 +4379,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(10);
                         TextFace(0);
                         MoveTo(moreBtnRect.left + 22, moreBtnRect.bottom - 5);
-                        DrawString("\pMore Choices");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 10, "\pMore Choices"));
 
                         /* "Begin Game" (default button) */
                         RGBForeColor(&white);
@@ -3723,7 +4391,7 @@ static Boolean ShowGameSetup(void)
                         PenSize(1, 1);
                         TextFace(bold);
                         MoveTo(beginBtnRect.left + 26, beginBtnRect.bottom - 5);
-                        DrawString("\pBegin Game");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 11, "\pBegin Game"));
                     }
                 } else {
                     /* ========== EXPANDED MODE (More Choices) ========== */
@@ -3802,7 +4470,7 @@ static Boolean ShowGameSetup(void)
                             RGBForeColor(&white);
                             FrameRect(&cbRect);
                             MoveTo(bx + 22, by + 52);
-                            DrawString("\pCharacter");
+                            DrawString(GetCachedString(STR_GAME_SETUP, 12, "\pCharacter"));
                         }
                     }
 
@@ -3821,7 +4489,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(12);
                         TextFace(bold);
                         MoveTo(310, 60);
-                        DrawString("\pOptions");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 6, "\pOptions"));
 
                         /* Preset dropdown */
                         {
@@ -3850,7 +4518,7 @@ static Boolean ShowGameSetup(void)
                             TextSize(10);
                             TextFace(0);
                             MoveTo(editOptBtn.left + 18, editOptBtn.bottom - 5);
-                            DrawString("\pEdit Options...");
+                            DrawString(GetCachedString(STR_GAME_SETUP, 7, "\pEdit Options..."));
                         }
 
                         /* "I am the Greatest" checkbox */
@@ -3873,7 +4541,7 @@ static Boolean ShowGameSetup(void)
                             RGBForeColor(&white);
                             FrameRect(&cbRect);
                             MoveTo(333, 132);
-                            DrawString("\pI am the Greatest");
+                            DrawString(GetCachedString(STR_GAME_SETUP, 13, "\pI am the Greatest"));
                         }
 
                         /* Difficulty rating */
@@ -3883,7 +4551,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(10);
                         TextFace(0);
                         MoveTo(310, 156);
-                        DrawString("\pDifficulty Rating: ");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 8, "\pDifficulty Rating: "));
                         NumToString((long)rating, numStr);
                         DrawString(numStr);
                         DrawString("\p%");
@@ -3896,7 +4564,7 @@ static Boolean ShowGameSetup(void)
                             RGBForeColor(&gray);
                             FrameRect(&cbRect);
                             MoveTo(333, 184);
-                            DrawString("\pE-mail game");
+                            DrawString(GetCachedString(STR_GAME_SETUP, 14, "\pE-mail game"));
                         }
 
                         /* "Set Addresses" button (stub) */
@@ -3913,7 +4581,7 @@ static Boolean ShowGameSetup(void)
                             TextFace(0);
                             RGBForeColor(&gray);
                             MoveTo(addrBtn.left + 18, addrBtn.bottom - 5);
-                            DrawString("\pSet Addresses");
+                            DrawString(GetCachedString(STR_GAME_SETUP, 15, "\pSet Addresses"));
                         }
 
                         /* "Select Random Characters" button (stub) */
@@ -3928,7 +4596,7 @@ static Boolean ShowGameSetup(void)
                             TextSize(10);
                             TextFace(0);
                             MoveTo(randBtn.left + 4, randBtn.bottom - 5);
-                            DrawString("\pSelect Random Characters");
+                            DrawString(GetCachedString(STR_GAME_SETUP, 16, "\pSelect Random Characters"));
                         }
 
                         /* Army Set dropdown (expanded mode) */
@@ -3938,7 +4606,7 @@ static Boolean ShowGameSetup(void)
                             TextSize(12);
                             TextFace(bold);
                             MoveTo(310, 260);
-                            DrawString("\pArmy Set");
+                            DrawString(GetCachedString(STR_GAME_SETUP, 9, "\pArmy Set"));
 
                             {
                                 Rect armyDropRect;
@@ -3981,7 +4649,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(10);
                         TextFace(0);
                         MoveTo(fewerBtnRect.left + 16, fewerBtnRect.bottom - 5);
-                        DrawString("\pFewer Choices");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 17, "\pFewer Choices"));
 
                         /* "Begin Game" (default button) */
                         RGBForeColor(&white);
@@ -3993,7 +4661,7 @@ static Boolean ShowGameSetup(void)
                         PenSize(1, 1);
                         TextFace(bold);
                         MoveTo(beginBtnRect.left + 26, beginBtnRect.bottom - 5);
-                        DrawString("\pBegin Game");
+                        DrawString(GetCachedString(STR_GAME_SETUP, 11, "\pBegin Game"));
                     }
                 }
 
@@ -4015,6 +4683,21 @@ static Boolean ShowGameSetup(void)
             WaitNextEvent(everyEvent, &evt, 30, NULL);
 
             if (evt.what == mouseDown) {
+                WindowPtr clickWin2;
+                short partCode2 = FindWindow(evt.where, &clickWin2);
+
+                if (partCode2 == inMenuBar) {
+                    long menuResult = MenuSelect(evt.where);
+                    short menuID2 = (menuResult >> 16) & 0xFFFF;
+                    short menuItem2 = menuResult & 0xFFFF;
+                    if (menuID2 == 2 && menuItem2 == 9) {
+                        /* File > Quit */
+                        DisposeWindow(setupWin);
+                        if (offscreen != NULL) DisposeGWorld(offscreen);
+                        ExitToShell();
+                    }
+                    HiliteMenu(0);
+                } else {
                 Point localPt = evt.where;
                 SetPort(setupWin);
                 GlobalToLocal(&localPt);
@@ -4282,9 +4965,18 @@ static Boolean ShowGameSetup(void)
                         }
                     }
                 }
+                } /* end else (not inMenuBar) */
             }
             else if (evt.what == keyDown) {
                 char key = evt.message & charCodeMask;
+
+                /* Cmd+Q = Quit */
+                if ((evt.modifiers & cmdKey) && (key == 'q' || key == 'Q')) {
+                    DisposeWindow(setupWin);
+                    if (offscreen != NULL) DisposeGWorld(offscreen);
+                    ExitToShell();
+                }
+
                 if ((TickCount() - startTick) < 60)
                     continue;
                 if (key == 0x0D || key == 0x03) {
@@ -4389,7 +5081,7 @@ static RGBColor sTerrainColors[NUM_TERRAIN_COLORS] = {
 };
 
 /* ===================================================================
- * DrawMapInWindow — Draw terrain using sprite sheets at 32x32 per tile
+ * DrawMapInWindow — Draw terrain using sprite sheets at 40x40 per tile
  *
  * Shows a viewport of the map using CopyBits from the terrain GWorlds.
  * Falls back to flat terrain-type colors if sprites aren't loaded.
@@ -4501,10 +5193,71 @@ static void DrawMapInWindow(WindowPtr win)
         if (sTerrainGW2 != NULL) UnlockPixels(GetGWorldPixMap(sTerrainGW2));
     }
 
+    /* --- Road overlay: blit road sprites from PICT 30021 road sheet --- */
+    /* PICT 30021 is a 640x80 road/overlay sprite sheet (16x2 grid of 40x40).
+     * RD byte values 1-17 map directly to tiles 0-16 in this sheet.
+     * Transparent CopyBits (mode 36): skips pixels matching the GWorld's
+     * Mode 36 (transparent) skips pixels matching the DESTINATION port's
+     * RGBBackColor.  Set it to the road sprite bg color before blitting,
+     * then restore afterward.  Must render BEFORE fog of war. */
+    if (*gRoadData != 0 && sMapLoaded && sRoadGW != NULL) {
+        unsigned char *roadData = (unsigned char *)*gRoadData;
+        short rdMapH = sMapHeight;
+        PixMapHandle roadPix = GetGWorldPixMap(sRoadGW);
+        RGBColor savedBg;
+
+        if (rdMapH > 156) rdMapH = 156;
+        LockPixels(roadPix);
+
+        /* Set destination port bg to road sprite bg for mode 36 transparency */
+        GetBackColor(&savedBg);
+        RGBBackColor(&sRoadBgColor);
+
+        for (ty = 0; ty < tilesHigh; ty++) {
+            for (tx = 0; tx < tilesWide; tx++) {
+                short rMapX = sViewportX + tx;
+                short rMapY = sViewportY + ty;
+                unsigned char rd;
+                short tileIdx, spriteCol, spriteRow;
+                Rect srcRect, dstRect;
+
+                if (rMapX < 0 || rMapX >= 112 || rMapY < 0 || rMapY >= rdMapH)
+                    continue;
+                rd = roadData[rMapY * 112 + rMapX];
+                if (rd == 0 || rd > 17) continue;
+
+                /* RD value N → tile (N-1) in road sheet (16 tiles per row) */
+                tileIdx = rd - 1;
+                spriteCol = tileIdx % 16;
+                spriteRow = tileIdx / 16;
+
+                SetRect(&srcRect,
+                    spriteCol * TERRAIN_TILE_W, spriteRow * TERRAIN_TILE_H,
+                    (spriteCol + 1) * TERRAIN_TILE_W,
+                    (spriteRow + 1) * TERRAIN_TILE_H);
+                SetRect(&dstRect,
+                    winRect.left + tx * TERRAIN_TILE_W,
+                    winRect.top  + ty * TERRAIN_TILE_H,
+                    winRect.left + (tx + 1) * TERRAIN_TILE_W,
+                    winRect.top  + (ty + 1) * TERRAIN_TILE_H);
+
+                CopyBits((BitMap *)*roadPix,
+                         &((GrafPtr)win)->portBits,
+                         &srcRect, &dstRect,
+                         36, NULL);  /* transparent: skip bg color pixels */
+            }
+        }
+
+        /* Restore destination port bg color */
+        RGBBackColor(&savedBg);
+        UnlockPixels(roadPix);
+    }
+
     /* --- Fog of war overlay (bitmap-based) --- */
     /* Uses pre-computed sFogExplored[] and sFogVisible[] bitmaps.
-     * Visible = fully shown. Explored but not visible = dimmed. Unexplored = black. */
-    if (sOptHiddenMap && hasScn) {
+     * Visible = fully shown. Explored but not visible = dimmed. Unexplored = black.
+     * Read hidden map flag from game state (gs+0x116) to avoid stale global. */
+    if (hasScn && *(short *)(scnData + 0x116) != 0) {
         short curPlayer = *(short *)(scnData + 0x110);
         if (curPlayer >= 0 && curPlayer < 8) {
             for (ty = 0; ty < tilesHigh; ty++) {
@@ -4542,60 +5295,6 @@ static void DrawMapInWindow(WindowPtr win)
                 }
             }
         }
-    }
-
-    /* --- Draw road overlay from RD resource data --- */
-    /* Road data is 1 byte per tile, 112 cols x 156 rows (0x4440 bytes total).
-     * Non-zero byte = road present. We draw brown road segments. */
-    if (*gRoadData != 0 && sMapLoaded) {
-        unsigned char *roadData = (unsigned char *)*gRoadData;
-        RGBColor roadColor = {0xAAAA, 0x7777, 0x3333};
-        short rdMapW = 112, rdMapH = 156;
-
-        RGBForeColor(&roadColor);
-        PenSize(2, 2);
-
-        for (ty = 0; ty < tilesHigh; ty++) {
-            for (tx = 0; tx < tilesWide; tx++) {
-                short rMapX = sViewportX + tx;
-                short rMapY = sViewportY + ty;
-                unsigned char rd;
-                short screenX, screenY, cx, cy;
-
-                if (rMapX < 0 || rMapX >= rdMapW || rMapY < 0 || rMapY >= rdMapH)
-                    continue;
-                rd = roadData[rMapY * rdMapW + rMapX];
-                if (rd == 0) continue;
-
-                screenX = winRect.left + tx * TERRAIN_TILE_W;
-                screenY = winRect.top  + ty * TERRAIN_TILE_H;
-                cx = screenX + TERRAIN_TILE_W / 2;
-                cy = screenY + TERRAIN_TILE_H / 2;
-
-                /* Draw road connections to neighboring tiles (cardinal + diagonal) */
-                if (rMapX + 1 < rdMapW && roadData[rMapY * rdMapW + (rMapX + 1)] != 0) {
-                    MoveTo(cx, cy); LineTo(cx + TERRAIN_TILE_W / 2 + 1, cy);
-                }
-                if (rMapY + 1 < rdMapH && roadData[(rMapY + 1) * rdMapW + rMapX] != 0) {
-                    MoveTo(cx, cy); LineTo(cx, cy + TERRAIN_TILE_H / 2 + 1);
-                }
-                if (rMapX + 1 < rdMapW && rMapY + 1 < rdMapH &&
-                    roadData[(rMapY + 1) * rdMapW + (rMapX + 1)] != 0) {
-                    MoveTo(cx, cy); LineTo(cx + TERRAIN_TILE_W / 2, cy + TERRAIN_TILE_H / 2);
-                }
-                if (rMapX - 1 >= 0 && rMapY + 1 < rdMapH &&
-                    roadData[(rMapY + 1) * rdMapW + (rMapX - 1)] != 0) {
-                    MoveTo(cx, cy); LineTo(cx - TERRAIN_TILE_W / 2, cy + TERRAIN_TILE_H / 2);
-                }
-                /* Small dot at road center */
-                {
-                    Rect dot;
-                    SetRect(&dot, cx - 1, cy - 1, cx + 1, cy + 1);
-                    PaintRect(&dot);
-                }
-            }
-        }
-        PenSize(1, 1);
     }
 
     /* --- Draw city/ruin/temple icons from SCN data at gs+0x812 --- */
@@ -4692,7 +5391,7 @@ static void DrawMapInWindow(WindowPtr win)
                     /* === City icon === */
                     if (sCityLoaded && sCityGW != NULL) {
                         /* Sprite-based city: blit from city sheet (PICT 25000).
-                         * Layout: 20 cols x 8 rows of 32x30 tiles.
+                         * Layout: 16 cols x 6 rows of 40x40 tiles (640x240).
                          * Owner 0-7 → column 0-7, neutral → column 8.
                          * Row 0 = standard cities. */
                         short cityCol = (owner >= 0 && owner < 8) ? owner : 8;
@@ -4709,10 +5408,16 @@ static void DrawMapInWindow(WindowPtr win)
                             screenX + TERRAIN_TILE_W, screenY + TERRAIN_TILE_H);
 
                         LockPixels(srcPix);
-                        CopyBits((BitMap *)*srcPix,
-                                 &((GrafPtr)win)->portBits,
-                                 &srcRect, &dstRect,
-                                 srcCopy, NULL);
+                        {
+                            RGBColor savedBg;
+                            GetBackColor(&savedBg);
+                            RGBBackColor(&sCityBgColor);
+                            CopyBits((BitMap *)*srcPix,
+                                     &((GrafPtr)win)->portBits,
+                                     &srcRect, &dstRect,
+                                     36, NULL);
+                            RGBBackColor(&savedBg);
+                        }
                         UnlockPixels(srcPix);
                     } else {
                         /* Fallback: programmatic castle icon */
@@ -4877,6 +5582,11 @@ static void DrawMapInWindow(WindowPtr win)
             short owner = (short)(unsigned char)army[0x15];
             short screenX, screenY;
 
+            /* Skip invalid/empty army records */
+            if (army[0x16] == 0xFF) continue;           /* no units */
+            if (ax < 0 || ay < 0) continue;             /* invalid coords */
+            if (ax >= sMapWidth || ay >= sMapHeight) continue;
+
             screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
             screenY = winRect.top  + (ay - sViewportY) * TERRAIN_TILE_H;
 
@@ -4903,10 +5613,16 @@ static void DrawMapInWindow(WindowPtr win)
                             screenX + 30, screenY + 31);
 
                     LockPixels(GetGWorldPixMap(armyGW));
-                    CopyBits((BitMap *)*GetGWorldPixMap(armyGW),
-                             &((GrafPtr)win)->portBits,
-                             &srcRect, &dstRect,
-                             srcCopy, NULL);
+                    {
+                        RGBColor savedBg;
+                        GetBackColor(&savedBg);
+                        RGBBackColor(&sArmyBgColor[0]);
+                        CopyBits((BitMap *)*GetGWorldPixMap(armyGW),
+                                 &((GrafPtr)win)->portBits,
+                                 &srcRect, &dstRect,
+                                 36, NULL);
+                        RGBBackColor(&savedBg);
+                    }
                     UnlockPixels(GetGWorldPixMap(armyGW));
 
                     /* Draw owner color indicator (small colored bar below sprite) */
@@ -4938,8 +5654,15 @@ static void DrawMapInWindow(WindowPtr win)
             unsigned char *army = scnData + 0x1604 + i * 0x42;
             short ax = *(short *)(army + 0x00);
             short ay = *(short *)(army + 0x02);
-            short screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
-            short screenY = winRect.top  + (ay - sViewportY) * TERRAIN_TILE_H;
+            short screenX, screenY;
+
+            /* Skip invalid/empty army records */
+            if (army[0x16] == 0xFF) continue;
+            if (ax < 0 || ay < 0) continue;
+            if (ax >= sMapWidth || ay >= sMapHeight) continue;
+
+            screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
+            screenY = winRect.top  + (ay - sViewportY) * TERRAIN_TILE_H;
             if (screenX >= winRect.left && screenX < winRect.right - SCROLLBAR_W &&
                 screenY >= winRect.top && screenY < winRect.bottom - SCROLLBAR_H) {
                 /* Check if this is the topmost army at this tile */
@@ -4977,6 +5700,13 @@ static void DrawMapInWindow(WindowPtr win)
         if (armyCount > 100) armyCount = 100;
         for (i = 0; i < armyCount; i++) {
             unsigned char *army = scnData + 0x1604 + i * 0x42;
+            /* Skip invalid/empty army records */
+            if (army[0x16] == 0xFF) continue;
+            {
+                short ax = *(short *)(army + 0x00);
+                short ay = *(short *)(army + 0x02);
+                if (ax < 0 || ay < 0 || ax >= sMapWidth || ay >= sMapHeight) continue;
+            }
             if (army[0x2d] > 0) {
                 /* Army is defending/fortified: draw shield indicator */
                 short ax = *(short *)(army + 0x00);
@@ -5062,7 +5792,7 @@ static void DrawMapInWindow(WindowPtr win)
         short armyCount2 = *(short *)(scnData + 0x1602);
         if (sSelectedArmy < armyCount2) {
             unsigned char *selArmy2 = scnData + 0x1604 + sSelectedArmy * 0x42;
-            short movePts2 = *(short *)(selArmy2 + 0x2e);
+            short movePts2 = (short)(unsigned char)selArmy2[0x2e];
             short unitCls2 = (short)(unsigned char)selArmy2[0x16];
             short armyX2 = *(short *)(selArmy2 + 0x00);
             short armyY2 = *(short *)(selArmy2 + 0x02);
@@ -5337,126 +6067,43 @@ static void DrawMapInWindow(WindowPtr win)
         }
     }
 
-    /* --- Draw scrollbar tracks, thumbs, and arrow buttons --- */
+    /* --- Native Mac scrollbar controls --- */
     {
-        Rect fullPort = win->portRect;
-        Rect track, thumb, arrow;
-        RGBColor trackColor  = {0xCCCC, 0xCCCC, 0xCCCC};
-        RGBColor thumbColor  = {0x6666, 0x9999, 0xCCCC};  /* light blue like original */
-        RGBColor borderColor = {0x0000, 0x0000, 0x0000};
-        RGBColor arrowFace   = {0xDDDD, 0xDDDD, 0xDDDD};
-        short thumbPos, thumbLen;
-        short arrowH = SCROLLBAR_W;  /* arrow buttons are square */
-
-        /* Right vertical scrollbar track */
-        SetRect(&track, fullPort.right - SCROLLBAR_W, fullPort.top,
-                fullPort.right, fullPort.bottom - SCROLLBAR_H);
-        RGBForeColor(&trackColor);
-        PaintRect(&track);
-        RGBForeColor(&borderColor);
-        FrameRect(&track);
-
-        /* Vertical thumb */
-        if (sMapHeight > 0) {
-            short usable = track.bottom - track.top - 2 * arrowH - 4;
-            if (usable > 0) {
-                thumbLen = (tilesHigh * usable) / sMapHeight;
-                if (thumbLen < 12) thumbLen = 12;
-                if (thumbLen > usable) thumbLen = usable;
-                thumbPos = (sViewportY * usable) / sMapHeight;
-                if (thumbPos + thumbLen > usable) thumbPos = usable - thumbLen;
-                SetRect(&thumb, track.left + 2, track.top + 2 + thumbPos,
-                        track.right - 2, track.top + 2 + thumbPos + thumbLen);
-                RGBForeColor(&thumbColor);
-                PaintRect(&thumb);
-            }
+        /* Only update values, not position/size (those are set on create/resize) */
+        if (sVScrollBar != NULL) {
+            short maxV = sMapHeight > tilesHigh ? sMapHeight - tilesHigh : 0;
+            SetControlMaximum(sVScrollBar, maxV);
+            SetControlValue(sVScrollBar, sViewportY);
+            Draw1Control(sVScrollBar);
+        }
+        if (sHScrollBar != NULL) {
+            short maxH = sMapWidth > tilesWide ? sMapWidth - tilesWide : 0;
+            SetControlMaximum(sHScrollBar, maxH);
+            SetControlValue(sHScrollBar, sViewportX);
+            Draw1Control(sHScrollBar);
         }
 
-        /* Vertical arrows — both grouped at bottom of track */
-        /* Up arrow */
-        SetRect(&arrow, track.left, track.bottom - 2 * arrowH,
-                track.right, track.bottom - arrowH);
-        RGBForeColor(&arrowFace);
-        PaintRect(&arrow);
-        RGBForeColor(&borderColor);
-        FrameRect(&arrow);
-        /* Draw up triangle */
-        MoveTo(arrow.left + arrowH / 2, arrow.top + 3);
-        LineTo(arrow.left + 3, arrow.bottom - 4);
-        LineTo(arrow.right - 4, arrow.bottom - 4);
-        LineTo(arrow.left + arrowH / 2, arrow.top + 3);
-
-        /* Down arrow */
-        SetRect(&arrow, track.left, track.bottom - arrowH,
-                track.right, track.bottom);
-        RGBForeColor(&arrowFace);
-        PaintRect(&arrow);
-        RGBForeColor(&borderColor);
-        FrameRect(&arrow);
-        /* Draw down triangle */
-        MoveTo(arrow.left + arrowH / 2, arrow.bottom - 4);
-        LineTo(arrow.left + 3, arrow.top + 3);
-        LineTo(arrow.right - 4, arrow.top + 3);
-        LineTo(arrow.left + arrowH / 2, arrow.bottom - 4);
-
-        /* Bottom horizontal scrollbar track (starts after shield area) */
-        SetRect(&track, fullPort.left + SHIELD_AREA_W + 50, fullPort.bottom - SCROLLBAR_H,
-                fullPort.right - SCROLLBAR_W, fullPort.bottom);
-        RGBForeColor(&trackColor);
-        PaintRect(&track);
-        RGBForeColor(&borderColor);
-        FrameRect(&track);
-
-        /* Horizontal thumb */
-        if (sMapWidth > 0) {
-            short usable = track.right - track.left - 2 * arrowH - 4;
-            if (usable > 0) {
-                thumbLen = (tilesWide * usable) / sMapWidth;
-                if (thumbLen < 12) thumbLen = 12;
-                if (thumbLen > usable) thumbLen = usable;
-                thumbPos = (sViewportX * usable) / sMapWidth;
-                if (thumbPos + thumbLen > usable) thumbPos = usable - thumbLen;
-                SetRect(&thumb, track.left + 2 + thumbPos, track.top + 2,
-                        track.left + 2 + thumbPos + thumbLen, track.bottom - 2);
-                RGBForeColor(&thumbColor);
-                PaintRect(&thumb);
-            }
+        /* Draw resize grip in the bottom-right corner (without DrawGrowIcon's
+         * full-width frame lines that extend across the shield area) */
+        {
+            Rect fullPort = win->portRect;
+            Rect corner;
+            RGBColor gray = {0xCCCC, 0xCCCC, 0xCCCC};
+            RGBColor black = {0x0000, 0x0000, 0x0000};
+            SetRect(&corner, fullPort.right - SCROLLBAR_W, fullPort.bottom - SCROLLBAR_H,
+                    fullPort.right, fullPort.bottom);
+            RGBForeColor(&gray);
+            PaintRect(&corner);
+            RGBForeColor(&black);
+            FrameRect(&corner);
+            /* Draw diagonal grip lines */
+            MoveTo(corner.right - 4, corner.bottom - 2);
+            LineTo(corner.right - 2, corner.bottom - 4);
+            MoveTo(corner.right - 8, corner.bottom - 2);
+            LineTo(corner.right - 2, corner.bottom - 8);
+            MoveTo(corner.right - 12, corner.bottom - 2);
+            LineTo(corner.right - 2, corner.bottom - 12);
         }
-
-        /* Horizontal arrows — both grouped at right end of track */
-        /* Left arrow */
-        SetRect(&arrow, track.right - 2 * arrowH, track.top,
-                track.right - arrowH, track.bottom);
-        RGBForeColor(&arrowFace);
-        PaintRect(&arrow);
-        RGBForeColor(&borderColor);
-        FrameRect(&arrow);
-        /* Draw left triangle */
-        MoveTo(arrow.left + 3, arrow.top + arrowH / 2);
-        LineTo(arrow.right - 4, arrow.top + 3);
-        LineTo(arrow.right - 4, arrow.bottom - 4);
-        LineTo(arrow.left + 3, arrow.top + arrowH / 2);
-
-        /* Right arrow */
-        SetRect(&arrow, track.right - arrowH, track.top,
-                track.right, track.bottom);
-        RGBForeColor(&arrowFace);
-        PaintRect(&arrow);
-        RGBForeColor(&borderColor);
-        FrameRect(&arrow);
-        /* Draw right triangle */
-        MoveTo(arrow.right - 4, arrow.top + arrowH / 2);
-        LineTo(arrow.left + 3, arrow.top + 3);
-        LineTo(arrow.left + 3, arrow.bottom - 4);
-        LineTo(arrow.right - 4, arrow.top + arrowH / 2);
-
-        /* Corner box (intersection of scrollbars) — shows tile coordinates */
-        SetRect(&track, fullPort.right - SCROLLBAR_W, fullPort.bottom - SCROLLBAR_H,
-                fullPort.right, fullPort.bottom);
-        RGBForeColor(&trackColor);
-        PaintRect(&track);
-        RGBForeColor(&borderColor);
-        FrameRect(&track);
     }
 
     /* --- Draw movement path for selected army (if has waypoint) --- */
@@ -5524,7 +6171,6 @@ static void DrawMapInWindow(WindowPtr win)
         short curPlayer = *(short *)(scnData + 0x110);
         short turn = *(short *)(scnData + 0x136);
         short fi, shieldX;
-        RGBColor barBg = {0x3333, 0x3333, 0x3333};
         RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
         RGBColor black = {0x0000, 0x0000, 0x0000};
         Str255 numStr;
@@ -5532,28 +6178,38 @@ static void DrawMapInWindow(WindowPtr win)
         if (factionCount < 1) factionCount = 1;
         if (factionCount > 8) factionCount = 8;
 
-        /* Dark background for shield area */
+        /* White background for shield area (matches original) */
         SetRect(&shieldBar, fullPort.left, fullPort.bottom - SCROLLBAR_H,
                 fullPort.left + SHIELD_AREA_W + 50, fullPort.bottom);
-        RGBForeColor(&barBg);
+        RGBForeColor(&white);
         PaintRect(&shieldBar);
 
-        /* "Turn N" text */
+        /* "Turn N" text in black on white background */
         TextFont(3);
         TextSize(9);
         TextFace(bold);
-        RGBForeColor(&white);
+        RGBForeColor(&black);
         MoveTo(fullPort.left + 3, fullPort.bottom - 4);
-        DrawString("\pTurn ");
+        DrawString(GetCachedString(STR_MISC, 12, "\pTurn "));
         NumToString((long)turn, numStr);
         DrawString(numStr);
 
-        /* Small shields — always draw all factions */
+        /* Small shields with gaps between them */
         shieldX = fullPort.left + 48;
         for (fi = 0; fi < factionCount; fi++) {
             Rect sR;
-            SetRect(&sR, shieldX, fullPort.bottom - SHIELD_ICON_H - 2,
-                    shieldX + SHIELD_ICON_W, fullPort.bottom - 2);
+
+            if (fi == curPlayer) {
+                /* Current player: thick black border (2px) around shield */
+                Rect bR;
+                SetRect(&bR, shieldX - 2, fullPort.bottom - SHIELD_ICON_H - 5,
+                        shieldX + SHIELD_ICON_W + 2, fullPort.bottom - 1);
+                RGBForeColor(&black);
+                PaintRect(&bR);
+            }
+
+            SetRect(&sR, shieldX, fullPort.bottom - SHIELD_ICON_H - 3,
+                    shieldX + SHIELD_ICON_W, fullPort.bottom - 3);
 
             if (sShieldsLoaded && sShieldIcons[fi] != NULL) {
                 PlotCIcon(&sR, sShieldIcons[fi]);
@@ -5563,13 +6219,7 @@ static void DrawMapInWindow(WindowPtr win)
                 PaintRect(&sR);
             }
 
-            /* White border on current player */
-            if (fi == curPlayer) {
-                RGBForeColor(&white);
-                FrameRect(&sR);
-            }
-
-            shieldX += SHIELD_ICON_W + 2;
+            shieldX += SHIELD_ICON_W + SHIELD_GAP;
         }
     }
 }
@@ -5636,7 +6286,31 @@ static void DrawOverviewInWindow(WindowPtr win)
             }
         }
 
-        /* Road overlay on minimap disabled for now */
+        /* Road overlay on minimap: tan pixels for road tiles */
+        if (*gRoadData != 0) {
+            unsigned char *roadData = (unsigned char *)*gRoadData;
+            RGBColor roadMmColor = {0x9999, 0x5555, 0x2222};  /* reddish brown */
+            short rdW = 112;  /* road buffer always 112 wide */
+            short rdH = sMapHeight;
+            short rx, ry;
+            if (rdH > 156) rdH = 156;
+            RGBForeColor(&roadMmColor);
+            for (ry = 0; ry < rdH; ry++) {
+                for (rx = 0; rx < rdW; rx++) {
+                    if (roadData[ry * rdW + rx] != 0) {
+                        if (scale == 1) {
+                            MoveTo(r.left + rx, r.top + ry);
+                            LineTo(r.left + rx, r.top + ry);
+                        } else {
+                            Rect rpx;
+                            SetRect(&rpx, r.left + rx * scale, r.top + ry * scale,
+                                         r.left + rx * scale + scale, r.top + ry * scale + scale);
+                            PaintRect(&rpx);
+                        }
+                    }
+                }
+            }
+        }
 
         /* Draw city/ruin dots on minimap from SCN site records at gs+0x812 */
         if (*gGameState != 0) {
@@ -5915,7 +6589,7 @@ static void ShowCityInfo(short cityIndex)
                     TextSize(18);
                     TextFace(bold);
                     MoveTo(20, 30);
-                    DrawString("\pCity");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 0, "\pCity"));
                 }
 
                 /* City name — from CTY resource, or faction name */
@@ -5942,9 +6616,21 @@ static void ShowCityInfo(short cityIndex)
                         pName[0] = (unsigned char)nlen;
                         BlockMoveData(namePtr, pName + 1, nlen);
                         DrawString(pName);
-                        DrawString("\p City");
+                        DrawString(GetCachedString(STR_CITY_DIALOG, 23, "\p City"));
                     } else {
-                        DrawString("\pNeutral City");
+                        DrawString(GetCachedString(STR_CITY_DIALOG, 24, "\pNeutral City"));
+                    }
+                }
+
+                /* City feature icons (cicn 3300-3303) */
+                {
+                    short ic;
+                    for (ic = 0; ic < 4; ic++) {
+                        if (sCityTabIcons[ic]) {
+                            Rect icR;
+                            SetRect(&icR, 220 + ic * 22, 10, 236 + ic * 22, 26);
+                            PlotCIcon(&icR, sCityTabIcons[ic]);
+                        }
                     }
                 }
 
@@ -5962,7 +6648,7 @@ static void ShowCityInfo(short cityIndex)
                     /* Location */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase);
-                    DrawString("\pLocation:");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 1, "\pLocation:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase);
                     NumToString((long)cityX, numStr);
@@ -5974,7 +6660,7 @@ static void ShowCityInfo(short cityIndex)
                     /* Owner */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase + 20);
-                    DrawString("\pOwner:");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 2, "\pOwner:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase + 20);
                     if (owner >= 0 && owner < 8) {
@@ -5986,13 +6672,13 @@ static void ShowCityInfo(short cityIndex)
                         BlockMoveData(namePtr, pName + 1, nlen);
                         DrawString(pName);
                     } else {
-                        DrawString("\pNeutral");
+                        DrawString(GetCachedString(STR_CITY_DIALOG, 8, "\pNeutral"));
                     }
 
                     /* Defense */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase + 40);
-                    DrawString("\pDefense:");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 3, "\pDefense:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase + 40);
                     NumToString((long)defense, numStr);
@@ -6001,12 +6687,12 @@ static void ShowCityInfo(short cityIndex)
                     /* Income */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase + 60);
-                    DrawString("\pIncome:");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 4, "\pIncome:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase + 60);
                     NumToString((long)income, numStr);
                     DrawString(numStr);
-                    DrawString("\p gp/turn");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 25, "\p gp/turn"));
 
                     /* Production status */
                     if (*gExtState != 0) {
@@ -6017,7 +6703,7 @@ static void ShowCityInfo(short cityIndex)
 
                         RGBForeColor(&labelColor);
                         MoveTo(30, yBase + 80);
-                        DrawString("\pProducing:");
+                        DrawString(GetCachedString(STR_CITY_DIALOG, 5, "\pProducing:"));
                         RGBForeColor(&valueColor);
                         MoveTo(130, yBase + 80);
                         if (producing >= 0) {
@@ -6026,12 +6712,12 @@ static void ShowCityInfo(short cityIndex)
                             GetUnitTypeName(producing, prodName);
                             DrawString(prodName);
                             if (prodTurns > 0) {
-                                DrawString("\p (");
+                                DrawString(GetCachedString(STR_CITY_DIALOG, 32, "\p ("));
                                 NumToString((long)prodTurns, numStr);
                                 DrawString(numStr);
-                                DrawString("\p turns)");
+                                DrawString(GetCachedString(STR_CITY_DIALOG, 26, "\p turns)"));
                             } else {
-                                DrawString("\p (ready)");
+                                DrawString(GetCachedString(STR_CITY_DIALOG, 27, "\p (ready)"));
                             }
 
                             /* Production progress bar */
@@ -6061,7 +6747,7 @@ static void ShowCityInfo(short cityIndex)
                                 }
                             }
                         } else {
-                            DrawString("\pNothing");
+                            DrawString(GetCachedString(STR_CITY_DIALOG, 6, "\pNothing"));
                         }
 
                         /* Vectoring info */
@@ -6070,7 +6756,7 @@ static void ShowCityInfo(short cityIndex)
                             if (vectorCity >= 0 && vectorCity != cityIndex) {
                                 RGBForeColor(&labelColor);
                                 MoveTo(30, yBase + 100);
-                                DrawString("\pVectoring to:");
+                                DrawString(GetCachedString(STR_CITY_DIALOG, 7, "\pVectoring to:"));
                                 RGBForeColor(&valueColor);
                                 MoveTo(130, yBase + 100);
                                 if (vectorCity < sCityNameCount &&
@@ -6083,7 +6769,7 @@ static void ShowCityInfo(short cityIndex)
                                     BlockMoveData(cn, pName + 1, nlen2);
                                     DrawString(pName);
                                 } else {
-                                    DrawString("\pCity #");
+                                    DrawString(GetCachedString(STR_CITY_DIALOG, 28, "\pCity #"));
                                     NumToString((long)vectorCity, numStr);
                                     DrawString(numStr);
                                 }
@@ -6109,7 +6795,7 @@ static void ShowCityInfo(short cityIndex)
                     TextSize(10);
                     TextFace(bold);
                     MoveTo(okBtn.left + 16, okBtn.bottom - 6);
-                    DrawString("\pOK");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 }
 
                 /* Blit to window */
@@ -6261,7 +6947,7 @@ static void ShowArmyInspect(short armyIndex)
                         BlockMoveData(army + 0x04, pName + 1, nlen);
                         DrawString(pName);
                     } else {
-                        DrawString("\pArmy Stack");
+                        DrawString(GetCachedString(STR_STACK_INFO, 0, "\pArmy Stack"));
                     }
                 }
 
@@ -6274,7 +6960,7 @@ static void ShowArmyInspect(short armyIndex)
                     TextSize(10);
                     TextFace(0);
                     MoveTo(200, 26);
-                    DrawString("\pStrength: ");
+                    DrawString(GetCachedString(STR_STACK_INFO, 1, "\pStrength: "));
                     NumToString((long)*(short *)(army + 0x2a), numStr);
                     DrawString(numStr);
                 }
@@ -6287,19 +6973,19 @@ static void ShowArmyInspect(short armyIndex)
                     TextSize(9);
                     TextFace(bold);
                     MoveTo(20, 48);
-                    DrawString("\pSlot");
+                    DrawString(GetCachedString(STR_STACK_INFO, 2, "\pSlot"));
                     MoveTo(60, 48);
-                    DrawString("\pType");
+                    DrawString(GetCachedString(STR_STACK_INFO, 3, "\pType"));
                     MoveTo(110, 48);
-                    DrawString("\pStr");
+                    DrawString(GetCachedString(STR_STACK_INFO, 4, "\pStr"));
                     MoveTo(150, 48);
-                    DrawString("\pMov");
+                    DrawString(GetCachedString(STR_STACK_INFO, 5, "\pMov"));
                     MoveTo(190, 48);
-                    DrawString("\pHP");
+                    DrawString(GetCachedString(STR_STACK_INFO, 6, "\pHP"));
                     MoveTo(230, 48);
-                    DrawString("\pBonus");
+                    DrawString(GetCachedString(STR_STACK_INFO, 7, "\pBonus"));
                     MoveTo(280, 48);
-                    DrawString("\pXP");
+                    DrawString(GetCachedString(STR_STACK_INFO, 8, "\pXP"));
                 }
 
                 /* Separator line */
@@ -6330,7 +7016,7 @@ static void ShowArmyInspect(short armyIndex)
                         NumToString((long)(ui + 1), numStr);
                         DrawString(numStr);
                         MoveTo(60, yPos);
-                        DrawString("\p(empty)");
+                        DrawString(GetCachedString(STR_STACK_INFO, 9, "\p(empty)"));
                         continue;
                     }
 
@@ -6393,7 +7079,7 @@ static void ShowArmyInspect(short armyIndex)
                     TextSize(10);
                     TextFace(bold);
                     MoveTo(okBtn.left + 16, okBtn.bottom - 6);
-                    DrawString("\pOK");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 }
 
                 /* Blit */
@@ -6467,7 +7153,7 @@ static void SelectNextArmy(void)
         {
             unsigned char *army = gs + 0x1604 + idx * 0x42;
             short owner = (short)(unsigned char)army[0x15];
-            short movePts = *(short *)(army + 0x2e);
+            short movePts = (short)(unsigned char)army[0x2e];
             short hasOrders = *(short *)(army + 0x32);
             short fortified = army[0x2d];
 
@@ -6676,7 +7362,7 @@ static short GetMovementCost(short mapX, short mapY, short unitClass)
 
     cost = (short)(unsigned char)gs[terrainType * 0x1d + unitClass + 0x60c];
     if (cost == 0) return 0;  /* impassable */
-    if (cost > 4) cost = 4;   /* cap at 4 */
+    /* Movement costs up to 28 are valid in the original game */
 
     /* Road overlay bonus: if road data exists and this tile has a road,
      * reduce cost to 1 (roads make travel faster through rough terrain) */
@@ -6941,25 +7627,25 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                                 TextFont(3); TextSize(12); TextFace(bold);
                                 RGBForeColor(&gold2);
                                 MoveTo(20, 22);
-                                DrawString(fem ? "\pA " : "\pA ");
+                                DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
                                 TextFace(0); TextSize(10);
                                 RGBForeColor(&wh2);
                                 MoveTo(20, 44);
                                 DrawString(hname2);
-                                DrawString("\p is now a ");
+                                DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
                                 RGBForeColor(&gold2);
                                 MoveTo(20, 66);
-                                DrawString("\pLevel: ");
+                                DrawString(GetCachedString(STR_COMBAT, 2, "\pLevel: "));
                                 {
                                     Str255 ns2;
                                     NumToString((long)newLvl, ns2); DrawString(ns2);
-                                    DrawString("\p   Str: ");
+                                    DrawString(GetCachedString(STR_COMBAT, 3, "\p   Str: "));
                                     NumToString((long)(unsigned char)attArmy[0x1e + i], ns2); DrawString(ns2);
-                                    DrawString("\p   Cmd: ");
+                                    DrawString(GetCachedString(STR_COMBAT, 4, "\p   Cmd: "));
                                     NumToString((long)(unsigned char)attArmy[0x22 + i], ns2); DrawString(ns2);
                                 }
                                 lvTk = TickCount() + SpeedTicks(120);
@@ -7026,25 +7712,25 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                                 TextFont(3); TextSize(12); TextFace(bold);
                                 RGBForeColor(&gold2);
                                 MoveTo(20, 22);
-                                DrawString(fem ? "\pA " : "\pA ");
+                                DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
                                 TextFace(0); TextSize(10);
                                 RGBForeColor(&wh2);
                                 MoveTo(20, 44);
                                 DrawString(hname2);
-                                DrawString("\p is now a ");
+                                DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
                                 RGBForeColor(&gold2);
                                 MoveTo(20, 66);
-                                DrawString("\pLevel: ");
+                                DrawString(GetCachedString(STR_COMBAT, 2, "\pLevel: "));
                                 {
                                     Str255 ns2;
                                     NumToString((long)newLvl, ns2); DrawString(ns2);
-                                    DrawString("\p   Str: ");
+                                    DrawString(GetCachedString(STR_COMBAT, 3, "\p   Str: "));
                                     NumToString((long)(unsigned char)defArmy[0x1e + i], ns2); DrawString(ns2);
-                                    DrawString("\p   Cmd: ");
+                                    DrawString(GetCachedString(STR_COMBAT, 4, "\p   Cmd: "));
                                     NumToString((long)(unsigned char)defArmy[0x22 + i], ns2); DrawString(ns2);
                                 }
                                 lvTk = TickCount() + SpeedTicks(120);
@@ -7116,8 +7802,17 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                         *(short *)(gs + 0xd0 + winOwner * 2) == 0) {
                         WindowPtr mWin;
                         Rect mR;
-                        SetRect(&mR, 0, 0, 310, 90);
-                        OffsetRect(&mR, 165, 200);
+                        PicHandle medalPict = GetPicture(4410 + medalType);
+                        short mW = 310, mH = 90;
+                        if (medalPict) {
+                            Rect pf = (**medalPict).picFrame;
+                            mW = pf.right - pf.left;
+                            mH = pf.bottom - pf.top;
+                        }
+                        SetRect(&mR, 0, 0, mW, mH);
+                        OffsetRect(&mR,
+                            (qd.screenBits.bounds.right - mW) / 2,
+                            (qd.screenBits.bounds.bottom - mH) / 2);
                         mWin = NewCWindow(NULL, &mR, "\p", true,
                                           plainDBox, (WindowPtr)-1, false, 0);
                         if (mWin) {
@@ -7129,35 +7824,36 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                             Str255 uName, ns;
                             GetUnitTypeName((short)(unsigned char)winArmy[0x16 + slot], uName);
                             SetPort(mWin);
-                            RGBForeColor(&mbg); PaintRect(&mWin->portRect);
+                            if (medalPict) DrawPicture(medalPict, &mWin->portRect);
+                            else { RGBForeColor(&mbg); PaintRect(&mWin->portRect); }
                             RGBForeColor(&mgold); PenSize(2,2); FrameRect(&mWin->portRect); PenNormal();
                             TextFont(3); TextSize(12); TextFace(bold);
                             RGBForeColor(&mgold);
                             MoveTo(15, 20);
-                            DrawString("\pA Medal!");
+                            DrawString(GetCachedString(STR_COMBAT, 5, "\pA Medal!"));
                             TextFace(0); TextSize(10);
                             RGBForeColor(&mwh);
                             MoveTo(15, 40);
-                            DrawString("\pYour ");
+                            DrawString(GetCachedString(STR_COMBAT, 6, "\pYour "));
                             DrawString(uName);
-                            DrawString("\p has been awarded");
+                            DrawString(GetCachedString(STR_COMBAT, 7, "\p has been awarded"));
                             MoveTo(15, 56);
-                            DrawString("\pthe ");
+                            DrawString(GetCachedString(STR_COMBAT, 8, "\pthe "));
                             RGBForeColor(&mgold);
                             DrawString(sMedalNames[medalType]);
                             RGBForeColor(&mwh);
                             DrawString("\p!");
                             MoveTo(15, 76);
                             if (isStr) {
-                                DrawString("\pStrength increased from ");
+                                DrawString(GetCachedString(STR_COMBAT, 9, "\pStrength increased from "));
                                 NumToString((long)oldVal, ns); DrawString(ns);
-                                DrawString("\p to ");
+                                DrawString(GetCachedString(STR_COMBAT, 10, "\p to "));
                                 NumToString((long)newVal, ns); DrawString(ns);
                                 DrawString("\p!");
                             } else {
-                                DrawString("\pMovement increased from ");
+                                DrawString(GetCachedString(STR_COMBAT, 11, "\pMovement increased from "));
                                 NumToString((long)oldVal, ns); DrawString(ns);
-                                DrawString("\p to ");
+                                DrawString(GetCachedString(STR_COMBAT, 10, "\p to "));
                                 NumToString((long)newVal, ns); DrawString(ns);
                                 DrawString("\p!");
                             }
@@ -7220,7 +7916,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             RGBForeColor(&gold);
             TextFont(2); TextSize(14); TextFace(bold);
             MoveTo(130, 24);
-            DrawString("\pBattle Results");
+            DrawString(GetCachedString(STR_COMBAT, 12, "\pBattle Results"));
             TextFace(0); TextFont(3); TextSize(10);
         }
 
@@ -7248,7 +7944,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             RGBForeColor(&attColor);
             TextFace(bold);
             MoveTo(20, 48);
-            DrawString("\pAttacker");
+            DrawString(GetCachedString(STR_COMBAT, 13, "\pAttacker"));
             {
                 /* Faction name */
                 char *fname = (char *)(gs + attOwner * FACTION_NAME_LEN);
@@ -7275,7 +7971,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     RGBForeColor(&deadCol);
                     DrawString(uName);
                     MoveTo(150, yPos);
-                    DrawString("\pKILLED");
+                    DrawString(GetCachedString(STR_COMBAT, 14, "\pKILLED"));
                 } else {
                     short dmg = attOrigHits[i] - attHits[i];
                     RGBForeColor(&aliveCol);
@@ -7287,7 +7983,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     DrawString("\p/");
                     NumToString((long)attOrigHits[i], numStr);
                     DrawString(numStr);
-                    DrawString("\p HP");
+                    DrawString(GetCachedString(STR_COMBAT, 15, "\p HP"));
                     if (dmg > 0) {
                         RGBColor dmgCol = {0xFFFF, 0xAAAA, 0x4444};
                         RGBForeColor(&dmgCol);
@@ -7313,7 +8009,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             RGBForeColor(&defColor);
             TextFace(bold);
             MoveTo(20, yPos);
-            DrawString("\pDefender");
+            DrawString(GetCachedString(STR_COMBAT, 16, "\pDefender"));
             {
                 char *fname = (char *)(gs + defOwner * FACTION_NAME_LEN);
                 short fi;
@@ -7339,7 +8035,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     RGBForeColor(&deadCol);
                     DrawString(uName);
                     MoveTo(150, yPos);
-                    DrawString("\pKILLED");
+                    DrawString(GetCachedString(STR_COMBAT, 14, "\pKILLED"));
                 } else {
                     short dmg = defOrigHits[i] - defHits[i];
                     RGBForeColor(&aliveCol);
@@ -7351,7 +8047,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     DrawString("\p/");
                     NumToString((long)defOrigHits[i], numStr);
                     DrawString(numStr);
-                    DrawString("\p HP");
+                    DrawString(GetCachedString(STR_COMBAT, 15, "\p HP"));
                     if (dmg > 0) {
                         RGBColor dmgCol = {0xFFFF, 0xAAAA, 0x4444};
                         RGBForeColor(&dmgCol);
@@ -7368,7 +8064,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             MoveTo(20, yPos + 12);
             RGBForeColor(&gray);
             TextSize(9);
-            DrawString("\pRounds: ");
+            DrawString(GetCachedString(STR_COMBAT, 17, "\pRounds: "));
             NumToString((long)round, numStr);
             DrawString(numStr);
             TextSize(10);
@@ -7396,13 +8092,13 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             TextFace(bold);
             if (result == 1) {
                 MoveTo(110, 257);
-                DrawString("\pAttacker is VICTORIOUS!");
+                DrawString(GetCachedString(STR_COMBAT, 18, "\pAttacker is VICTORIOUS!"));
             } else if (result == 0) {
                 MoveTo(110, 257);
-                DrawString("\pDefender holds the field!");
+                DrawString(GetCachedString(STR_COMBAT, 19, "\pDefender holds the field!"));
             } else {
                 MoveTo(110, 257);
-                DrawString("\pBoth armies destroyed!");
+                DrawString(GetCachedString(STR_COMBAT, 20, "\pBoth armies destroyed!"));
             }
             TextFace(0);
         }
@@ -7415,7 +8111,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             RGBForeColor(&white);
             FrameRoundRect(&okRect, 8, 8);
             MoveTo(186, 286);
-            DrawString("\pOK");
+            DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
         }
 
         UnlockPixels(GetGWorldPixMap(offGW));
@@ -7474,17 +8170,29 @@ static void ShowCityCaptureNotification(short capturer, short prevOwner,
     Rect winRect, gwRect;
     EventRecord evt;
     CGrafPtr savePort;
+    PicHandle bgPict;
+    short winW = 300, winH = 100;
 
     PlaySound(SND_CHORD);
     GDHandle saveGD;
     unsigned long ticks;
     unsigned char *gs = (unsigned char *)*gGameState;
 
-    SetRect(&winRect, 0, 0, 300, 100);
-    OffsetRect(&winRect, 200, 200);
+    /* Try to load capture scene PICT */
+    bgPict = GetPicture(3800);
+    if (bgPict) {
+        Rect pf = (**bgPict).picFrame;
+        winW = pf.right - pf.left;
+        winH = pf.bottom - pf.top;
+    }
+
+    SetRect(&winRect, 0, 0, winW, winH);
+    OffsetRect(&winRect,
+        (qd.screenBits.bounds.right - winW) / 2,
+        (qd.screenBits.bounds.bottom - winH) / 2);
     notWin = NewCWindow(NULL, &winRect, "\pCity Captured!", true,
                         dBoxProc, (WindowPtr)-1, false, 0);
-    SetRect(&gwRect, 0, 0, 300, 100);
+    SetRect(&gwRect, 0, 0, winW, winH);
     NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
     if (!notWin || !offGW) {
         if (offGW) DisposeGWorld(offGW);
@@ -7496,10 +8204,11 @@ static void ShowCityCaptureNotification(short capturer, short prevOwner,
     SetGWorld(offGW, NULL);
     LockPixels(GetGWorldPixMap(offGW));
 
-    /* Marble background with capturer's color border */
+    /* Background: capture PICT or marble fallback, with capturer's color border */
     {
         RGBColor border = sPlayerColors[capturer < 8 ? capturer + 1 : 8];
-        DrawMarbleBackground(&gwRect);
+        if (bgPict) DrawPicture(bgPict, &gwRect);
+        else DrawMarbleBackground(&gwRect);
         RGBForeColor(&border);
         PenSize(3, 3);
         FrameRect(&gwRect);
@@ -7518,7 +8227,7 @@ static void ShowCityCaptureNotification(short capturer, short prevOwner,
         TextSize(12);
         TextFace(bold);
         MoveTo(20, 25);
-        DrawString("\pCity Captured!");
+        DrawString(GetCachedString(STR_CITY_CAPTURE, 2, "\pCity Captured!"));
         TextFace(0);
         TextSize(10);
 
@@ -7536,7 +8245,7 @@ static void ShowCityCaptureNotification(short capturer, short prevOwner,
         }
 
         RGBForeColor(&white);
-        DrawString("\p captures city at (");
+        DrawString(GetCachedString(STR_CITY_CAPTURE, 3, "\p captures city at ("));
         NumToString((long)cityX, numStr);
         DrawString(numStr);
         DrawString("\p, ");
@@ -7555,7 +8264,7 @@ static void ShowCityCaptureNotification(short capturer, short prevOwner,
 
             MoveTo(20, 70);
             RGBForeColor(&white);
-            DrawString("\pTaken from ");
+            DrawString(GetCachedString(STR_MISC, 16, "\pTaken from "));
             RGBForeColor(&prevColor);
             {
                 Str255 pstr2;
@@ -7568,7 +8277,7 @@ static void ShowCityCaptureNotification(short capturer, short prevOwner,
         RGBForeColor(&white);
         TextSize(9);
         MoveTo(200, 90);
-        DrawString("\pClick to continue");
+        DrawString(GetCachedString(STR_MISC, 17, "\pClick to continue"));
     }
 
     UnlockPixels(GetGWorldPixMap(offGW));
@@ -7611,6 +8320,8 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
     unsigned long ticks;
     unsigned char *gs = (unsigned char *)*gGameState;
 
+    PlaySound(SND_DRAMATIC);  /* dramatic event for player elimination */
+
     SetRect(&winRect, 0, 0, 320, 120);
     OffsetRect(&winRect, 190, 180);
     notWin = NewCWindow(NULL, &winRect, "\pPlayer Eliminated!", true,
@@ -7648,7 +8359,7 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
         TextSize(14);
         TextFace(bold);
         MoveTo(60, 30);
-        DrawString("\pPlayer Eliminated!");
+        DrawString(GetCachedString(STR_HERO_DIPLO, 7, "\pPlayer Eliminated!"));
         TextFace(0);
         TextSize(11);
 
@@ -7667,7 +8378,7 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
         }
 
         RGBForeColor(&white);
-        DrawString("\p has been destroyed!");
+        DrawString(GetCachedString(STR_HERO_DIPLO, 8, "\p has been destroyed!"));
 
         /* By whom */
         if (byPlayer >= 0 && byPlayer < 8) {
@@ -7680,7 +8391,7 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
 
             MoveTo(30, 80);
             RGBForeColor(&white);
-            DrawString("\pConquered by ");
+            DrawString(GetCachedString(STR_HERO_DIPLO, 9, "\pConquered by "));
             RGBForeColor(&byColor);
             {
                 Str255 pstr2;
@@ -7693,7 +8404,7 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
         RGBForeColor(&white);
         TextSize(9);
         MoveTo(210, 110);
-        DrawString("\pClick to continue");
+        DrawString(GetCachedString(STR_MISC, 17, "\pClick to continue"));
     }
 
     UnlockPixels(GetGWorldPixMap(offGW));
@@ -7756,7 +8467,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             /* Check diplomacy: if at peace, skip combat (armies coexist) */
             /* Bounds check: neutrals (owner outside 0-7) always fight */
             if (mOwner >= 0 && mOwner < 8 && oOwner >= 0 && oOwner < 8 &&
-                *(short *)(gs + 0x1582 + (mOwner * 8 + oOwner) * 2) != 0) continue;
+                *(short *)(gs + 0x1582 + (mOwner * 8 + oOwner) * 2) >= 0x1000) continue;
 
             /* Military Advisor: show assessment before combat for human attacker */
             if (sOptMilAdvisor && mOwner >= 0 && mOwner < 8 &&
@@ -7786,11 +8497,23 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                 else if (ratio < 350) advice = "\pan easy victory!";
                 else                  advice = "\pas simple as butchering sleeping cattle!";
 
-                SetRect(&advR, 0, 0, 320, 100);
-                OffsetRect(&advR, 160, 180);
+                {
+                    PicHandle advPict = GetPicture(4420);
+                    short advW = 320, advH = 100;
+                    if (advPict) {
+                        Rect pf = (**advPict).picFrame;
+                        advW = pf.right - pf.left;
+                        advH = pf.bottom - pf.top;
+                    }
+                    SetRect(&advR, 0, 0, advW, advH);
+                    OffsetRect(&advR,
+                        (qd.screenBits.bounds.right - advW) / 2,
+                        (qd.screenBits.bounds.bottom - advH) / 2);
+                }
                 advWin = NewCWindow(NULL, &advR, "\p", true,
                                     plainDBox, (WindowPtr)-1, false, 0);
                 if (advWin) {
+                    PicHandle advPict2 = GetPicture(4420);
                     RGBColor abg = {0x1000, 0x1800, 0x2800};
                     RGBColor agold = {0xFFFF, 0xDDDD, 0x3333};
                     RGBColor awh = {0xFFFF, 0xFFFF, 0xFFFF};
@@ -7799,33 +8522,36 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                     Rect yesR, noR;
                     Boolean advDone = false;
                     EventRecord advEvt;
+                    short advW2 = advR.right - advR.left;
+                    short advH2 = advR.bottom - advR.top;
 
-                    SetRect(&yesR, 160, 72, 230, 92);
-                    SetRect(&noR, 240, 72, 305, 92);
+                    SetRect(&yesR, advW2 - 160, advH2 - 28, advW2 - 90, advH2 - 8);
+                    SetRect(&noR, advW2 - 80, advH2 - 28, advW2 - 15, advH2 - 8);
 
                     SetPort(advWin);
-                    RGBForeColor(&abg); PaintRect(&advWin->portRect);
+                    if (advPict2) DrawPicture(advPict2, &advWin->portRect);
+                    else { RGBForeColor(&abg); PaintRect(&advWin->portRect); }
                     RGBForeColor(&agold); PenSize(2,2); FrameRect(&advWin->portRect); PenNormal();
                     TextFont(3); TextSize(11); TextFace(bold);
                     RGBForeColor(&agold);
                     MoveTo(15, 18);
-                    DrawString("\pAdvisor!");
+                    DrawString(GetCachedString(STR_COMBAT, 0, "\pAdvisor!"));
                     TextFace(0); TextSize(10);
                     RGBForeColor(&awh);
                     MoveTo(15, 36);
-                    DrawString("\pO Great Warlord, this battle would be");
+                    DrawString(GetCachedString(STR_MISC, 5, "\pO Great Warlord, this battle would be"));
                     MoveTo(15, 52);
                     RGBForeColor(&agold);
                     DrawString(advice);
                     /* Attack/Retreat buttons */
                     RGBForeColor(&agreen);
                     FrameRoundRect(&yesR, 6, 6);
-                    MoveTo(172, 87);
-                    DrawString("\pAttack!");
+                    MoveTo(yesR.left + 12, yesR.bottom - 5);
+                    DrawString(GetCachedString(STR_MISC, 6, "\pAttack!"));
                     RGBForeColor(&ared);
                     FrameRoundRect(&noR, 6, 6);
-                    MoveTo(248, 87);
-                    DrawString("\pRetreat");
+                    MoveTo(noR.left + 8, noR.bottom - 5);
+                    DrawString(GetCachedString(STR_MISC, 7, "\pRetreat"));
 
                     while (!advDone) {
                         if (WaitNextEvent(mDownMask | keyDownMask, &advEvt, 30, NULL)) {
@@ -7897,6 +8623,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
 
             /* Resolve combat */
             PlaySound(SND_WAR);
+            LoadAndPlayMusic(MUSIC_STATE_BATTLE);
             {
             short turnNum = *(short *)(gs + 0x136);
             combatResult = ResolveCombat(movingArmyIdx, i);
@@ -7954,28 +8681,28 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                     TextFont(3); TextSize(11); TextFace(bold);
                                     RGBForeColor(&rgold);
                                     MoveTo(15, 20);
-                                    DrawString("\pVictory!");
+                                    DrawString(GetCachedString(STR_MISC, 8, "\pVictory!"));
                                     TextFace(0); TextSize(10);
                                     RGBForeColor(&rwh);
                                     MoveTo(15, 38);
-                                    DrawString("\pThe city is yours!");
+                                    DrawString(GetCachedString(STR_MISC, 9, "\pThe city is yours!"));
                                     MoveTo(15, 54);
-                                    DrawString("\pWill you...");
+                                    DrawString(GetCachedString(STR_MISC, 10, "\pWill you..."));
 
                                     /* Buttons */
                                     RGBForeColor(&rgrn);
                                     FrameRoundRect(&keepR, 6, 6);
                                     MoveTo(30, 92);
-                                    DrawString("\pKeep");
+                                    DrawString(GetCachedString(STR_CITY_CAPTURE, 0, "\pKeep"));
                                     RGBForeColor(&rgold);
                                     FrameRoundRect(&pillR, 6, 6);
                                     MoveTo(120, 92);
-                                    DrawString("\pPillage!");
+                                    DrawString(GetCachedString(STR_CITY_CAPTURE, 1, "\pPillage!"));
                                     if (sRazingCities == 0) {
                                         RGBForeColor(&rred);
                                         FrameRoundRect(&razeR, 6, 6);
                                         MoveTo(225, 92);
-                                        DrawString("\pRaze!");
+                                        DrawString(GetCachedString(STR_CITY_CAPTURE, 3, "\pRaze!"));
                                     }
 
                                     while (!rzDone) {
@@ -8026,12 +8753,12 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                                 TextFont(3); TextSize(10);
                                                 RGBForeColor(&rgold);
                                                 MoveTo(15, 20);
-                                                DrawString("\pPillage!");
+                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 1, "\pPillage!"));
                                                 RGBForeColor(&rwh);
                                                 MoveTo(15, 40);
-                                                DrawString("\pYou looted ");
+                                                DrawString(GetCachedString(STR_MISC, 11, "\pYou looted "));
                                                 NumToString((long)pillGold, ns); DrawString(ns);
-                                                DrawString("\p gold!");
+                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 4, "\p gold!"));
                                                 plT = TickCount() + SpeedTicks(90);
                                                 while (TickCount() < plT) {
                                                     if (WaitNextEvent(mDownMask | keyDownMask, &plEvt, 5, NULL)) break;
@@ -8064,10 +8791,10 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                                 TextFont(3); TextSize(10);
                                                 RGBForeColor(&rred);
                                                 MoveTo(15, 20);
-                                                DrawString("\pDestroyed!");
+                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 5, "\pDestroyed!"));
                                                 RGBForeColor(&rwh);
                                                 MoveTo(15, 40);
-                                                DrawString("\pThe city has been razed to the ground!");
+                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 6, "\pThe city has been razed to the ground!"));
                                                 rz2T = TickCount() + SpeedTicks(90);
                                                 while (TickCount() < rz2T) {
                                                     if (WaitNextEvent(mDownMask | keyDownMask, &rz2Evt, 5, NULL)) break;
@@ -8210,7 +8937,7 @@ static void ShowReportDialog(short tab)
                 if (tab >= 0 && tab <= 4)
                     DrawString(tabNames[tab]);
                 else
-                    DrawString("\pReport");
+                    DrawString(GetCachedString(STR_REPORT, 11, "\pReport"));
                 TextFace(0);
                 TextSize(9);
                 TextFont(3);
@@ -8251,24 +8978,24 @@ static void ShowReportDialog(short tab)
                 RGBForeColor(&black);
                 TextFace(bold);
                 MoveTo(20, 68);
-                DrawString("\pPlayer");
+                DrawString(GetCachedString(STR_REPORT, 0, "\pPlayer"));
                 if (tab == 0) {
-                    MoveTo(120, 68); DrawString("\pArmies");
-                    MoveTo(200, 68); DrawString("\pUnits");
-                    MoveTo(280, 68); DrawString("\pStrength");
+                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 1, "\pArmies"));
+                    MoveTo(200, 68); DrawString(GetCachedString(STR_REPORT, 2, "\pUnits"));
+                    MoveTo(280, 68); DrawString(GetCachedString(STR_REPORT, 3, "\pStrength"));
                 } else if (tab == 1) {
-                    MoveTo(120, 68); DrawString("\pCities");
-                    MoveTo(220, 68); DrawString("\pIncome");
+                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 4, "\pCities"));
+                    MoveTo(220, 68); DrawString(GetCachedString(STR_REPORT, 5, "\pIncome"));
                 } else if (tab == 2) {
-                    MoveTo(120, 68); DrawString("\pGold");
-                    MoveTo(220, 68); DrawString("\pIncome/Turn");
+                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 6, "\pGold"));
+                    MoveTo(220, 68); DrawString(GetCachedString(STR_REPORT, 7, "\pIncome/Turn"));
                 } else if (tab == 3) {
-                    MoveTo(120, 68); DrawString("\pCities");
-                    MoveTo(220, 68); DrawString("\pProducing");
+                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 4, "\pCities"));
+                    MoveTo(220, 68); DrawString(GetCachedString(STR_REPORT, 8, "\pProducing"));
                 } else {
-                    MoveTo(120, 68); DrawString("\pCities");
-                    MoveTo(200, 68); DrawString("\pArmies");
-                    MoveTo(280, 68); DrawString("\pScore");
+                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 4, "\pCities"));
+                    MoveTo(200, 68); DrawString(GetCachedString(STR_REPORT, 1, "\pArmies"));
+                    MoveTo(280, 68); DrawString(GetCachedString(STR_REPORT, 9, "\pScore"));
                 }
                 TextFace(0);
             }
@@ -8394,7 +9121,7 @@ static void ShowReportDialog(short tab)
                 RGBForeColor(&black);
                 FrameRoundRect(&okRect, 8, 8);
                 MoveTo(186, 302);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
             }
 
             UnlockPixels(GetGWorldPixMap(offGW));
@@ -8462,10 +9189,13 @@ static void ShowDiplomacyDialog(void)
     Boolean dipDone;
     unsigned char *gs;
     short curPlayer;
+    PicHandle bgPict;
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
     curPlayer = *(short *)(gs + 0x110);
+
+    bgPict = GetPicture(4300);
 
     SetRect(&winRect, 0, 0, 360, 320);
     OffsetRect(&winRect, 160, 90);
@@ -8498,8 +9228,9 @@ static void ShowDiplomacyDialog(void)
                 SetGWorld(offGW, NULL);
                 LockPixels(GetGWorldPixMap(offGW));
 
-                /* Background */
-                DrawMarbleBackground(&gwRect);
+                /* Background: diplomacy PICT or marble fallback */
+                if (bgPict) DrawPicture(bgPict, &gwRect);
+                else DrawMarbleBackground(&gwRect);
 
                 /* Title */
                 {
@@ -8509,7 +9240,7 @@ static void ShowDiplomacyDialog(void)
                     TextSize(14);
                     TextFace(bold);
                     MoveTo(100, 24);
-                    DrawString("\pDiplomacy Status");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 0, "\pDiplomacy Status"));
                     TextFace(0);
                     TextSize(9);
                     TextFont(3);
@@ -8573,18 +9304,26 @@ static void ShowDiplomacyDialog(void)
                                 RGBColor war = {0xFFFF, 0x4444, 0x4444};
                                 RGBColor peace = {0x8888, 0xFFFF, 0x8888};
                                 status = *(short *)(gs + 0x1582 + (pi * 8 + pj) * 2);
-                                if (status != 0) {
+                                if (status >= 0x1000) {
                                     RGBForeColor(&peace);
                                     PaintRect(&cellRect);
-                                    RGBForeColor(&black);
-                                    MoveTo(cellRect.left + 6, yp + 3);
-                                    DrawString("\pP");
+                                    if (sDiploStateIcons[1])
+                                        PlotCIcon(&cellRect, sDiploStateIcons[1]);
+                                    else {
+                                        RGBForeColor(&black);
+                                        MoveTo(cellRect.left + 6, yp + 3);
+                                        DrawString(GetCachedString(STR_REPORT, 12, "\pP"));
+                                    }
                                 } else {
                                     RGBForeColor(&war);
                                     PaintRect(&cellRect);
-                                    RGBForeColor(&black);
-                                    MoveTo(cellRect.left + 6, yp + 3);
-                                    DrawString("\pW");
+                                    if (sDiploStateIcons[0])
+                                        PlotCIcon(&cellRect, sDiploStateIcons[0]);
+                                    else {
+                                        RGBForeColor(&black);
+                                        MoveTo(cellRect.left + 6, yp + 3);
+                                        DrawString(GetCachedString(STR_REPORT, 13, "\pW"));
+                                    }
                                 }
                             }
                             RGBForeColor(&black);
@@ -8599,7 +9338,7 @@ static void ShowDiplomacyDialog(void)
                     RGBForeColor(&hint);
                     TextSize(9);
                     MoveTo(20, 274);
-                    DrawString("\pClick a cell in your row to propose peace/war");
+                    DrawString(GetCachedString(STR_REPORT, 14, "\pClick a cell in your row to propose peace/war"));
                 }
 
                 /* OK button */
@@ -8608,7 +9347,7 @@ static void ShowDiplomacyDialog(void)
                     RGBForeColor(&black);
                     FrameRoundRect(&okRect, 8, 8);
                     MoveTo(166, 300);
-                    DrawString("\pOK");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 }
 
                 UnlockPixels(GetGWorldPixMap(offGW));
@@ -8648,7 +9387,7 @@ static void ShowDiplomacyDialog(void)
                                 if (PtInRect(mp, &cell)) {
                                     /* Toggle peace/war (both directions) */
                                     short cur = *(short *)(gs + 0x1582 + (curPlayer * 8 + pj) * 2);
-                                    short newVal = (cur != 0) ? 0 : 1;
+                                    short newVal = (cur >= 0x1000) ? 0 : 0x2800;
                                     *(short *)(gs + 0x1582 + (curPlayer * 8 + pj) * 2) = newVal;
                                     *(short *)(gs + 0x1582 + (pj * 8 + curPlayer) * 2) = newVal;
                                     needsRedraw = true;
@@ -8738,7 +9477,7 @@ static void ShowHistoryDialog(short tab)
                 if (tab >= 0 && tab <= 3)
                     DrawString(tabNames[tab]);
                 else
-                    DrawString("\pHistory");
+                    DrawString(GetCachedString(STR_REPORT, 0, "\pHistory"));
                 TextFace(0);
                 TextSize(9);
                 TextFont(3);
@@ -8783,7 +9522,7 @@ static void ShowHistoryDialog(short tab)
 
                 RGBForeColor(&black);
                 MoveTo(20, 72);
-                DrawString("\pTurn: ");
+                DrawString(GetCachedString(STR_REPORT, 1, "\pTurn: "));
                 NumToString((long)turnNum, numStr);
                 DrawString(numStr);
 
@@ -8795,7 +9534,7 @@ static void ShowHistoryDialog(short tab)
 
                     MoveTo(20, 90);
                     TextFace(bold);
-                    DrawString("\pPlayer         Cities");
+                    DrawString(GetCachedString(STR_REPORT, 2, "\pPlayer         Cities"));
                     TextFace(0);
 
                     for (pi = 0; pi < 8; pi++) {
@@ -8838,7 +9577,7 @@ static void ShowHistoryDialog(short tab)
                     short startIdx;
                     MoveTo(20, yp);
                     TextFace(bold);
-                    DrawString("\pTurn  Event");
+                    DrawString(GetCachedString(STR_REPORT, 3, "\pTurn  Event"));
                     TextFace(0);
                     yp += 18;
 
@@ -8866,7 +9605,7 @@ static void ShowHistoryDialog(short tab)
                     if (showCount == 0) {
                         RGBForeColor(&black);
                         MoveTo(30, yp);
-                        DrawString("\pNo events recorded yet.");
+                        DrawString(GetCachedString(STR_REPORT, 4, "\pNo events recorded yet."));
                     }
                 } else if (tab == 2) {
                     /* Gold chart + current gold listing */
@@ -8901,7 +9640,7 @@ static void ShowHistoryDialog(short tab)
                         MoveTo(chartL - 14, chartB + 4);
                         DrawString("\p0");
                         MoveTo(chartR - 20, chartB + 12);
-                        DrawString("\pTurn");
+                        DrawString(GetCachedString(STR_REPORT, 5, "\pTurn"));
                         TextSize(9);
 
                         for (pi = 0; pi < 8; pi++) {
@@ -8922,7 +9661,7 @@ static void ShowHistoryDialog(short tab)
                         RGBForeColor(&black);
                         TextFace(bold);
                         MoveTo(20, 228);
-                        DrawString("\pCurrent Gold:");
+                        DrawString(GetCachedString(STR_REPORT, 6, "\pCurrent Gold:"));
                         TextFace(0);
                         for (pi = 0; pi < 8; pi++) {
                             short xp = 20 + (pi % 4) * 85;
@@ -8937,7 +9676,7 @@ static void ShowHistoryDialog(short tab)
                         }
                     } else {
                         MoveTo(20, 90);
-                        DrawString("\pNo history data yet (charts appear after turn 2)");
+                        DrawString(GetCachedString(STR_REPORT, 7, "\pNo history data yet (charts appear after turn 2)"));
                         for (pi = 0; pi < 8; pi++) {
                             short yp = 118 + pi * 18;
                             short pGold;
@@ -8947,7 +9686,7 @@ static void ShowHistoryDialog(short tab)
                             MoveTo(30, yp);
                             NumToString((long)pGold, numStr);
                             DrawString(numStr);
-                            DrawString("\p gp");
+                            DrawString(GetCachedString(STR_REPORT, 8, "\p gp"));
                         }
                     }
                 } else {
@@ -8955,7 +9694,7 @@ static void ShowHistoryDialog(short tab)
                     short rowNum = 0;
                     MoveTo(20, 90);
                     TextFace(bold);
-                    DrawString("\pPlayer         Score");
+                    DrawString(GetCachedString(STR_REPORT, 9, "\pPlayer         Score"));
                     TextFace(0);
 
                     for (pi = 0; pi < 8; pi++) {
@@ -9013,7 +9752,7 @@ static void ShowHistoryDialog(short tab)
                 RGBForeColor(&black);
                 FrameRoundRect(&okRect, 8, 8);
                 MoveTo(176, 284);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
             }
 
             UnlockPixels(GetGWorldPixMap(offGW));
@@ -9150,7 +9889,7 @@ static void ShowChangeSignpost(void)
                 TextSize(12);
                 TextFace(bold);
                 MoveTo(70, 22);
-                DrawString("\pChange Signpost");
+                DrawString(GetCachedString(STR_MISC, 73, "\pChange Signpost"));
                 TextFace(0);
                 TextSize(10);
 
@@ -9179,20 +9918,20 @@ static void ShowChangeSignpost(void)
                 SetRect(&r, 20, 70, 90, 90);
                 FrameRoundRect(&r, 10, 10);
                 MoveTo(35, 84);
-                DrawString("\pDelete");
+                DrawString(GetCachedString(STR_MISC, 74, "\pDelete"));
 
                 /* OK / Cancel */
                 SetRect(&r, 120, 70, 180, 90);
                 FrameRoundRect(&r, 10, 10);
                 MoveTo(134, 84);
                 TextFace(bold);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 TextFace(0);
 
                 SetRect(&r, 195, 70, 260, 90);
                 FrameRoundRect(&r, 10, 10);
                 MoveTo(207, 84);
-                DrawString("\pCancel");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
             }
 
             UnlockPixels(GetGWorldPixMap(offGW));
@@ -9344,7 +10083,7 @@ static void ShowFightOrder(short armyIndex)
                 TextSize(12);
                 TextFace(bold);
                 MoveTo(90, 22);
-                DrawString("\pFight Order");
+                DrawString(GetCachedString(STR_MISC, 0, "\pFight Order"));
                 TextFace(0);
                 TextSize(10);
 
@@ -9353,19 +10092,19 @@ static void ShowFightOrder(short armyIndex)
                     RGBColor gray = {0x6666, 0x6666, 0x6666};
                     RGBForeColor(&gray);
                     MoveTo(30, 38);
-                    DrawString("\pClick two slots to swap. Slot 1 fights first.");
+                    DrawString(GetCachedString(STR_MISC, 1, "\pClick two slots to swap. Slot 1 fights first."));
                     RGBForeColor(&black);
                 }
 
                 /* Column headers */
                 RGBForeColor(&hdr);
                 TextFace(bold);
-                MoveTo(20, 56); DrawString("\p#");
-                MoveTo(40, 56); DrawString("\pType");
-                MoveTo(140, 56); DrawString("\pHP");
-                MoveTo(180, 56); DrawString("\pMov");
-                MoveTo(220, 56); DrawString("\pBonus");
-                MoveTo(265, 56); DrawString("\pXP");
+                MoveTo(20, 56); DrawString(GetCachedString(STR_MISC, 2, "\p#"));
+                MoveTo(40, 56); DrawString(GetCachedString(STR_MISC, 3, "\pType"));
+                MoveTo(140, 56); DrawString(GetCachedString(STR_MISC, 4, "\pHP"));
+                MoveTo(180, 56); DrawString(GetCachedString(STR_MISC, 5, "\pMov"));
+                MoveTo(220, 56); DrawString(GetCachedString(STR_MISC, 6, "\pBonus"));
+                MoveTo(265, 56); DrawString(GetCachedString(STR_MISC, 7, "\pXP"));
                 TextFace(0);
                 RGBForeColor(&black);
 
@@ -9396,7 +10135,7 @@ static void ShowFightOrder(short armyIndex)
                         RGBColor gray = {0x8888, 0x8888, 0x8888};
                         RGBForeColor(&gray);
                         MoveTo(40, yText);
-                        DrawString("\p(empty)");
+                        DrawString(GetCachedString(STR_MISC, 8, "\p(empty)"));
                         RGBForeColor(&black);
                     } else {
                         /* Unit type name */
@@ -9428,7 +10167,7 @@ static void ShowFightOrder(short armyIndex)
                 FrameRoundRect(&r, 10, 10);
                 TextFace(bold);
                 MoveTo(148, 214);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 TextFace(0);
             }
 
@@ -9601,7 +10340,7 @@ static void ShowAboutDialog(void)
         MoveTo(158, 199);
         TextSize(12);
         TextFace(bold);
-        DrawString("\pOK");
+        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
         TextFace(0);
     }
 
@@ -9707,7 +10446,7 @@ static void ShowSoundVolumesDialog(void)
                 TextSize(14);
                 TextFace(bold);
                 MoveTo(65, 24);
-                DrawString("\pSound Volumes");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 5, "\pSound Volumes"));
                 TextFace(0);
                 TextSize(9);
                 TextFont(3);
@@ -9749,7 +10488,7 @@ static void ShowSoundVolumesDialog(void)
                     RGBForeColor(&gray);
                     TextSize(8);
                     MoveTo(50, 175);
-                    DrawString("\pDrag sliders to adjust volume");
+                    DrawString(GetCachedString(STR_MISC, 75, "\pDrag sliders to adjust volume"));
                     TextSize(9);
                 }
 
@@ -9763,7 +10502,7 @@ static void ShowSoundVolumesDialog(void)
                     FrameRoundRect(&okRect, 8, 8);
                     TextFace(bold);
                     MoveTo(126, 201);
-                    DrawString("\pOK");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                     TextFace(0);
                 }
             }
@@ -9803,6 +10542,11 @@ static void ShowSoundVolumesDialog(void)
                             if (newVal < 0) newVal = 0;
                             if (newVal > 10) newVal = 10;
                             *vals[i] = newVal;
+                            /* Update music volume in real time */
+                            if (i == 2 && gTunePlayer != NULL) {
+                                long fv = ((long)newVal * 3L) << 11;
+                                TuneSetVolume(gTunePlayer, fv);
+                            }
                             needsRedraw = true;
                             break;
                         }
@@ -9867,7 +10611,7 @@ static void ShowShortcutsDialog(void)
         TextSize(14);
         TextFace(bold);
         MoveTo(110, 22);
-        DrawString("\pKeyboard Shortcuts");
+        DrawString(GetCachedString(STR_MISC, 9, "\pKeyboard Shortcuts"));
         TextFace(0);
         TextSize(10);
 
@@ -9875,8 +10619,8 @@ static void ShowShortcutsDialog(void)
         row = 42;
         RGBForeColor(&hdrColor);
         TextFace(bold);
-        MoveTo(20, row); DrawString("\pKey");
-        MoveTo(120, row); DrawString("\pAction");
+        MoveTo(20, row); DrawString(GetCachedString(STR_MISC, 10, "\pKey"));
+        MoveTo(120, row); DrawString(GetCachedString(STR_MISC, 11, "\pAction"));
         RGBForeColor(&black);
         TextFace(0);
 
@@ -9918,7 +10662,7 @@ static void ShowShortcutsDialog(void)
         row += 4; /* extra gap */
         RGBForeColor(&hdrColor);
         TextFace(bold);
-        MoveTo(20, row); DrawString("\pNo-Modifier Keys:");
+        MoveTo(20, row); DrawString(GetCachedString(STR_MISC, 12, "\pNo-Modifier Keys:"));
         TextFace(0);
         RGBForeColor(&black);
         row += 14;
@@ -9944,7 +10688,7 @@ static void ShowShortcutsDialog(void)
         MoveTo(178, 524);
         TextSize(12);
         TextFace(bold);
-        DrawString("\pOK");
+        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
         TextFace(0);
     }
 
@@ -10219,28 +10963,28 @@ static void ShowQuestDialog(void)
             TextFont(2); TextSize(14); TextFace(bold);
             RGBForeColor(&gold);
             MoveTo(140, 26);
-            DrawString("\pQuest Log");
+            DrawString(GetCachedString(STR_QUEST, 0, "\pQuest Log"));
             TextFace(0); TextFont(3); TextSize(10);
 
             if (!questEnabled) {
                 RGBForeColor(&white);
                 MoveTo(60, 80);
-                DrawString("\pQuests are not enabled in this game.");
+                DrawString(GetCachedString(STR_QUEST, 1, "\pQuests are not enabled in this game."));
                 MoveTo(60, 100);
-                DrawString("\pEnable in Game Settings to receive quests.");
+                DrawString(GetCachedString(STR_QUEST, 2, "\pEnable in Game Settings to receive quests."));
             } else if (q->completed) {
                 RGBColor green = {0x4444, 0xFFFF, 0x4444};
                 RGBForeColor(&green);
                 TextFace(bold);
                 MoveTo(100, 60);
-                DrawString("\pQuest Complete!");
+                DrawString(GetCachedString(STR_QUEST, 3, "\pQuest Complete!"));
                 TextFace(0);
                 RGBForeColor(&white);
                 MoveTo(40, 85);
-                DrawString("\pYour reward has been granted.");
+                DrawString(GetCachedString(STR_QUEST, 4, "\pYour reward has been granted."));
                 if (q->reward > 0) {
                     MoveTo(40, 105);
-                    DrawString("\pGold: +");
+                    DrawString(GetCachedString(STR_QUEST, 5, "\pGold: +"));
                     NumToString((long)q->reward, numStr);
                     DrawString(numStr);
                 }
@@ -10253,7 +10997,7 @@ static void ShowQuestDialog(void)
                         RGBColor cyan = {0x6666, 0xFFFF, 0xFFFF};
                         RGBForeColor(&cyan);
                     }
-                    DrawString("\pArtifact: ");
+                    DrawString(GetCachedString(STR_QUEST, 6, "\pArtifact: "));
                     while (nl < 19 && itm->name[nl]) nl++;
                     iname[0] = (unsigned char)nl;
                     BlockMoveData(itm->name, iname + 1, nl);
@@ -10261,17 +11005,17 @@ static void ShowQuestDialog(void)
                 }
                 MoveTo(40, 150);
                 RGBForeColor(&white);
-                DrawString("\pA new quest will be assigned next turn.");
+                DrawString(GetCachedString(STR_QUEST, 7, "\pA new quest will be assigned next turn."));
             } else if (q->active) {
                 /* Show active quest */
                 RGBForeColor(&gold);
                 TextFace(bold);
                 MoveTo(40, 52);
                 switch (q->type) {
-                    case QUEST_CAPTURE:  DrawString("\pCapture City"); break;
-                    case QUEST_EXPLORE:  DrawString("\pExplore Ruins"); break;
-                    case QUEST_CONQUER:  DrawString("\pConquer Territory"); break;
-                    case QUEST_GOLD:     DrawString("\pAmass Wealth"); break;
+                    case QUEST_CAPTURE:  DrawString(GetCachedString(STR_QUEST, 8, "\pCapture City")); break;
+                    case QUEST_EXPLORE:  DrawString(GetCachedString(STR_QUEST, 9, "\pExplore Ruins")); break;
+                    case QUEST_CONQUER:  DrawString(GetCachedString(STR_QUEST, 10, "\pConquer Territory")); break;
+                    case QUEST_GOLD:     DrawString(GetCachedString(STR_QUEST, 11, "\pAmass Wealth")); break;
                 }
                 TextFace(0);
                 RGBForeColor(&white);
@@ -10284,7 +11028,7 @@ static void ShowQuestDialog(void)
                         short cx = *(short *)(city + 0x00);
                         short cy = *(short *)(city + 0x02);
 
-                        DrawString("\pCapture the city at (");
+                        DrawString(GetCachedString(STR_QUEST, 12, "\pCapture the city at ("));
                         NumToString((long)cx, numStr); DrawString(numStr);
                         DrawString("\p, ");
                         NumToString((long)cy, numStr); DrawString(numStr);
@@ -10295,7 +11039,7 @@ static void ShowQuestDialog(void)
                             Str255 cn;
                             short nl = 0;
                             MoveTo(40, 92);
-                            DrawString("\pCity: ");
+                            DrawString(GetCachedString(STR_CITY_DIALOG, 0, "\pCity: "));
                             while (nl < 19 && sCityNames[q->target][nl]) nl++;
                             cn[0] = (unsigned char)nl;
                             BlockMoveData(sCityNames[q->target], cn + 1, nl);
@@ -10306,31 +11050,31 @@ static void ShowQuestDialog(void)
                         break;
                     }
                     case QUEST_EXPLORE:
-                        DrawString("\pSearch ");
+                        DrawString(GetCachedString(STR_QUEST, 13, "\pSearch "));
                         NumToString((long)q->target, numStr); DrawString(numStr);
-                        DrawString("\p ruins or temples.");
+                        DrawString(GetCachedString(STR_QUEST, 14, "\p ruins or temples."));
                         MoveTo(40, 92);
-                        DrawString("\pProgress: ");
+                        DrawString(GetCachedString(STR_QUEST, 15, "\pProgress: "));
                         NumToString((long)q->progress, numStr); DrawString(numStr);
                         DrawString("\p / ");
                         NumToString((long)q->target, numStr); DrawString(numStr);
                         break;
                     case QUEST_CONQUER:
-                        DrawString("\pControl ");
+                        DrawString(GetCachedString(STR_MISC, 0, "\pControl "));
                         NumToString((long)q->target, numStr); DrawString(numStr);
-                        DrawString("\p cities.");
+                        DrawString(GetCachedString(STR_MISC, 1, "\p cities."));
                         MoveTo(40, 92);
-                        DrawString("\pCurrent: ");
+                        DrawString(GetCachedString(STR_QUEST, 14, "\pCurrent: "));
                         NumToString((long)q->progress, numStr); DrawString(numStr);
                         DrawString("\p / ");
                         NumToString((long)q->target, numStr); DrawString(numStr);
                         break;
                     case QUEST_GOLD:
-                        DrawString("\pAccumulate ");
+                        DrawString(GetCachedString(STR_MISC, 2, "\pAccumulate "));
                         NumToString((long)q->target, numStr); DrawString(numStr);
-                        DrawString("\p gold.");
+                        DrawString(GetCachedString(STR_MISC, 3, "\p gold."));
                         MoveTo(40, 92);
-                        DrawString("\pCurrent: ");
+                        DrawString(GetCachedString(STR_QUEST, 14, "\pCurrent: "));
                         NumToString((long)q->progress, numStr); DrawString(numStr);
                         DrawString("\p / ");
                         NumToString((long)q->target, numStr); DrawString(numStr);
@@ -10340,11 +11084,11 @@ static void ShowQuestDialog(void)
                 /* Reward preview */
                 MoveTo(40, 120);
                 RGBForeColor(&gold);
-                DrawString("\pReward: ");
+                DrawString(GetCachedString(STR_MISC, 4, "\pReward: "));
                 RGBForeColor(&white);
                 if (q->reward > 0) {
                     NumToString((long)q->reward, numStr); DrawString(numStr);
-                    DrawString("\p gold");
+                    DrawString(GetCachedString(STR_QUEST, 15, "\p gold"));
                 }
                 if (q->rewardItem > 0 && q->rewardItem <= MAX_ITEMS) {
                     const ItemDef *itm = &sItemTable[q->rewardItem - 1];
@@ -10363,7 +11107,7 @@ static void ShowQuestDialog(void)
             } else {
                 RGBForeColor(&white);
                 MoveTo(60, 80);
-                DrawString("\pNo active quests.");
+                DrawString(GetCachedString(STR_QUEST, 15, "\pNo active quests."));
             }
 
             /* OK button */
@@ -10372,7 +11116,7 @@ static void ShowQuestDialog(void)
             FrameRoundRect(&r, 8, 8);
             TextFace(bold);
             MoveTo(178, 196);
-            DrawString("\pOK");
+            DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
             TextFace(0);
         }
 
@@ -10480,7 +11224,7 @@ static void ShowGameSettingsDialog(void)
                 TextSize(14);
                 TextFace(bold);
                 MoveTo(105, 22);
-                DrawString("\pGame Settings");
+                DrawString(GetCachedString(STR_GAME_SETTINGS, 0, "\pGame Settings"));
                 TextFace(0);
                 TextSize(10);
 
@@ -10489,44 +11233,44 @@ static void ShowGameSettingsDialog(void)
                 RGBForeColor(&hdr);
                 TextFace(bold);
                 MoveTo(20, y);
-                DrawString("\pNeutral Cities:");
+                DrawString(GetCachedString(STR_GAME_SETTINGS, 1, "\pNeutral Cities:"));
                 TextFace(0);
                 RGBForeColor(&black);
 
                 y = 60;
                 SetRect(&r, 20, y - 10, 30, y); FrameRect(&r);
                 if (localNeutral == 0) { RGBForeColor(&check); MoveTo(22, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(35, y); DrawString("\pAverage");
+                MoveTo(35, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 2, "\pAverage"));
 
                 SetRect(&r, 110, y - 10, 120, y); FrameRect(&r);
                 if (localNeutral == 1) { RGBForeColor(&check); MoveTo(112, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(125, y); DrawString("\pStrong");
+                MoveTo(125, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 3, "\pStrong"));
 
                 SetRect(&r, 200, y - 10, 210, y); FrameRect(&r);
                 if (localNeutral == 2) { RGBForeColor(&check); MoveTo(202, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(215, y); DrawString("\pActive");
+                MoveTo(215, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 4, "\pActive"));
 
                 /* Razing Cities */
                 y = 84;
                 RGBForeColor(&hdr);
                 TextFace(bold);
                 MoveTo(20, y);
-                DrawString("\pRazing Cities:");
+                DrawString(GetCachedString(STR_GAME_SETTINGS, 5, "\pRazing Cities:"));
                 TextFace(0);
                 RGBForeColor(&black);
 
                 y = 100;
                 SetRect(&r, 20, y - 10, 30, y); FrameRect(&r);
                 if (localRazing == 0) { RGBForeColor(&check); MoveTo(22, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(35, y); DrawString("\pAlways");
+                MoveTo(35, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 6, "\pAlways"));
 
                 SetRect(&r, 110, y - 10, 120, y); FrameRect(&r);
                 if (localRazing == 1) { RGBForeColor(&check); MoveTo(112, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(125, y); DrawString("\pOn Capture");
+                MoveTo(125, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 7, "\pOn Capture"));
 
                 SetRect(&r, 200, y - 10, 210, y); FrameRect(&r);
                 if (localRazing == 2) { RGBForeColor(&check); MoveTo(202, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(215, y); DrawString("\pNever");
+                MoveTo(215, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 8, "\pNever"));
 
                 /* Separator */
                 y = 118;
@@ -10541,7 +11285,7 @@ static void ShowGameSettingsDialog(void)
                 RGBForeColor(&hdr);
                 TextFace(bold);
                 MoveTo(20, y);
-                DrawString("\pAffecting Difficulty:");
+                DrawString(GetCachedString(STR_GAME_SETTINGS, 9, "\pAffecting Difficulty:"));
                 TextFace(0);
                 RGBForeColor(&black);
 
@@ -10550,11 +11294,11 @@ static void ShowGameSettingsDialog(void)
                       if (var) { RGBForeColor(&check); MoveTo(22, (yy) - 2); DrawString("\px"); RGBForeColor(&black); } \
                       MoveTo(35, (yy)); DrawString(lbl); }
 
-                y = 152; CHK_ROW(y, localQuests, "\pQuests");
-                y = 168; CHK_ROW(y, localViewEn, "\pView Enemies");
-                y = 184; CHK_ROW(y, localHidden, "\pHidden Map");
-                y = 200; CHK_ROW(y, localDiplo, "\pDiplomacy");
-                y = 216; CHK_ROW(y, localViewProd, "\pView Production");
+                y = 152; CHK_ROW(y, localQuests, GetCachedString(STR_GAME_SETTINGS, 10, "\pQuests"));
+                y = 168; CHK_ROW(y, localViewEn, GetCachedString(STR_GAME_SETTINGS, 11, "\pView Enemies"));
+                y = 184; CHK_ROW(y, localHidden, GetCachedString(STR_GAME_SETTINGS, 12, "\pHidden Map"));
+                y = 200; CHK_ROW(y, localDiplo, GetCachedString(STR_GAME_SETTINGS, 13, "\pDiplomacy"));
+                y = 216; CHK_ROW(y, localViewProd, GetCachedString(STR_GAME_SETTINGS, 14, "\pView Production"));
 
                 /* Separator */
                 y = 232;
@@ -10569,13 +11313,13 @@ static void ShowGameSettingsDialog(void)
                 RGBForeColor(&hdr);
                 TextFace(bold);
                 MoveTo(20, y);
-                DrawString("\pOther Options:");
+                DrawString(GetCachedString(STR_GAME_SETTINGS, 15, "\pOther Options:"));
                 TextFace(0);
                 RGBForeColor(&black);
 
-                y = 266; CHK_ROW(y, localIntense, "\pIntense Combat");
-                y = 282; CHK_ROW(y, localMilAdv, "\pMilitary Advisor");
-                y = 298; CHK_ROW(y, localRandom, "\pRandom Turns");
+                y = 266; CHK_ROW(y, localIntense, GetCachedString(STR_GAME_SETTINGS, 16, "\pIntense Combat"));
+                y = 282; CHK_ROW(y, localMilAdv, GetCachedString(STR_GAME_SETTINGS, 17, "\pMilitary Advisor"));
+                y = 298; CHK_ROW(y, localRandom, GetCachedString(STR_GAME_SETTINGS, 18, "\pRandom Turns"));
 
                 #undef CHK_ROW
 
@@ -10591,26 +11335,26 @@ static void ShowGameSettingsDialog(void)
                 RGBForeColor(&hdr);
                 TextFace(bold);
                 MoveTo(20, y);
-                DrawString("\pGame Speed:");
+                DrawString(GetCachedString(STR_GAME_SETTINGS, 19, "\pGame Speed:"));
                 TextFace(0);
                 RGBForeColor(&black);
 
                 y = 346;
                 SetRect(&r, 20, y - 10, 30, y); FrameRect(&r);
                 if (localSpeed == 0) { RGBForeColor(&check); MoveTo(22, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(35, y); DrawString("\pSlow");
+                MoveTo(35, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 26, "\pSlow"));
 
                 SetRect(&r, 90, y - 10, 100, y); FrameRect(&r);
                 if (localSpeed == 1) { RGBForeColor(&check); MoveTo(92, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(105, y); DrawString("\pNormal");
+                MoveTo(105, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 27, "\pNormal"));
 
                 SetRect(&r, 170, y - 10, 180, y); FrameRect(&r);
                 if (localSpeed == 2) { RGBForeColor(&check); MoveTo(172, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(185, y); DrawString("\pFast");
+                MoveTo(185, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 28, "\pFast"));
 
                 SetRect(&r, 240, y - 10, 250, y); FrameRect(&r);
                 if (localSpeed == 3) { RGBForeColor(&check); MoveTo(242, y - 2); DrawString("\px"); RGBForeColor(&black); }
-                MoveTo(255, y); DrawString("\pInstant");
+                MoveTo(255, y); DrawString(GetCachedString(STR_GAME_SETTINGS, 29, "\pInstant"));
 
                 /* OK / Cancel buttons */
                 SetRect(&r, 170, 390, 240, 410);
@@ -10618,14 +11362,14 @@ static void ShowGameSettingsDialog(void)
                 MoveTo(193, 404);
                 TextSize(12);
                 TextFace(bold);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
 
                 SetRect(&r, 80, 390, 158, 410);
                 FrameRoundRect(&r, 10, 10);
                 MoveTo(95, 404);
                 TextFace(0);
                 TextSize(12);
-                DrawString("\pCancel");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
                 TextFace(0);
             }
 
@@ -10812,7 +11556,7 @@ static void ShowTriumphsDialog(void)
         TextSize(12);
         TextFace(bold);
         MoveTo(100, 22);
-        DrawString("\pTriumphs");
+        DrawString(GetCachedString(STR_VICTORY, 21, "\pTriumphs"));
         TextFace(0);
         TextSize(10);
 
@@ -10842,34 +11586,34 @@ static void ShowTriumphsDialog(void)
             BlockMoveData(fname, pname + 1, len);
             DrawString(pname);
         }
-        DrawString("\p's Triumphs:");
+        DrawString(GetCachedString(STR_VICTORY, 9, "\p's Triumphs:"));
 
         RGBForeColor(&black);
         MoveTo(30, 80);
         NumToString((long)pCities, numStr);
         DrawString(numStr);
-        DrawString("\p cities controlled");
+        DrawString(GetCachedString(STR_VICTORY, 10, "\p cities controlled"));
 
         MoveTo(30, 100);
         NumToString((long)pArmies, numStr);
         DrawString(numStr);
-        DrawString("\p armies in the field");
+        DrawString(GetCachedString(STR_VICTORY, 11, "\p armies in the field"));
 
         MoveTo(30, 120);
         {
             short gold = *(short *)(gs + 0x186 + curPlayer * 0x14);
             NumToString((long)gold, numStr);
             DrawString(numStr);
-            DrawString("\p gold in treasury");
+            DrawString(GetCachedString(STR_VICTORY, 12, "\p gold in treasury"));
         }
 
         MoveTo(30, 140);
         {
             short turn = *(short *)(gs + 0x136);
-            DrawString("\pTurn ");
+            DrawString(GetCachedString(STR_VICTORY, 13, "\pTurn "));
             NumToString((long)turn, numStr);
             DrawString(numStr);
-            DrawString("\p of the campaign");
+            DrawString(GetCachedString(STR_VICTORY, 14, "\p of the campaign"));
         }
 
         /* Total score */
@@ -10878,7 +11622,7 @@ static void ShowTriumphsDialog(void)
         {
             short score = pCities * 10 + pArmies * 5 +
                           *(short *)(gs + 0x186 + curPlayer * 0x14) / 100;
-            DrawString("\pOverall Score: ");
+            DrawString(GetCachedString(STR_VICTORY, 15, "\pOverall Score: "));
             NumToString((long)score, numStr);
             DrawString(numStr);
         }
@@ -10893,7 +11637,7 @@ static void ShowTriumphsDialog(void)
         RGBForeColor(&black);
         FrameRoundRect(&okRect, 8, 8);
         MoveTo(156, 236);
-        DrawString("\pOK");
+        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
     }
 
     UnlockPixels(GetGWorldPixMap(offGW));
@@ -11068,7 +11812,7 @@ static void ShowItemsDialog(short armyIdx)
         }
         MoveTo(20, 24);
         DrawString(hname);
-        DrawString("\p's Items");
+        DrawString(GetCachedString(STR_MISC, 31, "\p's Items"));
         TextFace(0);
     }
 
@@ -11078,7 +11822,7 @@ static void ShowItemsDialog(short armyIdx)
         RGBForeColor(&hdrCol);
         TextFont(3); TextSize(10); TextFace(bold);
         MoveTo(20, 48);
-        DrawString("\pSlot  Item Name            Type    Bonus");
+        DrawString(GetCachedString(STR_MISC, 32, "\pSlot  Item Name            Type    Bonus"));
         TextFace(0);
     }
 
@@ -11139,11 +11883,11 @@ static void ShowItemsDialog(short armyIdx)
             } else {
                 RGBColor green = {0x4444, 0xFFFF, 0x4444};
                 RGBForeColor(&green);
-                DrawString("\pYes");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 3, "\pYes"));
             }
         } else {
             RGBForeColor(&gray);
-            DrawString("\p(empty)");
+            DrawString(GetCachedString(STR_MISC, 33, "\p(empty)"));
         }
         yp += 20;
     }
@@ -11155,16 +11899,16 @@ static void ShowItemsDialog(short armyIdx)
         RGBForeColor(&sumCol);
         TextSize(10);
         MoveTo(20, yp + 16);
-        DrawString("\pTotal: Battle +");
+        DrawString(GetCachedString(STR_MISC, 34, "\pTotal: Battle +"));
         NumToString((long)battleBonus, bs); DrawString(bs);
-        DrawString("\p  Command +");
+        DrawString(GetCachedString(STR_MISC, 35, "\p  Command +"));
         NumToString((long)cmdBonus, bs); DrawString(bs);
         if (goldBonus > 0) {
-            DrawString("\p  Gold +");
+            DrawString(GetCachedString(STR_MISC, 36, "\p  Gold +"));
             NumToString((long)goldBonus, bs); DrawString(bs);
         }
-        if (hasFlying) DrawString("\p  Flying");
-        if (hasDoubleMove) DrawString("\p  2xMove");
+        if (hasFlying) DrawString(GetCachedString(STR_MISC, 37, "\p  Flying"));
+        if (hasDoubleMove) DrawString(GetCachedString(STR_MISC, 38, "\p  2xMove"));
     }
 
     /* OK button */
@@ -11175,7 +11919,7 @@ static void ShowItemsDialog(short armyIdx)
         RGBForeColor(&white);
         FrameRoundRect(&okR, 8, 8);
         MoveTo(146, 216);
-        DrawString("\pOK");
+        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
     }
 
     UnlockPixels(GetGWorldPixMap(itemGW));
@@ -11269,7 +12013,7 @@ static void ShowHeroInspect(void)
                     RGBForeColor(&black);
                     TextSize(12); TextFace(bold);
                     MoveTo(130, 22);
-                    DrawString("\pInspect Heroes");
+                    DrawString(GetCachedString(STR_HERO_INFO, 0, "\pInspect Heroes"));
                     TextFace(0); TextSize(10);
                 }
 
@@ -11286,7 +12030,7 @@ static void ShowHeroInspect(void)
 
                     MoveTo(20, 48); TextFace(bold);
                     RGBForeColor(&black);
-                    DrawString("\pName                Str  Mv  Cmd  XP  Items");
+                    DrawString(GetCachedString(STR_HERO_INFO, 1, "\pName                Str  Mv  Cmd  XP  Items"));
                     TextFace(0);
 
                     for (ai = 0; ai < armyCount && heroCount < 8; ai++) {
@@ -11375,14 +12119,14 @@ static void ShowHeroInspect(void)
                     if (heroCount == 0) {
                         RGBForeColor(&black);
                         MoveTo(100, 120);
-                        DrawString("\pNo heroes in service.");
+                        DrawString(GetCachedString(STR_MISC, 48, "\pNo heroes in service."));
                     } else {
                         /* Hint text */
                         RGBColor hint = {0x6666, 0x6666, 0x9999};
                         RGBForeColor(&hint);
                         TextSize(9);
                         MoveTo(20, 68 + heroCount * 24 + 10);
-                        DrawString("\pClick a hero row to view items.");
+                        DrawString(GetCachedString(STR_MISC, 76, "\pClick a hero row to view items."));
                         TextSize(10);
                     }
                 }
@@ -11395,7 +12139,7 @@ static void ShowHeroInspect(void)
                     RGBForeColor(&black);
                     FrameRoundRect(&okRect, 8, 8);
                     MoveTo(186, 284);
-                    DrawString("\pOK");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 }
 
                 UnlockPixels(GetGWorldPixMap(offGW));
@@ -11583,18 +12327,18 @@ static void ShowHeroLevels(void)
             RGBForeColor(&black);
             TextFont(2); TextSize(14); TextFace(bold);
             MoveTo(155, 22);
-            DrawString("\pHero Levels");
+            DrawString(GetCachedString(STR_MISC, 39, "\pHero Levels"));
             TextFace(0); TextSize(10); TextFont(3);
 
             /* Column headers */
             TextFace(bold);
-            MoveTo(15, 48);  DrawString("\pHero");
-            MoveTo(140, 48); DrawString("\pTitle");
-            MoveTo(225, 48); DrawString("\pLvl");
-            MoveTo(260, 48); DrawString("\pExp");
-            MoveTo(300, 48); DrawString("\pNeeds");
-            MoveTo(350, 48); DrawString("\pStr");
-            MoveTo(395, 48); DrawString("\pMove");
+            MoveTo(15, 48);  DrawString(GetCachedString(STR_MISC, 40, "\pHero"));
+            MoveTo(140, 48); DrawString(GetCachedString(STR_MISC, 41, "\pTitle"));
+            MoveTo(225, 48); DrawString(GetCachedString(STR_MISC, 42, "\pLvl"));
+            MoveTo(260, 48); DrawString(GetCachedString(STR_MISC, 43, "\pExp"));
+            MoveTo(300, 48); DrawString(GetCachedString(STR_MISC, 44, "\pNeeds"));
+            MoveTo(350, 48); DrawString(GetCachedString(STR_MISC, 45, "\pStr"));
+            MoveTo(395, 48); DrawString(GetCachedString(STR_MISC, 46, "\pMove"));
             TextFace(0);
 
             /* Header line */
@@ -11668,7 +12412,7 @@ static void ShowHeroLevels(void)
                         } else {
                             RGBColor gold = {0xCCCC, 0x9999, 0x0000};
                             RGBForeColor(&gold);
-                            DrawString("\pMAX");
+                            DrawString(GetCachedString(STR_MISC, 47, "\pMAX"));
                             RGBForeColor(&black);
                         }
 
@@ -11691,7 +12435,7 @@ static void ShowHeroLevels(void)
             if (heroCount == 0) {
                 RGBForeColor(&black);
                 MoveTo(140, 120);
-                DrawString("\pNo heroes in service.");
+                DrawString(GetCachedString(STR_MISC, 48, "\pNo heroes in service."));
             }
 
             /* OK button */
@@ -11702,7 +12446,7 @@ static void ShowHeroLevels(void)
                 FrameRoundRect(&okRect, 8, 8);
                 TextFace(bold);
                 MoveTo(208, 284);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 TextFace(0);
             }
 
@@ -11810,7 +12554,7 @@ static void ShowRuinsDialog(void)
                 RGBForeColor(&black);
                 TextFont(2); TextSize(14); TextFace(bold);
                 MoveTo(120, 22);
-                DrawString("\pRuins Report");
+                DrawString(GetCachedString(STR_MISC, 49, "\pRuins Report"));
                 TextFace(0); TextFont(3); TextSize(9);
             }
 
@@ -11819,10 +12563,10 @@ static void ShowRuinsDialog(void)
                 RGBColor black = {0, 0, 0};
                 RGBForeColor(&black);
                 TextFace(bold);
-                MoveTo(20, 44);  DrawString("\pType");
-                MoveTo(100, 44); DrawString("\pLocation");
-                MoveTo(200, 44); DrawString("\pStatus");
-                MoveTo(290, 44); DrawString("\pVisible");
+                MoveTo(20, 44);  DrawString(GetCachedString(STR_MISC, 50, "\pType"));
+                MoveTo(100, 44); DrawString(GetCachedString(STR_MISC, 51, "\pLocation"));
+                MoveTo(200, 44); DrawString(GetCachedString(STR_MISC, 52, "\pStatus"));
+                MoveTo(290, 44); DrawString(GetCachedString(STR_MISC, 53, "\pVisible"));
                 TextFace(0);
             }
 
@@ -11885,7 +12629,11 @@ static void ShowRuinsDialog(void)
                     {
                         Rect dot;
                         SetRect(&dot, 20, yPos - 8, 30, yPos + 2);
-                        PaintOval(&dot);
+                        /* Use ruin icon if available, else colored dot */
+                        if (sRuinIcons[0])
+                            PlotCIcon(&dot, sRuinIcons[0]);
+                        else
+                            PaintOval(&dot);
                     }
                     MoveTo(34, yPos);
                     DrawString(typeName);
@@ -11906,7 +12654,7 @@ static void ShowRuinsDialog(void)
                     RGBColor unsearched = {0xCCCC, 0x8888, 0x3333};
                     RGBForeColor(&unsearched);
                     MoveTo(210, yPos);
-                    DrawString("\pUnsearched");
+                    DrawString(GetCachedString(STR_MISC, 54, "\pUnsearched"));
                 }
 
                 /* Visibility (fog of war) */
@@ -11935,9 +12683,9 @@ static void ShowRuinsDialog(void)
                 RGBForeColor(&gray2);
                 TextSize(9);
                 MoveTo(20, 298);
-                DrawString("\pTotal: ");
+                DrawString(GetCachedString(STR_MISC, 55, "\pTotal: "));
                 NumToString((long)totalRuins, numStr); DrawString(numStr);
-                DrawString("\p unsearched");
+                DrawString(GetCachedString(STR_MISC, 56, "\p unsearched"));
             }
 
             /* OK button */
@@ -11950,7 +12698,7 @@ static void ShowRuinsDialog(void)
                 FrameRoundRect(&okRect, 8, 8);
                 TextFace(bold);
                 MoveTo(177, 322);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 TextFace(0);
             }
 
@@ -12082,7 +12830,7 @@ static void ShowStackDialog(void)
         TextSize(12);
         TextFace(bold);
         MoveTo(90, 22);
-        DrawString("\pArmy Stack at (");
+        DrawString(GetCachedString(STR_STACK_INFO, 0, "\pArmy Stack at ("));
         NumToString((long)sx, numStr);
         DrawString(numStr);
         DrawString("\p, ");
@@ -12094,7 +12842,7 @@ static void ShowStackDialog(void)
 
         MoveTo(20, 46);
         TextFace(bold);
-        DrawString("\pArmy       Units  Str   Owner");
+        DrawString(GetCachedString(STR_STACK_INFO, 1, "\pArmy       Units  Str   Owner"));
         TextFace(0);
 
         for (ai = 0; ai < armyCount && stackCount < 8; ai++) {
@@ -12128,11 +12876,17 @@ static void ShowStackDialog(void)
                     Rect cb;
                     SetRect(&cb, 20, yp - 8, 36, yp + 4);
                     PaintRect(&cb);
+                    /* Unit type icon overlay */
+                    {
+                        short uType = (short)(unsigned char)army[0x16];
+                        if (uType < 8 && sStackTypeIcons[uType])
+                            PlotCIcon(&cb, sStackTypeIcons[uType]);
+                    }
                 }
 
                 RGBForeColor(&black);
                 MoveTo(42, yp);
-                DrawString("\pArmy ");
+                DrawString(GetCachedString(STR_STACK_INFO, 10, "\pArmy "));
                 NumToString((long)(ai + 1), numStr);
                 DrawString(numStr);
 
@@ -12161,7 +12915,7 @@ static void ShowStackDialog(void)
 
         if (stackCount == 0) {
             MoveTo(80, 100);
-            DrawString("\pNo armies at this location.");
+            DrawString(GetCachedString(STR_STACK_INFO, 11, "\pNo armies at this location."));
         }
     }
 
@@ -12173,7 +12927,7 @@ static void ShowStackDialog(void)
         RGBForeColor(&black);
         FrameRoundRect(&okRect, 8, 8);
         MoveTo(156, 244);
-        DrawString("\pOK");
+        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
     }
 
     UnlockPixels(GetGWorldPixMap(offGW));
@@ -12259,7 +13013,7 @@ static void MoveAllArmies(void)
                 short dx = tgtX - curX;
                 short dy = tgtY - curY;
                 short stepX = 0, stepY = 0;
-                short movePts = *(short *)(army + 0x2e);
+                short movePts = (short)(unsigned char)army[0x2e];
 
                 if (movePts <= 0) continue;
 
@@ -12307,7 +13061,7 @@ static void MoveAllArmies(void)
                         newY >= 0 && newY < sMapHeight) {
                         *(short *)(army + 0x00) = newX;
                         *(short *)(army + 0x02) = newY;
-                        *(short *)(army + 0x2e) = movePts - cost;
+                        army[0x2e] = (unsigned char)(movePts - cost);
                         anyMoved = 1;
 
                         if (sOptHiddenMap) {
@@ -12370,6 +13124,355 @@ static void MoveAllArmies(void)
         SetPort((WindowPtr)*gOverviewWindow);
         InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
     }
+}
+
+
+/* ===================================================================
+ * InvalidateAllGameWindows — Force redraw of all game windows
+ *
+ * Called after modal dialogs (hero hire, army selection, turn splash)
+ * to ensure the map, minimap, info panel, and status bar repaint.
+ * =================================================================== */
+static void InvalidateAllGameWindows(void)
+{
+    if (gMainGameWindow != NULL && *gMainGameWindow != 0) {
+        SetPort((WindowPtr)*gMainGameWindow);
+        InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+    }
+    if (gOverviewWindow != NULL && *gOverviewWindow != 0) {
+        SetPort((WindowPtr)*gOverviewWindow);
+        InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
+    }
+    if (gInfoWindow != NULL && *gInfoWindow != 0) {
+        SetPort((WindowPtr)*gInfoWindow);
+        InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
+    }
+    if (gStatusWindow != NULL && *gStatusWindow != 0) {
+        SetPort((WindowPtr)*gStatusWindow);
+        InvalRect(&((WindowPtr)*gStatusWindow)->portRect);
+    }
+}
+
+
+/* ===================================================================
+ * ShowArmySelection — Let player pick starting army for their capital
+ *
+ * Shows a dialog with available unit types. The selected unit type
+ * replaces the player's starting army at their capital city.
+ * =================================================================== */
+static void ShowArmySelection(short playerIdx)
+{
+    WindowPtr  selWin;
+    Rect       winRect;
+    Boolean    done = false;
+    short      selected = 0;
+    short      numChoices = 4;
+    Rect       screenRect = qd.screenBits.bounds;
+    unsigned char *gs;
+    /* Match original dialog layout from screenshot */
+    short      winW = 270, winH = 300;
+
+    /* Unit types available at game start (from original scenario data) */
+    static const char *armyChoiceNames[] = {
+        "Light Infantry", "Heavy Infantry", "Cavalry", "Archers"
+    };
+    static const short armyMoves[]   = {10, 8, 14, 10};
+    static const short armyHP[]      = {3, 4, 5, 3};
+    static const short armySprites[] = {0, 2, 4, 6};
+    static const short armyStrength[] = {2, 3, 4, 2};
+
+    if (*gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+
+    SetRect(&winRect, 0, 0, winW, winH);
+    OffsetRect(&winRect,
+        (screenRect.right - winW) / 2,
+        (screenRect.bottom - winH) / 2);
+
+    selWin = NewCWindow(NULL, &winRect, "\pArmy Selection", true,
+                         movableDBoxProc, (WindowPtr)-1L, false, 0);
+    if (selWin == NULL) return;
+    SetPort(selWin);
+
+    while (!done) {
+        EventRecord evt;
+        Rect contentR = selWin->portRect;
+        short ci;
+
+        /* Draw dialog content matching original screenshot */
+        {
+            RGBColor black   = {0x0000, 0x0000, 0x0000};
+            RGBColor white   = {0xFFFF, 0xFFFF, 0xFFFF};
+            RGBColor yellow  = {0xFFFF, 0xDD00, 0x0000};
+            RGBColor ltGray  = {0xCCCC, 0xCCCC, 0xCCCC};
+            RGBColor mdGray  = {0xAAAA, 0xAAAA, 0xAAAA};
+            RGBColor dkGray  = {0x5555, 0x5555, 0x5555};
+            RGBColor vdkGray = {0x3333, 0x3333, 0x3333};
+            short colorIdx = (playerIdx >= 0 && playerIdx < 8) ? playerIdx + 1 : 0;
+            /* Slot positions: 4 evenly spaced across dialog */
+            short slotW = 40, slotH = 36;
+            short slotGap = 16;
+            short totalSlotsW = numChoices * slotW + (numChoices - 1) * slotGap;
+            short slotStartX = (winW - totalSlotsW) / 2;
+            short slotX[4];
+            short slotY = 120;
+
+            for (ci = 0; ci < 4; ci++)
+                slotX[ci] = slotStartX + ci * (slotW + slotGap);
+
+            /* Marble background */
+            DrawMarbleBackground(&contentR);
+
+            /* Faction shield at top-left */
+            {
+                Rect shieldBg, shieldR;
+                SetRect(&shieldBg, 10, 10, 10 + 44, 10 + 44);
+                RGBForeColor(&sPlayerColors[colorIdx]);
+                PaintRect(&shieldBg);
+                RGBForeColor(&black);
+                FrameRect(&shieldBg);
+                if (sShieldIcons[playerIdx] != NULL) {
+                    SetRect(&shieldR, 12, 12, 52, 52);
+                    PlotCIcon(&shieldR, sShieldIcons[playerIdx]);
+                }
+            }
+
+            /* "Select Starting Army" title next to shield */
+            TextFont(3); TextSize(14); TextFace(bold);
+            RGBForeColor(&black);
+            MoveTo(62, 32);
+            DrawString(GetCachedString(STR_GAME_SETUP, 9, "\pSelect Starting Army"));
+            TextFace(0);
+
+            /* "Choose your starting forces:" label */
+            TextFont(3); TextSize(12); TextFace(bold);
+            RGBForeColor(&black);
+            MoveTo(12, 78);
+            DrawString(GetCachedString(STR_GAME_SETUP, 10, "\pChoose your starting forces:"));
+            TextFace(0);
+
+            /* 4 unit type slots in horizontal row */
+            for (ci = 0; ci < numChoices; ci++) {
+                Rect slotR;
+                SetRect(&slotR, slotX[ci], slotY, slotX[ci] + slotW, slotY + slotH);
+
+                if (ci == selected) {
+                    /* Selected slot: player color fill with yellow border */
+                    RGBForeColor(&sPlayerColors[colorIdx]);
+                    PaintRect(&slotR);
+                    RGBForeColor(&yellow);
+                    PenSize(2, 2);
+                    FrameRect(&slotR);
+                    PenSize(1, 1);
+                } else {
+                    /* Unselected slot: 3D sunken grey button */
+                    RGBForeColor(&mdGray);
+                    PaintRect(&slotR);
+                    /* Dark edges on top and left (sunken look) */
+                    RGBForeColor(&dkGray);
+                    MoveTo(slotR.left, slotR.top);
+                    LineTo(slotR.right - 1, slotR.top);
+                    MoveTo(slotR.left, slotR.top);
+                    LineTo(slotR.left, slotR.bottom - 1);
+                    /* Light edges on bottom and right (sunken look) */
+                    RGBForeColor(&white);
+                    MoveTo(slotR.right - 1, slotR.top);
+                    LineTo(slotR.right - 1, slotR.bottom - 1);
+                    MoveTo(slotR.left, slotR.bottom - 1);
+                    LineTo(slotR.right - 1, slotR.bottom - 1);
+                }
+            }
+
+            /* Unit names below each slot */
+            TextFont(3); TextSize(9); TextFace(0);
+            for (ci = 0; ci < numChoices; ci++) {
+                Str255 lbl;
+                char *n = (char *)armyChoiceNames[ci];
+                short ni, tw;
+                for (ni = 0; n[ni]; ni++) lbl[ni + 1] = n[ni];
+                lbl[0] = ni;
+                tw = StringWidth(lbl);
+                RGBForeColor((ci == selected) ? &yellow : &black);
+                MoveTo(slotX[ci] + (slotW - tw) / 2, slotY + slotH + 14);
+                DrawString(lbl);
+            }
+
+            /* Sunken info area with stats */
+            {
+                Rect infoR;
+                Str255 numStr;
+                short infoY = slotY + slotH + 30;
+
+                /* 3D sunken info box */
+                SetRect(&infoR, 10, infoY, winW - 10, infoY + 64);
+                RGBForeColor(&ltGray);
+                PaintRect(&infoR);
+                /* Sunken border: dark top-left, light bottom-right */
+                RGBForeColor(&dkGray);
+                MoveTo(infoR.left, infoR.top);
+                LineTo(infoR.right - 1, infoR.top);
+                MoveTo(infoR.left, infoR.top);
+                LineTo(infoR.left, infoR.bottom - 1);
+                RGBForeColor(&white);
+                MoveTo(infoR.right - 1, infoR.top);
+                LineTo(infoR.right - 1, infoR.bottom - 1);
+                MoveTo(infoR.left, infoR.bottom - 1);
+                LineTo(infoR.right - 1, infoR.bottom - 1);
+
+                TextFont(4); TextSize(10); TextFace(0);
+                RGBForeColor(&black);
+
+                /* Line 1: Movement and Hit Points */
+                MoveTo(16, infoY + 16);
+                DrawString(GetCachedString(STR_GAME_SETUP, 11, "\pMovement: "));
+                NumToString((long)armyMoves[selected], numStr);
+                DrawString(numStr);
+                DrawString(GetCachedString(STR_GAME_SETUP, 12, "\p   Hit Points: "));
+                NumToString((long)armyHP[selected], numStr);
+                DrawString(numStr);
+
+                /* Line 2: Strength and Units */
+                MoveTo(16, infoY + 32);
+                DrawString(GetCachedString(STR_GAME_SETUP, 13, "\pStrength: "));
+                NumToString((long)armyStrength[selected], numStr);
+                DrawString(numStr);
+                DrawString(GetCachedString(STR_GAME_SETUP, 14, "\p   Units: 2"));
+
+                /* Line 3: Description in grey italic */
+                MoveTo(16, infoY + 50);
+                RGBForeColor(&vdkGray);
+                TextSize(9); TextFace(italic);
+                if (selected == 0) DrawString(GetCachedString(STR_GAME_SETUP, 15, "\pFast scouts, weak in combat"));
+                else if (selected == 1) DrawString(GetCachedString(STR_GAME_SETUP, 16, "\pSolid fighters, slow but tough"));
+                else if (selected == 2) DrawString(GetCachedString(STR_GAME_SETUP, 17, "\pFastest unit, good attack power"));
+                else DrawString(GetCachedString(STR_GAME_SETUP, 18, "\pRanged attack, moderate defense"));
+                TextFace(0);
+            }
+
+            /* OK button - centered, 3D raised look */
+            {
+                Rect okR;
+                short btnW = 80, btnH = 24;
+                SetRect(&okR, winW / 2 - btnW / 2, winH - 40,
+                              winW / 2 + btnW / 2, winH - 40 + btnH);
+                RGBForeColor(&ltGray);
+                PaintRect(&okR);
+                /* Raised 3D border: light top-left, dark bottom-right */
+                RGBForeColor(&white);
+                MoveTo(okR.left, okR.top);
+                LineTo(okR.right - 2, okR.top);
+                MoveTo(okR.left, okR.top);
+                LineTo(okR.left, okR.bottom - 2);
+                RGBForeColor(&dkGray);
+                MoveTo(okR.right - 1, okR.top);
+                LineTo(okR.right - 1, okR.bottom - 1);
+                MoveTo(okR.left, okR.bottom - 1);
+                LineTo(okR.right - 1, okR.bottom - 1);
+                /* Outer frame */
+                RGBForeColor(&black);
+                FrameRect(&okR);
+
+                TextFont(3); TextSize(12); TextFace(bold);
+                RGBForeColor(&black);
+                {
+                    short tw2 = StringWidth("\pOK");
+                    MoveTo(okR.left + (btnW - tw2) / 2, okR.bottom - 7);
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
+                }
+                TextFace(0);
+            }
+        }
+
+        WaitNextEvent(everyEvent, &evt, 10, NULL);
+
+        if (evt.what == mouseDown) {
+            Point clickPt = evt.where;
+            GlobalToLocal(&clickPt);
+
+            /* Check unit slot clicks (same layout calc as drawing) */
+            {
+                short slotW2 = 40, slotH2 = 36, slotGap2 = 16, slotY2 = 120;
+                short totalW2 = numChoices * slotW2 + (numChoices - 1) * slotGap2;
+                short startX2 = (winW - totalW2) / 2;
+                for (ci = 0; ci < numChoices; ci++) {
+                    Rect slotR;
+                    short sx = startX2 + ci * (slotW2 + slotGap2);
+                    SetRect(&slotR, sx, slotY2, sx + slotW2, slotY2 + slotH2);
+                    if (PtInRect(clickPt, &slotR)) {
+                        selected = ci;
+                        break;
+                    }
+                }
+                /* Also check name label area below slots */
+                for (ci = 0; ci < numChoices; ci++) {
+                    Rect nameR;
+                    short sx = startX2 + ci * (slotW2 + slotGap2);
+                    SetRect(&nameR, sx - 12, slotY2 + slotH2, sx + slotW2 + 12, slotY2 + slotH2 + 18);
+                    if (PtInRect(clickPt, &nameR)) {
+                        selected = ci;
+                        break;
+                    }
+                }
+            }
+
+            /* Check OK button */
+            {
+                Rect okR;
+                short btnW2 = 80, btnH2 = 24;
+                SetRect(&okR, winW / 2 - btnW2 / 2, winH - 40,
+                              winW / 2 + btnW2 / 2, winH - 40 + btnH2);
+                if (PtInRect(clickPt, &okR)) {
+                    done = true;
+                }
+            }
+        } else if (evt.what == keyDown) {
+            char key = evt.message & charCodeMask;
+            if (key == 0x0D || key == 0x03) {
+                done = true;
+            } else if (key == 0x1C && selected > 0) {  /* Left arrow */
+                selected--;
+            } else if (key == 0x1D && selected < numChoices - 1) {  /* Right arrow */
+                selected++;
+            }
+        } else if (evt.what == updateEvt) {
+            WindowPtr updWin = (WindowPtr)evt.message;
+            BeginUpdate(updWin);
+            EndUpdate(updWin);
+        }
+    }
+
+    /* Apply selected army type to player's starting army at capital */
+    {
+        short armyCount = *(short *)(gs + 0x1602);
+        short ai;
+        if (armyCount > 100) armyCount = 100;
+        for (ai = 0; ai < armyCount; ai++) {
+            unsigned char *army = gs + 0x1604 + ai * 0x42;
+            short owner = (short)(unsigned char)army[0x15];
+            if (owner == playerIdx) {
+                /* Set 2 units of the selected type */
+                army[0x14] = (unsigned char)armySprites[selected];
+                army[0x16] = (unsigned char)selected;  /* unit_types[0] */
+                army[0x17] = (unsigned char)selected;  /* unit_types[1] */
+                army[0x18] = 0xFF;
+                army[0x19] = 0xFF;
+                army[0x1a] = (unsigned char)armyMoves[selected];
+                army[0x1b] = (unsigned char)armyMoves[selected];
+                army[0x1c] = 0;
+                army[0x1d] = 0;
+                army[0x1e] = (unsigned char)armyHP[selected];
+                army[0x1f] = (unsigned char)armyHP[selected];
+                army[0x20] = 0;
+                army[0x21] = 0;
+                *(short *)(army + 0x2a) = armyHP[selected] * 2;
+                army[0x2c] = (unsigned char)selected;
+                break;  /* only modify first army for this player */
+            }
+        }
+    }
+
+    DisposeWindow(selWin);
+    InvalidateAllGameWindows();
 }
 
 
@@ -12492,7 +13595,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     TextSize(18);
                     TextFace(bold);
                     MoveTo(105, 28);
-                    DrawString("\pA Hero!");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 12, "\pA Hero!"));
                 }
 
                 /* Hero portrait (PICT 3200) */
@@ -12522,7 +13625,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     TextFace(bold);
                     MoveTo(20, 220);
                     DrawString(sHeroNames[heroNameIdx]);
-                    DrawString("\p offers service!");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 13, "\p offers service!"));
                 }
 
                 /* Stats */
@@ -12539,7 +13642,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     /* Strength */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase);
-                    DrawString("\pStrength:");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 14, "\pStrength:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase);
                     NumToString((long)heroStrength, numStr);
@@ -12548,7 +13651,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     /* Movement */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase + 18);
-                    DrawString("\pMovement:");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 15, "\pMovement:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase + 18);
                     NumToString((long)heroMovement, numStr);
@@ -12557,7 +13660,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     /* Command */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase + 36);
-                    DrawString("\pCommand:");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 16, "\pCommand:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase + 36);
                     DrawString("\p+");
@@ -12567,21 +13670,21 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     /* Cost */
                     RGBForeColor(&labelColor);
                     MoveTo(30, yBase + 54);
-                    DrawString("\pCost:");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 17, "\pCost:"));
                     RGBForeColor(&valueColor);
                     MoveTo(130, yBase + 54);
                     if (heroCost == 0) {
-                        DrawString("\pFree!");
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 18, "\pFree!"));
                     } else {
                         NumToString((long)heroCost, numStr);
                         DrawString(numStr);
-                        DrawString("\p gp");
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 19, "\p gp"));
                     }
 
                     /* Near: (first city owned by this player) */
                     RGBForeColor(&labelColor);
                     MoveTo(180, yBase);
-                    DrawString("\pNear:");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 20, "\pNear:"));
                     RGBForeColor(&valueColor);
                     MoveTo(180, yBase + 18);
                     {
@@ -12621,7 +13724,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     TextSize(10);
                     TextFace(bold);
                     MoveTo(hireBtn.left + 34, hireBtn.bottom - 6);
-                    DrawString("\pHire");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 21, "\pHire"));
 
                     /* "Don't Hire" button (red tint) */
                     RGBForeColor(&redBg);
@@ -12631,7 +13734,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     RGBForeColor(&white);
                     TextFace(0);
                     MoveTo(dontBtn.left + 18, dontBtn.bottom - 6);
-                    DrawString("\pDon't Hire");
+                    DrawString(GetCachedString(STR_HERO_DIPLO, 22, "\pDon't Hire"));
                 }
 
                 /* Blit offscreen to window */
@@ -12692,13 +13795,10 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             }
             else if (evt.what == updateEvt) {
                 WindowPtr updWin = (WindowPtr)evt.message;
+                BeginUpdate(updWin);
+                EndUpdate(updWin);
                 if (updWin == hireWin) {
                     needsRedraw = true;
-                } else {
-                    /* Handle background window updates to avoid
-                     * infinite updateEvt loop */
-                    BeginUpdate(updWin);
-                    EndUpdate(updWin);
                 }
             }
         }
@@ -12783,7 +13883,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             *(short *)(armyBase + 0x2a) = heroStrength;
 
             /* Initial movement points */
-            *(short *)(armyBase + 0x2e) = heroMovement;
+            armyBase[0x2e] = (unsigned char)(heroMovement);
 
             /* Increment army count */
             *(short *)(gs + 0x1602) = armyCount + 1;
@@ -12814,6 +13914,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
     if (offscreen != NULL)
         DisposeGWorld(offscreen);
     DisposeWindow(hireWin);
+    InvalidateAllGameWindows();
     return hired;
 }
 
@@ -12879,7 +13980,7 @@ static short CheckVictoryConditions(void)
             for (pb = pa + 1; pb < 8 && allAllied; pb++) {
                 if (*(short *)(gs + 0x138 + pb * 2) == 0 ||
                     (playerCities[pb] == 0 && playerArmies[pb] == 0)) continue;
-                if (*(short *)(gs + 0x1582 + (pa * 8 + pb) * 2) == 0)
+                if (*(short *)(gs + 0x1582 + (pa * 8 + pb) * 2) < 0x1000)
                     allAllied = false;
             }
         }
@@ -12909,15 +14010,27 @@ static void ShowVictoryDialog(Boolean victory)
     EventRecord vicEvt;
     CGrafPtr savePort;
     GDHandle saveGD;
+    PicHandle bgPict;
+    short winW = 360, winH = 260;
 
     PlaySound(victory ? SND_ORCH : SND_DRAMATIC);
 
-    SetRect(&winRect, 0, 0, 360, 260);
-    OffsetRect(&winRect, 170, 120);
+    /* Try to load victory/defeat artwork PICT */
+    bgPict = GetPicture(victory ? 4501 : 4502);
+    if (bgPict) {
+        Rect pf = (**bgPict).picFrame;
+        winW = pf.right - pf.left;
+        winH = pf.bottom - pf.top;
+    }
+
+    SetRect(&winRect, 0, 0, winW, winH);
+    OffsetRect(&winRect,
+        (qd.screenBits.bounds.right - winW) / 2,
+        (qd.screenBits.bounds.bottom - winH) / 2);
     vicWin = NewCWindow(NULL, &winRect,
                         victory ? "\pVICTORY!" : "\pDefeat...", true,
                         dBoxProc, (WindowPtr)-1, false, 0);
-    SetRect(&gwRect, 0, 0, 360, 260);
+    SetRect(&gwRect, 0, 0, winW, winH);
     NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
     if (vicWin == NULL || offGW == NULL) {
         if (offGW) DisposeGWorld(offGW);
@@ -12929,7 +14042,10 @@ static void ShowVictoryDialog(Boolean victory)
     SetGWorld(offGW, NULL);
     LockPixels(GetGWorldPixMap(offGW));
 
-    {
+    /* Background: original PICT artwork or fallback color */
+    if (bgPict) {
+        DrawPicture(bgPict, &gwRect);
+    } else {
         RGBColor bg;
         if (victory) {
             bg.red = 0xFFFF; bg.green = 0xFFFF; bg.blue = 0x8888;
@@ -12952,9 +14068,9 @@ static void ShowVictoryDialog(Boolean victory)
         TextFace(bold);
         MoveTo(80, 40);
         if (victory) {
-            DrawString("\pGlorious Victory!");
+            DrawString(GetCachedString(STR_VICTORY, 0, "\pGlorious Victory!"));
         } else {
-            DrawString("\pYou Have Been Defeated!");
+            DrawString(GetCachedString(STR_VICTORY, 1, "\pYou Have Been Defeated!"));
         }
         TextFace(0);
         TextSize(10);
@@ -12966,27 +14082,27 @@ static void ShowVictoryDialog(Boolean victory)
 
             MoveTo(40, 80);
             if (victory) {
-                DrawString("\pAll enemies have been vanquished.");
+                DrawString(GetCachedString(STR_VICTORY, 2, "\pAll enemies have been vanquished."));
                 MoveTo(40, 100);
-                DrawString("\pYour kingdom reigns supreme!");
+                DrawString(GetCachedString(STR_VICTORY, 3, "\pYour kingdom reigns supreme!"));
             } else {
-                DrawString("\pYour forces have been eliminated.");
+                DrawString(GetCachedString(STR_VICTORY, 4, "\pYour forces have been eliminated."));
                 MoveTo(40, 100);
-                DrawString("\pThe realm falls to darkness...");
+                DrawString(GetCachedString(STR_VICTORY, 5, "\pThe realm falls to darkness..."));
             }
 
             MoveTo(40, 130);
-            DrawString("\pTurns played: ");
+            DrawString(GetCachedString(STR_VICTORY, 6, "\pTurns played: "));
             NumToString((long)*(short *)(gs + 0x136), numStr);
             DrawString(numStr);
 
             MoveTo(40, 150);
             {
                 short gold = *(short *)(gs + 0x186 + curPlayer * 0x14);
-                DrawString("\pFinal treasury: ");
+                DrawString(GetCachedString(STR_VICTORY, 7, "\pFinal treasury: "));
                 NumToString((long)gold, numStr);
                 DrawString(numStr);
-                DrawString("\p gold");
+                DrawString(GetCachedString(STR_VICTORY, 16, "\p gold"));
             }
 
             /* Battle statistics from history */
@@ -13008,18 +14124,18 @@ static void ShowVictoryDialog(Boolean victory)
                 }
 
                 MoveTo(40, 170);
-                DrawString("\pBattles: ");
+                DrawString(GetCachedString(STR_VICTORY, 8, "\pBattles: "));
                 NumToString((long)battlesWon, numStr); DrawString(numStr);
-                DrawString("\p won, ");
+                DrawString(GetCachedString(STR_VICTORY, 17, "\p won, "));
                 NumToString((long)battlesLost, numStr); DrawString(numStr);
-                DrawString("\p lost");
+                DrawString(GetCachedString(STR_VICTORY, 18, "\p lost"));
 
                 MoveTo(40, 186);
-                DrawString("\pCities captured: ");
+                DrawString(GetCachedString(STR_VICTORY, 19, "\pCities captured: "));
                 NumToString((long)citiesCap, numStr); DrawString(numStr);
 
                 MoveTo(40, 202);
-                DrawString("\pHeroes recruited: ");
+                DrawString(GetCachedString(STR_VICTORY, 20, "\pHeroes recruited: "));
                 NumToString((long)heroesHired, numStr); DrawString(numStr);
             }
         }
@@ -13033,7 +14149,7 @@ static void ShowVictoryDialog(Boolean victory)
         RGBForeColor(&black);
         FrameRoundRect(&okRect, 8, 8);
         MoveTo(166, 244);
-        DrawString("\pOK");
+        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
     }
 
     UnlockPixels(GetGWorldPixMap(offGW));
@@ -13136,7 +14252,7 @@ static void ShowCityProductionDialog(short cityIndex)
                 TextSize(12);
                 TextFace(bold);
                 MoveTo(70, 22);
-                DrawString("\pSelect Production");
+                DrawString(GetCachedString(STR_CITY_DIALOG, 18, "\pSelect Production"));
                 TextFace(0);
                 TextSize(10);
             }
@@ -13160,13 +14276,13 @@ static void ShowCityProductionDialog(short cityIndex)
                 RGBForeColor(&black);
                 TextFace(bold);
                 MoveTo(20, 46);
-                DrawString("\pUnit Type");
+                DrawString(GetCachedString(STR_CITY_DIALOG, 19, "\pUnit Type"));
                 MoveTo(160, 46);
-                DrawString("\pStr");
+                DrawString(GetCachedString(STR_CITY_DIALOG, 20, "\pStr"));
                 MoveTo(195, 46);
-                DrawString("\pMov");
+                DrawString(GetCachedString(STR_CITY_DIALOG, 21, "\pMov"));
                 MoveTo(230, 46);
-                DrawString("\pTurns");
+                DrawString(GetCachedString(STR_CITY_DIALOG, 22, "\pTurns"));
                 TextFace(0);
 
                 for (ut = 0; ut < 6; ut++) {
@@ -13204,10 +14320,10 @@ static void ShowCityProductionDialog(short cityIndex)
                 RGBForeColor(&black);
                 FrameRoundRect(&okRect, 8, 8);
                 MoveTo(88, 222);
-                DrawString("\pOK");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 FrameRoundRect(&cancelRect, 8, 8);
                 MoveTo(180, 222);
-                DrawString("\pCancel");
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
             }
 
             UnlockPixels(GetGWorldPixMap(offGW));
@@ -13345,6 +14461,25 @@ static void ExecuteAITurn(short aiPlayer)
                     if ((unsigned char)army[0x16 + u] != 0xFF) totalUpkeep += 2;
             }
         }
+        /* Hero gold item bonus */
+        {
+            short bB, cB, gB;
+            Boolean fB, mB;
+            short aiCityCount = 0;
+            short ci2;
+            for (ci2 = 0; ci2 < cityCount; ci2++) {
+                unsigned char *city = gs + 0x812 + ci2 * 0x20;
+                if (*(short *)(city + 0x04) == aiPlayer) aiCityCount++;
+            }
+            /* Check each army for hero gold items */
+            for (ai = 0; ai < armyCount; ai++) {
+                unsigned char *army = gs + 0x1604 + ai * 0x42;
+                if ((short)(unsigned char)army[0x15] == aiPlayer) {
+                    GetHeroItemBonus(ai, &bB, &cB, &gB, &fB, &mB);
+                    if (gB > 0) cityIncome += gB * aiCityCount;
+                }
+            }
+        }
         *(short *)(gs + 0x186 + aiPlayer * 0x14) += (cityIncome - totalUpkeep);
     }
 
@@ -13384,7 +14519,7 @@ static void ExecuteAITurn(short aiPlayer)
                             newArmy[0x1a] = unitMov2[uidx];
                             newArmy[0x1e] = unitHP2[uidx];
                             *(short *)(newArmy + 0x2a) = (short)unitHP2[uidx];
-                            *(short *)(newArmy + 0x2e) = (short)unitMov2[uidx]; /* move pts */
+                            newArmy[0x2e] = (unsigned char)(unitMov2[uidx]); /* move pts */
                         }
                         *(short *)(gs + 0x1602) = ac + 1;
                     }
@@ -13445,7 +14580,25 @@ static void ExecuteAITurn(short aiPlayer)
         if ((short)(unsigned char)army[0x15] == aiPlayer) {
             short maxMov = (short)(unsigned char)army[0x1a];
             if (maxMov <= 0) maxMov = 10;
-            *(short *)(army + 0x2e) = maxMov;
+            {
+                short bB, cB, gB;
+                Boolean fB, mB;
+                GetHeroItemBonus(ai, &bB, &cB, &gB, &fB, &mB);
+                if (mB) maxMov *= 2;
+            }
+            army[0x2e] = (unsigned char)maxMov;
+        }
+    }
+
+    /* Reset extended state army flags for AI player's armies */
+    if (*gExtState != 0) {
+        unsigned char *ext = (unsigned char *)*gExtState;
+        for (ai = 0; ai < armyCount; ai++) {
+            unsigned char *army = gs + 0x1604 + ai * 0x42;
+            if ((short)(unsigned char)army[0x15] == aiPlayer) {
+                ext[0x11e + ai] &= ~0x01;
+                ext[0x182 + ai] = 0;
+            }
         }
     }
 
@@ -13578,7 +14731,7 @@ static void ExecuteAITurn(short aiPlayer)
                     short eOwner = (short)(unsigned char)ea[0x15];
                     if (eOwner != aiPlayer && eOwner >= 0 && eOwner < 8 &&
                         *(short *)(gs + 0x138 + eOwner * 2) != 0 &&
-                        *(short *)(gs + 0x1582 + (aiPlayer * 8 + eOwner) * 2) == 0) {
+                        *(short *)(gs + 0x1582 + (aiPlayer * 8 + eOwner) * 2) < 0x1000) {
                         long edx = (long)(*(short *)(ea + 0x00) - ax);
                         long edy = (long)(*(short *)(ea + 0x02) - ay);
                         if (edx * edx + edy * edy <= 4) { /* within 2 tiles */
@@ -13619,7 +14772,7 @@ static void ExecuteAITurn(short aiPlayer)
                         if (cOwner == aiPlayer) continue;
                         /* Respect diplomacy: skip cities of players at peace */
                         if (cOwner >= 0 && cOwner < 8 &&
-                            *(short *)(gs + 0x1582 + (aiPlayer * 8 + cOwner) * 2) != 0) continue;
+                            *(short *)(gs + 0x1582 + (aiPlayer * 8 + cOwner) * 2) >= 0x1000) continue;
 
                         {
                             short cx = *(short *)(city + 0x00);
@@ -13688,7 +14841,7 @@ static void ExecuteAITurn(short aiPlayer)
                     army = gs + 0x1604 + ai * 0x42;
                     if ((short)(unsigned char)army[0x15] != aiPlayer) break;
 
-                    movePts = *(short *)(army + 0x2e);
+                    movePts = (short)(unsigned char)army[0x2e];
                     if (movePts <= 0) break;
 
                     curX = *(short *)(army + 0x00);
@@ -13766,7 +14919,7 @@ static void ExecuteAITurn(short aiPlayer)
                         newY >= 0 && newY < sMapHeight) {
                         *(short *)(army + 0x00) = newX;
                         *(short *)(army + 0x02) = newY;
-                        *(short *)(army + 0x2e) = movePts - cost;
+                        army[0x2e] = (unsigned char)(movePts - cost);
 
                         /* Update fog of war */
                         if (sOptHiddenMap)
@@ -13937,12 +15090,12 @@ static void ExecuteAITurn(short aiPlayer)
                 short turnNum = *(short *)(gs + 0x136);
                 short rng = (short)(((unsigned short)TickCount()) % 100);
 
-                if (curRelation == 0) {
+                if (curRelation < 0x1000) {
                     /* Currently at war: consider proposing peace if weaker */
                     if (aiArmies < pjArmies && aiCities <= pjCities + 1 && rng < 25) {
                         /* Propose peace */
-                        *(short *)(gs + 0x1582 + (aiPlayer * 8 + pj) * 2) = 1;
-                        *(short *)(gs + 0x1582 + (pj * 8 + aiPlayer) * 2) = 1;
+                        *(short *)(gs + 0x1582 + (aiPlayer * 8 + pj) * 2) = 0x2800;
+                        *(short *)(gs + 0x1582 + (pj * 8 + aiPlayer) * 2) = 0x2800;
                         RecordEvent(turnNum, HIST_EVT_DIPLOMACY, aiPlayer,
                             "Peace negotiated");
 
@@ -13972,14 +15125,14 @@ static void ExecuteAITurn(short aiPlayer)
                                 TextFont(3); TextSize(11); TextFace(bold);
                                 RGBForeColor(&gold2);
                                 MoveTo(15, 22);
-                                DrawString("\pPeace Negotiated!");
+                                DrawString(GetCachedString(STR_HERO_DIPLO, 1, "\pPeace Negotiated!"));
                                 TextFace(0); TextSize(10);
                                 RGBForeColor(&wh2);
                                 MoveTo(15, 44);
                                 DrawString(fn);
-                                DrawString("\p proposes peace.");
+                                DrawString(GetCachedString(STR_HERO_DIPLO, 2, "\p proposes peace."));
                                 MoveTo(15, 62);
-                                DrawString("\pA truce has been declared.");
+                                DrawString(GetCachedString(STR_HERO_DIPLO, 3, "\pA truce has been declared."));
                                 pwT = TickCount() + SpeedTicks(120);
                                 while (TickCount() < pwT) {
                                     if (WaitNextEvent(mDownMask | keyDownMask, &pwE, 5, NULL)) break;
@@ -14023,14 +15176,14 @@ static void ExecuteAITurn(short aiPlayer)
                                 TextFont(3); TextSize(11); TextFace(bold);
                                 RGBForeColor(&red2);
                                 MoveTo(15, 22);
-                                DrawString("\pWar Declared!");
+                                DrawString(GetCachedString(STR_HERO_DIPLO, 4, "\pWar Declared!"));
                                 TextFace(0); TextSize(10);
                                 RGBForeColor(&wh2);
                                 MoveTo(15, 44);
                                 DrawString(fn);
-                                DrawString("\p has declared war!");
+                                DrawString(GetCachedString(STR_HERO_DIPLO, 5, "\p has declared war!"));
                                 MoveTo(15, 62);
-                                DrawString("\pPrepare thy forces!");
+                                DrawString(GetCachedString(STR_HERO_DIPLO, 6, "\pPrepare thy forces!"));
                                 wwT = TickCount() + SpeedTicks(120);
                                 while (TickCount() < wwT) {
                                     if (WaitNextEvent(mDownMask | keyDownMask, &wwE, 5, NULL)) break;
@@ -14081,7 +15234,7 @@ static void ExecuteAITurn(short aiPlayer)
                     newHero[0x1e] = 5 + (unsigned char)(TickCount() % 4);  /* HP 5-8 */
                     newHero[0x22] = 1 + (unsigned char)(TickCount() % 3);  /* command 1-3 */
                     *(short *)(newHero + 0x2a) = (short)newHero[0x1e]; /* strength */
-                    *(short *)(newHero + 0x2e) = 14; /* move pts */
+                    newHero[0x2e] = (unsigned char)(14); /* move pts */
                     *(short *)(gs + 0x1602) = armyCount + 1;
                     *(short *)(gs + 0x186 + aiPlayer * 0x14) -= heroCost;
                 }
@@ -14153,20 +15306,20 @@ static void ShowIncomeSummary(short cityIncome, short upkeep, short newGold)
         TextFont(3); TextSize(10); TextFace(bold);
         RGBForeColor(&white);
         MoveTo(10, 16);
-        DrawString("\pTurn Income");
+        DrawString(GetCachedString(STR_CITY_DIALOG, 9, "\pTurn Income"));
         TextFace(0); TextSize(9);
 
         /* City income */
         RGBForeColor(&greenCol);
         MoveTo(10, 32);
-        DrawString("\pCities: +");
+        DrawString(GetCachedString(STR_CITY_DIALOG, 10, "\pCities: +"));
         NumToString((long)cityIncome, numStr);
         DrawString(numStr);
 
         /* Upkeep */
         RGBForeColor(&redCol);
         MoveTo(110, 32);
-        DrawString("\pUpkeep: -");
+        DrawString(GetCachedString(STR_CITY_DIALOG, 11, "\pUpkeep: -"));
         NumToString((long)upkeep, numStr);
         DrawString(numStr);
 
@@ -14176,18 +15329,18 @@ static void ShowIncomeSummary(short cityIncome, short upkeep, short newGold)
         else
             RGBForeColor(&redCol);
         MoveTo(10, 48);
-        DrawString("\pNet: ");
-        if (netIncome >= 0) DrawString("\p+");
+        DrawString(GetCachedString(STR_MISC, 68, "\pNet: "));
+        if (netIncome >= 0) DrawString(GetCachedString(STR_MISC, 69, "\p+"));
         NumToString((long)netIncome, numStr);
         DrawString(numStr);
 
         /* Treasury */
         RGBForeColor(&goldCol);
         MoveTo(10, 64);
-        DrawString("\pTreasury: ");
+        DrawString(GetCachedString(STR_CITY_DIALOG, 12, "\pTreasury: "));
         NumToString((long)newGold, numStr);
         DrawString(numStr);
-        DrawString("\p gp");
+        DrawString(GetCachedString(STR_HERO_DIPLO, 8, "\p gp"));
     }
 
     UnlockPixels(GetGWorldPixMap(sumGW));
@@ -14215,6 +15368,115 @@ static void ShowIncomeSummary(short cityIncome, short upkeep, short newGold)
 }
 
 static void DoAutosave(void);  /* forward declaration */
+
+/* ===================================================================
+ * ShowTurnSplash — Castle gate turn announcement (PICT 3100)
+ *
+ * Displays the castle gate scene with faction name and turn number.
+ * Waits for click or ~2 seconds before dismissing.
+ * =================================================================== */
+static void ShowTurnSplash(short playerIdx)
+{
+    WindowPtr  splashWin;
+    PicHandle  gatePict;
+    Rect       winRect;
+    short      winW = 320, winH = 312;
+    unsigned char *gs;
+    short      turn;
+    EventRecord dummyEvt;
+    unsigned long endTick;
+
+    if (*gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+    turn = *(short *)(gs + 0x136);
+
+    SetRect(&winRect, 0, 0, winW, winH);
+    OffsetRect(&winRect,
+        (qd.screenBits.bounds.right - winW) / 2,
+        (qd.screenBits.bounds.bottom - winH) / 2);
+
+    splashWin = NewCWindow(NULL, &winRect, "\p", true,
+                            plainDBox, (WindowPtr)-1L, false, 0);
+    if (splashWin == NULL) return;
+    SetPort(splashWin);
+
+    /* Draw castle gate background (PICT 3100) */
+    gatePict = GetPicture(3100);
+    if (gatePict != NULL) {
+        Rect dstR;
+        SetRect(&dstR, 0, 0, winW, winH);
+        DrawPicture(gatePict, &dstR);
+    } else {
+        /* Fallback: dark background */
+        RGBColor bg = {0x2222, 0x2222, 0x3333};
+        RGBForeColor(&bg);
+        PaintRect(&splashWin->portRect);
+    }
+
+    /* Draw faction name */
+    {
+        unsigned char *fname = gs + playerIdx * FACTION_NAME_LEN;
+        Str255 pname;
+        short len = 0;
+        short colorIdx = (playerIdx >= 0 && playerIdx < 8) ? playerIdx + 1 : 0;
+        RGBColor shadow = {0x0000, 0x0000, 0x0000};
+
+        while (len < 14 && fname[len] != 0) len++;
+        pname[0] = (unsigned char)len;
+        BlockMoveData(fname, pname + 1, len);
+
+        TextFont(2); TextSize(14); TextFace(bold);
+
+        /* Shadow */
+        RGBForeColor(&shadow);
+        MoveTo(winW / 2 - StringWidth(pname) / 2 + 1, 51);
+        DrawString(pname);
+
+        /* Colored text */
+        RGBForeColor(&sPlayerColors[colorIdx]);
+        MoveTo(winW / 2 - StringWidth(pname) / 2, 50);
+        DrawString(pname);
+    }
+
+    /* Draw "Turn N" */
+    {
+        Str255 turnLabel, turnNum;
+        short colorIdx = (playerIdx >= 0 && playerIdx < 8) ? playerIdx + 1 : 0;
+        RGBColor shadow = {0x0000, 0x0000, 0x0000};
+
+        BlockMoveData("\pTurn ", turnLabel, 6);
+        NumToString((long)turn, turnNum);
+        {
+            short ti;
+            for (ti = 1; ti <= turnNum[0]; ti++)
+                turnLabel[++turnLabel[0]] = turnNum[ti];
+        }
+
+        TextFont(2); TextSize(12); TextFace(bold);
+
+        /* Shadow */
+        RGBForeColor(&shadow);
+        MoveTo(winW / 2 - StringWidth(turnLabel) / 2 + 1, 71);
+        DrawString(turnLabel);
+
+        /* Colored text */
+        RGBForeColor(&sPlayerColors[colorIdx]);
+        MoveTo(winW / 2 - StringWidth(turnLabel) / 2, 70);
+        DrawString(turnLabel);
+    }
+
+    TextFace(0); TextFont(3); TextSize(9);
+
+    /* Wait for click or ~2 seconds */
+    endTick = TickCount() + 120;
+    while (TickCount() < endTick) {
+        if (WaitNextEvent(mDownMask | keyDownMask, &dummyEvt, 5, NULL))
+            break;
+    }
+
+    DisposeWindow(splashWin);
+    InvalidateAllGameWindows();
+}
 
 /* ===================================================================
  * ProcessNeutralCities — Neutral city army production and expansion
@@ -14285,14 +15547,14 @@ static void ProcessNeutralCities(void)
                         for (j = 0; j < 0x42; j++) newArmy[j] = 0;
                         *(short *)(newArmy + 0x00) = cx;
                         *(short *)(newArmy + 0x02) = cy;
-                        newArmy[0x15] = 0xFF; /* neutral owner marker */
+                        newArmy[0x15] = 0x0F; /* neutral owner marker */
                         newArmy[0x14] = neutralSpr[idx];
                         newArmy[0x16] = (unsigned char)unitType;
                         newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
                         newArmy[0x1a] = neutralMov[idx];
                         newArmy[0x1e] = neutralHP[idx];
                         *(short *)(newArmy + 0x2a) = (short)neutralHP[idx];
-                        *(short *)(newArmy + 0x2e) = neutralMov[idx];
+                        newArmy[0x2e] = (unsigned char)(neutralMov[idx]);
                         newArmy[0x2d] = 3; /* fortified */
                         *(short *)(gs + 0x1602) = armyCount + 1;
                     }
@@ -14309,7 +15571,7 @@ static void ProcessNeutralCities(void)
             short ai;
             for (ai = 0; ai < armyCount; ai++) {
                 unsigned char *army = gs + 0x1604 + ai * 0x42;
-                if ((unsigned char)army[0x15] != 0xFF) continue; /* not neutral */
+                if ((unsigned char)army[0x15] != 0x0F) continue; /* not neutral */
                 if (army[0x2d] > 0) continue; /* fortified, don't move */
                 /* Give neutral armies movement orders toward nearby enemy */
                 {
@@ -14419,9 +15681,9 @@ static void AdvanceToNextPlayer(void)
                         RGBForeColor(&gold);
                         TextFont(2); TextSize(12); TextFace(bold);
                         MoveTo(100, 22);
-                        DrawString("\pTurn ");
+                        DrawString(GetCachedString(STR_MISC, 12, "\pTurn "));
                         NumToString((long)turn, ns); DrawString(ns);
-                        DrawString("\p Summary");
+                        DrawString(GetCachedString(STR_MISC, 13, "\p Summary"));
                         TextFace(0); TextFont(3); TextSize(9);
                     }
 
@@ -14431,7 +15693,7 @@ static void AdvanceToNextPlayer(void)
                         RGBForeColor(&hdr);
                         TextFace(bold);
                         MoveTo(20, 42);
-                        DrawString("\pFaction        Cities  Armies  Gold");
+                        DrawString(GetCachedString(STR_REPORT, 10, "\pFaction        Cities  Armies  Gold"));
                         TextFace(0);
                     }
 
@@ -14529,6 +15791,34 @@ static void AdvanceToNextPlayer(void)
             *(short *)(gs + 0x118) = 0;
         }
 
+        /* Check player elimination: mark dead if no cities and no armies */
+        {
+            short pi;
+            for (pi = 0; pi < 8; pi++) {
+                if (*(short *)(gs + 0x138 + pi * 2) == 0) continue; /* already dead */
+                {
+                    short hasCities = 0, hasArmies = 0;
+                    short ci, ai2;
+                    short cc = *(short *)(gs + 0x810);
+                    short ac2 = *(short *)(gs + 0x1602);
+                    if (cc > 40) cc = 40;
+                    if (ac2 > 100) ac2 = 100;
+                    for (ci = 0; ci < cc; ci++) {
+                        unsigned char *city = gs + 0x812 + ci * 0x20;
+                        if (*(short *)(city + 0x04) == pi) { hasCities = 1; break; }
+                    }
+                    for (ai2 = 0; ai2 < ac2; ai2++) {
+                        unsigned char *army = gs + 0x1604 + ai2 * 0x42;
+                        if ((short)(unsigned char)army[0x15] == pi) { hasArmies = 1; break; }
+                    }
+                    if (!hasCities && !hasArmies) {
+                        *(short *)(gs + 0x138 + pi * 2) = 0;
+                        *(short *)(gs + 0x148 + pi * 2) = 0;
+                    }
+                }
+            }
+        }
+
         /* Get next player from order */
         orderIdx = *(short *)(gs + 0x174);
         nextPlayer = *(short *)(gs + 0x164 + orderIdx * 2);
@@ -14542,7 +15832,20 @@ static void AdvanceToNextPlayer(void)
         /* Check if alive */
         if (*(short *)(gs + 0x138 + nextPlayer * 2) != 0) {
             if (*(short *)(gs + 0xd0 + nextPlayer * 2) == 0) {
-                /* Human player: stop here */
+                /* Human player: center viewport on their capital */
+                {
+                    unsigned char *ps = gs + 0x186 + nextPlayer * 0x14;
+                    short cx2 = *(short *)(ps + 0x04);
+                    short cy2 = *(short *)(ps + 0x06);
+                    if (cx2 > 0 || cy2 > 0) {
+                        sViewportX = cx2 - 7;
+                        sViewportY = cy2 - 5;
+                    }
+                    if (sViewportX < 0) sViewportX = 0;
+                    if (sViewportY < 0) sViewportY = 0;
+                    if (sViewportX > sMapWidth - 1) sViewportX = sMapWidth - 1;
+                    if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
+                }
                 foundHuman = true;
             } else {
                 /* AI player: show thinking banner, then execute turn */
@@ -14574,7 +15877,7 @@ static void AdvanceToNextPlayer(void)
                         BlockMoveData(fname, pname + 1, len);
                         DrawString(pname);
                     }
-                    DrawString("\p is thinking...");
+                    DrawString(GetCachedString(STR_MISC, 14, "\p is thinking..."));
                 }
                 ExecuteAITurn(nextPlayer);
                 /* Redraw map after AI turn */
@@ -14603,116 +15906,72 @@ static void AdvanceToNextPlayer(void)
         /* Autosave at start of human turn */
         DoAutosave();
 
-        /* Show turn start banner */
+        /* Show turn start banner (PICT 3100 castle gate) */
         PlaySound(SND_TURN);
+        LoadAndPlayMusic(MUSIC_STATE_TURN);
+        ShowTurnSplash(curPlayer);
+
+        /* Voice narration: territory status (every 3 turns to avoid spam) */
+        {
+            short turn2 = *(short *)(gs + 0x136);
+            if (turn2 <= 1) {
+                PlayVoice(SND_VGREET0);
+            } else if (turn2 % 3 == 0) {
+                /* Count cities owned vs total to determine territory % */
+                short cc = *(short *)(gs + 0x810);
+                short myCities = 0, totalCities = 0, ci2;
+                short numAlive = 0, pi2;
+                if (cc > 40) cc = 40;
+                for (ci2 = 0; ci2 < cc; ci2++) {
+                    unsigned char *ct = gs + 0x812 + ci2 * 0x20;
+                    short ct_type = (short)(unsigned char)ct[0x18];
+                    if (ct_type == 2 || ct_type == 5 || ct_type == 6) continue;
+                    totalCities++;
+                    if (*(short *)(ct + 0x04) == curPlayer) myCities++;
+                }
+                for (pi2 = 0; pi2 < 8; pi2++)
+                    if (*(short *)(gs + 0x138 + pi2 * 2) != 0) numAlive++;
+                if (numAlive < 2) numAlive = 2;
+
+                if (totalCities > 0) {
+                    /* fair share = 100/numAlive; compare against that */
+                    short pct = (myCities * 100) / totalCities;
+                    short fair = 100 / numAlive;
+                    if (pct >= fair * 3)     PlayVoice(SND_VWIN35);
+                    else if (pct >= fair * 2) PlayVoice(SND_VWIN25);
+                    else if (pct > fair + 5)  PlayVoice(SND_VWIN15);
+                    else if (pct > fair)      PlayVoice(SND_VWIN05);
+                    else if (pct >= fair - 5) PlayVoice(SND_VGREET0);  /* neutral */
+                    else if (pct >= fair / 2) PlayVoice(SND_VLOSE10);
+                    else if (pct > 0)         PlayVoice(SND_VLOSE25);
+                    else                      PlayVoice(SND_VLOSE35);
+                }
+            }
+        }
+
+        /* Update window title with current player and turn */
         if (*gMainGameWindow != 0) {
             WindowPtr mw = (WindowPtr)*gMainGameWindow;
-            Rect bannerR;
-            short colorIdx = (curPlayer >= 0 && curPlayer < 8) ? curPlayer + 1 : 0;
             short turn2 = *(short *)(gs + 0x136);
-            Str255 turnStr;
-            EventRecord dummyEvt;
-            unsigned long banEnd;
-
-            SetPort(mw);
-            SetRect(&bannerR, mw->portRect.left + 100, mw->portRect.top + 55,
-                    mw->portRect.left + 400, mw->portRect.top + 108);
+            Str255 wTitle;
+            unsigned char *fname = gs + curPlayer * FACTION_NAME_LEN;
+            short fLen = 0;
+            while (fLen < 14 && fname[fLen] != 0) fLen++;
+            BlockMoveData("\pWarlords II - ", wTitle, 15);
+            BlockMoveData(fname, wTitle + wTitle[0] + 1, fLen);
+            wTitle[0] += fLen;
+            wTitle[++wTitle[0]] = ' ';
+            wTitle[++wTitle[0]] = '(';
+            wTitle[++wTitle[0]] = 'T';
             {
-                RGBColor banBg = {0x1111, 0x1111, 0x2222};
-                RGBForeColor(&banBg);
-                PaintRoundRect(&bannerR, 10, 10);
+                Str255 tns;
+                short ti;
+                NumToString((long)turn2, tns);
+                for (ti = 1; ti <= tns[0] && wTitle[0] < 250; ti++)
+                    wTitle[++wTitle[0]] = tns[ti];
             }
-            RGBForeColor(&sPlayerColors[colorIdx]);
-            PenSize(2, 2);
-            FrameRoundRect(&bannerR, 10, 10);
-            PenNormal();
-            {
-                RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                RGBForeColor(&white);
-            }
-            TextFont(2);
-            TextSize(12);
-            TextFace(bold);
-            MoveTo(bannerR.left + 14, bannerR.top + 20);
-            DrawString("\pTurn ");
-            NumToString((long)turn2, turnStr);
-            DrawString(turnStr);
-            DrawString("\p - ");
-            {
-                unsigned char *fname = gs + curPlayer * FACTION_NAME_LEN;
-                Str255 pname;
-                short len = 0;
-                while (len < 14 && fname[len] != 0) len++;
-                pname[0] = (unsigned char)len;
-                BlockMoveData(fname, pname + 1, len);
-                DrawString(pname);
-            }
-            /* Gold and income line */
-            {
-                RGBColor goldCol = {0xFFFF, 0xDDDD, 0x3333};
-                short gold = *(short *)(gs + 0x186 + curPlayer * 0x14);
-                short income = 0, upkeep = 0;
-                short cCnt = *(short *)(gs + 0x810);
-                short aCnt = *(short *)(gs + 0x1602);
-                short qi;
-                Str255 ns;
-                if (cCnt > 40) cCnt = 40;
-                if (aCnt > 100) aCnt = 100;
-                for (qi = 0; qi < cCnt; qi++) {
-                    unsigned char *c = gs + 0x812 + qi * 0x20;
-                    if (*(short *)(c + 0x04) == curPlayer)
-                        income += *(short *)(c + 0x08);
-                }
-                for (qi = 0; qi < aCnt; qi++) {
-                    unsigned char *a = gs + 0x1604 + qi * 0x42;
-                    short u;
-                    if ((short)(unsigned char)a[0x15] != curPlayer) continue;
-                    for (u = 0; u < 4; u++)
-                        if ((unsigned char)a[0x16 + u] != 0xFF) upkeep += 2;
-                }
-                TextFace(0);
-                TextFont(3);
-                TextSize(10);
-                RGBForeColor(&goldCol);
-                MoveTo(bannerR.left + 14, bannerR.top + 38);
-                DrawString("\pGold: ");
-                NumToString((long)gold, ns); DrawString(ns);
-                DrawString("\p   Income: +");
-                NumToString((long)income, ns); DrawString(ns);
-                DrawString("\p   Upkeep: -");
-                NumToString((long)upkeep, ns); DrawString(ns);
-            }
-            TextFace(0);
-            TextFont(3);
-            TextSize(9);
-
-            /* Show for ~1 second */
-            banEnd = TickCount() + SpeedTicks(60);
-            while (TickCount() < banEnd)
-                WaitNextEvent(0, &dummyEvt, 2, NULL);
-
-            /* Update window title with current player and turn */
-            {
-                Str255 wTitle;
-                unsigned char *fname = gs + curPlayer * FACTION_NAME_LEN;
-                short fLen = 0;
-                while (fLen < 14 && fname[fLen] != 0) fLen++;
-                BlockMoveData("\pWarlords II - ", wTitle, 15);
-                BlockMoveData(fname, wTitle + wTitle[0] + 1, fLen);
-                wTitle[0] += fLen;
-                wTitle[++wTitle[0]] = ' ';
-                wTitle[++wTitle[0]] = '(';
-                wTitle[++wTitle[0]] = 'T';
-                {
-                    Str255 tns;
-                    short ti;
-                    NumToString((long)turn2, tns);
-                    for (ti = 1; ti <= tns[0] && wTitle[0] < 250; ti++)
-                        wTitle[++wTitle[0]] = tns[ti];
-                }
-                wTitle[++wTitle[0]] = ')';
-                SetWTitle(mw, wTitle);
-            }
+            wTitle[++wTitle[0]] = ')';
+            SetWTitle(mw, wTitle);
         }
 
         /* Random turn events */
@@ -14817,6 +16076,9 @@ static void AdvanceToNextPlayer(void)
                 }
                 }
 
+                /* Voice narration for random events */
+                PlayVoice(SND_VMESS00 + (short)((unsigned short)Random() % 4));
+
                 /* Show event notification */
                 reWin = NewCWindow(NULL, &reR, "\p", true,
                                    plainDBox, (WindowPtr)-1, false, 0);
@@ -14830,7 +16092,7 @@ static void AdvanceToNextPlayer(void)
                     FrameRect(&reWin->portRect); PenNormal();
                     TextFont(3); TextSize(11); TextFace(bold);
                     MoveTo(15, 18);
-                    DrawString("\pRandom Event!");
+                    DrawString(GetCachedString(STR_MISC, 15, "\pRandom Event!"));
                     TextFace(0); TextSize(10);
                     RGBForeColor(&reWh);
                     MoveTo(15, 40);
@@ -14857,7 +16119,7 @@ static void AdvanceToNextPlayer(void)
                 unsigned char *army = gs + 0x1604 + ai * 0x42;
                 if ((short)(unsigned char)army[0x15] != curPlayer) continue;
                 /* Only heal if army didn't move (full movement remaining) */
-                if (*(short *)(army + 0x2e) < (short)(unsigned char)army[0x1a]) continue;
+                if ((short)(unsigned char)army[0x2e] < (short)(unsigned char)army[0x1a]) continue;
                 /* Check if at a friendly city */
                 {
                     short ax = *(short *)(army + 0x00);
@@ -14918,7 +16180,22 @@ static void AdvanceToNextPlayer(void)
                         GetHeroItemBonus(ai, &bB, &cB, &gB, &fB, &mB);
                         if (mB) maxMov *= 2;
                     }
-                    *(short *)(army + 0x2e) = maxMov;
+                    army[0x2e] = (unsigned char)(maxMov);
+                }
+            }
+        }
+
+        /* Reset extended state army flags for this player's armies */
+        if (*gExtState != 0) {
+            unsigned char *ext = (unsigned char *)*gExtState;
+            short ac2 = *(short *)(gs + 0x1602);
+            short ai2;
+            if (ac2 > 100) ac2 = 100;
+            for (ai2 = 0; ai2 < ac2; ai2++) {
+                unsigned char *a2 = gs + 0x1604 + ai2 * 0x42;
+                if ((short)(unsigned char)a2[0x15] == curPlayer) {
+                    ext[0x11e + ai2] &= ~0x01;  /* clear 'moved this turn' flag */
+                    ext[0x182 + ai2] = 0;        /* reset move counter */
                 }
             }
         }
@@ -14953,7 +16230,7 @@ static void AdvanceToNextPlayer(void)
                         army = gs + 0x1604 + ai * 0x42;
                         if ((short)(unsigned char)army[0x15] != curPlayer) break;
 
-                        movePts = *(short *)(army + 0x2e);
+                        movePts = (short)(unsigned char)army[0x2e];
                         if (movePts <= 0) break;
 
                         curX = *(short *)(army + 0x00);
@@ -15006,7 +16283,7 @@ static void AdvanceToNextPlayer(void)
                         prevMX = curX; prevMY = curY;
                         *(short *)(army + 0x00) = nX;
                         *(short *)(army + 0x02) = nY;
-                        *(short *)(army + 0x2e) = movePts - cost;
+                        army[0x2e] = (unsigned char)(movePts - cost);
 
                         if (sOptHiddenMap)
                             FogReveal(curPlayer, nX, nY);
@@ -15116,22 +16393,22 @@ static void AdvanceToNextPlayer(void)
                                 TextFace(bold);
                                 RGBForeColor(&yellow);
                                 MoveTo(20, 22);
-                                DrawString("\pTreasury Warning!");
+                                DrawString(GetCachedString(STR_MISC, 18, "\pTreasury Warning!"));
 
                                 TextFace(0);
                                 TextFont(3);
                                 TextSize(9);
                                 RGBForeColor(&white);
                                 MoveTo(20, 42);
-                                DrawString("\pYour treasury is dangerously low: ");
+                                DrawString(GetCachedString(STR_MISC, 19, "\pYour treasury is dangerously low: "));
                                 NumToString((long)newGold, goldStr);
                                 DrawString(goldStr);
-                                DrawString("\p gold.");
+                                DrawString(GetCachedString(STR_MISC, 20, "\p gold."));
 
                                 MoveTo(20, 58);
-                                DrawString("\pUpkeep exceeds income. You must reduce");
+                                DrawString(GetCachedString(STR_MISC, 21, "\pUpkeep exceeds income. You must reduce"));
                                 MoveTo(20, 72);
-                                DrawString("\pyour armies or capture more cities.");
+                                DrawString(GetCachedString(STR_MISC, 22, "\pyour armies or capture more cities."));
 
                                 /* OK button */
                                 SetRect(&okR, 50, 100, 150, 120);
@@ -15142,7 +16419,7 @@ static void AdvanceToNextPlayer(void)
                                 FrameRoundRect(&okR, 8, 8);
                                 PenNormal();
                                 MoveTo(82, 114);
-                                DrawString("\pOK");
+                                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
 
                                 /* Disband button */
                                 SetRect(&disbandR, 170, 100, 290, 120);
@@ -15156,7 +16433,7 @@ static void AdvanceToNextPlayer(void)
                                 FrameRoundRect(&disbandR, 8, 8);
                                 PenNormal();
                                 MoveTo(186, 114);
-                                DrawString("\pDisband Weak");
+                                DrawString(GetCachedString(STR_MISC, 23, "\pDisband Weak"));
 
                                 while (!bkDone) {
                                     if (WaitNextEvent(mDownMask | keyDownMask, &bkEvt, 30, NULL)) {
@@ -15236,6 +16513,7 @@ static void AdvanceToNextPlayer(void)
                 if (prodTurns <= 0) {
                     /* Production complete: create new army at city */
                     short armyCount = *(short *)(gs + 0x1602);
+                    PlaySound(SND_DING);  /* notification for production complete */
                     if (armyCount < 100) {
                         unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
                         short j;
@@ -15277,7 +16555,7 @@ static void AdvanceToNextPlayer(void)
                             newArmy[0x22] = 0;            /* bonus */
                             newArmy[0x26] = 0;            /* experience */
                             *(short *)(newArmy + 0x2a) = (short)unitHP[idx];
-                            *(short *)(newArmy + 0x2e) = (short)unitMov[idx]; /* move pts */
+                            newArmy[0x2e] = (unsigned char)(unitMov[idx]); /* move pts */
                         }
 
                         /* Apply vectoring: if target city set, give army move orders */
@@ -15325,12 +16603,12 @@ static void AdvanceToNextPlayer(void)
                                     TextFont(3); TextSize(10); TextFace(bold);
                                     RGBForeColor(&white);
                                     MoveTo(10, 18);
-                                    DrawString("\pProduction Complete!");
+                                    DrawString(GetCachedString(STR_CITY_DIALOG, 29, "\pProduction Complete!"));
                                     TextFace(0); TextSize(9);
                                     RGBForeColor(&gold);
                                     MoveTo(10, 36);
                                     DrawString(unitName);
-                                    DrawString("\p at ");
+                                    DrawString(GetCachedString(STR_CITY_DIALOG, 30, "\p at "));
                                     if (ci < sCityNameCount && sCityNames[ci][0] != '\0') {
                                         Str255 cn;
                                         char *s = sCityNames[ci];
@@ -15340,7 +16618,7 @@ static void AdvanceToNextPlayer(void)
                                         BlockMoveData(s, cn + 1, nl);
                                         DrawString(cn);
                                     } else {
-                                        DrawString("\pcity");
+                                        DrawString(GetCachedString(STR_CITY_DIALOG, 31, "\pcity"));
                                     }
                                     pnTicks = TickCount() + SpeedTicks(90);
                                     while (TickCount() < pnTicks) {
@@ -15360,14 +16638,17 @@ static void AdvanceToNextPlayer(void)
         }
 
         /* Offer hero hire (original: FUN_1000d1a4) */
+        PlayVoice(SND_VHERO00);
         ShowHeroHire(curPlayer, false);
 
         /* Check victory/defeat conditions */
         {
             short victoryResult = CheckVictoryConditions();
             if (victoryResult == 1) {
+                LoadAndPlayMusic(MUSIC_STATE_VICTORY);
                 ShowVictoryDialog(true);
             } else if (victoryResult == -1) {
+                LoadAndPlayMusic(MUSIC_STATE_VICTORY);
                 ShowVictoryDialog(false);
                 /* Mark player as dead */
                 *(short *)(gs + 0x138 + curPlayer * 2) = 0;
@@ -15850,7 +17131,7 @@ static void ShowVectoringDialog(short cityIndex)
                     TextSize(14);
                     TextFace(bold);
                     MoveTo(90, 25);
-                    DrawString("\pCity Vectoring");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 13, "\pCity Vectoring"));
                     TextFace(0);
                 }
 
@@ -15862,7 +17143,7 @@ static void ShowVectoringDialog(short cityIndex)
                     TextSize(10);
                     RGBForeColor(&labelClr);
                     MoveTo(30, 50);
-                    DrawString("\pFrom: ");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 14, "\pFrom: "));
                     if (srcOwner >= 0 && srcOwner < 8) {
                         Str255 pN;
                         unsigned char *np = gs + srcOwner * 20;
@@ -15881,13 +17162,14 @@ static void ShowVectoringDialog(short cityIndex)
                     short producing = *(short *)(extCity + 0x02);
                     RGBForeColor(&valClr);
                     MoveTo(30, 68);
-                    DrawString("\pProducing: ");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 5, "\pProducing:"));
+                    DrawString("\p ");
                     if (producing >= 0) {
                         Str255 pn;
                         GetUnitTypeName(producing, pn);
                         DrawString(pn);
                     } else {
-                        DrawString("\pNothing");
+                        DrawString(GetCachedString(STR_CITY_DIALOG, 6, "\pNothing"));
                     }
                 }
 
@@ -15897,7 +17179,7 @@ static void ShowVectoringDialog(short cityIndex)
                     RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
                     RGBForeColor(&black);
                     MoveTo(30, 86);
-                    DrawString("\pVector to:");
+                    DrawString(GetCachedString(STR_CITY_DIALOG, 15, "\pVector to:"));
 
                     /* Target city selector box */
                     RGBForeColor(&white);
@@ -15907,7 +17189,7 @@ static void ShowVectoringDialog(short cityIndex)
 
                     MoveTo(36, 104);
                     if (vecTarget < 0 || vecTarget >= cityCount) {
-                        DrawString("\p(None - armies stay here)");
+                        DrawString(GetCachedString(STR_CITY_DIALOG, 16, "\p(None - armies stay here)"));
                     } else {
                         /* Show target city faction name */
                         unsigned char *tc = gs + 0x812 + vecTarget * 0x20;
@@ -15939,7 +17221,7 @@ static void ShowVectoringDialog(short cityIndex)
                         RGBForeColor(&hint);
                         TextSize(9);
                         MoveTo(30, 125);
-                        DrawString("\pClick the box to cycle through your cities");
+                        DrawString(GetCachedString(STR_CITY_DIALOG, 17, "\pClick the box to cycle through your cities"));
                         TextSize(10);
                     }
                 }
@@ -15950,10 +17232,10 @@ static void ShowVectoringDialog(short cityIndex)
                     RGBForeColor(&black);
                     FrameRoundRect(&okRect, 8, 8);
                     MoveTo(232, 176);
-                    DrawString("\pOK");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                     FrameRoundRect(&cancelRect, 8, 8);
                     MoveTo(55, 176);
-                    DrawString("\pCancel");
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
                 }
 
                 UnlockPixels(GetGWorldPixMap(offGW));
@@ -16110,7 +17392,7 @@ static void HandleMenuChoice(long menuResult)
                 unsigned char *army = gs + 0x1604 + sUndoArmyIdx * 0x42;
                 *(short *)(army + 0x00) = sUndoFromX;
                 *(short *)(army + 0x02) = sUndoFromY;
-                *(short *)(army + 0x2e) = sUndoMovePts;
+                army[0x2e] = (unsigned char)(sUndoMovePts);
                 *(short *)(army + 0x32) = 0;  /* clear pending orders */
                 sSelectedArmy = sUndoArmyIdx;
                 sUndoArmyIdx = -1;  /* can only undo once */
@@ -16269,7 +17551,7 @@ static void HandleMenuChoice(long menuResult)
 
                     /* Set new army strength and movement */
                     *(short *)(newArmy + 0x2a) = (short)(unsigned char)newArmy[0x1e];
-                    *(short *)(newArmy + 0x2e) = (short)(unsigned char)newArmy[0x1a];
+                    newArmy[0x2e] = (unsigned char)(newArmy[0x1a]);
 
                     /* Remove unit from original army */
                     army[0x16 + lastSlot] = 0xFF;
@@ -16372,11 +17654,11 @@ static void HandleMenuChoice(long menuResult)
                                 TextFont(3); TextSize(11); TextFace(bold);
                                 RGBForeColor(&gold);
                                 MoveTo(15, 18);
-                                DrawString("\pLeave Group");
+                                DrawString(GetCachedString(STR_STACK_INFO, 12, "\pLeave Group"));
                                 TextFace(0); TextSize(9);
                                 RGBForeColor(&white);
                                 MoveTo(15, 32);
-                                DrawString("\pSelect units to leave behind:");
+                                DrawString(GetCachedString(STR_STACK_INFO, 13, "\pSelect units to leave behind:"));
                                 for (ui = 0; ui < 4; ui++) {
                                     short ut = (short)(unsigned char)army[0x16 + ui];
                                     short hp = (short)(unsigned char)army[0x1e + ui];
@@ -16402,13 +17684,13 @@ static void HandleMenuChoice(long menuResult)
                                     MoveTo(32, yp + 10);
                                     GetUnitTypeName(ut, typeName);
                                     DrawString(typeName);
-                                    DrawString("\p  HP:");
+                                    DrawString(GetCachedString(STR_STACK_INFO, 14, "\p  HP:"));
                                     NumToString((long)hp, ns); DrawString(ns);
                                     {
                                         short xp = (short)(unsigned char)army[0x26 + ui];
                                         if (xp > 0) {
                                             RGBForeColor(&gold);
-                                            DrawString("\p  XP:");
+                                            DrawString(GetCachedString(STR_STACK_INFO, 15, "\p  XP:"));
                                             NumToString((long)xp, ns); DrawString(ns);
                                         }
                                     }
@@ -16422,9 +17704,9 @@ static void HandleMenuChoice(long menuResult)
                                     PenSize(2,2); FrameRoundRect(&okR2, 8, 8);
                                     FrameRoundRect(&cancelR2, 8, 8); PenNormal();
                                     MoveTo(okR2.left + 22, okR2.bottom - 6);
-                                    DrawString("\pSplit");
+                                    DrawString(GetCachedString(STR_STACK_INFO, 16, "\pSplit"));
                                     MoveTo(cancelR2.left + 14, cancelR2.bottom - 6);
-                                    DrawString("\pCancel");
+                                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
                                 }
                                 needsRedraw2 = false;
                             }
@@ -16475,9 +17757,9 @@ static void HandleMenuChoice(long menuResult)
                                                 for (j = newSlot; j < 4; j++)
                                                     newArmy[0x16 + j] = 0xFF;
                                                 *(short *)(newArmy + 0x2a) = str;
-                                                *(short *)(newArmy + 0x2e) = (short)(unsigned char)newArmy[0x1a];
-                                                if (*(short *)(newArmy + 0x2e) <= 0)
-                                                    *(short *)(newArmy + 0x2e) = 10;
+                                                newArmy[0x2e] = (unsigned char)(newArmy[0x1a]);
+                                                if ((short)(unsigned char)newArmy[0x2e] <= 0)
+                                                    newArmy[0x2e] = (unsigned char)(10);
                                             }
                                             /* Compact original army slots */
                                             {
@@ -16626,13 +17908,13 @@ static void HandleMenuChoice(long menuResult)
                     FrameRect(&dbWin->portRect);
                     TextSize(10);
                     MoveTo(30, 22);
-                    DrawString("\pDisband this army group?");
+                    DrawString(GetCachedString(STR_MISC, 57, "\pDisband this army group?"));
                     SetRect(&yesR, 40, 42, 110, 62);
                     SetRect(&noR, 150, 42, 220, 62);
                     FrameRoundRect(&yesR, 8, 8);
                     FrameRoundRect(&noR, 8, 8);
-                    MoveTo(60, 56); DrawString("\pYes");
-                    MoveTo(170, 56); DrawString("\pNo");
+                    MoveTo(60, 56); DrawString(GetCachedString(STR_COMMON_BUTTONS, 3, "\pYes"));
+                    MoveTo(170, 56); DrawString(GetCachedString(STR_COMMON_BUTTONS, 2, "\pNo"));
                     PenSize(2, 2); FrameRoundRect(&noR, 8, 8); PenNormal();
 
                     FlushEvents(everyEvent, 0);
@@ -16706,16 +17988,16 @@ static void HandleMenuChoice(long menuResult)
                         RGBForeColor(&bg); PaintRect(&rGWR);
                         RGBForeColor(&bk); FrameRect(&rGWR);
                         TextSize(12); TextFace(bold);
-                        MoveTo(30, 30); DrawString("\pAre you sure you");
-                        MoveTo(30, 48); DrawString("\pwant to resign?");
+                        MoveTo(30, 30); DrawString(GetCachedString(STR_MISC, 58, "\pAre you sure you"));
+                        MoveTo(30, 48); DrawString(GetCachedString(STR_MISC, 59, "\pwant to resign?"));
                         TextFace(0); TextSize(10);
                         SetRect(&btn, 40, 65, 110, 85);
                         FrameRoundRect(&btn, 10, 10);
-                        TextFace(bold); MoveTo(60, 79); DrawString("\pYes");
+                        TextFace(bold); MoveTo(60, 79); DrawString(GetCachedString(STR_COMMON_BUTTONS, 3, "\pYes"));
                         TextFace(0);
                         SetRect(&btn, 150, 65, 220, 85);
                         FrameRoundRect(&btn, 10, 10);
-                        MoveTo(175, 79); DrawString("\pNo");
+                        MoveTo(175, 79); DrawString(GetCachedString(STR_COMMON_BUTTONS, 2, "\pNo"));
                     }
                     UnlockPixels(GetGWorldPixMap(rGW));
                     SetGWorld(rSP, rSD);
@@ -16912,6 +18194,7 @@ static void HandleMenuChoice(long menuResult)
 
                             site[0x18] = 0;  /* mark as searched */
                             foundRuin = true;
+                            PlaySound(SND_ORCH);  /* fanfare for ruin discovery */
 
                             /* Update quest progress for explore quests */
                             if (sPlayerQuests[curPlayer].active &&
@@ -16928,23 +18211,39 @@ static void HandleMenuChoice(long menuResult)
                                         "Found treasure in ruins");
 
                             /* Show reward dialog */
-                            SetRect(&rwR, 0, 0, 300, 170);
-                            OffsetRect(&rwR, (qd.screenBits.bounds.right - 300) / 2,
-                                             (qd.screenBits.bounds.bottom - 170) / 2);
+                            {
+                                /* Try search scene PICT (4100=ruin, 4101=temple) */
+                                PicHandle srchPict = GetPicture(siteType == 2 ? 4101 : 4100);
+                                short rwW = 300, rwH = 170;
+                                if (srchPict) {
+                                    Rect pf = (**srchPict).picFrame;
+                                    rwW = pf.right - pf.left;
+                                    rwH = pf.bottom - pf.top;
+                                }
+                                SetRect(&rwR, 0, 0, rwW, rwH);
+                                OffsetRect(&rwR, (qd.screenBits.bounds.right - rwW) / 2,
+                                                 (qd.screenBits.bounds.bottom - rwH) / 2);
+                            }
                             rwWin = NewCWindow(NULL, &rwR, "\p", true,
                                                plainDBox, (WindowPtr)-1L, false, 0);
-                            SetRect(&rwGR, 0, 0, 300, 170);
+                            {
+                                short rwW2 = rwR.right - rwR.left;
+                                short rwH2 = rwR.bottom - rwR.top;
+                                SetRect(&rwGR, 0, 0, rwW2, rwH2);
+                            }
                             if (rwWin) NewGWorld(&rwGW, 0, &rwGR, NULL, NULL, 0);
                             if (rwWin && rwGW) {
                                 CGrafPtr sp; GDHandle sd;
                                 EventRecord re;
                                 Boolean rd = false;
+                                PicHandle srchPict2 = GetPicture(siteType == 2 ? 4101 : 4100);
                                 GetGWorld(&sp, &sd);
                                 SetGWorld(rwGW, NULL);
                                 LockPixels(GetGWorldPixMap(rwGW));
 
-                                /* Background */
-                                DrawMarbleBackground(&rwGR);
+                                /* Background: search scene PICT or marble fallback */
+                                if (srchPict2) DrawPicture(srchPict2, &rwGR);
+                                else DrawMarbleBackground(&rwGR);
                                 /* Border */
                                 {
                                     RGBColor gbdr = {0xCCCC, 0xAAAA, 0x3333};
@@ -16960,7 +18259,7 @@ static void HandleMenuChoice(long menuResult)
                                     TextFont(2); TextSize(14); TextFace(bold);
                                     MoveTo(60, 28);
                                     DrawString(siteTypeName);
-                                    DrawString("\p Explored!");
+                                    DrawString(GetCachedString(STR_SEARCH_TEMPLE, 0, "\p Explored!"));
                                     TextFace(0);
                                 }
                                 /* Reward text */
@@ -16974,13 +18273,13 @@ static void HandleMenuChoice(long menuResult)
                                         Str255 iname;
                                         short nl = 0;
                                         MoveTo(30, 60);
-                                        DrawString("\pYour hero discovers an artifact!");
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 1, "\pYour hero discovers an artifact!"));
                                         MoveTo(30, 82);
                                         {
                                             RGBColor cyan = {0x6666, 0xFFFF, 0xFFFF};
                                             RGBForeColor(&cyan);
                                         }
-                                        DrawString("\pFound: ");
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 2, "\pFound: "));
                                         while (nl < 19 && itm->name[nl]) nl++;
                                         iname[0] = (unsigned char)nl;
                                         BlockMoveData(itm->name, iname + 1, nl);
@@ -16989,25 +18288,25 @@ static void HandleMenuChoice(long menuResult)
                                         RGBForeColor(&white);
                                         switch (itm->type) {
                                             case ITEM_TYPE_BATTLE:
-                                                DrawString("\pBattle bonus: +");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 3, "\pBattle bonus: +"));
                                                 { Str255 vs; NumToString((long)itm->value, vs); DrawString(vs); }
-                                                DrawString("\p strength");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 4, "\p strength"));
                                                 break;
                                             case ITEM_TYPE_COMMAND:
-                                                DrawString("\pCommand bonus: +");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 5, "\pCommand bonus: +"));
                                                 { Str255 vs; NumToString((long)itm->value, vs); DrawString(vs); }
-                                                DrawString("\p to all stacked");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 6, "\p to all stacked"));
                                                 break;
                                             case ITEM_TYPE_FLYING:
-                                                DrawString("\pGrants flight to stack!");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 7, "\pGrants flight to stack!"));
                                                 break;
                                             case ITEM_TYPE_MOVEMENT:
-                                                DrawString("\pDoubles stack movement!");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 8, "\pDoubles stack movement!"));
                                                 break;
                                             case ITEM_TYPE_GOLD:
-                                                DrawString("\pGold bonus: +");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 9, "\pGold bonus: +"));
                                                 { Str255 vs; NumToString((long)itm->value, vs); DrawString(vs); }
-                                                DrawString("\p per city per turn");
+                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 10, "\p per city per turn"));
                                                 break;
                                         }
                                     } else if (rewardType == 2 && gotAlly) {
@@ -17017,24 +18316,24 @@ static void HandleMenuChoice(long menuResult)
                                         };
                                         short allyT = (short)((rndSeed / 13) % 4);
                                         MoveTo(30, 60);
-                                        DrawString("\pA warrior emerges from the shadows!");
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 11, "\pA warrior emerges from the shadows!"));
                                         MoveTo(30, 82);
                                         {
                                             RGBColor green = {0x4444, 0xFFFF, 0x4444};
                                             RGBForeColor(&green);
                                         }
-                                        DrawString("\pAllied: ");
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 12, "\pAllied: "));
                                         DrawString(allyNames[allyT]);
-                                        DrawString("\p joins your army!");
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 13, "\p joins your army!"));
                                     } else {
                                         Str255 numStr;
                                         MoveTo(30, 60);
-                                        DrawString("\pYour hero discovers treasure!");
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 14, "\pYour hero discovers treasure!"));
                                         MoveTo(30, 82);
-                                        DrawString("\pReward: ");
+                                        DrawString(GetCachedString(STR_MISC, 4, "\pReward: "));
                                         NumToString((long)gold, numStr);
                                         DrawString(numStr);
-                                        DrawString("\p gold pieces");
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 15, "\p gold pieces"));
                                     }
                                 }
                                 /* OK button */
@@ -17045,7 +18344,7 @@ static void HandleMenuChoice(long menuResult)
                                     RGBForeColor(&white);
                                     FrameRoundRect(&okR, 8, 8);
                                     MoveTo(136, 146);
-                                    DrawString("\pOK");
+                                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                                 }
 
                                 UnlockPixels(GetGWorldPixMap(rwGW));
@@ -17225,7 +18524,7 @@ static void HandleMenuChoice(long menuResult)
                 for (ua = 0; ua < ac; ua++) {
                     unsigned char *arm = gs + 0x1604 + ua * 0x42;
                     if ((short)(unsigned char)arm[0x15] == curP &&
-                        *(short *)(arm + 0x2e) > 0 &&
+                        (short)(unsigned char)arm[0x2e] > 0 &&
                         *(short *)(arm + 0x32) == 0 &&
                         arm[0x2d] == 0) {
                         unmovedCount++;
@@ -17255,19 +18554,19 @@ static void HandleMenuChoice(long menuResult)
                         RGBForeColor(&cwh);
                         TextFont(3); TextSize(11); TextFace(bold);
                         MoveTo(15, 20);
-                        DrawString("\pYou have ");
+                        DrawString(GetCachedString(STR_MISC, 28, "\pYou have "));
                         NumToString((long)unmovedCount, ns); DrawString(ns);
-                        DrawString("\p unmoved ");
+                        DrawString(GetCachedString(STR_MISC, 29, "\p unmoved "));
                         DrawString(unmovedCount == 1 ? "\parmy." : "\parmies.");
                         TextFace(0); TextSize(10);
                         MoveTo(15, 40);
-                        DrawString("\pEnd turn anyway?");
+                        DrawString(GetCachedString(STR_MISC, 30, "\pEnd turn anyway?"));
                         RGBForeColor(&cg);
                         FrameRoundRect(&yR, 6, 6);
-                        MoveTo(168, 67); DrawString("\pYes");
+                        MoveTo(168, 67); DrawString(GetCachedString(STR_COMMON_BUTTONS, 3, "\pYes"));
                         RGBForeColor(&cr);
                         FrameRoundRect(&nR, 6, 6);
-                        MoveTo(246, 67); DrawString("\pNo");
+                        MoveTo(246, 67); DrawString(GetCachedString(STR_COMMON_BUTTONS, 2, "\pNo"));
 
                         while (!confDone) {
                             if (WaitNextEvent(mDownMask | keyDownMask, &confEvt, 30, NULL)) {
@@ -17446,7 +18745,7 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
     if (newX < 0 || newX >= sMapWidth || newY < 0 || newY >= sMapHeight)
         return false;
 
-    movePts = *(short *)(selArmy + 0x2e);
+    movePts = (short)(unsigned char)selArmy[0x2e];
     unitCls = (short)(unsigned char)selArmy[0x16];
     cost = GetMovementCost(newX, newY, unitCls);
 
@@ -17462,7 +18761,7 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
     /* Move the army */
     *(short *)(selArmy + 0x00) = newX;
     *(short *)(selArmy + 0x02) = newY;
-    *(short *)(selArmy + 0x2e) = movePts - cost;
+    selArmy[0x2e] = (unsigned char)(movePts - cost);
 
     /* Fog of war reveal */
     if (sOptHiddenMap) {
@@ -17488,7 +18787,7 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
         armyCount = *(short *)(gs + 0x1602);
         if (sSelectedArmy < armyCount) {
             selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
-            if (*(short *)(selArmy + 0x2e) <= 0 &&
+            if ((short)(unsigned char)selArmy[0x2e] <= 0 &&
                 *(short *)(selArmy + 0x32) == 0) {
                 SelectNextArmy();
             }
@@ -17537,6 +18836,22 @@ static void HandleMouseDown(EventRecord *event)
                 SetPort(whichWindow);
                 EraseRect(&whichWindow->portRect);
                 ZoomWindow(whichWindow, partCode, true);
+                /* Reposition scrollbar controls after zoom */
+                if (gMainGameWindow != NULL &&
+                    whichWindow == (WindowPtr)*gMainGameWindow) {
+                    Rect p = whichWindow->portRect;
+                    if (sVScrollBar != NULL) {
+                        MoveControl(sVScrollBar, p.right - SCROLLBAR_W, p.top);
+                        SizeControl(sVScrollBar, SCROLLBAR_W,
+                                    p.bottom - p.top - SCROLLBAR_H + 1);
+                    }
+                    if (sHScrollBar != NULL) {
+                        short hLeft = p.left + SHIELD_AREA_W + 50;
+                        MoveControl(sHScrollBar, hLeft, p.bottom - SCROLLBAR_H);
+                        SizeControl(sHScrollBar,
+                                    p.right - SCROLLBAR_W - hLeft + 1, SCROLLBAR_H);
+                    }
+                }
                 InvalRect(&whichWindow->portRect);
             }
         }
@@ -17549,9 +18864,21 @@ static void HandleMouseDown(EventRecord *event)
         SetRect(&limitRect, 128, 128, 1024, 768);
         newSize = GrowWindow(whichWindow, event->where, &limitRect);
         if (newSize != 0) {
+            Rect p;
             SizeWindow(whichWindow, (short)(newSize & 0xFFFF), (short)((newSize >> 16) & 0xFFFF), true);
             SetPort(whichWindow);
-            InvalRect(&whichWindow->portRect);
+            p = whichWindow->portRect;
+            /* Reposition scrollbar controls after resize */
+            if (sVScrollBar != NULL) {
+                MoveControl(sVScrollBar, p.right - SCROLLBAR_W, p.top);
+                SizeControl(sVScrollBar, SCROLLBAR_W, p.bottom - p.top - SCROLLBAR_H + 1);
+            }
+            if (sHScrollBar != NULL) {
+                short hLeft = p.left + SHIELD_AREA_W + 50;
+                MoveControl(sHScrollBar, hLeft, p.bottom - SCROLLBAR_H);
+                SizeControl(sHScrollBar, p.right - SCROLLBAR_W - hLeft + 1, SCROLLBAR_H);
+            }
+            InvalRect(&p);
         }
         break;
     }
@@ -17575,97 +18902,95 @@ static void HandleMouseDown(EventRecord *event)
                     break;
                 }
             }
-            /* Click in minimap: scroll main map to clicked tile */
+            /* Click-and-drag in minimap: scroll main map while mouse held */
             {
-                Point localPt = event->where;
                 Rect  oPort = whichWindow->portRect;
-                short tilesWide, tilesHigh;
+                short tilesWide, tilesHigh, scale;
+                short oldVX, oldVY;
+                Point dragPt;
+
                 SetPort(whichWindow);
-                GlobalToLocal(&localPt);
+                scale = (sMinimapZoom >= 1) ? 2 : 1;
+                tilesWide = (((WindowPtr)*gMainGameWindow)->portRect.right -
+                             ((WindowPtr)*gMainGameWindow)->portRect.left - SCROLLBAR_W)
+                            / TERRAIN_TILE_W;
+                tilesHigh = (((WindowPtr)*gMainGameWindow)->portRect.bottom -
+                             ((WindowPtr)*gMainGameWindow)->portRect.top - SCROLLBAR_H)
+                            / TERRAIN_TILE_H;
 
-                /* Minimap scale: 1px/tile at small, 2px/tile at medium/large */
-                {
-                    short scale = (sMinimapZoom >= 1) ? 2 : 1;
-                    tilesWide = (((WindowPtr)*gMainGameWindow)->portRect.right -
-                                 ((WindowPtr)*gMainGameWindow)->portRect.left - SCROLLBAR_W)
-                                / TERRAIN_TILE_W;
-                    tilesHigh = (((WindowPtr)*gMainGameWindow)->portRect.bottom -
-                                 ((WindowPtr)*gMainGameWindow)->portRect.top - SCROLLBAR_H)
-                                / TERRAIN_TILE_H;
+                /* Process initial click + drag loop */
+                do {
+                    GetMouse(&dragPt);  /* local coords in overview window */
+                    oldVX = sViewportX;
+                    oldVY = sViewportY;
 
-                    sViewportX = (localPt.h - oPort.left) / scale - tilesWide / 2;
-                    sViewportY = (localPt.v - oPort.top) / scale - tilesHigh / 2;
-                }
-                if (sViewportX < 0) sViewportX = 0;
-                if (sViewportY < 0) sViewportY = 0;
-                if (sViewportX > sMapWidth - 1) sViewportX = sMapWidth - 1;
-                if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
+                    sViewportX = (dragPt.h - oPort.left) / scale - tilesWide / 2;
+                    sViewportY = (dragPt.v - oPort.top) / scale - tilesHigh / 2;
+                    if (sViewportX < 0) sViewportX = 0;
+                    if (sViewportY < 0) sViewportY = 0;
+                    if (sViewportX > sMapWidth - 1) sViewportX = sMapWidth - 1;
+                    if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
 
-                /* Redraw main map and minimap viewport indicator */
-                SetPort((WindowPtr)*gMainGameWindow);
-                InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
-                SetPort(whichWindow);
-                InvalRect(&oPort);
+                    /* Only redraw if viewport actually moved */
+                    if (sViewportX != oldVX || sViewportY != oldVY) {
+                        SetPort((WindowPtr)*gMainGameWindow);
+                        DrawMapInWindow((WindowPtr)*gMainGameWindow);
+
+                        SetPort(whichWindow);
+                        DrawOverviewInWindow(whichWindow);
+                    }
+                } while (StillDown());
             }
         } else if (sMapLoaded && gMainGameWindow != NULL &&
                    whichWindow == (WindowPtr)*gMainGameWindow) {
             /* Click in main map: handle scrollbar clicks or map viewport click */
             Point localPt = event->where;
             Rect  port = whichWindow->portRect;
+            ControlHandle hitCtrl = NULL;
+            short ctrlPart;
             SetPort(whichWindow);
             GlobalToLocal(&localPt);
 
-            if (localPt.h >= port.right - SCROLLBAR_W) {
-                /* Clicked in right scrollbar area */
+            ctrlPart = FindControl(localPt, whichWindow, &hitCtrl);
+            if (ctrlPart != 0 && hitCtrl != NULL &&
+                (hitCtrl == sVScrollBar || hitCtrl == sHScrollBar)) {
+                /* Clicked on a native scrollbar control */
                 short scrollAmt = 3;
-                short arrowZone = port.bottom - SCROLLBAR_H;
-                if (localPt.v >= arrowZone - 2 * SCROLLBAR_W && localPt.v < arrowZone - SCROLLBAR_W) {
-                    /* Up arrow button */
-                    sViewportY -= scrollAmt;
-                } else if (localPt.v >= arrowZone - SCROLLBAR_W && localPt.v < arrowZone) {
-                    /* Down arrow button */
-                    sViewportY += scrollAmt;
+                short tilesW = (port.right - port.left - SCROLLBAR_W) / TERRAIN_TILE_W;
+                short tilesH = (port.bottom - port.top - SCROLLBAR_H) / TERRAIN_TILE_H;
+
+                if (ctrlPart == inThumb) {
+                    /* Thumb drag */
+                    TrackControl(hitCtrl, localPt, NULL);
                 } else {
-                    /* Track area — jump to position */
-                    short trackH = port.bottom - port.top - SCROLLBAR_H - 2 * SCROLLBAR_W;
-                    short clickY = localPt.v - port.top;
-                    if (sMapHeight > 0 && trackH > 0)
-                        sViewportY = (clickY * sMapHeight) / trackH;
+                    /* Arrow or page click — adjust value manually */
+                    short val = GetControlValue(hitCtrl);
+                    short max = GetControlMaximum(hitCtrl);
+                    short pageAmt = (hitCtrl == sVScrollBar) ? tilesH : tilesW;
+                    switch (ctrlPart) {
+                        case inUpButton:   val -= scrollAmt; break;
+                        case inDownButton: val += scrollAmt; break;
+                        case inPageUp:     val -= pageAmt;   break;
+                        case inPageDown:   val += pageAmt;   break;
+                    }
+                    if (val < 0) val = 0;
+                    if (val > max) val = max;
+                    SetControlValue(hitCtrl, val);
                 }
-                if (sViewportY < 0) sViewportY = 0;
-                if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
+
+                /* Read back control values to update viewport */
+                if (hitCtrl == sVScrollBar) {
+                    sViewportY = GetControlValue(sVScrollBar);
+                } else {
+                    sViewportX = GetControlValue(sHScrollBar);
+                }
                 InvalRect(&port);
                 if (*gOverviewWindow != 0) {
                     SetPort((WindowPtr)*gOverviewWindow);
                     InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
                 }
-            } else if (localPt.v >= port.bottom - SCROLLBAR_H) {
-                /* Clicked in bottom scrollbar area */
-                short scrollAmt = 3;
-                short trackRight = port.right - SCROLLBAR_W;
-                if (localPt.h >= trackRight - 2 * SCROLLBAR_W && localPt.h < trackRight - SCROLLBAR_W) {
-                    /* Left arrow button */
-                    sViewportX -= scrollAmt;
-                } else if (localPt.h >= trackRight - SCROLLBAR_W && localPt.h < trackRight) {
-                    /* Right arrow button */
-                    sViewportX += scrollAmt;
-                } else if (localPt.h >= port.left + SHIELD_AREA_W + 50) {
-                    /* Track area — jump to position (starts after shield strip) */
-                    short trackStart = port.left + SHIELD_AREA_W + 50;
-                    short trackW = trackRight - 2 * SCROLLBAR_W - trackStart;
-                    short clickX = localPt.h - trackStart;
-                    if (sMapWidth > 0 && trackW > 0 && clickX >= 0)
-                        sViewportX = (clickX * sMapWidth) / trackW;
-                }
-                if (sViewportX < 0) sViewportX = 0;
-                if (sViewportX > sMapWidth - 1) sViewportX = sMapWidth - 1;
-                SetPort(whichWindow);
-                InvalRect(&port);
-                if (*gOverviewWindow != 0) {
-                    SetPort((WindowPtr)*gOverviewWindow);
-                    InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
-                }
-            } else {
+            } else if (localPt.h < port.right - SCROLLBAR_W &&
+                       localPt.v < port.bottom - SCROLLBAR_H) {
                 /* Click in map area — army selection and movement */
                 short clickTileX = sViewportX + (localPt.h - port.left) / TERRAIN_TILE_W;
                 short clickTileY = sViewportY + (localPt.v - port.top) / TERRAIN_TILE_H;
@@ -17732,11 +19057,11 @@ static void HandleMouseDown(EventRecord *event)
                             }
                             TextFont(3); TextSize(9);
                             MoveTo(10, 14);
-                            DrawString("\pTile (");
+                            DrawString(GetCachedString(STR_MISC, 60, "\pTile ("));
                             NumToString((long)clickTileX, numStr); DrawString(numStr);
                             DrawString("\p, ");
                             NumToString((long)clickTileY, numStr); DrawString(numStr);
-                            DrawString("\p)  Terrain: ");
+                            DrawString(GetCachedString(STR_MISC, 61, "\p)  Terrain: "));
                             {
                                 static const unsigned char *tNames[] = {
                                     "\pPlains", "\pForest", "\pMountain", "\pHills",
@@ -17757,15 +19082,15 @@ static void HandleMouseDown(EventRecord *event)
                                     RGBColor costCol = {0x0000, 0x0000, 0x8888};
                                     RGBForeColor(&costCol);
                                     MoveTo(10, 24);
-                                    DrawString("\pMove cost: ");
+                                    DrawString(GetCachedString(STR_MISC, 62, "\pMove cost: "));
                                     if (mvCost == 0) {
                                         RGBColor red = {0xCCCC, 0, 0};
                                         RGBForeColor(&red);
-                                        DrawString("\pImpassable");
+                                        DrawString(GetCachedString(STR_MISC, 63, "\pImpassable"));
                                     } else {
                                         NumToString((long)mvCost, numStr);
                                         DrawString(numStr);
-                                        DrawString("\p pts");
+                                        DrawString(GetCachedString(STR_MISC, 64, "\p pts"));
                                     }
                                 }
                             }
@@ -17781,7 +19106,7 @@ static void HandleMouseDown(EventRecord *event)
                                         *(short *)(c + 0x02) == clickTileY) {
                                         short cOwn = *(short *)(c + 0x04);
                                         MoveTo(10, 38);
-                                        DrawString("\pCity owned by ");
+                                        DrawString(GetCachedString(STR_MISC, 65, "\pCity owned by "));
                                         if (cOwn >= 0 && cOwn < 8) {
                                             unsigned char *fn = gs + cOwn * FACTION_NAME_LEN;
                                             Str255 cn;
@@ -17792,7 +19117,7 @@ static void HandleMouseDown(EventRecord *event)
                                             RGBForeColor(&sPlayerColors[cOwn + 1]);
                                             DrawString(cn);
                                         } else {
-                                            DrawString("\pNeutral");
+                                            DrawString(GetCachedString(STR_CITY_DIALOG, 8, "\pNeutral"));
                                         }
                                         break;
                                     }
@@ -17823,7 +19148,7 @@ static void HandleMouseDown(EventRecord *event)
                                             MoveTo(10, yy);
                                             GetUnitTypeName((short)(unsigned char)a[0x16], uName);
                                             DrawString(uName);
-                                            DrawString("\p str:");
+                                            DrawString(GetCachedString(STR_MISC, 66, "\p str:"));
                                             NumToString((long)aStr, numStr);
                                             DrawString(numStr);
                                             yy += 12;
@@ -17834,7 +19159,7 @@ static void HandleMouseDown(EventRecord *event)
                                     RGBColor foeCol = {0xAAAA, 0x3333, 0x3333};
                                     RGBForeColor(&foeCol);
                                     MoveTo(10, yy);
-                                    DrawString("\pEnemy forces present");
+                                    DrawString(GetCachedString(STR_MISC, 67, "\pEnemy forces present"));
                                     yy += 12;
                                 }
                             }
@@ -17919,7 +19244,7 @@ static void HandleMouseDown(EventRecord *event)
 
                             if (isAdjacent) {
                                 /* Adjacent tile: move directly, no waypoint */
-                                short movePts = *(short *)(selArmy + 0x2e);
+                                short movePts = (short)(unsigned char)selArmy[0x2e];
                                 short unitCls = (short)(unsigned char)selArmy[0x16];
                                 short cost = GetMovementCost(clickTileX, clickTileY, unitCls);
 
@@ -17938,7 +19263,7 @@ static void HandleMouseDown(EventRecord *event)
                                         SetPort(whichWindow);
                                         Delay(4, &dummy);  /* ~66ms pause */
                                     }
-                                    *(short *)(selArmy + 0x2e) = movePts - cost;
+                                    selArmy[0x2e] = (unsigned char)(movePts - cost);
 
                                     if (sOptHiddenMap) {
                                         short armyOwner = (short)(unsigned char)selArmy[0x15];
@@ -17962,7 +19287,7 @@ static void HandleMouseDown(EventRecord *event)
                                         armyCount = *(short *)(gs + 0x1602);
                                         if (sSelectedArmy < armyCount) {
                                             selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
-                                            if (*(short *)(selArmy + 0x2e) <= 0 &&
+                                            if ((short)(unsigned char)selArmy[0x2e] <= 0 &&
                                                 *(short *)(selArmy + 0x32) == 0) {
                                                 SelectNextArmy();
                                             }
@@ -17972,7 +19297,7 @@ static void HandleMouseDown(EventRecord *event)
                             } else {
                                 /* Distant tile: set movement target */
                                 short stepX = 0, stepY = 0;
-                                short movePts = *(short *)(selArmy + 0x2e);
+                                short movePts = (short)(unsigned char)selArmy[0x2e];
                                 *(short *)(selArmy + 0x32) = 1;
                                 *(short *)(selArmy + 0x34) = clickTileX;
                                 *(short *)(selArmy + 0x36) = clickTileY;
@@ -17999,7 +19324,7 @@ static void HandleMouseDown(EventRecord *event)
 
                                         *(short *)(selArmy + 0x00) = newX;
                                         *(short *)(selArmy + 0x02) = newY;
-                                        *(short *)(selArmy + 0x2e) = movePts - cost;
+                                        selArmy[0x2e] = (unsigned char)(movePts - cost);
 
                                         if (sOptHiddenMap) {
                                             short armyOwner = (short)(unsigned char)selArmy[0x15];
@@ -18070,60 +19395,56 @@ static void HandleMouseDown(EventRecord *event)
             }
         } else if (gInfoWindow != NULL &&
                    whichWindow == (WindowPtr)*gInfoWindow) {
-            /* Click in info panel: determine which button was hit */
+            /* Click in control panel (View 1008 layout).
+             * Hit-test against the button zones. */
             Point localPt = event->where;
-            Rect  port = whichWindow->portRect;
-            short cellW = BUTTON_ICON_SIZE + BUTTON_PADDING;
-            short cellH = BUTTON_ICON_SIZE + BUTTON_PADDING;
-            short hitCol, hitRow, hitIdx;
+            Rect port = whichWindow->portRect;
+            short lx, ly;
             SetPort(whichWindow);
             GlobalToLocal(&localPt);
+            lx = localPt.h - port.left;
+            ly = localPt.v - port.top;
 
-            hitCol = (localPt.h - port.left - BUTTON_MARGIN) / cellW;
-            hitRow = (localPt.v - port.top - BUTTON_MARGIN) / cellH;
-
-            if (hitCol >= 0 && hitCol < BUTTON_COLS && hitRow >= 0) {
-                hitIdx = hitRow * BUTTON_COLS + hitCol;
-                if (hitIdx >= 0 && hitIdx < NUM_BUTTON_ICONS) {
-                    /* Flash the button (invert briefly) */
-                    Rect iconR;
-                    short bx = port.left + BUTTON_MARGIN + hitCol * cellW;
-                    short by = port.top + BUTTON_MARGIN + hitRow * cellH;
-                    SetRect(&iconR, bx, by, bx + BUTTON_ICON_SIZE, by + BUTTON_ICON_SIZE);
-                    InvertRect(&iconR);
-
-                    /* Dispatch the button command via menu system */
-                    {
-                        unsigned short cmd = sButtonCommands[hitIdx];
-                        /* Map command to menu ID + item */
-                        if (cmd == 0x076C)      HandleMenuChoice((9L << 16) | 1);  /* End Turn */
-                        else if (cmd == 0x0773) HandleMenuChoice((9L << 16) | 2);  /* Save+End */
-                        else if (cmd == 0x057B) HandleMenuChoice((4L << 16) | 5);  /* Move All */
-                        else if (cmd == 0x0584) HandleMenuChoice((4L << 16) | 17); /* Disband */
-                        else if (cmd == 0x0585) HandleMenuChoice((4L << 16) | 18); /* Signpost */
-                        else if (cmd == 0x06AB) HandleMenuChoice((7L << 16) | 9);  /* Stack */
-                        else if (cmd == 0x05E3) HandleMenuChoice((5L << 16) | 10); /* Quest */
-                        else if (cmd == 0x06A7) HandleMenuChoice((7L << 16) | 4);  /* Build */
-                        else if (cmd == 0x06A6) HandleMenuChoice((7L << 16) | 5);  /* Cities */
-                        else if (cmd == 0x06A8) HandleMenuChoice((7L << 16) | 6);  /* Production */
-                        else if (cmd == 0x06A9) HandleMenuChoice((7L << 16) | 7);  /* Vectoring */
-                        else if (cmd == 0x06AA) HandleMenuChoice((7L << 16) | 8);  /* Ruins */
-                        else if (cmd == 0x0709) HandleMenuChoice((8L << 16) | 3);  /* City Hist */
-                        else if (cmd == 0x070A) HandleMenuChoice((8L << 16) | 4);  /* Event Hist */
-                        else if (cmd == 0x070B) HandleMenuChoice((8L << 16) | 5);  /* Gold Hist */
-                        else if (cmd == 0x070C) HandleMenuChoice((8L << 16) | 6);  /* Winner Hist */
-                        else if (cmd == 0x070D) HandleMenuChoice((8L << 16) | 8);  /* Triumphs */
-                        else if (cmd == 0x05DD) HandleMenuChoice((5L << 16) | 3);  /* Army Rpt */
-                        else if (cmd == 0x05DE) HandleMenuChoice((5L << 16) | 4);  /* City Rpt */
-                        else if (cmd == 0x05DF) HandleMenuChoice((5L << 16) | 5);  /* Gold Rpt */
-                        else if (cmd == 0x05E0) HandleMenuChoice((5L << 16) | 6);  /* Prod Rpt */
-                        else if (cmd == 0x05E1) HandleMenuChoice((5L << 16) | 7);  /* Win Rpt */
-                        else if (cmd == 0x0640) HandleMenuChoice((6L << 16) | 1);  /* Inspect */
-                        else if (cmd == 0x0641) HandleMenuChoice((6L << 16) | 2);  /* Plant Flag */
-                        else if (cmd == 0x0642) HandleMenuChoice((6L << 16) | 3);  /* Hero Lvl */
-                        else if (cmd == 0x0643) HandleMenuChoice((6L << 16) | 4);  /* Search */
-                        else SysBeep(1);
+            /* 3x3 scroll directional pad (at x=130, y=3, 54x54) */
+            if (lx >= 130 && lx < 184 && ly >= 3 && ly < 57) {
+                short sc = ((lx - 130) / 18) + ((ly - 3) / 18) * 3;
+                /* Scroll map in the clicked direction */
+                static const short sdx[9] = {-3, 0, 3, -3, 0, 3, -3, 0, 3};
+                static const short sdy[9] = {-3,-3,-3,  0, 0, 0,  3, 3, 3};
+                if (sc >= 0 && sc < 9) {
+                    sViewportX += sdx[sc];
+                    sViewportY += sdy[sc];
+                    if (sViewportX < 0) sViewportX = 0;
+                    if (sViewportY < 0) sViewportY = 0;
+                    if (sViewportX > sMapWidth - 1) sViewportX = sMapWidth - 1;
+                    if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
+                    if (*gMainGameWindow != 0) {
+                        SetPort((WindowPtr)*gMainGameWindow);
+                        InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
                     }
+                    if (*gOverviewWindow != 0) {
+                        SetPort((WindowPtr)*gOverviewWindow);
+                        InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
+                    }
+                }
+            }
+            /* Bottom shortcut slots (y=84, 4 buttons at 37px each) */
+            else if (ly >= 84 && ly < 119 && lx >= 3 && lx < 3 + 4 * 37) {
+                short slotIdx = (lx - 3) / 37;
+                if (slotIdx >= 0 && slotIdx < NUM_SHORTCUT_SLOTS) {
+                    short cmdIdx = sShortcutSlot[slotIdx];
+                    unsigned short cmd = sButtonCommands[cmdIdx];
+                    /* Flash */
+                    Rect flashR;
+                    SetRect(&flashR, 3 + slotIdx * 37, 84,
+                            3 + slotIdx * 37 + 35, 119);
+                    InvertRect(&flashR);
+                    /* Dispatch */
+                    if (cmd == 0x076C)      HandleMenuChoice((9L << 16) | 1);
+                    else if (cmd == 0x0773) HandleMenuChoice((9L << 16) | 2);
+                    else if (cmd == 0x057B) HandleMenuChoice((4L << 16) | 5);
+                    else if (cmd == 0x0643) HandleMenuChoice((6L << 16) | 4);
+                    else SysBeep(1);
                 }
             }
         }
@@ -18154,6 +19475,8 @@ static void HandleUpdate(EventRecord *event)
         /* Main game window: DrawMapInWindow covers all pixels */
     } else if (gOverviewWindow != NULL && win == (WindowPtr)*gOverviewWindow) {
         /* Minimap: DrawOverviewInWindow fills background */
+    } else if (gInfoWindow != NULL && win == (WindowPtr)*gInfoWindow) {
+        /* Info panel: PaintRect fills entire background */
     } else {
         EraseRect(&r);
     }
@@ -18171,7 +19494,7 @@ static void HandleUpdate(EventRecord *event)
             TextFont(3);
             TextSize(9);
             MoveTo(r.left + 4, r.bottom - 4);
-            DrawString("\pUse File > Open to load a scenario");
+            DrawString(GetCachedString(STR_MISC, 70, "\pUse File > Open to load a scenario"));
         }
     }
     else if (gOverviewWindow != NULL &&
@@ -18182,282 +19505,217 @@ static void HandleUpdate(EventRecord *event)
             TextFont(3);
             TextSize(9);
             MoveTo(r.left + 4, r.top + 14);
-            DrawString("\pOverview");
+            DrawString(GetCachedString(STR_MISC, 71, "\pOverview"));
         }
     }
     else if (gInfoWindow != NULL &&
              win == (WindowPtr)*gInfoWindow) {
-        /* Draw game control button grid using cicn 2000-2025.
-         * 4 columns, up to 7 rows. Each button is 27x27 with 2px padding. */
-        short col, row, idx;
-        short cellW = BUTTON_ICON_SIZE + BUTTON_PADDING;
-        short cellH = BUTTON_ICON_SIZE + BUTTON_PADDING;
-        short maxRows = (r.bottom - r.top - BUTTON_MARGIN * 2) / cellH;
-        RGBColor btnBord = {0x8888, 0x8888, 0x8888};
+        /* Control panel matching View 1008 layout (224x114).
+         * Top row: 5 command buttons (move/next/leave/guard/deselect)
+         * Middle: cancel-path + disband (wide), 3x3 scroll pad, diplomacy
+         * Bottom: 4 configurable shortcut slots from cicn 2000-2025 */
+        short bx, by;
+        Rect iconR;
+        RGBColor bordCol = {0x8888, 0x8888, 0x8888};
+        RGBColor hiliteCol = {0xFFFF, 0xFFFF, 0xFFFF};
+        RGBColor shadowCol = {0x5555, 0x5555, 0x5555};
 
-        /* Fill background with marble texture */
+        /* Marble background for entire info panel */
         DrawMarbleBackground(&r);
 
-        idx = 0;
-        for (row = 0; row < maxRows && idx < NUM_BUTTON_ICONS; row++) {
-            for (col = 0; col < BUTTON_COLS && idx < NUM_BUTTON_ICONS; col++, idx++) {
-                Rect iconR;
-                short bx = r.left + BUTTON_MARGIN + col * cellW;
-                short by = r.top + BUTTON_MARGIN + row * cellH;
-                SetRect(&iconR, bx, by, bx + BUTTON_ICON_SIZE, by + BUTTON_ICON_SIZE);
+        /* Shared button face color and corner radius for rounded 3D buttons */
+        #define BTN_ROUND 6
+        #define INFO_LEFT_PAD 7
 
-                if (sButtonIconsLoaded && sButtonIcons[idx] != NULL) {
-                    PlotCIcon(&iconR, sButtonIcons[idx]);
-                } else {
-                    /* Fallback: just a border on marble bg */
-                    RGBForeColor(&btnBord);
-                    FrameRect(&iconR);
+        /* --- Row 1: 5 command buttons (22x22 each, 10px gap) --- */
+        /* All top buttons shifted down 7px */
+        {
+            RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+            short cmdIds[5] = {0, 2, 1, 3, 4}; /* move, arrow, alert, guard, deselect */
+            short ci;
+            by = r.top + 10;  /* +7px down */
+            bx = r.left + INFO_LEFT_PAD;
+            for (ci = 0; ci < 5; ci++) {
+                SetRect(&iconR, bx, by, bx + 22, by + 22);
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+                RGBForeColor(&hiliteCol);
+                PenSize(1, 1);
+                FrameRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+                RGBForeColor(&shadowCol);
+                MoveTo(iconR.right - 1, iconR.top + 2);
+                LineTo(iconR.right - 1, iconR.bottom - 2);
+                MoveTo(iconR.left + 2, iconR.bottom - 1);
+                LineTo(iconR.right - 2, iconR.bottom - 1);
+                SetRect(&iconR, bx, by, bx + 22, by + 22);
+                if (sCtrlIconsLoaded && sCmdIcons[cmdIds[ci]] != NULL) {
+                    Rect inner;
+                    SetRect(&inner, bx + 3, by + 3, bx + 19, by + 19);
+                    PlotCIcon(&inner, sCmdIcons[cmdIds[ci]]);
+                }
+                bx += 32;  /* 22 + 10px gap */
+            }
+        }
+
+        /* --- Row 2: Cancel Path + ? diamond + Disband (same left pad as other rows) --- */
+        {
+            RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+            bx = r.left + INFO_LEFT_PAD;
+            by = r.top + 41;  /* centered between top (10+22=32) and bottom (74) rows */
+
+            /* Left button: cicn 1005 (56x23, icon centered) */
+            SetRect(&iconR, bx, by, bx + 56, by + 23);
+            RGBForeColor(&btnFace);
+            PaintRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+            RGBForeColor(&hiliteCol);
+            FrameRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+            RGBForeColor(&shadowCol);
+            MoveTo(iconR.right - 1, iconR.top + 2);
+            LineTo(iconR.right - 1, iconR.bottom - 2);
+            MoveTo(iconR.left + 2, iconR.bottom - 1);
+            LineTo(iconR.right - 2, iconR.bottom - 1);
+            if (sStatusIconsLoaded && sStatusIcons[0] != NULL) {
+                Rect inner;
+                SetRect(&inner, bx + 3, by + 2, bx + 53, by + 21);
+                PlotCIcon(&inner, sStatusIcons[0]);
+            }
+
+            /* ? diamond button (23x23, rotated square) with cicn 1020 centered */
+            bx += 60;
+            {
+                short cx = bx + 11;  /* center x */
+                short cy = by + 11;  /* center y */
+                short half = 11;     /* half-diagonal */
+                PolyHandle poly;
+
+                poly = OpenPoly();
+                MoveTo(cx, cy - half);
+                LineTo(cx + half, cy);
+                LineTo(cx, cy + half);
+                LineTo(cx - half, cy);
+                LineTo(cx, cy - half);
+                ClosePoly();
+
+                RGBForeColor(&btnFace);
+                PaintPoly(poly);
+                RGBForeColor(&hiliteCol);
+                FramePoly(poly);
+                RGBForeColor(&shadowCol);
+                MoveTo(cx + half, cy);
+                LineTo(cx, cy + half);
+                LineTo(cx - half, cy);
+
+                KillPoly(poly);
+
+                /* cicn 1020 centered in diamond */
+                if (sDiplomIcon != NULL) {
+                    Rect inner;
+                    SetRect(&inner, cx - 7, cy - 7, cx + 7, cy + 7);
+                    PlotCIcon(&inner, sDiplomIcon);
+                }
+            }
+
+            /* Right button: cicn 1006 (56x23, icon centered) */
+            bx += 27;
+            SetRect(&iconR, bx, by, bx + 56, by + 23);
+            RGBForeColor(&btnFace);
+            PaintRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+            RGBForeColor(&hiliteCol);
+            FrameRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+            RGBForeColor(&shadowCol);
+            MoveTo(iconR.right - 1, iconR.top + 2);
+            LineTo(iconR.right - 1, iconR.bottom - 2);
+            MoveTo(iconR.left + 2, iconR.bottom - 1);
+            LineTo(iconR.right - 2, iconR.bottom - 1);
+            if (sStatusIconsLoaded && sStatusIcons[1] != NULL) {
+                Rect inner;
+                SetRect(&inner, bx + 3, by + 2, bx + 53, by + 21);
+                PlotCIcon(&inner, sStatusIcons[1]);
+            }
+        }
+
+        /* --- 3x3 Scroll Directional Pad (right side, 16x16 buttons) --- */
+        /* Shifted down 7px with the rest of the top section */
+        {
+            RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+            short si, sx, sy;
+            short padX = r.right - 62;  /* right-aligned */
+            short padY = r.top + 10;    /* +7px down */
+            static const short padOrder[9] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+            for (si = 0; si < 9; si++) {
+                sx = padX + (si % 3) * 18;
+                sy = padY + (si / 3) * 18;
+                SetRect(&iconR, sx, sy, sx + 16, sy + 16);
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+                RGBForeColor(&hiliteCol);
+                FrameRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+                RGBForeColor(&shadowCol);
+                MoveTo(iconR.right - 1, iconR.top + 2);
+                LineTo(iconR.right - 1, iconR.bottom - 2);
+                MoveTo(iconR.left + 2, iconR.bottom - 1);
+                LineTo(iconR.right - 2, iconR.bottom - 1);
+                if (sCtrlIconsLoaded && sScrollIcons[padOrder[si]] != NULL) {
+                    Rect inner;
+                    SetRect(&inner, sx + 4, sy + 4, sx + 12, sy + 12);
+                    PlotCIcon(&inner, sScrollIcons[padOrder[si]]);
                 }
             }
         }
 
-        /* Draw game info below buttons */
-        if (*gGameState != 0) {
-            unsigned char *gs = (unsigned char *)*gGameState;
-            short turn = *(short *)(gs + 0x136);
-            short curPlayer = *(short *)(gs + 0x110);
-            short gold = *(short *)(gs + 0x186 + curPlayer * 0x14);
-            short colorIdx = (curPlayer >= 0 && curPlayer < 8) ? curPlayer + 1 : 0;
-            Str255 numStr;
-            RGBColor textCol = {0x0000, 0x0000, 0x0000};
-            RGBColor goldCol = {0xCCCC, 0x9999, 0x0000};
-            short textY = r.top + BUTTON_MARGIN + maxRows * cellH + 4;
-            if (textY > r.bottom - 60) textY = r.bottom - 60;
-
-            TextFont(3);
-            TextSize(9);
-
-            /* Player color bar + faction name */
-            {
-                Rect colorBar;
-                SetRect(&colorBar, r.left + BUTTON_MARGIN, textY,
-                        r.left + BUTTON_MARGIN + 10, textY + 10);
-                RGBForeColor(&sPlayerColors[colorIdx]);
-                PaintRect(&colorBar);
-                RGBForeColor(&textCol);
-                FrameRect(&colorBar);
-
-                /* Faction name from game state */
-                MoveTo(r.left + BUTTON_MARGIN + 14, textY + 9);
-                {
-                    char *fname = (char *)(gs + curPlayer * FACTION_NAME_LEN);
-                    short fi;
-                    Str255 pname;
-                    for (fi = 0; fi < FACTION_NAME_LEN && fname[fi] != 0; fi++)
-                        pname[fi + 1] = fname[fi];
-                    pname[0] = fi;
-                    DrawString(pname);
+        /* --- Bottom row: 4 configurable shortcut slots (35x35, 2px more gap) --- */
+        /* Moved up 10px total from old position (84 → 74) */
+        by = r.top + 76;
+        bx = r.left + INFO_LEFT_PAD;
+        {
+            RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+            short si;
+            for (si = 0; si < NUM_SHORTCUT_SLOTS; si++) {
+                short slotIdx = sShortcutSlot[si];
+                SetRect(&iconR, bx, by, bx + 35, by + 35);
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+                RGBForeColor(&hiliteCol);
+                FrameRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+                RGBForeColor(&shadowCol);
+                MoveTo(iconR.right - 1, iconR.top + 2);
+                LineTo(iconR.right - 1, iconR.bottom - 2);
+                MoveTo(iconR.left + 2, iconR.bottom - 1);
+                LineTo(iconR.right - 2, iconR.bottom - 1);
+                if (sCtrlIconsLoaded && slotIdx >= 0 && slotIdx < NUM_SHORTCUT_ICONS
+                    && sShortcutIcons[slotIdx] != NULL) {
+                    Rect inner;
+                    SetRect(&inner, bx + 4, by + 4, bx + 31, by + 31);
+                    PlotCIcon(&inner, sShortcutIcons[slotIdx]);
                 }
+                bx += 39;  /* 35 + 4px gap (was 2, now +2 more) */
             }
+        }
 
-            textY += 14;
+        /* --- Bottom-right: Crossed swords button (cicn 4300) --- */
+        /* Size = 3x3 arrow grid + 2px = 54x54.
+         * Positioned 5px from bottom-right edges. */
+        {
+            RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+            short btnSz = 54;
+            short sbx = r.right - 5 - btnSz;
+            short sby = r.bottom - 5 - btnSz;
+            SetRect(&iconR, sbx, sby, sbx + btnSz, sby + btnSz);
+            RGBForeColor(&btnFace);
+            PaintRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+            RGBForeColor(&hiliteCol);
+            FrameRoundRect(&iconR, BTN_ROUND, BTN_ROUND);
+            RGBForeColor(&shadowCol);
+            MoveTo(iconR.right - 1, iconR.top + 2);
+            LineTo(iconR.right - 1, iconR.bottom - 2);
+            MoveTo(iconR.left + 2, iconR.bottom - 1);
+            LineTo(iconR.right - 2, iconR.bottom - 1);
 
-            /* Turn & gold on same line */
-            {
-                short displayTurn = *(short *)(gs + 0x162); /* turn_display_number */
-                if (displayTurn > 0) turn = displayTurn;
-            }
-            RGBForeColor(&textCol);
-            MoveTo(r.left + BUTTON_MARGIN, textY);
-            DrawString("\pTurn ");
-            NumToString((long)turn, numStr);
-            DrawString(numStr);
-
-            RGBForeColor(&goldCol);
-            MoveTo(r.left + BUTTON_MARGIN + 50, textY);
-            DrawString("\pGold:");
-            NumToString((long)gold, numStr);
-            DrawString(numStr);
-
-            textY += 12;
-
-            /* City count + net income (income - upkeep) */
-            {
-                short cityCount = *(short *)(gs + 0x810);
-                short myCities = 0, myIncome = 0, myUpkeep = 0;
-                short ci, ai3, ac3;
-                if (cityCount > 40) cityCount = 40;
-                for (ci = 0; ci < cityCount; ci++) {
-                    unsigned char *city = gs + 0x812 + ci * 0x20;
-                    if (*(short *)(city + 0x04) == curPlayer) {
-                        myCities++;
-                        myIncome += *(short *)(city + 0x08);
-                    }
-                }
-                ac3 = *(short *)(gs + 0x1602);
-                if (ac3 > 100) ac3 = 100;
-                for (ai3 = 0; ai3 < ac3; ai3++) {
-                    unsigned char *a3 = gs + 0x1604 + ai3 * 0x42;
-                    if ((short)(unsigned char)a3[0x15] == curPlayer) {
-                        short sl;
-                        for (sl = 0; sl < 4; sl++)
-                            if ((unsigned char)a3[0x16 + sl] != 0xFF)
-                                myUpkeep += 2;
-                    }
-                }
-                RGBForeColor(&textCol);
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pCities:");
-                NumToString((long)myCities, numStr);
-                DrawString(numStr);
-                textY += 12;
-                {
-                    short netInc = myIncome - myUpkeep;
-                    RGBColor incCol;
-                    if (netInc >= 0) {
-                        incCol.red = 0; incCol.green = 0x8888; incCol.blue = 0;
-                    } else {
-                        incCol.red = 0xCCCC; incCol.green = 0; incCol.blue = 0;
-                    }
-                    RGBForeColor(&incCol);
-                    MoveTo(r.left + BUTTON_MARGIN, textY);
-                    if (netInc >= 0) DrawString("\p+");
-                    NumToString((long)netInc, numStr);
-                    DrawString(numStr);
-                    DrawString("\p/turn");
-                }
-            }
-
-            textY += 12;
-
-            /* Diplomacy status indicators (if enabled) */
-            if (sOptDiplomacy && textY < r.bottom - 40) {
-                short dp;
-                short aliveCount = 0;
-                for (dp = 0; dp < 8; dp++) {
-                    if (dp == curPlayer) continue;
-                    if (*(short *)(gs + 0x138 + dp * 2) == 0) continue;
-                    aliveCount++;
-                }
-                if (aliveCount > 0 && aliveCount <= 4) {
-                    for (dp = 0; dp < 8; dp++) {
-                        short dpColorIdx;
-                        Rect dpDot;
-                        Boolean atPeace;
-                        if (dp == curPlayer) continue;
-                        if (*(short *)(gs + 0x138 + dp * 2) == 0) continue;
-                        dpColorIdx = dp + 1;
-                        atPeace = (*(short *)(gs + 0x1582 + (curPlayer * 8 + dp) * 2) != 0);
-                        SetRect(&dpDot, r.left + BUTTON_MARGIN, textY - 6,
-                                r.left + BUTTON_MARGIN + 8, textY + 2);
-                        RGBForeColor(&sPlayerColors[dpColorIdx]);
-                        PaintRect(&dpDot);
-                        RGBForeColor(&textCol);
-                        FrameRect(&dpDot);
-                        MoveTo(r.left + BUTTON_MARGIN + 10, textY);
-                        if (atPeace)
-                            DrawString("\pPeace");
-                        else
-                            DrawString("\pWar");
-                        textY += 10;
-                    }
-                    textY += 2;
-                }
-            }
-
-            /* Selected army info */
-            if (sSelectedArmy >= 0) {
-                short ac = *(short *)(gs + 0x1602);
-                if (sSelectedArmy < ac) {
-                    unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
-                    short movePts = *(short *)(army + 0x2e);
-                    short maxMov = (short)(unsigned char)army[0x1a];
-                    short ui;
-                    RGBColor unitAlive = {0x0000, 0x4444, 0x0000};
-                    if (maxMov <= 0) maxMov = 10;
-
-                    RGBForeColor(&textCol);
-                    MoveTo(r.left + BUTTON_MARGIN, textY);
-                    DrawString("\pMv:");
-                    NumToString((long)movePts, numStr);
-                    DrawString(numStr);
-                    DrawString("\p/");
-                    NumToString((long)maxMov, numStr);
-                    DrawString(numStr);
-                    if (army[0x2d] > 0)
-                        DrawString("\p [Fort]");
-                    textY += 11;
-
-                    /* Show each unit slot */
-                    for (ui = 0; ui < 4 && textY < r.bottom - 4; ui++) {
-                        short ut = (short)(unsigned char)army[0x16 + ui];
-                        short hp = (short)(unsigned char)army[0x1e + ui];
-                        if (ut == 0xFF) continue;
-                        RGBForeColor(&unitAlive);
-                        MoveTo(r.left + BUTTON_MARGIN, textY);
-                        {
-                            Str255 typeName;
-                            GetUnitTypeName(ut, typeName);
-                            DrawString(typeName);
-                        }
-                        DrawString("\p ");
-                        NumToString((long)hp, numStr);
-                        DrawString(numStr);
-                        DrawString("\php");
-                        textY += 10;
-                    }
-
-                    /* Show movement target info if army has orders */
-                    if (*(short *)(army + 0x32) != 0 && textY < r.bottom - 20) {
-                        short tgtX = *(short *)(army + 0x34);
-                        short tgtY = *(short *)(army + 0x36);
-                        short ax2 = *(short *)(army + 0x00);
-                        short ay2 = *(short *)(army + 0x02);
-                        short dist2;
-                        RGBColor tgtCol = {0xCCCC, 0x6666, 0x0000};
-                        {
-                            short ddx = tgtX - ax2;
-                            short ddy = tgtY - ay2;
-                            if (ddx < 0) ddx = -ddx;
-                            if (ddy < 0) ddy = -ddy;
-                            dist2 = (ddx > ddy) ? ddx : ddy;
-                        }
-                        textY += 2;
-                        RGBForeColor(&tgtCol);
-                        MoveTo(r.left + BUTTON_MARGIN, textY);
-                        DrawString("\pTarget:(");
-                        NumToString((long)tgtX, numStr); DrawString(numStr);
-                        DrawString("\p,");
-                        NumToString((long)tgtY, numStr); DrawString(numStr);
-                        DrawString("\p) ");
-                        NumToString((long)dist2, numStr); DrawString(numStr);
-                        DrawString("\p tiles");
-                        textY += 10;
-                    }
-                }
-            } else {
-                /* No army selected: show keyboard shortcuts */
-                RGBColor helpCol = {0x5555, 0x5555, 0x7777};
-                RGBForeColor(&helpCol);
-                TextSize(9);
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pShortcuts:");
-                textY += 11;
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pSpace  Next army");
-                textY += 10;
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pEnter  End turn");
-                textY += 10;
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pArrows Scroll map");
-                textY += 10;
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pC      Center army");
-                textY += 10;
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pEsc    Cancel/desel");
-                textY += 10;
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\pCtrl+click Inspect");
-                textY += 10;
-                MoveTo(r.left + BUTTON_MARGIN, textY);
-                DrawString("\p1-9    Move army");
+            /* Crossed swords icon from cicn 4300 */
+            if (sSwordsIcon != NULL) {
+                Rect inner;
+                SetRect(&inner, sbx + 3, sby + 3, sbx + btnSz - 3, sby + btnSz - 3);
+                PlotCIcon(&inner, sSwordsIcon);
             }
         }
     }
@@ -18477,22 +19735,27 @@ static void HandleUpdate(EventRecord *event)
 
             if (cityTotal > 40) cityTotal = 40;
 
-            /* --- Gold, cities, armies centered in window --- */
+            /* --- Cities, gold, income, armies with Illuria font --- */
             {
                 RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                short gold, myCities = 0, myArmies = 0;
+                short gold, myCities = 0, myArmies = 0, myIncome = 0;
                 short armyCount;
-                short infoX = r.left + 8;
+                short infoX = r.left + 15;
                 short infoY = (r.top + r.bottom) / 2;
+                short icoW = ABITS_CELL_W;
+                short icoH = ABITS_CELL_H;
                 Rect iconR;
 
                 gold = *(short *)(gs + 0x186 + curPlayer * 0x14);
 
-                /* Count cities */
+                /* Count cities (site_type == 0 only) and estimate income */
                 for (ci = 0; ci < cityTotal; ci++) {
                     unsigned char *city = gs + 0x812 + ci * 0x20;
-                    if (*(short *)(city + 0x04) == curPlayer)
+                    unsigned char siteType = city[0x18];
+                    if (siteType == 0 && *(short *)(city + 0x04) == curPlayer) {
                         myCities++;
+                        myIncome += 10;  /* base income per city */
+                    }
                 }
 
                 /* Count armies (owner byte at army+0x15) */
@@ -18504,55 +19767,65 @@ static void HandleUpdate(EventRecord *event)
                         myArmies++;
                 }
 
-                TextFont(3);
-                TextSize(10);
-                TextFace(bold);
+                /* Illuria font (FOND 1602), size 17 → NFNT 3352 */
+                TextFont(1602);
+                TextSize(17);
+                TextFace(0);
                 RGBForeColor(&white);
 
-                /* Helper macro: draw icon from PICT GWorld or cicn fallback */
-                #define DRAW_STATUS_ICON(idx, icoSize) \
+                /* Helper macro: draw ABITS region by pixel coords at current infoX */
+                #define DRAW_ABITS_RECT(sx, sy, sw, sh) \
                     do { \
-                        SetRect(&iconR, infoX, infoY - (icoSize)/2, \
-                                infoX + (icoSize), infoY + (icoSize)/2); \
-                        if (sStatusPictsLoaded && sStatusPictGW[idx] != NULL) { \
-                            PixMapHandle _pm = GetGWorldPixMap(sStatusPictGW[idx]); \
-                            Rect _srcR = (**_pm).bounds; \
+                        if (sAbitsLoaded && sAbitsGW != NULL) { \
+                            PixMapHandle _pm = GetGWorldPixMap(sAbitsGW); \
+                            Rect _srcR, _dstR; \
+                            RGBColor _savedBg; \
+                            SetRect(&_srcR, (sx), (sy), (sx) + (sw), (sy) + (sh)); \
+                            SetRect(&_dstR, infoX, infoY - (sh)/2, \
+                                    infoX + (sw), infoY + (sh)/2); \
                             LockPixels(_pm); \
+                            GetBackColor(&_savedBg); \
+                            RGBBackColor(&sAbitsBgColor); \
                             CopyBits((BitMap *)*_pm, \
                                      &((GrafPtr)win)->portBits, \
-                                     &_srcR, &iconR, srcCopy, NULL); \
+                                     &_srcR, &_dstR, 36, NULL); \
+                            RGBBackColor(&_savedBg); \
                             UnlockPixels(_pm); \
-                            infoX += (icoSize) + 2; \
-                        } else if (sStatusIconsLoaded && sStatusIcons[idx] != NULL) { \
-                            PlotCIcon(&iconR, sStatusIcons[idx]); \
-                            infoX += (icoSize) + 2; \
+                            infoX += (sw) + 2; \
                         } \
                     } while(0)
 
-                /* Gold with icon (PICT/cicn 1005) */
-                DRAW_STATUS_ICON(0, 24);
-                MoveTo(infoX, infoY + 4);
+                /* 1. Cities (castle icon at pixel 341,0 — 43px wide) + count */
+                DRAW_ABITS_RECT(341, 0, 43, 20);
+                MoveTo(infoX, infoY + 6);
+                NumToString((long)myCities, numStr);
+                DrawString(numStr);
+                infoX += StringWidth(numStr) + 15;
+
+                /* 2. Income (treasure chest at pixel 344,20 — 24px wide) + per-turn */
+                DRAW_ABITS_RECT(344, 20, 24, 20);
+                MoveTo(infoX, infoY + 6);
+                NumToString((long)myIncome, numStr);
+                DrawString(numStr);
+                DrawString("\pgp");
+                infoX += StringWidth(numStr) + StringWidth("\pgp") + 15;
+
+                /* 3. Gold (coins icon at pixel 384,0 — 24px wide) + treasury */
+                DRAW_ABITS_RECT(384, 0, 24, 20);
+                MoveTo(infoX, infoY + 6);
                 NumToString((long)gold, numStr);
                 DrawString(numStr);
                 DrawString("\pgp");
-                infoX += StringWidth(numStr) + StringWidth("\pgp") + 8;
+                infoX += StringWidth(numStr) + StringWidth("\pgp") + 15;
 
-                /* Cities with icon (PICT/cicn 1006) */
-                DRAW_STATUS_ICON(1, 24);
-                MoveTo(infoX, infoY + 4);
-                NumToString((long)myCities, numStr);
-                DrawString(numStr);
-                DrawString("\p cit");
-                infoX += StringWidth(numStr) + StringWidth("\p cit") + 8;
-
-                /* Armies with icon (PICT/cicn 1007) */
-                DRAW_STATUS_ICON(2, 24);
-                MoveTo(infoX, infoY + 4);
+                /* 4. Armies (hand icon at pixel 384,20 — 32px wide) + count */
+                DRAW_ABITS_RECT(384, 20, 32, 20);
+                MoveTo(infoX, infoY + 6);
                 NumToString((long)myArmies, numStr);
                 DrawString(numStr);
-                DrawString("\p army");
+                DrawString("\pgp");
 
-                #undef DRAW_STATUS_ICON
+                #undef DRAW_ABITS_RECT
             }
         }
     }
@@ -18580,6 +19853,11 @@ int main(void)
 
     /* Initialize sound system early so first sound plays without delay */
     InitSoundSystem();
+    InitMusicSystem();
+
+    /* Pre-load resource data tables */
+    LoadDATMasterStrings();
+    LoadDATItemDefs();
 
     /* === Startup Movie === */
     {
@@ -18657,6 +19935,9 @@ int main(void)
         }
     }
 
+    /* Title music */
+    LoadAndPlayMusic(MUSIC_STATE_TITLE);
+
     /* === Splash Screen === */
     {
         PicHandle   splashPic;
@@ -18686,22 +19967,22 @@ int main(void)
                         break;
                 }
                 DisposeWindow(splashWin);
+                InvalidateAllGameWindows();
             }
         }
     }
 
-    /* === 256-Color Switch (ALRT 1010) === */
-    /* After movie/splash (which need thousands of colors), switch to 256 */
+    /* === 256-Color Switch === */
+    /* Force 256-color (8-bit) mode for correct palette-quantized rendering.
+       PlotCIcon maps cicn CLUT colors to nearest palette entries at 8-bit,
+       producing the authentic look. At higher depths, raw CLUT colors are used. */
     {
         GDHandle mainGD = GetMainDevice();
         short curDepth = (**((**mainGD).gdPMap)).pixelSize;
         if (curDepth != 8) {
-            short response = Alert(1010, NULL);
-            if (response == 1) {  /* "Yes" button */
-                if (HasDepth(mainGD, 8, 0, 0)) {
-                    sOriginalDepth = curDepth;
-                    SetDepth(mainGD, 8, 0, 0);
-                }
+            if (HasDepth(mainGD, 8, 0, 0)) {
+                sOriginalDepth = curDepth;
+                SetDepth(mainGD, 8, 0, 0);
             }
         }
     }
@@ -18712,6 +19993,29 @@ int main(void)
 
     /* === Load marble background early (needed by dialogs) === */
     sMarbleGW = LoadPICTIntoGWorld(1001);
+
+    /* === Build menus early so File > Quit is available from scenario selection === */
+    {
+        MenuHandle m;
+
+        /* 1 - Apple menu */
+        m = NewMenu(1, "\p\024");
+        AppendMenu(m, "\pAbout Warlords II...");
+        AppendResMenu(m, 'DRVR');
+        InsertMenu(m, 0);
+
+        /* 2 - File */
+        m = NewMenu(2, "\pFile");
+        AppendMenu(m, "\pNew;Open.../O;(-;Close/W;Save/S;Save As...;Revert;(-;Quit/Q");
+        InsertMenu(m, 0);
+
+        /* 3 - Edit */
+        m = NewMenu(3, "\pEdit");
+        AppendMenu(m, "\pUndo/Z;(-;Cut/X;Copy/C;Paste/V;Clear");
+        InsertMenu(m, 0);
+
+        DrawMenuBar();
+    }
 
     /* === Scenario Selection Screen (before creating game windows) === */
     {
@@ -18734,25 +20038,9 @@ int main(void)
     {
         Rect    mainRect, overRect, infoRect;
 
-        /* Build all 9 menus programmatically (MBAR 128: IDs 1-9) */
+        /* Add remaining game menus (Apple/File/Edit already created before scenario selection) */
         {
             MenuHandle m;
-
-            /* 1 - Apple menu */
-            m = NewMenu(1, "\p\024");
-            AppendMenu(m, "\pAbout Warlords II...");
-            AppendResMenu(m, 'DRVR');
-            InsertMenu(m, 0);
-
-            /* 2 - File */
-            m = NewMenu(2, "\pFile");
-            AppendMenu(m, "\pNew;Open.../O;(-;Close/W;Save/S;Save As...;Revert;(-;Quit/Q");
-            InsertMenu(m, 0);
-
-            /* 3 - Edit */
-            m = NewMenu(3, "\pEdit");
-            AppendMenu(m, "\pUndo/Z;(-;Cut/X;Copy/C;Paste/V;Clear");
-            InsertMenu(m, 0);
 
             /* 4 - Orders */
             m = NewMenu(4, "\pOrders");
@@ -18792,12 +20080,32 @@ int main(void)
             DrawMenuBar();
         }
 
-        /* Main game window — zoomDocProc (8) gives close box + zoom box + grow box */
-        SetRect(&mainRect, 2, 40, 510, 382);
+        /* Main game window — zoomDocProc (8) gives close box + zoom box + grow box.
+         * Extends to x=512 to fill space left of minimap (at x=514). */
+        SetRect(&mainRect, 2, 40, 512, 382);
         *gMainGameWindow = (pint)NewCWindow(
             NULL, &mainRect,
             "\pWarlords II", true,
             8 /* zoomDocProc */, (WindowPtr)-1L, true, 0);
+
+        /* Create native Mac scrollbar controls for the main game window */
+        if (*gMainGameWindow != 0) {
+            Rect port = ((WindowPtr)*gMainGameWindow)->portRect;
+            Rect vsbRect, hsbRect;
+            short hLeft = port.left + SHIELD_AREA_W + 50;
+
+            SetRect(&vsbRect, port.right - SCROLLBAR_W, port.top,
+                    port.right, port.bottom - SCROLLBAR_H + 1);
+            sVScrollBar = NewControl((WindowPtr)*gMainGameWindow, &vsbRect,
+                                     "\p", true, 0, 0, 100, scrollBarProc, 0);
+
+            SetRect(&hsbRect, hLeft, port.bottom - SCROLLBAR_H,
+                    port.right - SCROLLBAR_W + 1, port.bottom);
+            sHScrollBar = NewControl((WindowPtr)*gMainGameWindow, &hsbRect,
+                                     "\p", true, 0, 0, 100, scrollBarProc, 0);
+        }
+
+        /* Game palette (pltt 1000) applied after all windows are created below. */
 
         /* Overview (minimap) window — floating palette (WDEF 3 = Infinity Windoid)
          * procID = WDEF_ID * 16 + variant; WDEF 3 * 16 = 48
@@ -18810,18 +20118,19 @@ int main(void)
             short mdH = sMapHeight * 2;
             if (mdW > 300) mdW = 300;
             if (mdH > 350) mdH = 350;
-            SetRect(&overRect, 514, 40, 514 + mdW, 40 + mdH);
+            SetRect(&overRect, 516, 35, 516 + mdW, 35 + mdH);
         }
         *gOverviewWindow = (pint)NewCWindow(
             NULL, &overRect,
             "\pOverview", true,
             48, (WindowPtr)-1L, true, 0);
 
-        /* Info panel window — floating palette (WDEF 3 = Infinity Windoid)
-         * Below minimap, moderate height. */
+        /* Info panel window — floating palette matching View 1008 layout.
+         * Width matches the minimap window above it. */
         {
             short infoTop = overRect.bottom + 2;
-            SetRect(&infoRect, 514, infoTop, overRect.right, infoTop + 160);
+            short infoW = overRect.right - overRect.left;
+            SetRect(&infoRect, 514, infoTop, 514 + infoW, infoTop + 124);
         }
         *gInfoWindow = (pint)NewCWindow(
             NULL, &infoRect,
@@ -18833,11 +20142,22 @@ int main(void)
          * +12px gap below main map to avoid overlap. */
         {
             Rect statusRect;
-            SetRect(&statusRect, 2, mainRect.bottom + 12, 510, mainRect.bottom + 92);
+            SetRect(&statusRect, 2, mainRect.bottom + 19, 343, mainRect.bottom + 99);
             *gStatusWindow = (pint)NewCWindow(
                 NULL, &statusRect,
                 "\pStatus", true,
                 48, (WindowPtr)-1L, true, 0);
+        }
+    }
+
+    /* Apply game palette (pltt 1000 "Main") to the main game window.
+     * ActivatePalette forces the device color table to match, which
+     * affects all windows on the same screen. */
+    if (*gMainGameWindow != 0) {
+        PaletteHandle gamePal = GetNewPalette(1000);
+        if (gamePal != NULL) {
+            SetPalette((WindowPtr)*gMainGameWindow, gamePal, true);
+            ActivatePalette((WindowPtr)*gMainGameWindow);
         }
     }
 
@@ -18853,33 +20173,33 @@ int main(void)
         sStatusIconsLoaded = true;
     }
 
-    /* === Load status bar icon PICTs (PICT 1005-1009) === */
-    /* Use GetPicture (not Get1Resource) to search all open resource files */
+    /* === Load ABITS sprite sheet (PICT 10004) for status bar icons === */
+    /* 544x40 px, 34 cols x 2 rows of 16x20 cells.
+     * Col 28 row 0 = cities pennant, col 29 row 0 = gold coins,
+     * col 28 row 1 = treasure chest, col 29 row 1 = army icon. */
     {
-        short si;
-        for (si = 0; si < 5; si++) {
-            PicHandle pic = GetPicture(1005 + si);
-            if (pic != NULL) {
-                Rect picRect = (**pic).picFrame;
-                short pw = picRect.right - picRect.left;
-                short ph = picRect.bottom - picRect.top;
-                Rect bounds;
-                OSErr perr;
-                SetRect(&bounds, 0, 0, pw, ph);
-                perr = NewGWorld(&sStatusPictGW[si], 0, &bounds, NULL, NULL, 0);
-                if (perr == noErr && sStatusPictGW[si] != NULL) {
-                    CGrafPtr sp; GDHandle sd;
-                    GetGWorld(&sp, &sd);
-                    SetGWorld(sStatusPictGW[si], NULL);
-                    LockPixels(GetGWorldPixMap(sStatusPictGW[si]));
-                    EraseRect(&bounds);
-                    DrawPicture(pic, &bounds);
-                    UnlockPixels(GetGWorldPixMap(sStatusPictGW[si]));
-                    SetGWorld(sp, sd);
-                }
+        PicHandle pic = GetPicture(10004);
+        if (pic != NULL) {
+            Rect picRect = (**pic).picFrame;
+            short pw = picRect.right - picRect.left;
+            short ph = picRect.bottom - picRect.top;
+            Rect bounds;
+            OSErr perr;
+            SetRect(&bounds, 0, 0, pw, ph);
+            perr = NewGWorld(&sAbitsGW, 0, &bounds, NULL, NULL, 0);
+            if (perr == noErr && sAbitsGW != NULL) {
+                CGrafPtr sp; GDHandle sd;
+                GetGWorld(&sp, &sd);
+                SetGWorld(sAbitsGW, NULL);
+                LockPixels(GetGWorldPixMap(sAbitsGW));
+                EraseRect(&bounds);
+                DrawPicture(pic, &bounds);
+                GetCPixel(0, 0, &sAbitsBgColor);
+                UnlockPixels(GetGWorldPixMap(sAbitsGW));
+                SetGWorld(sp, sd);
+                sAbitsLoaded = true;
             }
         }
-        sStatusPictsLoaded = true;
     }
 
     /* === Load sprite sheets from asset folders === */
@@ -18887,23 +20207,93 @@ int main(void)
     LoadArmySprites();
     LoadCitySprites();
     LoadShieldIcons();
+    RemapShieldColors();  /* Remap cicn CLUTs to nearest pltt 1000 palette colors */
     LoadButtonIcons();
+    LoadDialogIcons();
 
-    /* Offer initial hero hire to starting player (turn 1) */
+    /* Load minimap crosshair cursor (crsr 1001, hotspot 5,7) */
+    sDefaultCursor = GetCCursor(1000);
+    sMinimapCursor = GetCCursor(1001);
+    sTargetCursor  = GetCCursor(1002);
+    sHandCursor    = GetCCursor(1003);
+
+    /* === Force initial draw of all game windows before dialogs === */
+    if (sMapLoaded && *gMainGameWindow != 0) {
+        SetPort((WindowPtr)*gMainGameWindow);
+        DrawMapInWindow((WindowPtr)*gMainGameWindow);
+    }
+    if (*gOverviewWindow != 0) {
+        SetPort((WindowPtr)*gOverviewWindow);
+        DrawOverviewInWindow((WindowPtr)*gOverviewWindow);
+    }
+
+    /* === First turn: turn splash, hero hire, army selection === */
     if (sMapLoaded && *gGameState != 0) {
         unsigned char *gs = (unsigned char *)*gGameState;
         short startPlayer = *(short *)(gs + 0x110);
-        ShowHeroHire(startPlayer, true);  /* initial offer = free hero */
+
+        /* "Let the war begin!" voice after game setup completes */
+        PlayVoice(SND_VBEGIN);
+
+        /* Turn 1 announcement splash (castle gate with faction name) */
+        PlaySound(SND_DING);
+        ShowTurnSplash(startPlayer);
+
+        /* Hero offer then army selection */
+        ShowHeroHire(startPlayer, true);
+        ShowArmySelection(startPlayer);
+    }
+
+    /* Force-redraw all game windows before entering event loop.
+     * Modal dialogs (turn splash, hero hire, army selection) leave
+     * windows exposed but not yet painted. */
+    InvalidateAllGameWindows();
+    {
+        EventRecord flushEvt;
+        short i;
+        for (i = 0; i < 8; i++)
+            if (WaitNextEvent(updateMask, &flushEvt, 0, NULL))
+                HandleUpdate(&flushEvt);
     }
 
     /* Main event loop */
     while (!sDone) {
         WaitNextEvent(everyEvent, &event, 6, NULL);
 
-        /* Keep arrow cursor — original app has CURS/crsr resources in the
-         * resource fork that could interfere.  We'll add proper cursor
-         * management (sword, city, etc.) later. */
-        InitCursor();
+        /* Cursor management: context-sensitive cursors */
+        {
+            Point cursPos;
+            WindowPtr cursWin;
+            short partCode;
+            GetMouse(&cursPos);
+            LocalToGlobal(&cursPos);
+            partCode = FindWindow(cursPos, &cursWin);
+            if (partCode == inContent && gOverviewWindow != NULL &&
+                *gOverviewWindow != 0 && cursWin == (WindowPtr)*gOverviewWindow &&
+                sMinimapCursor != NULL) {
+                SetCCursor(sMinimapCursor);
+            } else if (partCode == inContent && gMainGameWindow != NULL &&
+                       *gMainGameWindow != 0 && cursWin == (WindowPtr)*gMainGameWindow) {
+                /* Main map: edge zone = hand cursor, center = game/target cursor */
+                Point lp = cursPos;
+                Rect port = cursWin->portRect;
+                SetPort(cursWin);
+                GlobalToLocal(&lp);
+                if (lp.h < port.left + 8 || lp.h > port.right - 8 ||
+                    lp.v < port.top + 8 || lp.v > port.bottom - 8) {
+                    if (sHandCursor) SetCCursor(sHandCursor);
+                    else InitCursor();
+                } else if (sSelectedArmy >= 0 && sTargetCursor) {
+                    SetCCursor(sTargetCursor);
+                } else if (sDefaultCursor) {
+                    SetCCursor(sDefaultCursor);
+                } else {
+                    InitCursor();
+                }
+            } else {
+                InitCursor();
+            }
+        }
 
         /* Edge scrolling: when mouse is near window edges, auto-scroll */
         if (event.what == nullEvent && sMapLoaded &&
@@ -18974,7 +20364,8 @@ int main(void)
                                tileY >= 0 && tileY < sMapHeight) {
                         /* Show tooltip after ~0.5 sec hover */
                         unsigned char *gs = (unsigned char *)*gGameState;
-                        short terrainIdx = (short)(unsigned char)gs[tileY * 0xE0 + tileX * 2];
+                        unsigned char *mapData = (unsigned char *)*gMapTiles;
+                        short terrainIdx = (short)(unsigned char)mapData[(tileY * sMapWidth + tileX) * 2];
                         short terrainType = (short)(unsigned char)gs[terrainIdx + 0x711];
                         short moveCost = 0;
                         const unsigned char *tName;
@@ -19025,13 +20416,13 @@ int main(void)
                             if (moveCost > 0) {
                                 TextFace(0);
                                 MoveTo(4, 26);
-                                DrawString("\pMove: ");
+                                DrawString(GetCachedString(STR_MISC, 72, "\pMove: "));
                                 NumToString((long)moveCost, costStr);
                                 DrawString(costStr);
                             } else if (moveCost == 0 && sSelectedArmy >= 0) {
                                 TextFace(0);
                                 MoveTo(4, 26);
-                                DrawString("\pImpassable");
+                                DrawString(GetCachedString(STR_MISC, 63, "\pImpassable"));
                             }
                         }
                     }
@@ -19146,7 +20537,7 @@ int main(void)
                         short ac = *(short *)(gs2 + 0x1602);
                         if (sSelectedArmy < ac) {
                             unsigned char *a = gs2 + 0x1604 + sSelectedArmy * 0x42;
-                            *(short *)(a + 0x2e) = 0;
+                            a[0x2e] = (unsigned char)(0);
                             SelectNextArmy();
                         }
                         scrolled = true;
@@ -19224,7 +20615,7 @@ int main(void)
                         short ac = *(short *)(gs3 + 0x1602);
                         if (sSelectedArmy < ac) {
                             unsigned char *a = gs3 + 0x1604 + sSelectedArmy * 0x42;
-                            *(short *)(a + 0x2e) = 0;
+                            a[0x2e] = (unsigned char)(0);
                             SelectNextArmy();
                             scrolled = true;
                         }
@@ -19289,6 +20680,9 @@ int main(void)
         }
     }
 
+    PlayVoice(SND_VQUIT);
+    CleanupVoiceSystem();
+    CleanupMusicSystem();
     CleanupSoundSystem();
     ExitMovies();
 
