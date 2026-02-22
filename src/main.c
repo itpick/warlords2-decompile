@@ -695,6 +695,16 @@ static char sArmySetNames[MAX_ARMY_SETS][32];  /* display names */
 static short sArmySetCount = 0;
 static short sSelectedArmySet = 0;  /* index into sArmySetNames */
 
+/* Unit type definition table: loaded from DAT 20000 in the Armies resource file.
+ * Each entry is 0x3E (62) bytes: short type_id + char[20] name + short[20] stats.
+ * Stats: [0]=strength, [1]=prod_turns, [2]=gold_cost, [3]=movement.
+ * Up to 29 entries (type IDs 0-28). */
+#define MAX_UNIT_TYPES    29
+#define UNIT_TYPE_ENTRY   0x3E  /* 62 bytes per entry */
+static unsigned char sUnitTypeTable[MAX_UNIT_TYPES * UNIT_TYPE_ENTRY];
+static short sUnitTypeCount = 0;
+static Boolean sUnitTypesLoaded = false;
+
 /* City sprite sheet: PICT 25000 from Cities folder (640x240, 20x8 grid). */
 #define CITY_PICT_ID 25000
 static GWorldPtr sCityGW = NULL;
@@ -924,41 +934,74 @@ static void ShowBriefMessage(const unsigned char *pMsg)
 
 static void GetUnitTypeName(short unitType, Str255 pName)
 {
-    static char *names[] = {
-        "Lt Infantry", "Hv Infantry", "Cavalry", "Archers",
-        "Siege Engine", "Naval Unit"
-    };
+    /* Try loaded unit type table first (from DAT 20000) */
+    if (sUnitTypesLoaded && unitType >= 0 && unitType < sUnitTypeCount) {
+        unsigned char *entry = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
+        char *name = (char *)(entry + 2); /* name at offset +0x02, 20 chars */
+        short i;
+        for (i = 0; name[i] && i < 20; i++)
+            pName[i + 1] = name[i];
+        pName[0] = (unsigned char)i;
+        return;
+    }
+
+    /* Fallback for special types */
     if (unitType == 0x1C) {
         pName[0] = 4; pName[1] = 'H'; pName[2] = 'e'; pName[3] = 'r'; pName[4] = 'o';
-    } else if (unitType >= 0 && unitType <= 5) {
-        char *n = names[unitType];
-        short i;
-        for (i = 0; n[i]; i++) pName[i + 1] = n[i];
-        pName[0] = (unsigned char)i;
     } else if (unitType == 0xFF) {
         pName[0] = 7; pName[1] = '('; pName[2] = 'e'; pName[3] = 'm';
         pName[4] = 'p'; pName[5] = 't'; pName[6] = 'y'; pName[7] = ')';
     } else {
-        /* Unknown type: "Unit XX" */
-        Str255 numStr;
-        pName[0] = 5; pName[1] = 'U'; pName[2] = 'n'; pName[3] = 'i';
-        pName[4] = 't'; pName[5] = ' ';
-        NumToString((long)unitType, numStr);
-        {
+        /* Hardcoded fallback when DAT not loaded */
+        static char *names[] = {
+            "Lt Infantry", "Hv Infantry", "Cavalry", "Archers",
+            "Siege Engine", "Naval Unit"
+        };
+        if (unitType >= 0 && unitType <= 5) {
+            char *n = names[unitType];
             short i;
-            for (i = 1; i <= numStr[0]; i++)
-                pName[5 + i] = numStr[i];
-            pName[0] = 5 + numStr[0];
+            for (i = 0; n[i]; i++) pName[i + 1] = n[i];
+            pName[0] = (unsigned char)i;
+        } else {
+            Str255 numStr;
+            pName[0] = 5; pName[1] = 'U'; pName[2] = 'n'; pName[3] = 'i';
+            pName[4] = 't'; pName[5] = ' ';
+            NumToString((long)unitType, numStr);
+            {
+                short i;
+                for (i = 1; i <= numStr[0]; i++)
+                    pName[5 + i] = numStr[i];
+                pName[0] = 5 + numStr[0];
+            }
         }
     }
+}
+
+/* Read a stat from the unit type table.
+ * Stats at entry+0x16 as big-endian shorts:
+ *   [0]=strength, [1]=prod_turns, [2]=gold_cost, [3]=movement */
+static short GetUnitTypeStat(short unitType, short statIndex)
+{
+    if (sUnitTypesLoaded && unitType >= 0 && unitType < sUnitTypeCount) {
+        unsigned char *entry = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
+        unsigned char *stat = entry + 0x16 + statIndex * 2;
+        return (short)((stat[0] << 8) | stat[1]);
+    }
+    return 0;
 }
 
 /* Returns the number of turns required to produce a unit of given type */
 static short GetProductionTurns(short unitType)
 {
-    /* LtInf=2, HvInf=3, Cav=4, Archers=3, Siege=5, Naval=4 */
-    static const short turns[] = {2, 3, 4, 3, 5, 4};
-    if (unitType >= 0 && unitType <= 5) return turns[unitType];
+    if (sUnitTypesLoaded && unitType >= 0 && unitType < sUnitTypeCount) {
+        short turns = GetUnitTypeStat(unitType, 1);
+        if (turns > 0) return turns;
+    }
+    /* Hardcoded fallback */
+    {
+        static const short turns[] = {2, 3, 4, 3, 5, 4};
+        if (unitType >= 0 && unitType <= 5) return turns[unitType];
+    }
     return 4;  /* default */
 }
 
@@ -1912,6 +1955,24 @@ static void LoadArmySprites(void)
         ReleaseResource((Handle)pic);
     }
 
+    /* Load unit type definitions from DAT 20000.
+     * 29 entries × 62 bytes, big-endian shorts throughout. */
+    {
+        Handle datH = Get1Resource('DAT ', 20000);
+        if (datH != NULL) {
+            long datSize = GetHandleSize(datH);
+            HLock(datH);
+            sUnitTypeCount = (short)(datSize / UNIT_TYPE_ENTRY);
+            if (sUnitTypeCount > MAX_UNIT_TYPES)
+                sUnitTypeCount = MAX_UNIT_TYPES;
+            BlockMoveData(*datH, sUnitTypeTable,
+                          (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
+            sUnitTypesLoaded = true;
+            HUnlock(datH);
+            ReleaseResource(datH);
+        }
+    }
+
     CloseResFile(armyResFile);
     UseResFile(oldResFile);
     sArmyLoaded = true;
@@ -2677,19 +2738,24 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     bx = *(short *)(gs + 0x812 + bestIdx[cj] * 0x20 + 0x00);
                     by = *(short *)(gs + 0x812 + bestIdx[cj] * 0x20 + 0x02);
 
-                    /* Walk from A to B, marking road tiles */
+                    /* Walk from A to B using Manhattan path (horizontal then vertical)
+                     * so every road tile has at least one cardinal neighbor for autotile. */
                     rx = ax; ry = ay;
-                    while (rx != bx || ry != by) {
+                    /* Horizontal leg first */
+                    while (rx != bx) {
                         if (rx >= 0 && rx < 112 && ry >= 0 && ry < 156) {
-                            /* Only place road on land — mark as boolean 1 first */
                             if (terrain[ry * 112 + rx] != TT_WATER)
                                 roadBuf[ry * 112 + rx] = 1;
                         }
-                        /* Move toward target */
-                        if (rx < bx) rx++;
-                        else if (rx > bx) rx--;
-                        if (ry < by) ry++;
-                        else if (ry > by) ry--;
+                        if (rx < bx) rx++; else rx--;
+                    }
+                    /* Vertical leg */
+                    while (ry != by) {
+                        if (rx >= 0 && rx < 112 && ry >= 0 && ry < 156) {
+                            if (terrain[ry * 112 + rx] != TT_WATER)
+                                roadBuf[ry * 112 + rx] = 1;
+                        }
+                        if (ry < by) ry++; else ry--;
                     }
                     /* Mark destination */
                     if (bx >= 0 && bx < 112 && by >= 0 && by < 156)
@@ -5257,16 +5323,12 @@ static void DrawMapInWindow(WindowPtr win)
         unsigned char *roadData = (unsigned char *)*gRoadData;
         short rdMapH = sMapHeight;
         PixMapHandle roadPix = GetGWorldPixMap(sRoadGW);
-        RGBColor savedBg;
+        Boolean useMask = (sRoadMaskGW != NULL);
+        PixMapHandle maskPix = useMask ? GetGWorldPixMap(sRoadMaskGW) : NULL;
 
         if (rdMapH > 156) rdMapH = 156;
         LockPixels(roadPix);
-
-        /* Use CopyBits mode 36 (transparent) — pixels matching the background
-         * color are skipped. This matches the original game's CopyMask approach
-         * but avoids 1-bit mask depth mismatch issues on SheepShaver. */
-        GetBackColor(&savedBg);
-        RGBBackColor(&sRoadBgColor);
+        if (useMask) LockPixels(maskPix);
 
         for (ty = 0; ty < tilesHigh; ty++) {
             for (tx = 0; tx < tilesWide; tx++) {
@@ -5297,15 +5359,29 @@ static void DrawMapInWindow(WindowPtr win)
                     winRect.left + (tx + 1) * TERRAIN_TILE_W,
                     winRect.top  + (ty + 1) * TERRAIN_TILE_H);
 
-                CopyBits((BitMap *)*roadPix,
-                         &((GrafPtr)win)->portBits,
-                         &srcRect, &dstRect,
-                         36, NULL);
+                /* Use CopyMask like the original: source pixels + 1-bit mask.
+                 * In the mask, BLACK=1=copy, WHITE=0=skip (transparent). */
+                if (useMask) {
+                    CopyMask((BitMap *)*roadPix,
+                             (BitMap *)*maskPix,
+                             &((GrafPtr)win)->portBits,
+                             &srcRect, &srcRect, &dstRect);
+                } else {
+                    /* Fallback: mode 36 (transparent) if mask unavailable */
+                    RGBColor savedBg;
+                    GetBackColor(&savedBg);
+                    RGBBackColor(&sRoadBgColor);
+                    CopyBits((BitMap *)*roadPix,
+                             &((GrafPtr)win)->portBits,
+                             &srcRect, &dstRect,
+                             36, NULL);
+                    RGBBackColor(&savedBg);
+                }
             }
         }
 
-        RGBBackColor(&savedBg);
         UnlockPixels(roadPix);
+        if (useMask) UnlockPixels(maskPix);
     }
 
     /* --- Fog of war overlay (bitmap-based) --- */
@@ -14260,7 +14336,13 @@ static void ShowCityProductionDialog(short cityIndex)
     GDHandle saveGD;
     unsigned char *gs, *city;
     short selectedType = 0;
+    short selectedRow = 0;
     short redraw = 1;
+    short numTypes;
+
+    /* Build list of available unit types for this city */
+    short typeList[MAX_UNIT_TYPES];
+    short typeCount = 0;
 
     if (*gGameState == 0 || *gExtState == 0) return;
     if (cityIndex < 0 || cityIndex >= 40) return;
@@ -14270,19 +14352,42 @@ static void ShowCityProductionDialog(short cityIndex)
     /* Only allow production changes for owned cities */
     if (*(short *)(city + 0x04) != *(short *)(gs + 0x110)) return;
 
-    /* Read current producing type */
+    /* Build type list from loaded unit type table */
+    numTypes = sUnitTypesLoaded ? sUnitTypeCount : 6;
+    for (typeCount = 0; typeCount < numTypes && typeCount < MAX_UNIT_TYPES; typeCount++)
+        typeList[typeCount] = typeCount;
+
+    /* Read current producing type and find its row */
     {
         unsigned char *ext = (unsigned char *)*gExtState;
         unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
-        selectedType = *(short *)(extCity + 0x02);
-        if (selectedType < 0) selectedType = 0;
+        short curProd = *(short *)(extCity + 0x02);
+        short ri;
+        selectedType = (curProd >= 0 && curProd < numTypes) ? curProd : 0;
+        selectedRow = 0;
+        for (ri = 0; ri < typeCount; ri++) {
+            if (typeList[ri] == selectedType) { selectedRow = ri; break; }
+        }
     }
 
-    SetRect(&winRect, 0, 0, 300, 240);
-    OffsetRect(&winRect, 190, 130);
+    /* Size window to fit: header + rows + buttons */
+    {
+        short rowH = 18;
+        short headerH = 50;
+        short buttonH = 36;
+        short winH = headerH + typeCount * rowH + buttonH;
+        if (winH < 160) winH = 160;
+        if (winH > 400) winH = 400;
+        SetRect(&winRect, 0, 0, 340, winH);
+        OffsetRect(&winRect, 170, 100);
+    }
     prodWin = NewCWindow(NULL, &winRect, "\pCity Production", true,
                          dBoxProc, (WindowPtr)-1, false, 0);
-    SetRect(&gwRect, 0, 0, 300, 240);
+    {
+        short ww = winRect.right - winRect.left;
+        short wh = winRect.bottom - winRect.top;
+        SetRect(&gwRect, 0, 0, ww, wh);
+    }
     NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
     if (prodWin == NULL || offGW == NULL) {
         if (offGW) DisposeGWorld(offGW);
@@ -14293,91 +14398,133 @@ static void ShowCityProductionDialog(short cityIndex)
     prodDone = false;
     while (!prodDone) {
         if (redraw) {
+            short ww = gwRect.right - gwRect.left;
+
             GetGWorld(&savePort, &saveGD);
             SetGWorld(offGW, NULL);
             LockPixels(GetGWorldPixMap(offGW));
 
-            /* Background */
             DrawMarbleBackground(&gwRect);
 
-            /* Title */
+            /* Title: city name + "Select Production" */
             {
                 RGBColor black = {0, 0, 0};
+                Str255 cityName;
+                short ni;
+                char *cn = (char *)(city + 0x04);
+                for (ni = 0; cn[ni] && ni < 19; ni++)
+                    cityName[ni + 1] = cn[ni];
+                cityName[0] = (unsigned char)ni;
+
                 RGBForeColor(&black);
                 TextSize(12);
                 TextFace(bold);
-                MoveTo(70, 22);
-                DrawString(GetCachedString(STR_CITY_DIALOG, 18, "\pSelect Production"));
-                TextFace(0);
+                MoveTo(14, 18);
+                DrawString(cityName);
                 TextSize(10);
+                TextFace(0);
+                MoveTo(14, 34);
+                DrawString(GetCachedString(STR_CITY_DIALOG, 18, "\pSelect Production"));
             }
 
-            /* Unit type options (simplified: 6 basic unit types) */
+            /* Column headers */
             {
-                static const unsigned char *unitNames[] = {
-                    "\pLight Infantry", "\pHeavy Infantry",
-                    "\pCavalry", "\pArchers",
-                    "\pSiege Engine", "\pNaval Unit"
-                };
-                static short unitStr[] = {3, 4, 5, 3, 6, 4};
-                static short unitMov[] = {10, 8, 14, 10, 6, 12};
-                static short unitTurns[] = {2, 3, 4, 3, 5, 4};
+                RGBColor black = {0, 0, 0};
+                RGBForeColor(&black);
+                TextFace(bold);
+                TextSize(9);
+                MoveTo(14, 46);
+                DrawString(GetCachedString(STR_CITY_DIALOG, 19, "\pUnit Type"));
+                MoveTo(180, 46);
+                DrawString(GetCachedString(STR_CITY_DIALOG, 20, "\pStr"));
+                MoveTo(215, 46);
+                DrawString(GetCachedString(STR_CITY_DIALOG, 21, "\pMov"));
+                MoveTo(250, 46);
+                DrawString("\pCost");
+                MoveTo(290, 46);
+                DrawString(GetCachedString(STR_CITY_DIALOG, 22, "\pTurns"));
+                TextFace(0);
+            }
+
+            /* Unit type rows */
+            {
                 short ut;
                 RGBColor black = {0, 0, 0};
                 RGBColor hilite = {0xAAAA, 0xAAAA, 0xFFFF};
-                Str255 numStr;
+                Str255 numStr, typeName;
+                short rowH = 18;
 
-                /* Column headers */
-                RGBForeColor(&black);
-                TextFace(bold);
-                MoveTo(20, 46);
-                DrawString(GetCachedString(STR_CITY_DIALOG, 19, "\pUnit Type"));
-                MoveTo(160, 46);
-                DrawString(GetCachedString(STR_CITY_DIALOG, 20, "\pStr"));
-                MoveTo(195, 46);
-                DrawString(GetCachedString(STR_CITY_DIALOG, 21, "\pMov"));
-                MoveTo(230, 46);
-                DrawString(GetCachedString(STR_CITY_DIALOG, 22, "\pTurns"));
-                TextFace(0);
-
-                for (ut = 0; ut < 6; ut++) {
-                    short yp = 64 + ut * 22;
+                for (ut = 0; ut < typeCount; ut++) {
+                    short yp = 54 + ut * rowH;
                     Rect rowRect;
-                    SetRect(&rowRect, 14, yp - 10, 286, yp + 10);
+                    short typeId = typeList[ut];
+                    short str, mov, cost, turns;
 
-                    if (ut == selectedType) {
+                    SetRect(&rowRect, 10, yp, ww - 10, yp + rowH - 2);
+
+                    if (ut == selectedRow) {
                         RGBForeColor(&hilite);
                         PaintRect(&rowRect);
                     }
 
                     RGBForeColor(&black);
                     FrameRect(&rowRect);
-                    MoveTo(20, yp + 4);
-                    DrawString(unitNames[ut]);
-                    MoveTo(165, yp + 4);
-                    NumToString((long)unitStr[ut], numStr);
+
+                    /* Get stats from DAT table or fallback */
+                    if (sUnitTypesLoaded && typeId < sUnitTypeCount) {
+                        str   = GetUnitTypeStat(typeId, 0);
+                        turns = GetUnitTypeStat(typeId, 1);
+                        cost  = GetUnitTypeStat(typeId, 2);
+                        mov   = GetUnitTypeStat(typeId, 3);
+                    } else {
+                        static const short fStr[] = {3,4,5,3,6,4};
+                        static const short fMov[] = {10,8,14,10,6,12};
+                        static const short fTrn[] = {2,3,4,3,5,4};
+                        str   = (typeId < 6) ? fStr[typeId] : 3;
+                        mov   = (typeId < 6) ? fMov[typeId] : 8;
+                        turns = (typeId < 6) ? fTrn[typeId] : 4;
+                        cost  = 0;
+                    }
+
+                    GetUnitTypeName(typeId, typeName);
+                    TextSize(9);
+                    MoveTo(14, yp + rowH - 5);
+                    DrawString(typeName);
+
+                    MoveTo(185, yp + rowH - 5);
+                    NumToString((long)str, numStr);
                     DrawString(numStr);
-                    MoveTo(200, yp + 4);
-                    NumToString((long)unitMov[ut], numStr);
+
+                    MoveTo(220, yp + rowH - 5);
+                    NumToString((long)mov, numStr);
                     DrawString(numStr);
-                    MoveTo(240, yp + 4);
-                    NumToString((long)unitTurns[ut], numStr);
+
+                    if (cost > 0) {
+                        MoveTo(255, yp + rowH - 5);
+                        NumToString((long)cost, numStr);
+                        DrawString(numStr);
+                    }
+
+                    MoveTo(295, yp + rowH - 5);
+                    NumToString((long)turns, numStr);
                     DrawString(numStr);
                 }
             }
 
-            /* OK and Cancel buttons */
+            /* OK and Cancel buttons at bottom */
             {
+                short rowH = 18;
+                short btnY = 54 + typeCount * rowH + 6;
                 Rect okRect, cancelRect;
                 RGBColor black = {0, 0, 0};
-                SetRect(&okRect, 60, 206, 140, 228);
-                SetRect(&cancelRect, 160, 206, 240, 228);
+                SetRect(&okRect, 60, btnY, 150, btnY + 22);
+                SetRect(&cancelRect, 180, btnY, 270, btnY + 22);
                 RGBForeColor(&black);
                 FrameRoundRect(&okRect, 8, 8);
-                MoveTo(88, 222);
+                MoveTo(92, btnY + 16);
                 DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
                 FrameRoundRect(&cancelRect, 8, 8);
-                MoveTo(180, 222);
+                MoveTo(208, btnY + 16);
                 DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
             }
 
@@ -14400,18 +14547,22 @@ static void ShowCityProductionDialog(short cityIndex)
         if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &prodEvt, 30, NULL)) {
             if (prodEvt.what == mouseDown) {
                 Point lp = prodEvt.where;
+                short rowH = 18;
+                short btnY = 54 + typeCount * rowH + 6;
                 SetPort(prodWin);
                 GlobalToLocal(&lp);
 
                 /* Check unit type rows */
                 {
                     short ut;
-                    for (ut = 0; ut < 6; ut++) {
-                        short yp = 64 + ut * 22;
+                    for (ut = 0; ut < typeCount; ut++) {
+                        short yp = 54 + ut * rowH;
+                        short ww = gwRect.right - gwRect.left;
                         Rect rowRect;
-                        SetRect(&rowRect, 14, yp - 10, 286, yp + 10);
+                        SetRect(&rowRect, 10, yp, ww - 10, yp + rowH - 2);
                         if (PtInRect(lp, &rowRect)) {
-                            selectedType = ut;
+                            selectedRow = ut;
+                            selectedType = typeList[ut];
                             redraw = 1;
                             break;
                         }
@@ -14421,9 +14572,8 @@ static void ShowCityProductionDialog(short cityIndex)
                 /* OK button */
                 {
                     Rect okRect;
-                    SetRect(&okRect, 60, 206, 140, 228);
+                    SetRect(&okRect, 60, btnY, 150, btnY + 22);
                     if (PtInRect(lp, &okRect)) {
-                        /* Apply production change */
                         unsigned char *ext = (unsigned char *)*gExtState;
                         unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
                         *(short *)(extCity + 0x02) = selectedType;
@@ -14435,22 +14585,34 @@ static void ShowCityProductionDialog(short cityIndex)
                 /* Cancel button */
                 {
                     Rect cancelRect;
-                    SetRect(&cancelRect, 160, 206, 240, 228);
+                    SetRect(&cancelRect, 180, btnY, 270, btnY + 22);
                     if (PtInRect(lp, &cancelRect))
                         prodDone = true;
                 }
             } else if (prodEvt.what == keyDown) {
                 char key = prodEvt.message & charCodeMask;
                 if (key == 0x0D || key == 0x03) {
-                    /* Return/Enter = OK */
                     unsigned char *ext = (unsigned char *)*gExtState;
                     unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
                     *(short *)(extCity + 0x02) = selectedType;
                     *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
                     prodDone = true;
                 } else if (key == 0x1B) {
-                    /* Escape = Cancel */
                     prodDone = true;
+                } else if (key == 0x1E || key == 'w' || key == 'W') {
+                    /* Up arrow or W */
+                    if (selectedRow > 0) {
+                        selectedRow--;
+                        selectedType = typeList[selectedRow];
+                        redraw = 1;
+                    }
+                } else if (key == 0x1F || key == 'x' || key == 'X') {
+                    /* Down arrow or X */
+                    if (selectedRow < typeCount - 1) {
+                        selectedRow++;
+                        selectedType = typeList[selectedRow];
+                        redraw = 1;
+                    }
                 }
             } else if (prodEvt.what == updateEvt &&
                        (WindowPtr)prodEvt.message == prodWin) {
