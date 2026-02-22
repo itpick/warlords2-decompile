@@ -131,6 +131,7 @@ static void InitSoundSystem(void)
 static void PlaySound(short sndID)
 {
     Handle sndH;
+    SndCommand ampCmd;
 
     /* Check if sound is muted */
     if (sSoundMaster == 0 || sSoundEffects == 0) return;
@@ -138,6 +139,12 @@ static void PlaySound(short sndID)
 
     if (sSndChannel == NULL) InitSoundSystem();
     if (sSndChannel == NULL) return;
+
+    /* Set volume before playing (original sends ampCmd = vol * 25) */
+    ampCmd.cmd = 43;  /* ampCmd */
+    ampCmd.param1 = 0;
+    ampCmd.param2 = (long)sSoundEffects * 25L;
+    SndDoImmediate(sSndChannel, &ampCmd);
 
     sndH = GetResource('snd ', sndID);
     if (sndH != NULL) {
@@ -218,6 +225,7 @@ static void StopMusic(void)
 {
     if (gTunePlayer != NULL) {
         TuneStop(gTunePlayer, 0);
+        TuneUnroll(gTunePlayer);
     }
     if (gTuneDataH != NULL) {
         DisposeHandle(gTuneDataH);
@@ -328,12 +336,19 @@ static void LoadAndPlayMusic(short state)
 static void PlayVoice(short sndID)
 {
     Handle sndH;
+    SndCommand ampCmd;
 
     if (sSoundMaster == 0) return;
 
     if (sVoiceChannel == NULL)
         SndNewChannel(&sVoiceChannel, sampledSynth, 0, NULL);
     if (sVoiceChannel == NULL) return;
+
+    /* Apply master volume */
+    ampCmd.cmd = 43;  /* ampCmd */
+    ampCmd.param1 = 0;
+    ampCmd.param2 = (long)sSoundMaster * 25L;
+    SndDoImmediate(sVoiceChannel, &ampCmd);
 
     sndH = GetResource('snd ', sndID);
     if (sndH != NULL) {
@@ -1008,14 +1023,17 @@ static short GetProductionTurns(short unitType)
 /* Main map chrome dimensions */
 #define SCROLLBAR_W    16   /* width of right scrollbar track */
 #define SCROLLBAR_H    18   /* height of bottom bar (compact shield area + padding) */
-#define SHIELD_ICON_W  13   /* width per shield slot (scaled down from native 33x33) */
-#define SHIELD_ICON_H  13   /* height per shield icon (scaled down from native 33x33) */
+#define SHIELD_ICON_W  13   /* width per shield slot (scaled down from native 39x36) */
+#define SHIELD_ICON_H  13   /* height per shield icon (scaled down from native 39x36) */
 #define SHIELD_GAP      3   /* pixels between each shield icon */
 #define SHIELD_AREA_W  (MAX_FACTIONS * SHIELD_ICON_W + (MAX_FACTIONS - 1) * SHIELD_GAP + 3)
 
-/* Shield icons: cicn 3020-3027 built-in, fallback to 30600-30607 Elemental Shields */
+/* Shield icons: cicn 30600-30607 from shield set file, fallback to terrain file */
 static CIconHandle sShieldIcons[MAX_FACTIONS];
 static Boolean     sShieldsLoaded = false;
+static short       sShieldResFile = -1;          /* resource file ref for shield set */
+static GWorldPtr   sShieldBigGW   = NULL;        /* PICT 15009: big shields 288x59 */
+static GWorldPtr   sShieldSmallGW = NULL;        /* PICT 15010: small shields 368x64 */
 
 /* Native Mac scrollbar controls for main game window */
 static ControlHandle sVScrollBar = NULL;
@@ -2035,30 +2053,109 @@ static void LoadCitySprites(void)
 }
 
 /* ===================================================================
- * LoadShieldIcons — Load Elemental Shield cicn resources
+ * LoadShieldIcons — Load shield cicn/PICT from Elemental Shields file
  *
- * Opens the Elemental Shields resource file at runtime to load
- * cicn 30600-30607 (one per player, 39x36 pixels each).
- * Falls back to built-in cicn 3020-3027 (33x33) from app resource fork.
+ * Opens ":Shields:Elemental Shields" resource file at runtime to load
+ * cicn 30600-30607 (one per faction, 39x36 pixels each) plus
+ * PICT 15009 (big shield sprite sheet, 288x59) and PICT 15010
+ * (small shield sprite sheet, 368x64).
+ * Falls back to terrain-file cicns (already in sShieldIcons[]).
  * =================================================================== */
 static void LoadShieldIcons(void)
 {
     short i;
+    short oldResFile;
+    FSSpec shieldSpec;
+    OSErr err;
 
     if (sShieldsLoaded)
         return;
 
-    /* Prefer terrain file's cicn 30600-30607 (already loaded by
-     * LoadTerrainSprites).  Only try built-in cicn 3020-3027 from
-     * app resource fork for any that are still NULL.
-     * NOTE: cicn 3020-3027 may not exist in our resource fork,
-     * and GetCIcon would return random system icons instead. */
+    /* Open the Elemental Shields resource file */
+    {
+        short vRefNum;
+        long dirID;
+        err = HGetVol(NULL, &vRefNum, &dirID);
+        if (err == noErr)
+            err = FSMakeFSSpec(vRefNum, dirID,
+                               "\p:Shields:Elemental Shields", &shieldSpec);
+    }
+
+    if (err == noErr) {
+        oldResFile = CurResFile();
+        sShieldResFile = FSpOpenResFile(&shieldSpec, fsRdPerm);
+        if (sShieldResFile != -1) {
+            UseResFile(sShieldResFile);
+
+            /* Load cicn 30600-30607 from the shield set file.
+             * These replace any terrain-loaded icons. */
+            for (i = 0; i < MAX_FACTIONS; i++) {
+                CIconHandle sh = GetCIcon(30600 + i);
+                if (sh != NULL) {
+                    if (sShieldIcons[i] != NULL)
+                        DisposeCIcon(sShieldIcons[i]);
+                    sShieldIcons[i] = sh;
+                }
+            }
+
+            /* Load big shield sprite sheet (PICT 15009, 288x59) */
+            sShieldBigGW = LoadPICTIntoGWorld(15009);
+
+            /* Load small shield sprite sheet (PICT 15010, 368x64) */
+            sShieldSmallGW = LoadPICTIntoGWorld(15010);
+
+            UseResFile(oldResFile);
+        }
+    }
+
+    /* Fill any remaining NULL slots from whatever is in the resource chain */
     for (i = 0; i < MAX_FACTIONS; i++) {
         if (sShieldIcons[i] == NULL)
             sShieldIcons[i] = GetCIcon(30600 + i);
     }
 
     sShieldsLoaded = true;
+}
+
+/* Big shield sprite sheet layout (PICT 15009 "BELEMENT"):
+ * 288x59 pixels, 8 columns (one per faction), 2 rows.
+ * Row 0 (y=0..28): shields with "CAPITAL" text banner.
+ * Row 1 (y=29..58): plain shields without text.
+ * Each column is 36px wide (288/8). */
+#define BIG_SHIELD_W   36
+#define BIG_SHIELD_H   30  /* height of one row */
+#define BIG_SHIELD_ROW1 29 /* y-offset of row 1 (plain shields) */
+
+/* ===================================================================
+ * DrawBigShield — Draw a faction shield from the big sprite sheet
+ *
+ * Draws faction factionIdx's plain shield (row 1) from sShieldBigGW
+ * into dstRect. Falls back to PlotCIcon of the cicn if no PICT loaded.
+ * =================================================================== */
+static void DrawBigShield(short factionIdx, const Rect *dstRect)
+{
+    GrafPtr curPort;
+
+    if (factionIdx < 0 || factionIdx >= MAX_FACTIONS) return;
+
+    GetPort(&curPort);
+
+    if (sShieldBigGW != NULL) {
+        PixMapHandle pm = GetGWorldPixMap(sShieldBigGW);
+        Rect srcR;
+        SetRect(&srcR,
+                factionIdx * BIG_SHIELD_W, BIG_SHIELD_ROW1,
+                factionIdx * BIG_SHIELD_W + BIG_SHIELD_W,
+                BIG_SHIELD_ROW1 + BIG_SHIELD_H);
+        if (LockPixels(pm)) {
+            CopyBits((BitMap *)*pm,
+                     &curPort->portBits,
+                     &srcR, dstRect, srcCopy, NULL);
+            UnlockPixels(pm);
+        }
+    } else if (sShieldIcons[factionIdx] != NULL) {
+        PlotCIcon(dstRect, sShieldIcons[factionIdx]);
+    }
 }
 
 /* ===================================================================
@@ -6698,9 +6795,21 @@ static void ShowCityInfo(short cityIndex)
                     LockPixels(GetGWorldPixMap(offscreen));
                 }
 
-                /* Dark background */
+                /* Background: city PICT 3300 or marble fallback */
                 {
-                    DrawMarbleBackground(&r);
+                    PicHandle cityBg = GetPicture(3300);
+                    if (cityBg) {
+                        /* Tile the 128x128 PICT to fill the 320x280 dialog */
+                        Rect tR;
+                        short tx, ty;
+                        for (ty = 0; ty < 280; ty += 128)
+                            for (tx = 0; tx < 320; tx += 128) {
+                                SetRect(&tR, tx, ty, tx + 128, ty + 128);
+                                DrawPicture(cityBg, &tR);
+                            }
+                    } else {
+                        DrawMarbleBackground(&r);
+                    }
                 }
 
                 /* Owner-colored border */
@@ -6710,6 +6819,13 @@ static void ShowCityInfo(short cityIndex)
                     PenSize(3, 3);
                     FrameRect(&r);
                     PenSize(1, 1);
+                }
+
+                /* Owner shield */
+                if (owner >= 0 && owner < 8) {
+                    Rect shR;
+                    SetRect(&shR, 260, 10, 260 + BIG_SHIELD_W, 10 + BIG_SHIELD_H);
+                    DrawBigShield(owner, &shR);
                 }
 
                 /* Title: "City" */
@@ -9188,15 +9304,19 @@ static void ShowReportDialog(short tab)
                         PaintRect(&rowBg);
                     }
 
-                    /* Draw player color bar */
+                    /* Draw player shield icon (or color bar fallback) */
                     {
                         Rect colorBar;
-                        RGBColor black = {0, 0, 0};
-                        SetRect(&colorBar, 20, yPos - 10, 36, yPos + 4);
-                        RGBForeColor(&pColor);
-                        PaintRect(&colorBar);
-                        RGBForeColor(&black);
-                        FrameRect(&colorBar);
+                        SetRect(&colorBar, 18, yPos - 12, 38, yPos + 6);
+                        if (sShieldsLoaded && sShieldIcons[pi] != NULL) {
+                            PlotCIcon(&colorBar, sShieldIcons[pi]);
+                        } else {
+                            RGBColor black = {0, 0, 0};
+                            RGBForeColor(&pColor);
+                            PaintRect(&colorBar);
+                            RGBForeColor(&black);
+                            FrameRect(&colorBar);
+                        }
                     }
 
                     /* Player name from faction names */
@@ -9377,17 +9497,21 @@ static void ShowDiplomacyDialog(void)
                     TextFont(3);
                 }
 
-                /* Column headers */
+                /* Column headers: small shield icons */
                 {
                     short pj;
-                    RGBColor black = {0, 0, 0};
-                    RGBForeColor(&black);
                     for (pj = 0; pj < 8; pj++) {
+                        Rect shR;
                         if (*(short *)(gs + 0x138 + pj * 2) == 0) continue;
-                        MoveTo(120 + pj * 28, 48);
-                        {
+                        SetRect(&shR, 115 + pj * 28, 34, 143 + pj * 28, 52);
+                        if (sShieldsLoaded && sShieldIcons[pj] != NULL) {
+                            PlotCIcon(&shR, sShieldIcons[pj]);
+                        } else {
+                            RGBColor black = {0, 0, 0};
                             Str255 n;
+                            RGBForeColor(&black);
                             NumToString((long)(pj + 1), n);
+                            MoveTo(120 + pj * 28, 48);
                             DrawString(n);
                         }
                     }
@@ -9401,14 +9525,18 @@ static void ShowDiplomacyDialog(void)
                         short yp = 60 + pi * 26;
                         if (*(short *)(gs + 0x138 + pi * 2) == 0) continue;
 
-                        /* Row header: player color bar + name */
+                        /* Row header: player shield + name */
                         {
                             Rect colorBar;
-                            SetRect(&colorBar, 20, yp - 8, 36, yp + 6);
-                            RGBForeColor(&sPlayerColors[pi + 1]);
-                            PaintRect(&colorBar);
-                            RGBForeColor(&black);
-                            FrameRect(&colorBar);
+                            SetRect(&colorBar, 18, yp - 10, 38, yp + 8);
+                            if (sShieldsLoaded && sShieldIcons[pi] != NULL) {
+                                PlotCIcon(&colorBar, sShieldIcons[pi]);
+                            } else {
+                                RGBForeColor(&sPlayerColors[pi + 1]);
+                                PaintRect(&colorBar);
+                                RGBForeColor(&black);
+                                FrameRect(&colorBar);
+                            }
                             MoveTo(42, yp + 4);
                             {
                                 unsigned char *fname = gs + pi * FACTION_NAME_LEN;
@@ -13362,10 +13490,8 @@ static void ShowArmySelection(short playerIdx)
                 PaintRect(&shieldBg);
                 RGBForeColor(&black);
                 FrameRect(&shieldBg);
-                if (sShieldIcons[playerIdx] != NULL) {
-                    SetRect(&shieldR, 12, 12, 52, 52);
-                    PlotCIcon(&shieldR, sShieldIcons[playerIdx]);
-                }
+                SetRect(&shieldR, 12, 12, 12 + BIG_SHIELD_W, 12 + BIG_SHIELD_H);
+                DrawBigShield(playerIdx, &shieldR);
             }
 
             /* "Select Starting Army" title next to shield */
@@ -14210,6 +14336,13 @@ static void ShowVictoryDialog(Boolean victory)
             unsigned char *gs = (unsigned char *)*gGameState;
             short curPlayer = *(short *)(gs + 0x110);
             Str255 numStr;
+
+            /* Faction shield next to title */
+            {
+                Rect shR;
+                SetRect(&shR, 40, 22, 40 + BIG_SHIELD_W, 22 + BIG_SHIELD_H);
+                DrawBigShield(curPlayer, &shR);
+            }
 
             MoveTo(40, 80);
             if (victory) {
@@ -15655,6 +15788,14 @@ static void ShowTurnSplash(short playerIdx)
         DrawString(pname);
     }
 
+    /* Draw faction shield centered below name */
+    {
+        Rect shR;
+        SetRect(&shR, winW / 2 - BIG_SHIELD_W / 2, 58,
+                       winW / 2 + BIG_SHIELD_W / 2, 58 + BIG_SHIELD_H);
+        DrawBigShield(playerIdx, &shR);
+    }
+
     /* Draw "Turn N" */
     {
         Str255 turnLabel, turnNum;
@@ -16124,7 +16265,7 @@ static void AdvanceToNextPlayer(void)
         DoAutosave();
 
         /* Show turn start banner (PICT 3100 castle gate) */
-        PlaySound(SND_CHORD);
+        PlaySound(SND_TURN);
         LoadAndPlayMusic(MUSIC_STATE_TURN);
         ShowTurnSplash(curPlayer);
 
