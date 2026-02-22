@@ -4416,7 +4416,7 @@ static Boolean ShowGameSetup(void)
                         DrawString(GetCachedString(STR_GAME_SETUP, 1, "\pSide to play"));
                     }
 
-                    /* Faction radio buttons */
+                    /* Faction radio buttons with shield icons */
                     TextFont(3);
                     TextSize(10);
                     TextFace(0);
@@ -4435,7 +4435,24 @@ static Boolean ShowGameSetup(void)
                             PaintOval(&fillRect);
                         }
 
-                        MoveTo(52, yPos);
+                        /* Shield icon next to radio button */
+                        if (sShieldsLoaded && sShieldIcons[i] != NULL) {
+                            Rect shR;
+                            SetRect(&shR, 52, yPos - 10, 52 + 14, yPos + 4);
+                            PlotCIcon(&shR, sShieldIcons[i]);
+                        } else {
+                            /* Fallback: small colored square */
+                            Rect colorDot;
+                            RGBColor black = {0, 0, 0};
+                            SetRect(&colorDot, 52, yPos - 8, 64, yPos + 2);
+                            RGBForeColor(&sPlayerColors[i + 1]);
+                            PaintRect(&colorDot);
+                            RGBForeColor(&black);
+                            FrameRect(&colorDot);
+                        }
+
+                        RGBForeColor(&white);
+                        MoveTo(70, yPos);
                         {
                             Str255 pName;
                             short nlen = 0;
@@ -4636,12 +4653,19 @@ static Boolean ShowGameSetup(void)
                         FrameRect(&boxRect);
                         PenSize(1, 1);
 
-                        /* Faction name (bold) */
+                        /* Shield icon in faction box */
+                        if (sShieldsLoaded && sShieldIcons[i] != NULL) {
+                            Rect shR;
+                            SetRect(&shR, bx + 4, by + 3, bx + 4 + 14, by + 3 + 14);
+                            PlotCIcon(&shR, sShieldIcons[i]);
+                        }
+
+                        /* Faction name (bold, offset for shield) */
                         TextFont(3);
                         TextSize(10);
                         TextFace(bold);
                         RGBForeColor(&white);
-                        MoveTo(bx + 6, by + 14);
+                        MoveTo(bx + 22, by + 14);
                         {
                             Str255 pName;
                             short nlen = 0;
@@ -13538,6 +13562,36 @@ static void ShowArmySelection(short playerIdx)
                     MoveTo(slotR.left, slotR.bottom - 1);
                     LineTo(slotR.right - 1, slotR.bottom - 1);
                 }
+
+                /* Draw army sprite from sprite sheet if available */
+                if (sArmyLoaded && sArmyGW[0] != NULL) {
+                    short sprCol = armySprites[ci] % 16;
+                    short sprRow = armySprites[ci] / 16;
+                    Rect srcRect, dstRect;
+                    short srcX = sprCol * 32;
+                    short srcY = sprRow * 32;
+                    SetRect(&srcRect, srcX, srcY, srcX + 29, srcY + 32);
+                    /* Center sprite (29x32) in slot (40x36) */
+                    SetRect(&dstRect,
+                            slotR.left + (slotW - 29) / 2,
+                            slotR.top + (slotH - 32) / 2,
+                            slotR.left + (slotW - 29) / 2 + 29,
+                            slotR.top + (slotH - 32) / 2 + 32);
+                    LockPixels(GetGWorldPixMap(sArmyGW[0]));
+                    {
+                        RGBColor savedBg;
+                        GrafPtr curPort;
+                        GetPort(&curPort);
+                        GetBackColor(&savedBg);
+                        RGBBackColor(&sArmyBgColor[0]);
+                        CopyBits((BitMap *)*GetGWorldPixMap(sArmyGW[0]),
+                                 &curPort->portBits,
+                                 &srcRect, &dstRect,
+                                 36, NULL);
+                        RGBBackColor(&savedBg);
+                    }
+                    UnlockPixels(GetGWorldPixMap(sArmyGW[0]));
+                }
             }
 
             /* Unit names below each slot */
@@ -13786,8 +13840,19 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
         }
     }
 
-    /* Load hero portrait PICT 3200 */
-    heroPict = GetPicture(3200);
+    /* Determine hero gender from name (Pascal string: length at [0], chars at [1]+) */
+    Boolean isFemaleHero = false;
+    {
+        const unsigned char *hn = sHeroNames[heroNameIdx];
+        if (hn[1] == 'B' && hn[2] == 'r') isFemaleHero = true;       /* Brynhild */
+        else if (hn[1] == 'T' && hn[2] == 'h') isFemaleHero = true;  /* Thundra */
+        else if (hn[1] == 'S' && hn[2] == 'i') isFemaleHero = true;  /* Silvara */
+        else if (hn[1] == 'R' && hn[2] == 'a') isFemaleHero = true;  /* Ravenna */
+        else if (hn[1] == 'E' && hn[2] == 'l') isFemaleHero = true;  /* Elandra */
+    }
+
+    /* Load hero portrait: PICT 3200 (male) or PICT 3201 (female) — matches original */
+    heroPict = GetPicture(isFemaleHero ? 3201 : 3200);
 
     /* Center 310x380 window */
     SetRect(&winRect,
@@ -13844,15 +13909,20 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     PenSize(1, 1);
                 }
 
-                /* Title: "A Hero!" */
+                /* Title: "A Hero!" / "A Heroine!" */
                 {
                     RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
                     RGBForeColor(&gold);
                     TextFont(2);
                     TextSize(18);
                     TextFace(bold);
-                    MoveTo(105, 28);
-                    DrawString(GetCachedString(STR_HERO_DIPLO, 12, "\pA Hero!"));
+                    if (isFemaleHero) {
+                        MoveTo(88, 28);
+                        DrawString("\pA Heroine!");
+                    } else {
+                        MoveTo(105, 28);
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 12, "\pA Hero!"));
+                    }
                 }
 
                 /* Hero portrait (PICT 3200) */
@@ -13882,7 +13952,10 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     TextFace(bold);
                     MoveTo(20, 220);
                     DrawString(sHeroNames[heroNameIdx]);
-                    DrawString(GetCachedString(STR_HERO_DIPLO, 13, "\p offers service!"));
+                    if (isFemaleHero)
+                        DrawString("\p offers her service!");
+                    else
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 13, "\p offers service!"));
                 }
 
                 /* Stats */
