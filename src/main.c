@@ -629,7 +629,8 @@ static RGBColor sPlayerColors[9] = {
 static GWorldPtr sTerrainGW   = NULL;   /* PICT 30022: tiles 0-95 */
 static GWorldPtr sTerrainGW2  = NULL;   /* PICT 30023: tiles 96-191 */
 static GWorldPtr sRoadGW      = NULL;   /* PICT 30021: road/overlay sprites (16x2 grid) */
-static RGBColor  sRoadBgColor;          /* road sprite sheet background color for mode 36 */
+static GWorldPtr sRoadMaskGW  = NULL;   /* 1-bit mask generated from sRoadGW for CopyMask */
+static RGBColor  sRoadBgColor;          /* road sprite sheet background color */
 static Boolean   sTerrainLoaded = false;
 static short     sTerrainResFile = -1;
 static GWorldPtr sMarbleGW    = NULL;   /* PICT 1001 "MARBLE" background */
@@ -1372,7 +1373,10 @@ static void TryLoadScenario(void)
             HLock(scnHdl);
 
             if (*gGameState == 0) {
-                *gGameState = (int)NewPtr(0x2FCC);
+                *gGameState = (int)NewPtrClear(0x2FCC);
+            } else {
+                /* Zero-fill existing buffer to prevent stale data */
+                BlockZero((void *)*gGameState, 0x2FCC);
             }
             if (*gGameState != 0) {
                 long copySize = scnSize;
@@ -1629,22 +1633,82 @@ static void LoadTerrainSprites(void)
     sTerrainGW  = LoadPICTIntoGWorld(30022);  /* tiles 0-95 */
     sTerrainGW2 = LoadPICTIntoGWorld(30023);  /* tiles 96-191 */
 
-    /* Load road/overlay sprite sheet (640x80, 16x2 grid of 40x40 tiles).
+    /* Load road/overlay sprite sheet (640x80, 13 columns x 2 rows of 40x40 tiles).
      * Tiles 0-16: road segments (RD values 1-17 map to tiles 0-16).
-     * Tiles 17-31: special location sprites (ruins, temples, towers). */
+     * Original uses roadType % 13 for column, roadType / 13 for row. */
     sRoadGW = LoadPICTIntoGWorld(30021);
 
-    /* Sample road sprite sheet background color for transparent CopyBits.
-     * Mode 36 compares against the DESTINATION port's RGBBackColor,
-     * so we store the color here and set it on the window before blitting. */
+    /* Generate a 1-bit mask from the road sprite sheet for CopyMask.
+     * In 1-bit GWorlds: BLACK = bit 1 = copy source, WHITE = bit 0 = skip.
+     * So: background → WHITE (transparent), road pixels → BLACK (opaque). */
     if (sRoadGW != NULL) {
         CGrafPtr sp;
         GDHandle sd;
+        PixMapHandle roadPM = GetGWorldPixMap(sRoadGW);
+        Rect roadBounds;
+        short rw, rh;
+
         GetGWorld(&sp, &sd);
         SetGWorld(sRoadGW, NULL);
-        LockPixels(GetGWorldPixMap(sRoadGW));
-        GetCPixel(0, 0, &sRoadBgColor);
-        UnlockPixels(GetGWorldPixMap(sRoadGW));
+        LockPixels(roadPM);
+        /* Sample background color from column 13+ (x=520+) which is empty space
+         * past the 13-column tile grid. Original uses palette index 0xF4 (244). */
+        GetCPixel(520, 0, &sRoadBgColor);
+
+        roadBounds = (**roadPM).bounds;
+        rw = roadBounds.right - roadBounds.left;
+        rh = roadBounds.bottom - roadBounds.top;
+
+        {
+            Rect maskBounds;
+            OSErr maskErr;
+            SetRect(&maskBounds, 0, 0, rw, rh);
+            maskErr = NewGWorld(&sRoadMaskGW, 1, &maskBounds, NULL, NULL, 0);
+            if (maskErr == noErr && sRoadMaskGW != NULL) {
+                PixMapHandle maskPM = GetGWorldPixMap(sRoadMaskGW);
+                RGBColor pixel, black;
+                short mx, my;
+
+                LockPixels(maskPM);
+                black.red = 0; black.green = 0; black.blue = 0;
+
+                /* Fill mask with WHITE (all transparent via EraseRect).
+                 * Then set road pixels to BLACK (opaque/copy source). */
+                SetGWorld(sRoadMaskGW, NULL);
+                EraseRect(&maskBounds);
+
+                for (my = 0; my < rh; my++) {
+                    unsigned char rowMask[640];
+                    short nonBgCount = 0;
+
+                    /* Read source row */
+                    SetGWorld(sRoadGW, NULL);
+                    for (mx = 0; mx < rw && mx < 640; mx++) {
+                        GetCPixel(mx, my, &pixel);
+                        if (pixel.red != sRoadBgColor.red ||
+                            pixel.green != sRoadBgColor.green ||
+                            pixel.blue != sRoadBgColor.blue)
+                        {
+                            rowMask[mx] = 1;
+                            nonBgCount++;
+                        } else {
+                            rowMask[mx] = 0;
+                        }
+                    }
+
+                    /* Write mask row: set road pixels to BLACK (copy source) */
+                    if (nonBgCount > 0) {
+                        SetGWorld(sRoadMaskGW, NULL);
+                        for (mx = 0; mx < rw && mx < 640; mx++) {
+                            if (rowMask[mx])
+                                SetCPixel(mx, my, &black);
+                        }
+                    }
+                }
+                UnlockPixels(maskPM);
+            }
+        }
+        UnlockPixels(roadPM);
         SetGWorld(sp, sd);
     }
 
@@ -1919,32 +1983,18 @@ static void LoadCitySprites(void)
 static void LoadShieldIcons(void)
 {
     short i;
-    short oldResFile, shieldResFile = -1;
 
     if (sShieldsLoaded)
         return;
 
-    /* Try to open the Elemental Shields resource file */
-    oldResFile = CurResFile();
-    {
-        shieldResFile = OpenResFile("\p:Shields:Elemental Shields");
-    }
-
-    if (shieldResFile != -1) {
-        UseResFile(shieldResFile);
-        for (i = 0; i < MAX_FACTIONS; i++) {
-            if (sShieldIcons[i] != NULL)
-                continue;
-            sShieldIcons[i] = GetCIcon(30600 + i);
-        }
-        CloseResFile(shieldResFile);
-    }
-
-    /* Fall back to built-in shields (cicn 3020-3027) for any that failed */
-    UseResFile(oldResFile);
+    /* Prefer terrain file's cicn 30600-30607 (already loaded by
+     * LoadTerrainSprites).  Only try built-in cicn 3020-3027 from
+     * app resource fork for any that are still NULL.
+     * NOTE: cicn 3020-3027 may not exist in our resource fork,
+     * and GetCIcon would return random system icons instead. */
     for (i = 0; i < MAX_FACTIONS; i++) {
         if (sShieldIcons[i] == NULL)
-            sShieldIcons[i] = GetCIcon(3020 + i);
+            sShieldIcons[i] = GetCIcon(30600 + i);
     }
 
     sShieldsLoaded = true;
@@ -2464,6 +2514,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     *(short *)(city + 0x06) = 3;   /* defense */
                     *(short *)(city + 0x08) = 4;   /* income */
                     *(short *)(city + 0x0A) = cityCount;
+                    city[0x18] = 0;   /* site_type = city */
                     /* Ensure grass under city */
                     terrain[cy * 112 + cx] = TT_GRASS;
                     {
@@ -2510,6 +2561,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     *(short *)(city + 0x06) = 2;   /* defense */
                     *(short *)(city + 0x08) = 3;   /* income */
                     *(short *)(city + 0x0A) = cityCount;
+                    city[0x18] = 0;   /* site_type = city */
                     cityCount++;
                     break;
                 }
@@ -5193,13 +5245,14 @@ static void DrawMapInWindow(WindowPtr win)
         if (sTerrainGW2 != NULL) UnlockPixels(GetGWorldPixMap(sTerrainGW2));
     }
 
-    /* --- Road overlay: blit road sprites from PICT 30021 road sheet --- */
-    /* PICT 30021 is a 640x80 road/overlay sprite sheet (16x2 grid of 40x40).
-     * RD byte values 1-17 map directly to tiles 0-16 in this sheet.
-     * Transparent CopyBits (mode 36): skips pixels matching the GWorld's
-     * Mode 36 (transparent) skips pixels matching the DESTINATION port's
-     * RGBBackColor.  Set it to the road sprite bg color before blitting,
-     * then restore afterward.  Must render BEFORE fog of war. */
+    /* --- Road overlay --- */
+    /* Road tiles from PICT 30021 (640x80, 13 columns x 2 rows of 40x40 tiles).
+     * The RD resource stores 1 byte per cell; bits 0-4 = road tile index
+     * (0 = no road, 1-17 = road type). The original game's display list
+     * subtracts 1 from the stored RD value to get the sprite tile index:
+     *   RD 1 → tile 0 (col=0,row=0), RD 14 → tile 13 (col=0,row=1), etc.
+     * Original uses roadType % 13 for column, roadType / 13 for row
+     * (confirmed from decompiled FUN_10005f90 at line 11242: / 0xd). */
     if (*gRoadData != 0 && sMapLoaded && sRoadGW != NULL) {
         unsigned char *roadData = (unsigned char *)*gRoadData;
         short rdMapH = sMapHeight;
@@ -5209,7 +5262,9 @@ static void DrawMapInWindow(WindowPtr win)
         if (rdMapH > 156) rdMapH = 156;
         LockPixels(roadPix);
 
-        /* Set destination port bg to road sprite bg for mode 36 transparency */
+        /* Use CopyBits mode 36 (transparent) — pixels matching the background
+         * color are skipped. This matches the original game's CopyMask approach
+         * but avoids 1-bit mask depth mismatch issues on SheepShaver. */
         GetBackColor(&savedBg);
         RGBBackColor(&sRoadBgColor);
 
@@ -5218,23 +5273,24 @@ static void DrawMapInWindow(WindowPtr win)
                 short rMapX = sViewportX + tx;
                 short rMapY = sViewportY + ty;
                 unsigned char rd;
-                short tileIdx, spriteCol, spriteRow;
                 Rect srcRect, dstRect;
+                short tileIdx, spriteCol, spriteRow;
 
                 if (rMapX < 0 || rMapX >= 112 || rMapY < 0 || rMapY >= rdMapH)
                     continue;
-                rd = roadData[rMapY * 112 + rMapX];
-                if (rd == 0 || rd > 17) continue;
+                rd = roadData[rMapY * 112 + rMapX] & 0x1F; /* mask off flag bits */
+                if (rd == 0) continue;
 
-                /* RD value N → tile (N-1) in road sheet (16 tiles per row) */
+                /* Direct mapping: tile index = RD value - 1 (original game subtracts 1) */
                 tileIdx = rd - 1;
-                spriteCol = tileIdx % 16;
-                spriteRow = tileIdx / 16;
-
+                spriteCol = tileIdx % 13;  /* 13 columns per row (original: / 0xd) */
+                spriteRow = tileIdx / 13;
                 SetRect(&srcRect,
-                    spriteCol * TERRAIN_TILE_W, spriteRow * TERRAIN_TILE_H,
+                    spriteCol * TERRAIN_TILE_W,
+                    spriteRow * TERRAIN_TILE_H,
                     (spriteCol + 1) * TERRAIN_TILE_W,
                     (spriteRow + 1) * TERRAIN_TILE_H);
+
                 SetRect(&dstRect,
                     winRect.left + tx * TERRAIN_TILE_W,
                     winRect.top  + ty * TERRAIN_TILE_H,
@@ -5244,11 +5300,10 @@ static void DrawMapInWindow(WindowPtr win)
                 CopyBits((BitMap *)*roadPix,
                          &((GrafPtr)win)->portBits,
                          &srcRect, &dstRect,
-                         36, NULL);  /* transparent: skip bg color pixels */
+                         36, NULL);
             }
         }
 
-        /* Restore destination port bg color */
         RGBBackColor(&savedBg);
         UnlockPixels(roadPix);
     }
@@ -15425,11 +15480,11 @@ static void ShowTurnSplash(short playerIdx)
         pname[0] = (unsigned char)len;
         BlockMoveData(fname, pname + 1, len);
 
-        TextFont(2); TextSize(14); TextFace(bold);
+        TextFont(1602); TextSize(36); TextFace(0);  /* Illuria 36pt */
 
         /* Shadow */
         RGBForeColor(&shadow);
-        MoveTo(winW / 2 - StringWidth(pname) / 2 + 1, 51);
+        MoveTo(winW / 2 - StringWidth(pname) / 2 + 2, 52);
         DrawString(pname);
 
         /* Colored text */
@@ -15452,16 +15507,16 @@ static void ShowTurnSplash(short playerIdx)
                 turnLabel[++turnLabel[0]] = turnNum[ti];
         }
 
-        TextFont(2); TextSize(12); TextFace(bold);
+        TextFont(1602); TextSize(24); TextFace(0);  /* Illuria 24pt */
 
         /* Shadow */
         RGBForeColor(&shadow);
-        MoveTo(winW / 2 - StringWidth(turnLabel) / 2 + 1, 71);
+        MoveTo(winW / 2 - StringWidth(turnLabel) / 2 + 2, 92);
         DrawString(turnLabel);
 
         /* Colored text */
         RGBForeColor(&sPlayerColors[colorIdx]);
-        MoveTo(winW / 2 - StringWidth(turnLabel) / 2, 70);
+        MoveTo(winW / 2 - StringWidth(turnLabel) / 2, 90);
         DrawString(turnLabel);
     }
 
@@ -15907,7 +15962,7 @@ static void AdvanceToNextPlayer(void)
         DoAutosave();
 
         /* Show turn start banner (PICT 3100 castle gate) */
-        PlaySound(SND_TURN);
+        PlaySound(SND_CHORD);
         LoadAndPlayMusic(MUSIC_STATE_TURN);
         ShowTurnSplash(curPlayer);
 
@@ -19002,22 +19057,71 @@ static void HandleMouseDown(EventRecord *event)
                     short clickedArmy = -1;
                     short ai;
 
-                    /* Option-click on own city: always open production */
+                    /* Option+drag = pan map; Option+click on own city = production */
                     if (event->modifiers & optionKey) {
-                        short cityCount = *(short *)(gs + 0x810);
-                        short ci;
-                        if (cityCount > 40) cityCount = 40;
-                        for (ci = 0; ci < cityCount; ci++) {
-                            unsigned char *city = gs + 0x812 + ci * 0x20;
-                            if (*(short *)(city + 0x00) == clickTileX &&
-                                *(short *)(city + 0x02) == clickTileY &&
-                                *(short *)(city + 0x04) == currentPlayer) {
-                                short sType = (short)(unsigned char)city[0x18];
-                                if (sType == 0) {
-                                    ShowCityProductionDialog(ci);
+                        /* Track mouse to distinguish click from drag */
+                        Point startPt = localPt;
+                        short startVX = sViewportX, startVY = sViewportY;
+                        Boolean didDrag = false;
+
+                        if (sHandCursor != NULL) SetCCursor(sHandCursor);
+
+                        while (StillDown()) {
+                            Point curPt;
+                            short dx, dy;
+                            GetMouse(&curPt);
+                            dx = curPt.h - startPt.h;
+                            dy = curPt.v - startPt.v;
+                            if (dx > 4 || dx < -4 || dy > 4 || dy < -4)
+                                didDrag = true;
+                            if (didDrag) {
+                                short newVX = startVX - dx / TERRAIN_TILE_W;
+                                short newVY = startVY - dy / TERRAIN_TILE_H;
+                                if (newVX < 0) newVX = 0;
+                                if (newVY < 0) newVY = 0;
+                                if (newVX > sMapWidth - 1) newVX = sMapWidth - 1;
+                                if (newVY > sMapHeight - 1) newVY = sMapHeight - 1;
+                                if (newVX != sViewportX || newVY != sViewportY) {
+                                    sViewportX = newVX;
+                                    sViewportY = newVY;
                                     SetPort(whichWindow);
-                                    InvalRect(&port);
-                                    goto doneMapClick;
+                                    DrawMapInWindow(whichWindow);
+                                    if (*gOverviewWindow != 0) {
+                                        SetPort((WindowPtr)*gOverviewWindow);
+                                        DrawOverviewInWindow((WindowPtr)*gOverviewWindow);
+                                    }
+                                    SetPort(whichWindow);
+                                }
+                            }
+                        }
+
+                        if (sDefaultCursor != NULL) SetCCursor(sDefaultCursor);
+                        else InitCursor();
+
+                        if (didDrag) {
+                            /* Update scrollbars after drag-pan */
+                            if (sVScrollBar) SetControlValue(sVScrollBar, sViewportY);
+                            if (sHScrollBar) SetControlValue(sHScrollBar, sViewportX);
+                            goto doneMapClick;
+                        }
+
+                        /* Wasn't a drag — fall through to Option-click on city */
+                        {
+                            short cityCount = *(short *)(gs + 0x810);
+                            short ci;
+                            if (cityCount > 40) cityCount = 40;
+                            for (ci = 0; ci < cityCount; ci++) {
+                                unsigned char *city = gs + 0x812 + ci * 0x20;
+                                if (*(short *)(city + 0x00) == clickTileX &&
+                                    *(short *)(city + 0x02) == clickTileY &&
+                                    *(short *)(city + 0x04) == currentPlayer) {
+                                    short sType = (short)(unsigned char)city[0x18];
+                                    if (sType == 0) {
+                                        ShowCityProductionDialog(ci);
+                                        SetPort(whichWindow);
+                                        InvalRect(&port);
+                                        goto doneMapClick;
+                                    }
                                 }
                             }
                         }
@@ -19405,9 +19509,12 @@ static void HandleMouseDown(EventRecord *event)
             lx = localPt.h - port.left;
             ly = localPt.v - port.top;
 
-            /* 3x3 scroll directional pad (at x=130, y=3, 54x54) */
-            if (lx >= 130 && lx < 184 && ly >= 3 && ly < 57) {
-                short sc = ((lx - 130) / 18) + ((ly - 3) / 18) * 3;
+            /* 3x3 scroll directional pad (right-aligned, matches drawing code) */
+            if (lx >= (port.right - port.left) - 62 &&
+                lx < (port.right - port.left) - 62 + 54 &&
+                ly >= 10 && ly < 64) {
+                short padX = (port.right - port.left) - 62;
+                short sc = ((lx - padX) / 18) + ((ly - 10) / 18) * 3;
                 /* Scroll map in the clicked direction */
                 static const short sdx[9] = {-3, 0, 3, -3, 0, 3, -3, 0, 3};
                 static const short sdy[9] = {-3,-3,-3,  0, 0, 0,  3, 3, 3};
@@ -20207,7 +20314,8 @@ int main(void)
     LoadArmySprites();
     LoadCitySprites();
     LoadShieldIcons();
-    RemapShieldColors();  /* Remap cicn CLUTs to nearest pltt 1000 palette colors */
+    /* RemapShieldColors() disabled — raw cicn CLUT colors from terrain file
+     * look more accurate than palette-snapped versions at >8-bit depth */
     LoadButtonIcons();
     LoadDialogIcons();
 
@@ -20236,7 +20344,7 @@ int main(void)
         PlayVoice(SND_VBEGIN);
 
         /* Turn 1 announcement splash (castle gate with faction name) */
-        PlaySound(SND_DING);
+        PlaySound(SND_CHORD);
         ShowTurnSplash(startPlayer);
 
         /* Hero offer then army selection */
@@ -20274,12 +20382,20 @@ int main(void)
                 SetCCursor(sMinimapCursor);
             } else if (partCode == inContent && gMainGameWindow != NULL &&
                        *gMainGameWindow != 0 && cursWin == (WindowPtr)*gMainGameWindow) {
-                /* Main map: edge zone = hand cursor, center = game/target cursor */
+                /* Main map: Option held = hand cursor (pan mode),
+                 * edge zone = hand cursor, center = game/target cursor */
                 Point lp = cursPos;
                 Rect port = cursWin->portRect;
+                Boolean optionHeld;
                 SetPort(cursWin);
                 GlobalToLocal(&lp);
-                if (lp.h < port.left + 8 || lp.h > port.right - 8 ||
+                /* Use event modifiers for Option key detection (works for all
+                 * event types on classic Mac OS, including null events) */
+                optionHeld = (event.modifiers & optionKey) != 0;
+                if (optionHeld) {
+                    if (sHandCursor) SetCCursor(sHandCursor);
+                    else InitCursor();
+                } else if (lp.h < port.left + 8 || lp.h > port.right - 8 ||
                     lp.v < port.top + 8 || lp.v > port.bottom - 8) {
                     if (sHandCursor) SetCCursor(sHandCursor);
                     else InitCursor();
@@ -20514,35 +20630,56 @@ int main(void)
                     HandleMenuChoice(MenuKey(key));
                 }
             } else if (sMapLoaded) {
-                /* Arrow keys scroll the map viewport */
-                short scrollAmt = 3;
                 Boolean scrolled = false;
-                if (key == 0x1C) { sViewportX -= scrollAmt; scrolled = true; }
-                if (key == 0x1D) { sViewportX += scrollAmt; scrolled = true; }
-                if (key == 0x1E) { sViewportY -= scrollAmt; scrolled = true; }
-                if (key == 0x1F) { sViewportY += scrollAmt; scrolled = true; }
-                if (key == 't' || key == 'T') {
-                    sDebugShowTileSheet = !sDebugShowTileSheet;
-                    scrolled = true;
-                }
-                /* Numpad/number key movement for selected army:
-                 * 7=NW 8=N 9=NE / 4=W 5=wait 6=E / 1=SW 2=S 3=SE */
-                if (key >= '1' && key <= '9' && sSelectedArmy >= 0) {
-                    static const short numDx[] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
-                    static const short numDy[] = { 1, 1, 1,  0, 0, 0, -1,-1,-1};
-                    short ni = key - '1';
-                    if (ni == 4) {
-                        /* 5 = wait/skip (deduct all movement) */
+
+                /* --- Army movement: arrow keys, QWEASDZXC grid, numpad ---
+                 * Arrow keys move selected army in cardinal directions.
+                 * QWEASDZXC layout (matches original):
+                 *   Q(NW)  W(N)   E(NE)
+                 *   A(W)   S(skip) D(E)
+                 *   Z(SW)  X(S)   C(SE)
+                 * Numpad: 7=NW 8=N 9=NE / 4=W 5=skip 6=E / 1=SW 2=S 3=SE */
+                if (sSelectedArmy >= 0 && *gGameState != 0) {
+                    short moveDx = 0, moveDy = 0;
+                    Boolean isMove = false, isSkip = false;
+
+                    /* Arrow keys = cardinal movement */
+                    if (key == 0x1C) { moveDx = -1; isMove = true; }      /* Left=W */
+                    else if (key == 0x1D) { moveDx = 1; isMove = true; }  /* Right=E */
+                    else if (key == 0x1E) { moveDy = -1; isMove = true; } /* Up=N */
+                    else if (key == 0x1F) { moveDy = 1; isMove = true; }  /* Down=S */
+                    /* QWEASDZXC movement grid */
+                    else if (key == 'q' || key == 'Q') { moveDx = -1; moveDy = -1; isMove = true; }
+                    else if (key == 'w' || key == 'W') { moveDy = -1; isMove = true; }
+                    else if (key == 'e' || key == 'E') { moveDx = 1; moveDy = -1; isMove = true; }
+                    else if (key == 'a' || key == 'A') { moveDx = -1; isMove = true; }
+                    else if (key == 's' || key == 'S') { isSkip = true; }
+                    else if (key == 'd' || key == 'D') { moveDx = 1; isMove = true; }
+                    else if (key == 'z' || key == 'Z') { moveDx = -1; moveDy = 1; isMove = true; }
+                    else if (key == 'x' || key == 'X') { moveDy = 1; isMove = true; }
+                    else if (key == 'c' || key == 'C') { moveDx = 1; moveDy = 1; isMove = true; }
+                    /* Numpad 1-9 */
+                    else if (key >= '1' && key <= '9') {
+                        static const short numDx[] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+                        static const short numDy[] = { 1, 1, 1,  0, 0, 0, -1,-1,-1};
+                        short ni = key - '1';
+                        if (ni == 4) { isSkip = true; }
+                        else { moveDx = numDx[ni]; moveDy = numDy[ni]; isMove = true; }
+                    }
+
+                    if (isSkip) {
+                        /* S / numpad 5 = skip (deduct all movement, advance to next) */
                         unsigned char *gs2 = (unsigned char *)*gGameState;
                         short ac = *(short *)(gs2 + 0x1602);
                         if (sSelectedArmy < ac) {
                             unsigned char *a = gs2 + 0x1604 + sSelectedArmy * 0x42;
-                            a[0x2e] = (unsigned char)(0);
+                            a[0x2e] = 0;
                             SelectNextArmy();
                         }
                         scrolled = true;
-                    } else if (MoveSelectedArmyBy(numDx[ni], numDy[ni])) {
-                        /* Center viewport on army after movement */
+                    }
+                    else if (isMove && MoveSelectedArmyBy(moveDx, moveDy)) {
+                        /* Center viewport on army if it's near edge */
                         if (sSelectedArmy >= 0) {
                             unsigned char *gs2 = (unsigned char *)*gGameState;
                             short ac = *(short *)(gs2 + 0x1602);
@@ -20556,7 +20693,6 @@ int main(void)
                                     tw = (wp.right - wp.left - SCROLLBAR_W) / TERRAIN_TILE_W;
                                     th = (wp.bottom - wp.top - SCROLLBAR_H) / TERRAIN_TILE_H;
                                 }
-                                /* Only scroll if army is near edge of viewport */
                                 if (ax < sViewportX + 2 || ax >= sViewportX + tw - 2 ||
                                     ay < sViewportY + 2 || ay >= sViewportY + th - 2) {
                                     sViewportX = ax - tw / 2;
@@ -20567,16 +20703,10 @@ int main(void)
                         scrolled = true;
                     }
                 }
-                /* Non-Cmd shortcuts */
-                if (key == ';') {
-                    /* Defend (;) */
-                    HandleMenuChoice((4L << 16) | 10);
-                } else if (key == ' ') {
-                    /* Space = Next Group */
-                    SelectNextArmy();
-                    scrolled = true;
-                } else if (key == 'c' || key == 'C') {
-                    /* C = Center on selected army */
+
+                /* --- Non-movement keys --- */
+                if (key == ' ') {
+                    /* Space = center on selected army (original behavior) */
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
                         unsigned char *gs = (unsigned char *)*gGameState;
                         short ac = *(short *)(gs + 0x1602);
@@ -20593,56 +20723,39 @@ int main(void)
                             scrolled = true;
                         }
                     }
-                } else if (key == 'd' || key == 'D') {
-                    /* D = Disband selected army */
-                    if (sSelectedArmy >= 0)
-                        HandleMenuChoice((4L << 16) | 17);
-                } else if (key == 'f' || key == 'F') {
-                    /* F = Fortify selected army */
-                    if (sSelectedArmy >= 0)
-                        HandleMenuChoice((4L << 16) | 10);
+                } else if (key == '\t') {
+                    /* Tab = End Turn (original alias) */
+                    HandleMenuChoice((9L << 16) | 1);
                 } else if (key == 0x0D || key == 0x03) {
                     /* Return/Enter = End Turn */
                     HandleMenuChoice((9L << 16) | 1);
-                } else if (key == 'g' || key == 'G') {
-                    /* G = Group Stack (merge) */
-                    if (sSelectedArmy >= 0)
-                        HandleMenuChoice((4L << 16) | 1);
-                } else if (key == 'w' || key == 'W') {
-                    /* W = Wait (skip this army, move to next) */
+                } else if (key == 0x08 || key == 0x7F) {
+                    /* Backspace/Delete = Cancel Path (original) */
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
-                        unsigned char *gs3 = (unsigned char *)*gGameState;
-                        short ac = *(short *)(gs3 + 0x1602);
-                        if (sSelectedArmy < ac) {
-                            unsigned char *a = gs3 + 0x1604 + sSelectedArmy * 0x42;
-                            a[0x2e] = (unsigned char)(0);
-                            SelectNextArmy();
-                            scrolled = true;
-                        }
+                        unsigned char *gs = (unsigned char *)*gGameState;
+                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        *(short *)(army + 0x32) = 0;
+                        *(short *)(army + 0x34) = -1;
+                        *(short *)(army + 0x36) = -1;
+                        scrolled = true;
                     }
-                } else if (key == 's' || key == 'S') {
-                    /* S = Show army's shadow (center on target) */
-                    if (sSelectedArmy >= 0)
-                        HandleMenuChoice((4L << 16) | 14);
-                } else if (key == 'b' || key == 'B') {
-                    /* B = Build (change city production) at selected army's city */
-                    HandleMenuChoice((7L << 16) | 4);
                 } else if (key == 0x1B) {
                     /* Escape = Cancel Path / Deselect */
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
                         unsigned char *gs = (unsigned char *)*gGameState;
                         unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
                         if (*(short *)(army + 0x32) != 0) {
-                            /* Cancel orders */
                             *(short *)(army + 0x32) = 0;
                             *(short *)(army + 0x34) = -1;
                             *(short *)(army + 0x36) = -1;
                         } else {
-                            /* Deselect army */
                             sSelectedArmy = -1;
                         }
                         scrolled = true;
                     }
+                } else if (key == 't' || key == 'T') {
+                    sDebugShowTileSheet = !sDebugShowTileSheet;
+                    scrolled = true;
                 }
                 /* Clamp viewport */
                 if (sViewportX < 0) sViewportX = 0;

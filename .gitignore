@@ -13,3 +13,7 @@ test_app/Test App
 
 # QEMU RAM dumps (512MB each - too large for git)
 tools/dumps/*.bin
+
+# Tool output directories (generated, not source)
+tools/output/
+tools/viewer_output/
