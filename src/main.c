@@ -1875,7 +1875,8 @@ static void ScanArmySets(void)
         }
     }
 
-    sSelectedArmySet = 0;
+    /* Default to first real army set (not "Default" colored markers) */
+    sSelectedArmySet = (sArmySetCount > 1) ? 1 : 0;
 }
 
 /* ===================================================================
