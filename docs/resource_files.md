@@ -944,45 +944,52 @@ The RINT names correspond to the DOS version's INT*.XMI files (DAT 1002 FILE map
 
 ### 12. PICT (Picture) Resources
 
-| ID | Name | Approx Size | Purpose |
+| ID | Name | Dimensions | Purpose |
 |---|---|---|---|
-| 1000 | (unnamed) | 333 KB | Main game screen background |
-| 1001 | MARBLE | 559 KB | Marble texture background (largest PICT) |
+| 1000 | (unnamed) | ~640x480 | Main game screen background |
+| 1001 | MARBLE | ~640x480 | Marble texture tile (dialog backgrounds) |
 | 1002 | (unnamed) | -- | UI element |
-| 1003 | (unnamed) | 188 KB | Game graphic |
+| 1003 | (unnamed) | -- | Game graphic |
 | 1005 | (unnamed) | -- | Game graphic |
 | 1007-1009 | (unnamed) | -- | UI elements |
-| 1011-1016 | (unnamed) | various | Game screen elements |
-| 1020 | HELPGFX | 169 KB | Help system graphics |
+| 1010 | (unnamed) | 317x324 | Loading screen: parchment scroll with Warlords II logo |
+| 1011 | (unnamed) | 184x21 | Loading progress bar: ornate bar strip |
+| 1012 | (unnamed) | 224x312 | Minimap ocean: blue gradient water background |
+| 1013-1016 | (unnamed) | various | Game screen elements |
+| 1020 | HELPGFX | -- | Help system graphics |
 | 1041-1042 | (unnamed) | -- | UI elements |
-| 1050 | (unnamed) | 400 KB | Large game graphic |
-| 1051 | VOICEBIT | -- | Voice indicator bitmap |
-| 3000 | (unnamed) | 518 KB | Setup screen background |
+| 1050 | (unnamed) | 309x431 | Talking head: horned helmet warrior (green chromakey bg) |
+| 1051 | VOICEBIT | 160x141 | Eye animation strip for talking head blinking |
+| 3000 | (unnamed) | ~640x480 | Scenario selection: crystal ball + dragon background |
 | 3011 | (unnamed) | -- | Setup element |
 | 3017 | Roller right | -- | Player setup roller graphic |
-| 3100 | (unnamed) | 300 KB | Scenario list background |
-| 3200-3201 | (unnamed) | 114 KB each | Hero/army arrangement backgrounds |
+| 3100 | (unnamed) | ~640x480 | Turn splash background |
+| 3200 | (unnamed) | ~320x240 | Hero hire background (male) |
+| 3201 | (unnamed) | ~320x240 | Hero hire background (female) |
 | 3300 | (unnamed) | -- | City management background |
-| 3800 | (unnamed) | 192 KB | City capture background |
-| 4022 | LEVEL2 | 192 KB | Hero level 2 portrait |
-| 4023 | LEVEL3 | 192 KB | Hero level 3 portrait |
-| 4024 | LEVEL4 | 192 KB | Hero level 4 portrait |
-| 4100 | SEARCH | 192 KB | Search/ruins background |
-| 4101 | TEMPLE | 423 KB | Temple background |
-| 4300 | DIPLOM | 106 KB | Diplomacy screen background |
-| 4410-4413 | MEDAL0-3 | 192 KB each | Medal award graphics |
-| 4420 | (unnamed) | -- | Military advisor background |
-| 4501-4502 | (unnamed) | 323/271 KB | Peace offer / victory graphics |
-| 10002 | HIDDEN | 83 KB | Hidden/fog-of-war map overlay |
-| 10003 | WAR | 130 KB | War declaration graphic |
+| 3800 | (unnamed) | -- | City capture notification background |
+| 4022 | LEVEL2 | -- | Hero level 2 portrait |
+| 4023 | LEVEL3 | -- | Hero level 3 portrait |
+| 4024 | LEVEL4 | -- | Hero level 4 portrait |
+| 4100 | SEARCH | -- | Ruin search scene background |
+| 4101 | TEMPLE | -- | Temple encounter background |
+| 4300 | DIPLOM | -- | Diplomacy screen background |
+| 4410-4413 | MEDAL0-3 | -- | Medal award artwork (one per tier) |
+| 4420 | (unnamed) | -- | Military advisor wizard background |
+| 4501 | (unnamed) | -- | Victory screen artwork |
+| 4502 | (unnamed) | -- | Defeat screen artwork |
+| 10002 | HIDDEN | -- | Hidden/fog-of-war map overlay |
+| 10003 | WAR | -- | War declaration graphic |
 | 10004 | ABITS | -- | Army sprite bits |
-| 10005 | SPECBITS | 121 KB | Special unit bits |
+| 10005 | SPECBITS | -- | Special unit sprite bits |
 | 10006 | POPUP | -- | Popup menu background |
 | 10007 | POPUP2 | -- | Popup menu variant |
-| 10008 | POPUP3 | 98 KB | Popup menu variant |
-| 10009 | HIDDENPP | 83 KB | Hidden map (PowerPC version) |
+| 10008 | POPUP3 | -- | Popup menu variant |
+| 10009 | HIDDENPP | 336x82 | 3D button edge pieces (magenta chromakey) |
 | 10010 | ATRANS3 | -- | Army transparency mask |
-| 10011 | STRAT | 210 KB | Strategy map graphics |
+| 10011 | STRAT | -- | Strategy map graphics |
+
+See also: `docs/terrain_resources.md` for terrain file PICTs (30000-30037).
 
 ---
 
@@ -995,7 +1002,7 @@ The RINT names correspond to the DOS version's INT*.XMI files (DAT 1002 FILE map
 | 1000-1020 | 20 | **Control panel icons** -- game UI buttons (army selection, movement, etc.) |
 | 2000-2025 | 26 | **Army type icons** -- small icons for each army/unit type |
 | 2050-2051 | 2 | Special army icons |
-| 3020-3029 | 10 | **Setup screen icons** -- player color indicators, setup UI |
+| 3020-3029 | 10 | **Face portraits** -- character/leader faces (NOT shield icons despite the ID range) |
 | 3300-3303 | 4 | **City dialog icons** -- city status indicators |
 | 3310, 3320-3321 | 3 | City production/status icons |
 | 3500-3507 | 8 | **Stack info icons** -- army stack display icons |

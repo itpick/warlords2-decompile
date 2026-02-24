@@ -1,0 +1,1084 @@
+Warlords II Resource Fork Catalog
+Total types: 64
+Total resources: 824
+
+
+============================================================
+Type: 'ALRT' (20 resources)
+============================================================
+  ID    128:       14 bytes
+  ID    129:       14 bytes
+  ID    130:       14 bytes
+  ID    131:       14 bytes
+  ID    132:       14 bytes
+  ID    133:       14 bytes
+  ID    134:       14 bytes
+  ID    135:       14 bytes
+  ID    136:       14 bytes
+  ID    137:       14 bytes
+  ID    138:       14 bytes
+  ID    150:       14 bytes
+  ID    151:       14 bytes
+  ID    300:       14 bytes
+  ID   1000:       14 bytes  "Search for file?"
+  ID   1010:       14 bytes  "Monitor depth"
+  ID   1020:       14 bytes  "New save game"
+  ID   1030:       14 bytes  "VM Warning"
+  ID   2000:       12 bytes
+  ID   3032:       14 bytes  "Email sent"
+
+============================================================
+Type: 'BNDL' (1 resources)
+============================================================
+  ID    128:      116 bytes  "Warlords"
+
+============================================================
+Type: 'CMNU' (15 resources)
+============================================================
+  ID      1:       45 bytes
+  ID      2:      143 bytes
+  ID      3:      117 bytes
+  ID      4:      393 bytes
+  ID      5:      185 bytes
+  ID      6:       85 bytes
+  ID      7:      173 bytes
+  ID      8:      147 bytes
+  ID      9:      241 bytes
+  ID     64:       29 bytes
+  ID     65:       41 bytes
+  ID     66:       41 bytes
+  ID     67:       43 bytes
+  ID     70:       73 bytes
+  ID    128:      107 bytes
+
+============================================================
+Type: 'CNTL' (1 resources)
+============================================================
+  ID   1500:       33 bytes
+
+============================================================
+Type: 'CODE' (167 resources)
+============================================================
+  ID      0:       24 bytes
+  ID      1:    11628 bytes  "MA Derived Classes"
+  ID      2:     1524 bytes  "Game code"
+  ID      3:      258 bytes  "New code for Deluxe"
+  ID      5:    10436 bytes  "STDCLIB"
+  ID      6:     1180 bytes  "SANELIB"
+  ID      7:    20251 bytes  "inline"
+  ID      8:     9035 bytes  "Main"
+  ID     10:     5460 bytes  "GConstructorRes"
+  ID     11:      918 bytes  "a1PreferenceRes"
+  ID     12:      360 bytes  "main"
+  ID     13:     4462 bytes  "a1Init"
+  ID     14:    15882 bytes  "a1ImportantRes"
+  ID     15:    28570 bytes  "a1DlgRes"
+  ID     16:     9230 bytes  "DefineClassRes"
+  ID     17:     1952 bytes  "a1NotNeeded"
+  ID     18:     1921 bytes  "a1DlgOpen"
+  ID     19:       76 bytes  "a1DlgClose"
+  ID     20:    45513 bytes  "a1Random"
+  ID     21:      667 bytes  "a1DlgNonRes"
+  ID     22:      228 bytes  "a1DlgReadResource"
+  ID     23:     7975 bytes  "a1MapCommands"
+  ID     24:     3189 bytes  "a1Shortcut"
+  ID     25:     1546 bytes  "a2About"
+  ID     26:     1551 bytes  "a1NewDocument"
+  ID     27:      450 bytes  "a1Terminate"
+  ID     28:      642 bytes  "a1Settings"
+  ID     29:    13008 bytes  "a1Read"
+  ID     30:       51 bytes  "a1Finder"
+  ID     31:     1621 bytes  "a1CloseDocument"
+  ID     32:     2362 bytes  "a2Settings"
+  ID     33:     8034 bytes  "GSelCommand"
+  ID     34:    14722 bytes  "GRes2"
+  ID     35:     8011 bytes  "GNonRes2"
+  ID     36:     7846 bytes  "a1Help"
+  ID     37:      401 bytes  "a1ViewRes"
+  ID     38:     5336 bytes  "GNonRes4"
+  ID     39:     4671 bytes  "GClose"
+  ID     40:     2239 bytes  "a1WindowNonRes"
+  ID     41:    18152 bytes  "GRes4"
+  ID     42:     9255 bytes  "a1SmallCommonRoutines"
+  ID     43:      163 bytes  "a1Close"
+  ID     44:    10823 bytes  "a1HumanControl"
+  ID     45:    15209 bytes  "a1City"
+  ID     46:     2844 bytes  "a1Dunno"
+  ID     47:     2461 bytes  "a2BuildProd"
+  ID     48:     9470 bytes  "a1Write"
+  ID     49:      509 bytes  "a1StreamUtil"
+  ID     50:    10790 bytes  "BBOpen"
+  ID     51:     7168 bytes  "GWriteResource"
+  ID     52:     5657 bytes  "a1Diplomacy"
+  ID     53:     5130 bytes  "a1Report"
+  ID     54:    10759 bytes  "a1History"
+  ID     55:      992 bytes  "a1EMailAddressing"
+  ID     56:     1607 bytes  "a1TidyWindow"
+  ID     57:    23752 bytes  "a2GameSetup"
+  ID     58:     1756 bytes  "a1AIUtils"
+  ID     59:     8097 bytes  "GWriteFile"
+  ID     60:     3730 bytes  "a2FightOrder"
+  ID     61:     4556 bytes  "a1Pillage"
+  ID     62:     2495 bytes  "a1Tutorial"
+  ID     63:     7019 bytes  "a2HeroInfo"
+  ID     64:     5054 bytes  "a2HeroHire"
+  ID     65:      163 bytes  "a2Items"
+  ID     66:     5484 bytes  "a2SearchSage"
+  ID     67:    24789 bytes  "a1View"
+  ID     68:      146 bytes  "a1Activate"
+  ID     69:    18412 bytes  "GRes3"
+  ID     70:      968 bytes  "a2EndOfGame"
+  ID     71:     2282 bytes  "a1Progress"
+  ID     72:     2960 bytes  "a1Production"
+  ID     73:      173 bytes  "a1CloseSetup"
+  ID     74:    13690 bytes  "a2Search"
+  ID     75:     5309 bytes  "a2ScenarioSelect"
+  ID     76:     4907 bytes  "a2GameOptions"
+  ID     77:     6876 bytes  "GReadResource"
+  ID     78:     1848 bytes  "a1Segment"
+  ID     79:     8438 bytes  "a2Stack"
+  ID     80:    12568 bytes  "a2StartOfTurn"
+  ID     81:      644 bytes  "a1AIStep0"
+  ID     82:    10929 bytes  "a1AIStep1"
+  ID     83:      589 bytes  "a1AIStep2"
+  ID     84:      425 bytes  "a1AIStep3"
+  ID     85:       85 bytes  "a1AIStep4"
+  ID     86:       85 bytes  "a1AIStep5"
+  ID     87:      581 bytes  "a1AIStep6"
+  ID     88:      850 bytes  "a1AIStep7"
+  ID     89:      174 bytes  "a1AIStep8"
+  ID     90:     2792 bytes  "a1AIStep9"
+  ID     91:       85 bytes  "a1AIStep10"
+  ID     92:     1104 bytes  "a1AIStep11"
+  ID     93:      223 bytes  "a1AIStep12"
+  ID     94:       85 bytes  "a1AIStep13"
+  ID     95:      284 bytes  "a1AIStep14"
+  ID     96:     1115 bytes  "a1AIStep15"
+  ID     97:      350 bytes  "a1AIStep16"
+  ID     98:     1663 bytes  "a1AIStep17"
+  ID     99:      268 bytes  "a1AIStep18"
+  ID    100:      144 bytes  "a1AIStep19"
+  ID    101:     1688 bytes  "a1AIMemory"
+  ID    102:     9366 bytes  "a1AICommon"
+  ID    103:      822 bytes  "a1HeroCheck"
+  ID    104:    10933 bytes  "a1Fight1Possibly"
+  ID    105:     5161 bytes  "a1AIStep1and13"
+  ID    106:     7131 bytes  "a1AIStep1and4"
+  ID    107:     1629 bytes  "a1AIStep6and16"
+  ID    108:     4865 bytes  "a1Fight1"
+  ID    109:     2049 bytes  "a1AISearch"
+  ID    110:     1480 bytes  "a1AIStep5and10"
+  ID    111:     1152 bytes  "a1AIStep3and14"
+  ID    112:      858 bytes  "a1Comms"
+  ID    113:     5196 bytes  "a1AIMove"
+  ID    114:     1906 bytes  "a1AIFight"
+  ID    115:    13971 bytes  "a1Move"
+  ID    116:     1950 bytes  "a1LoadScenario"
+  ID    117:    10286 bytes  "a1InitMainData"
+  ID    118:      890 bytes  "a1AIProduction"
+  ID    119:      557 bytes  "a1AIStep15and17"
+  ID    120:       93 bytes  "a1AIStep7and12"
+  ID    121:     2390 bytes  "a1CommonNonRes"
+  ID    122:      581 bytes  "a1Dispand"
+  ID    123:     3039 bytes  "a1GroupSelection"
+  ID    124:     3440 bytes  "a1SAGERes"
+  ID    125:     7143 bytes  "a1Sound"
+  ID    126:     1349 bytes  "a1ScrollWindow"
+  ID    127:      877 bytes  "a2Resign"
+  ID    128:     6901 bytes  "a1OverviewMap"
+  ID    129:      351 bytes  "a1SetupAndFight"
+  ID    130:     2807 bytes  "a1NewTurn"
+  ID    131:      836 bytes  "a1Fight2"
+  ID    132:      164 bytes  "a1Fight3"
+  ID    133:     6031 bytes  "a1Fight2Possibly"
+  ID    134:     1334 bytes  "a2HeroLevels"
+  ID    135:     6673 bytes  "a1Quest"
+  ID    136:      658 bytes  "a1Resign"
+  ID    137:     1857 bytes  "a0NotAllocatedYet"
+  ID    138:     2059 bytes  "a1SAGEFiles"
+  ID    139:      689 bytes  "a1Raze"
+  ID    140:     1265 bytes  "a1Req"
+  ID    141:     1230 bytes  "a2SideSetup"
+  ID    142:    12758 bytes  "GRes5"
+  ID    143:     3005 bytes  "a1DunnoYet"
+  ID    144:    11357 bytes  "GRes6"
+  ID    146:    13746 bytes  "MAMain"
+  ID    147:    10487 bytes  "GInit"
+  ID    148:       67 bytes  "GRes1"
+  ID    149:    13123 bytes  "GNonRes"
+  ID    150:    18189 bytes  "GOpen"
+  ID    151:      508 bytes  "GFinder"
+  ID    152:     2488 bytes  "GFile"
+  ID    153:      608 bytes  "GTerminate"
+  ID    154:       83 bytes  "MANever"
+  ID    155:     8733 bytes  "GDoCommand"
+  ID    156:     3087 bytes  "GClipboard"
+  ID    157:      599 bytes  "GError"
+  ID    158:     6145 bytes  "GRes"
+  ID    159:     2230 bytes  "ClassDescRes"
+  ID    160:    16519 bytes  "BBRes"
+  ID    162:    13263 bytes  "BBNonRes"
+  ID    163:     2087 bytes  "GReadFile"
+  ID    164:       56 bytes  "GDebug"
+  ID    165:       84 bytes  "GHelp"
+  ID    166:     1330 bytes  "GOpen2"
+  ID    167:    10260 bytes  "BBRes2"
+  ID    168:     1980 bytes  "MAMiniInit"
+  ID    171:     1392 bytes  "GNonRes3"
+  ID    172:     2187 bytes  "TESelCommand"
+
+============================================================
+Type: 'CURS' (20 resources)
+============================================================
+  ID    357:       68 bytes
+  ID    358:       68 bytes
+  ID    359:       68 bytes
+  ID    360:       68 bytes
+  ID    361:       68 bytes
+  ID    362:       68 bytes
+  ID    363:       68 bytes
+  ID   1000:       68 bytes
+  ID   1001:       68 bytes
+  ID   1002:       68 bytes
+  ID   1003:       68 bytes
+  ID   1004:       68 bytes
+  ID   1005:       68 bytes
+  ID   1006:       68 bytes
+  ID   1007:       68 bytes
+  ID   1008:       68 bytes
+  ID   1009:       68 bytes
+  ID   1010:       68 bytes
+  ID   1011:       68 bytes
+  ID   1012:       68 bytes
+
+============================================================
+Type: 'DAT ' (16 resources)
+============================================================
+  ID   1000:    14152 bytes  "STRING"
+  ID   1001:      128 bytes  "ERROR"
+  ID   1002:     4563 bytes  "FILE"
+  ID   1003:      378 bytes  "AREA"
+  ID   1004:    15411 bytes  "BUTTON"
+  ID   1010:    42336 bytes  "RANDOM"
+  ID   1011:     1018 bytes  "RANDOM.ITM"
+  ID   1020:     1346 bytes  "MAPCOL"
+  ID   1030:     1582 bytes  "DEFNAME0"
+  ID   1031:     1507 bytes  "DEFNAME1"
+  ID   1032:     1343 bytes  "DEFNAME2"
+  ID   1033:     1255 bytes  "DEFNAME3"
+  ID   1034:     1701 bytes  "DEFNAME4"
+  ID   1035:     1323 bytes  "DEFNAME5"
+  ID   1036:     1466 bytes  "DEFNAME6"
+  ID   1037:     1300 bytes  "DEFNAME7"
+
+============================================================
+Type: 'DATA' (1 resources)
+============================================================
+  ID      0:   167350 bytes
+
+============================================================
+Type: 'DITL' (21 resources)
+============================================================
+  ID    128:       76 bytes
+  ID    129:      100 bytes
+  ID    130:       96 bytes
+  ID    131:      142 bytes
+  ID    132:      114 bytes
+  ID    133:      164 bytes
+  ID    134:      194 bytes
+  ID    135:       70 bytes
+  ID    136:      100 bytes
+  ID    137:      134 bytes
+  ID    138:      134 bytes
+  ID    150:       84 bytes
+  ID    151:      130 bytes
+  ID    300:       80 bytes
+  ID   1000:      136 bytes  "Search for file?"
+  ID   1010:      234 bytes  "Monitor depth"
+  ID   1020:      216 bytes  "New save game"
+  ID   1030:      314 bytes  "Monitor depth"
+  ID   1500:      224 bytes  "Custom save dialog"
+  ID   2000:      140 bytes
+  ID   3032:      106 bytes  "Email sent"
+
+============================================================
+Type: 'DLGX' (1 resources)
+============================================================
+  ID   1030:      142 bytes
+
+============================================================
+Type: 'DLOG' (1 resources)
+============================================================
+  ID   1500:       24 bytes  "Custom save dialog"
+
+============================================================
+Type: 'FOND' (2 resources)
+============================================================
+  ID   1602:       72 bytes  "Illuria"
+  ID  19999:       72 bytes  ".MDEF Font"
+
+============================================================
+Type: 'FREF' (12 resources)
+============================================================
+  ID    128:        7 bytes  "Warlords Application"
+  ID    129:        7 bytes  "Warlords Document"
+  ID    130:        7 bytes  "Warlords Stationery"
+  ID    131:        7 bytes
+  ID    132:        7 bytes
+  ID    133:        7 bytes
+  ID    134:        7 bytes
+  ID    135:        7 bytes
+  ID    136:        7 bytes
+  ID    137:        7 bytes
+  ID    138:        7 bytes
+  ID    139:        7 bytes
+
+============================================================
+Type: 'GFX ' (4 resources)
+============================================================
+  ID   2000:      664 bytes  "HITEM"
+  ID   2001:      608 bytes  "HKEYS"
+  ID   2002:      944 bytes  "HMOUSE"
+  ID   2003:      883 bytes  "HMOUSE2"
+
+============================================================
+Type: 'HLP ' (1 resources)
+============================================================
+  ID   1000:    40666 bytes  "WARLORD2"
+
+============================================================
+Type: 'Head' (26 resources)
+============================================================
+  ID   1000:      280 bytes  "RINT0"
+  ID   1001:      280 bytes  "RINT1"
+  ID   1002:      556 bytes  "RINT2"
+  ID   1003:      372 bytes  "RINT3"
+  ID   1004:      280 bytes  "RINT4"
+  ID   1005:      464 bytes  "RINT5"
+  ID   1006:      464 bytes  "RINT6"
+  ID   1007:      280 bytes  "RINT7"
+  ID   1008:       96 bytes  "RINT8"
+  ID   1009:      280 bytes  "RINT9"
+  ID   1010:      280 bytes  "RINT10"
+  ID   1011:      556 bytes  "RINT11"
+  ID   1012:      556 bytes  "RINT12"
+  ID   1013:      372 bytes  "RINT13"
+  ID   1014:      372 bytes  "RINT14"
+  ID   1015:      280 bytes  "RINT15"
+  ID   1016:      280 bytes  "RINT16"
+  ID   1017:      464 bytes  "RINT17"
+  ID   1018:      372 bytes  "RINT18"
+  ID   1019:      280 bytes  "RINT19"
+  ID   1020:      372 bytes  "RINT20"
+  ID   1021:      464 bytes  "RINT21"
+  ID   1022:       96 bytes  "RINT22"
+  ID   1023:      280 bytes  "RINT23"
+  ID   1024:      372 bytes  "RSTARTUP"
+  ID   1025:      372 bytes  "RANIM"
+
+============================================================
+Type: 'ICN#' (12 resources)
+============================================================
+  ID    128:      256 bytes
+  ID    129:      256 bytes
+  ID    130:      256 bytes
+  ID    131:      256 bytes
+  ID    132:      256 bytes
+  ID    133:      256 bytes
+  ID    134:      256 bytes
+  ID    135:      256 bytes
+  ID    136:      256 bytes
+  ID    137:      256 bytes
+  ID    138:      256 bytes
+  ID    139:      256 bytes
+
+============================================================
+Type: 'Last' (1 resources)
+============================================================
+  ID   1000:        8 bytes
+
+============================================================
+Type: 'MBAR' (2 resources)
+============================================================
+  ID    128:       20 bytes
+  ID    130:       12 bytes
+
+============================================================
+Type: 'MDEF' (1 resources)
+============================================================
+  ID  19999:    19898 bytes  "Mercutio"
+
+============================================================
+Type: 'MENU' (1 resources)
+============================================================
+  ID   1500:       70 bytes
+
+============================================================
+Type: 'NAME' (22 resources)
+============================================================
+  ID   1000:       10 bytes  ":Terrain:Grass"
+  ID   1001:       10 bytes  ":Terrain:IceWorld"
+  ID   1002:        9 bytes  ":Terrain:Mudflats"
+  ID   1003:        7 bytes  ":Terrain:Castle"
+  ID   1004:        7 bytes  ":Terrain:Cavern"
+  ID   1005:        7 bytes  ":Terrain:Desert"
+  ID   1006:        8 bytes  ":Terrain:Dungeon"
+  ID   2000:       15 bytes  ":Armies:AM"
+  ID   2001:       19 bytes  ":Armies:HOGS"
+  ID   2002:       18 bytes  ":Armies:SPECTA"
+  ID   3000:       15 bytes  ":Cities:AM"
+  ID   3001:       12 bytes  ":Cities:Conq"
+  ID   3002:       14 bytes  ":Cities:Europa"
+  ID   3003:       12 bytes  ":Cities:Hoggs"
+  ID   3004:       16 bytes  ":Cities:Invade"
+  ID   3005:       16 bytes  ":Cities:Land"
+  ID   3006:       13 bytes  ":Cities:Roman"
+  ID   3007:       18 bytes  ":Cities:Spectra"
+  ID   3008:       12 bytes  ":Cities:Star"
+  ID   4000:       16 bytes  ":Shields:AM"
+  ID   4001:       13 bytes  ":Shields:STAR"
+  ID   4002:       18 bytes  ":Shields:ELEMENT"
+
+============================================================
+Type: 'NFNT' (6 resources)
+============================================================
+  ID   1634:     4962 bytes
+  ID   2816:       26 bytes  ".MDEF Font"
+  ID   2825:      920 bytes
+  ID   2828:     1288 bytes
+  ID   3352:     3238 bytes
+  ID  30797:     9930 bytes
+
+============================================================
+Type: 'PICT' (59 resources)
+============================================================
+  ID   1000:    98772 bytes
+  ID   1001:   125842 bytes  "MARBLE"
+  ID   1003:    47056 bytes
+  ID   1004:     4422 bytes
+  ID   1005:     5374 bytes
+  ID   1006:     4036 bytes
+  ID   1007:     5212 bytes
+  ID   1008:     5146 bytes
+  ID   1009:     3048 bytes
+  ID   1010:    72128 bytes
+  ID   1013:     4842 bytes
+  ID   1014:     4030 bytes
+  ID   1015:     5236 bytes
+  ID   1016:    46490 bytes
+  ID   1041:    16444 bytes
+  ID   1042:    14020 bytes
+  ID   1050:    63180 bytes
+  ID   1051:    16044 bytes  "VOICEBIT"
+  ID   3000:   116226 bytes
+  ID   3011:     2410 bytes
+  ID   3015:     4424 bytes  "Roller left"
+  ID   3016:     2324 bytes  "Roller center"
+  ID   3017:     2276 bytes  "Roller right"
+  ID   3100:   156082 bytes
+  ID   3200:    37646 bytes
+  ID   3201:    36190 bytes
+  ID   3300:    14718 bytes
+  ID   3800:    52604 bytes
+  ID   4022:    46692 bytes  "LEVEL2"
+  ID   4023:    44770 bytes  "LEVEL3"
+  ID   4024:    46218 bytes  "LEVEL4"
+  ID   4100:    57522 bytes  "SEARCH"
+  ID   4101:   117692 bytes  "TEMPLE"
+  ID   4200:    47488 bytes
+  ID   4410:    46366 bytes  "MEDAL0"
+  ID   4411:    46150 bytes  "MEDAL1"
+  ID   4412:    47418 bytes  "MEDAL2"
+  ID   4413:    46076 bytes  "MEDAL3"
+  ID   4420:    16414 bytes  "ADVISOR"
+  ID   4500:    92370 bytes
+  ID   4501:    87212 bytes
+  ID   4502:    75260 bytes
+  ID   4600:    98838 bytes
+  ID   9000:    17392 bytes  "PICTS0"
+  ID   9001:     4666 bytes  "NEUTRALS"
+  ID   9002:    11448 bytes  "MESSBUTT"
+  ID   9003:    13410 bytes  "HIDDEN"
+  ID   9004:    17260 bytes  "HIDDENPP"
+  ID   9005:     4396 bytes  "COMBPICT"
+  ID   9006:     3874 bytes  "MISC"
+  ID   9007:    34506 bytes  "CITYPICT"
+  ID   9008:     5164 bytes  "DIPLOM"
+  ID   9009:     8756 bytes  "HELPGFX"
+  ID   9010:     5228 bytes  "PROGRESS"
+  ID   9011:    11678 bytes  "POPUP"
+  ID   9012:    11432 bytes  "POPUP2"
+  ID   9013:    16644 bytes  "POPUP3"
+  ID   9014:    10736 bytes  "EXPLODE"
+  ID   9015:     5048 bytes  "CURSOR"
+
+============================================================
+Type: 'Prfl' (1 resources)
+============================================================
+  ID    128:       44 bytes
+
+============================================================
+Type: 'Rand' (1 resources)
+============================================================
+  ID   1000:     1034 bytes
+
+============================================================
+Type: 'Rgn ' (7 resources)
+============================================================
+  ID   1000:     1400 bytes  "Big scroll"
+  ID   1001:     3168 bytes  "Talking head"
+  ID   1002:     1636 bytes  "Combat"
+  ID   1003:     3996 bytes  "Start of turn"
+  ID   2000:      152 bytes
+  ID   2001:      704 bytes
+  ID   2002:      940 bytes
+
+============================================================
+Type: 'Roll' (1 resources)
+============================================================
+  ID   3020:     1290 bytes  "Player setup"
+
+============================================================
+Type: 'SCN ' (1 resources)
+============================================================
+  ID   1000:    12001 bytes
+
+============================================================
+Type: 'SIZE' (1 resources)
+============================================================
+  ID     -1:       10 bytes
+
+============================================================
+Type: 'STR ' (3 resources)
+============================================================
+  ID   1000:        8 bytes  "Font Name"
+  ID   1001:       14 bytes  "Startup movie"
+  ID   2000:        1 bytes
+
+============================================================
+Type: 'STR#' (46 resources)
+============================================================
+  ID    128:     1066 bytes
+  ID    129:      303 bytes
+  ID    130:      289 bytes
+  ID    250:      266 bytes
+  ID    253:       81 bytes
+  ID    254:     5560 bytes  "Balloon Help String 1"
+  ID    300:      186 bytes
+  ID   1000:       51 bytes
+  ID   1001:       36 bytes  "Search for files?"
+  ID   1002:       52 bytes  "Directory names"
+  ID   1005:       24 bytes
+  ID   1040:      867 bytes
+  ID   1060:      150 bytes
+  ID   1070:      164 bytes
+  ID   2001:      381 bytes
+  ID   2002:      171 bytes  "AddressOMatic Labels"
+  ID   2003:      284 bytes  "Browser Help"
+  ID   2004:      167 bytes  "Personal Catalog Help"
+  ID   2005:      238 bytes  "Find Panel Help"
+  ID   2010:      126 bytes  "Window menu names"
+  ID   3000:       51 bytes
+  ID   3010:      257 bytes
+  ID   3020:      133 bytes
+  ID   3021:      296 bytes
+  ID   3022:       68 bytes
+  ID   3030:       53 bytes
+  ID   3040:       48 bytes
+  ID   3200:      267 bytes
+  ID   3300:      233 bytes
+  ID   3420:      154 bytes
+  ID   3600:       71 bytes
+  ID   3800:       27 bytes
+  ID   3810:       17 bytes
+  ID   3900:       52 bytes
+  ID   4000:       47 bytes
+  ID   4010:       44 bytes
+  ID   4100:       20 bytes
+  ID   4110:        8 bytes
+  ID   4120:       27 bytes
+  ID   4200:        8 bytes
+  ID   4300:       91 bytes
+  ID   4420:       11 bytes
+  ID   4500:      218 bytes
+  ID   4510:       48 bytes
+  ID   4600:       26 bytes
+  ID  10000:      125 bytes
+
+============================================================
+Type: 'Shor' (1 resources)
+============================================================
+  ID   2000:      204 bytes
+
+============================================================
+Type: 'Soun' (1 resources)
+============================================================
+  ID   1000:        6 bytes  "Sound preferences"
+
+============================================================
+Type: 'Tune' (26 resources)
+============================================================
+  ID   1000:     6896 bytes  "RINT0"
+  ID   1001:     3244 bytes  "RINT1"
+  ID   1002:     7988 bytes  "RINT2"
+  ID   1003:     4020 bytes  "RINT3"
+  ID   1004:     2408 bytes  "RINT4"
+  ID   1005:    13104 bytes  "RINT5"
+  ID   1006:     5856 bytes  "RINT6"
+  ID   1007:    11148 bytes  "RINT7"
+  ID   1008:     3568 bytes  "RINT8"
+  ID   1009:     3820 bytes  "RINT9"
+  ID   1010:     8460 bytes  "RINT10"
+  ID   1011:    11868 bytes  "RINT11"
+  ID   1012:     7844 bytes  "RINT12"
+  ID   1013:     9272 bytes  "RINT13"
+  ID   1014:     6172 bytes  "RINT14"
+  ID   1015:     2500 bytes  "RINT15"
+  ID   1016:     4984 bytes  "RINT16"
+  ID   1017:     8404 bytes  "RINT17"
+  ID   1018:     2152 bytes  "RINT18"
+  ID   1019:     3860 bytes  "RINT19"
+  ID   1020:     2360 bytes  "RINT20"
+  ID   1021:    12328 bytes  "RINT21"
+  ID   1022:      404 bytes  "RINT22"
+  ID   1023:     4412 bytes  "RINT23"
+  ID   1024:    13600 bytes  "RSTARTUP"
+  ID   1025:     3084 bytes  "RANIM"
+
+============================================================
+Type: 'TxSt' (31 resources)
+============================================================
+  ID    128:       11 bytes  "System Font"
+  ID    129:       12 bytes  "9 pt Application Font"
+  ID    130:       12 bytes  "12 pt Application Font"
+  ID   1000:       11 bytes
+  ID   1001:       18 bytes
+  ID   1002:       18 bytes
+  ID   1003:       18 bytes
+  ID   1004:       18 bytes
+  ID   1005:       18 bytes
+  ID   1006:       18 bytes
+  ID   1007:       18 bytes
+  ID   1008:       18 bytes
+  ID   1009:       18 bytes
+  ID   1010:       18 bytes
+  ID   1011:       18 bytes
+  ID   1012:       18 bytes
+  ID   1013:       12 bytes
+  ID   1014:       18 bytes
+  ID   1015:       18 bytes
+  ID   1016:       11 bytes
+  ID   1019:       18 bytes
+  ID   1020:       12 bytes
+  ID   1021:       18 bytes
+  ID   1022:       18 bytes
+  ID   1023:       18 bytes
+  ID   1024:       18 bytes
+  ID   1025:       18 bytes
+  ID   1027:       17 bytes
+  ID   1028:       12 bytes
+  ID   1029:       18 bytes
+  ID   1030:       11 bytes
+
+============================================================
+Type: 'View' (75 resources)
+============================================================
+  ID    200:      659 bytes
+  ID    300:      161 bytes
+  ID   1000:      288 bytes  "Splash screen"
+  ID   1001:      734 bytes  "Tactical Map window"
+  ID   1002:      229 bytes  "Strategic Map Floating Window"
+  ID   1003:      259 bytes  "Info Area"
+  ID   1004:      402 bytes  "Control Area"
+  ID   1005:     2080 bytes  "Stack view"
+  ID   1006:     2080 bytes  "Stack view 2"
+  ID   1007:     1978 bytes  "Stack view 3"
+  ID   1008:     2613 bytes  "Large Control area"
+  ID   1009:     2422 bytes  "Small Control area"
+  ID   1010:      847 bytes  "Big Scroll"
+  ID   1012:      225 bytes  "Small strat window"
+  ID   1020:     1117 bytes  "Message window"
+  ID   1030:      973 bytes  "Tutorial GFX Window"
+  ID   1040:     1488 bytes  "About box"
+  ID   1041:     1409 bytes  "Credit panel"
+  ID   1042:      957 bytes  "Address panel"
+  ID   1043:     1155 bytes  "Scenario panel"
+  ID   1050:      235 bytes  "Talking Head"
+  ID   1060:      679 bytes  "Email must be saved!"
+  ID   2000:     4689 bytes  "Menu Shortcuts dialog"
+  ID   2010:     1812 bytes  "Sound Volumes"
+  ID   2020:      925 bytes  "Monitor depth change"
+  ID   3000:     1913 bytes  "Scenario select window"
+  ID   3010:     3033 bytes  "Random settings"
+  ID   3020:     5169 bytes  "Game Setup"
+  ID   3021:     5086 bytes  "Game Options"
+  ID   3022:     1836 bytes  "Side Setup"
+  ID   3023:     4063 bytes  "Email Setup window"
+  ID   3024:     3534 bytes  "Easy game setup"
+  ID   3030:     7503 bytes  "Settings dialog"
+  ID   3100:      580 bytes  "Start of Turn"
+  ID   3200:     2525 bytes  "Hero Hire"
+  ID   3300:     1636 bytes  "City basic window"
+  ID   3301:     1577 bytes  "City Info"
+  ID   3302:     1389 bytes  "Build screen"
+  ID   3303:     2275 bytes  "Production Info"
+  ID   3304:     2492 bytes  "Vector screen"
+  ID   3305:     1873 bytes  "Ruin screen"
+  ID   3310:     6485 bytes  "Build production dialog"
+  ID   3400:     1621 bytes  "Name dialog"
+  ID   3410:     1737 bytes  "Yes/No dialog"
+  ID   3420:     1621 bytes  "Resign dialog"
+  ID   3500:     2369 bytes  "History basic window"
+  ID   3510:     2730 bytes  "Triumphs window"
+  ID   3600:     1963 bytes  "Army bonus window"
+  ID   3610:     4406 bytes  "Items window"
+  ID   3620:     3513 bytes  "Stack window"
+  ID   3700:     1976 bytes  "Report basic window"
+  ID   3701:      173 bytes  "Bar graph view"
+  ID   3702:      735 bytes  "New Production screen"
+  ID   3800:     1782 bytes  "Combat victory"
+  ID   3810:     2696 bytes  "Pillage/Sack"
+  ID   3900:     1841 bytes  "Edit Signpost"
+  ID   4000:     5396 bytes  "Hero Inspect window"
+  ID   4010:     6333 bytes  "Hero Level window"
+  ID   4020:     1129 bytes  "Hero New Level window"
+  ID   4100:     1745 bytes  "Search window"
+  ID   4110:     1012 bytes  "Temple window"
+  ID   4120:     2575 bytes  "Sage window"
+  ID   4130:     1951 bytes  "Item List window"
+  ID   4200:     2107 bytes  "Quest report window"
+  ID   4300:      859 bytes  "Diplomacy basic window"
+  ID   4301:     2255 bytes  "Diplomacy Report view"
+  ID   4302:     5217 bytes  "Diplomacy Action view"
+  ID   4400:      756 bytes  "Combat window"
+  ID   4401:       90 bytes  "TImage template"
+  ID   4402:      105 bytes  "TProdView template"
+  ID   4410:     1130 bytes  "Medal Award window"
+  ID   4420:     1588 bytes  "Military advisor window"
+  ID   4500:     2066 bytes  "Resign window"
+  ID   4510:     1089 bytes  "Victory window"
+  ID   4600:     7965 bytes  "Fight order dialog"
+
+============================================================
+Type: 'W2D ' (1 resources)
+============================================================
+  ID      0:        2 bytes  "Owner resource"
+
+============================================================
+Type: 'WDEF' (3 resources)
+============================================================
+  ID      3:     5828 bytes  "Infinity Windoid 2.5.1"
+  ID    128:      552 bytes  "Region WDEF.c"
+  ID    129:      744 bytes  "Balloon Help Window"
+
+============================================================
+Type: 'WIND' (1 resources)
+============================================================
+  ID   1000:       29 bytes
+
+============================================================
+Type: 'acur' (1 resources)
+============================================================
+  ID    256:       36 bytes
+
+============================================================
+Type: 'aedt' (1 resources)
+============================================================
+  ID    400:       60 bytes
+
+============================================================
+Type: 'cctb' (1 resources)
+============================================================
+  ID   2000:       40 bytes
+
+============================================================
+Type: 'cfrg' (1 resources)
+============================================================
+  ID      0:       88 bytes
+
+============================================================
+Type: 'cicn' (75 resources)
+============================================================
+  ID   1000:      190 bytes
+  ID   1001:      190 bytes
+  ID   1002:      190 bytes
+  ID   1003:      190 bytes
+  ID   1004:      226 bytes
+  ID   1005:      738 bytes
+  ID   1006:      738 bytes
+  ID   1007:     1594 bytes
+  ID   1008:     1586 bytes
+  ID   1009:     1594 bytes
+  ID   1011:      130 bytes
+  ID   1012:      130 bytes
+  ID   1013:      130 bytes
+  ID   1014:      130 bytes
+  ID   1015:      146 bytes
+  ID   1016:      130 bytes
+  ID   1017:      130 bytes
+  ID   1018:      130 bytes
+  ID   1019:      130 bytes
+  ID   1020:      190 bytes
+  ID   2000:      430 bytes
+  ID   2001:      810 bytes
+  ID   2002:      554 bytes
+  ID   2003:      810 bytes
+  ID   2004:      802 bytes
+  ID   2005:      786 bytes
+  ID   2006:      778 bytes
+  ID   2007:      786 bytes
+  ID   2008:      554 bytes
+  ID   2009:      778 bytes
+  ID   2010:      554 bytes
+  ID   2011:      842 bytes
+  ID   2012:      778 bytes
+  ID   2013:      554 bytes
+  ID   2014:      802 bytes
+  ID   2015:      810 bytes
+  ID   2016:      554 bytes
+  ID   2017:      778 bytes
+  ID   2018:      810 bytes
+  ID   2019:      554 bytes
+  ID   2020:      802 bytes
+  ID   2021:      786 bytes
+  ID   2022:      802 bytes
+  ID   2023:      430 bytes
+  ID   2024:      554 bytes
+  ID   2025:      810 bytes
+  ID   2050:      354 bytes
+  ID   2051:      354 bytes
+  ID   3020:     1366 bytes
+  ID   3021:     1366 bytes
+  ID   3022:     1358 bytes
+  ID   3023:     1374 bytes
+  ID   3024:     2278 bytes
+  ID   3025:     2270 bytes
+  ID   3026:      482 bytes
+  ID   3300:      906 bytes
+  ID   3301:      906 bytes
+  ID   3302:      906 bytes
+  ID   3303:      634 bytes
+  ID   3310:      442 bytes
+  ID   3320:      626 bytes
+  ID   3321:      626 bytes
+  ID   3500:      634 bytes
+  ID   3501:      634 bytes
+  ID   3502:      634 bytes
+  ID   3503:      970 bytes
+  ID   3504:      262 bytes
+  ID   3505:      262 bytes
+  ID   3506:      238 bytes
+  ID   3507:      238 bytes
+  ID   3700:      930 bytes
+  ID   3701:      930 bytes
+  ID   4300:      922 bytes
+  ID   4301:      922 bytes
+  ID   4302:      922 bytes
+
+============================================================
+Type: 'clut' (3 resources)
+============================================================
+  ID   1000:       24 bytes
+  ID   1001:       24 bytes
+  ID   1004:       24 bytes
+
+============================================================
+Type: 'crsr' (13 resources)
+============================================================
+  ID   1000:      202 bytes
+  ID   1001:      322 bytes
+  ID   1002:      338 bytes
+  ID   1003:      322 bytes
+  ID   1004:      202 bytes
+  ID   1005:      202 bytes
+  ID   1006:      202 bytes
+  ID   1007:      322 bytes
+  ID   1008:      250 bytes
+  ID   1009:      322 bytes
+  ID   1010:      322 bytes
+  ID   1011:      322 bytes
+  ID   1012:      202 bytes
+
+============================================================
+Type: 'errs' (2 resources)
+============================================================
+  ID    128:      240 bytes
+  ID    129:       60 bytes
+
+============================================================
+Type: 'hdlg' (1 resources)
+============================================================
+  ID   1000:       50 bytes
+
+============================================================
+Type: 'hmnu' (3 resources)
+============================================================
+  ID      2:      248 bytes
+  ID      3:      240 bytes
+  ID      4:      112 bytes
+
+============================================================
+Type: 'icl4' (12 resources)
+============================================================
+  ID    128:      512 bytes
+  ID    129:      512 bytes
+  ID    130:      512 bytes
+  ID    131:      512 bytes
+  ID    132:      512 bytes
+  ID    133:      512 bytes
+  ID    134:      512 bytes
+  ID    135:      512 bytes
+  ID    136:      512 bytes
+  ID    137:      512 bytes
+  ID    138:      512 bytes
+  ID    139:      512 bytes
+
+============================================================
+Type: 'icl8' (12 resources)
+============================================================
+  ID    128:     1024 bytes
+  ID    129:     1024 bytes
+  ID    130:     1024 bytes
+  ID    131:     1024 bytes
+  ID    132:     1024 bytes
+  ID    133:     1024 bytes
+  ID    134:     1024 bytes
+  ID    135:     1024 bytes
+  ID    136:     1024 bytes
+  ID    137:     1024 bytes
+  ID    138:     1024 bytes
+  ID    139:     1024 bytes
+
+============================================================
+Type: 'ics#' (12 resources)
+============================================================
+  ID    128:       64 bytes
+  ID    129:       64 bytes
+  ID    130:       64 bytes
+  ID    131:       64 bytes
+  ID    132:       64 bytes
+  ID    133:       64 bytes
+  ID    134:       64 bytes
+  ID    135:       64 bytes
+  ID    136:       64 bytes
+  ID    137:       64 bytes
+  ID    138:       64 bytes
+  ID    139:       64 bytes
+
+============================================================
+Type: 'ics4' (12 resources)
+============================================================
+  ID    128:      128 bytes
+  ID    129:      128 bytes
+  ID    130:      128 bytes
+  ID    131:      128 bytes
+  ID    132:      128 bytes
+  ID    133:      128 bytes
+  ID    134:      128 bytes
+  ID    135:      128 bytes
+  ID    136:      128 bytes
+  ID    137:      128 bytes
+  ID    138:      128 bytes
+  ID    139:      128 bytes
+
+============================================================
+Type: 'ics8' (12 resources)
+============================================================
+  ID    128:      256 bytes
+  ID    129:      256 bytes
+  ID    130:      256 bytes
+  ID    131:      256 bytes
+  ID    132:      256 bytes
+  ID    133:      256 bytes
+  ID    134:      256 bytes
+  ID    135:      256 bytes
+  ID    136:      256 bytes
+  ID    137:      256 bytes
+  ID    138:      256 bytes
+  ID    139:      256 bytes
+
+============================================================
+Type: 'kind' (1 resources)
+============================================================
+  ID    128:      430 bytes
+
+============================================================
+Type: 'mem!' (2 resources)
+============================================================
+  ID    129:       20 bytes
+  ID   1000:       20 bytes
+
+============================================================
+Type: 'pltt' (2 resources)
+============================================================
+  ID   1000:     4112 bytes  "Deluxe Mac Palette"
+  ID   1004:       48 bytes  "B&W"
+
+============================================================
+Type: 'ppat' (3 resources)
+============================================================
+  ID   1000:      102 bytes
+  ID   1001:      102 bytes
+  ID   1002:      102 bytes
+
+============================================================
+Type: 'res!' (2 resources)
+============================================================
+  ID    129:      148 bytes
+  ID   1000:       90 bytes
+
+============================================================
+Type: 'seg!' (2 resources)
+============================================================
+  ID    129:      148 bytes
+  ID   1000:      585 bytes
+
+============================================================
+Type: 'snd ' (36 resources)
+============================================================
+  ID   1000:     3400 bytes  "ARMY"
+  ID   1001:     3174 bytes  "ARMY2"
+  ID   1002:     2484 bytes  "CHORD"
+  ID   1003:     2521 bytes  "DING"
+  ID   1004:    19100 bytes  "DRAMATIC"
+  ID   1005:    13506 bytes  "ORCH"
+  ID   1006:    12169 bytes  "SPLASH"
+  ID   1007:    15370 bytes  "TURN"
+  ID   1008:    35311 bytes  "VBEGIN"
+  ID   1009:    38571 bytes  "VGOLD00"
+  ID   1010:    39557 bytes  "VGOLD01"
+  ID   1011:    43767 bytes  "VGOLD01A"
+  ID   1012:    22510 bytes  "VGREET0"
+  ID   1013:    32837 bytes  "VHERO00"
+  ID   1014:    34907 bytes  "VHERO01"
+  ID   1015:    39407 bytes  "VLOSE05"
+  ID   1016:    38117 bytes  "VLOSE10"
+  ID   1017:    38387 bytes  "VLOSE15"
+  ID   1018:    38877 bytes  "VLOSE20"
+  ID   1019:    39579 bytes  "VLOSE25"
+  ID   1020:    39745 bytes  "VLOSE35"
+  ID   1021:    35943 bytes  "VMESS00"
+  ID   1022:    42328 bytes  "VMESS01"
+  ID   1023:    32631 bytes  "VMESS02"
+  ID   1024:    38629 bytes  "VMESS03"
+  ID   1025:    21878 bytes  "VMOMENT"
+  ID   1026:    39258 bytes  "VQUIT"
+  ID   1027:    37071 bytes  "VWIN05"
+  ID   1028:    37963 bytes  "VWIN05A"
+  ID   1029:    35130 bytes  "VWIN10"
+  ID   1030:    39471 bytes  "VWIN15"
+  ID   1031:    37999 bytes  "VWIN20"
+  ID   1032:    36501 bytes  "VWIN25"
+  ID   1033:    39013 bytes  "VWIN30"
+  ID   1034:    32599 bytes  "VWIN35"
+  ID   1035:    22891 bytes  "WAR"
+
+============================================================
+Type: 'vers' (1 resources)
+============================================================
+  ID      1:       53 bytes
+
+============================================================
+Type: 'wctb' (1 resources)
+============================================================
+  ID   1000:       48 bytes

@@ -182,6 +182,7 @@ extern pascal ComponentResult TuneQueue(ComponentInstance tp, unsigned long *tun
     unsigned long queueFlags, TuneCallBackUPP callBackProc, long refCon);
 extern pascal ComponentResult TuneSetVolume(ComponentInstance tp, Fixed volume);
 extern pascal ComponentResult TuneStop(ComponentInstance tp, long stopFlag);
+extern pascal ComponentResult TuneUnroll(ComponentInstance tp);
 
 static ComponentInstance gTunePlayer = NULL;
 static Handle gTuneDataH = NULL;
@@ -241,8 +242,9 @@ static void InitMusicSystem(void)
 {
     gTunePlayer = OpenDefaultComponent('tune', 0);
     if (gTunePlayer == NULL) {
-        /* QTMA TunePlayer not available — music disabled */
         gMusicEnabled = false;
+    } else {
+        gMusicEnabled = true;
     }
 }
 
@@ -311,22 +313,41 @@ static void LoadAndPlayMusic(short state)
     DetachResource(headH);
     gTuneHeaderH = headH;
 
-    /* Set header and preroll */
-    TuneSetHeader(gTunePlayer, (unsigned long *)*gTuneHeaderH);
-    TunePreroll(gTunePlayer);
+    /* Set header and preroll — with error checking to prevent hangs */
+    {
+        ComponentResult err1, err2;
+        err1 = TuneSetHeader(gTunePlayer, (unsigned long *)*gTuneHeaderH);
+        if (err1 != 0) {
+            /* QTMA failed — disable music to prevent future hangs */
+            gMusicEnabled = false;
+            DisposeHandle(gTuneDataH); gTuneDataH = NULL;
+            DisposeHandle(gTuneHeaderH); gTuneHeaderH = NULL;
+            return;
+        }
+        err2 = TunePreroll(gTunePlayer);
+        if (err2 != 0) {
+            gMusicEnabled = false;
+            DisposeHandle(gTuneDataH); gTuneDataH = NULL;
+            DisposeHandle(gTuneHeaderH); gTuneHeaderH = NULL;
+            return;
+        }
+    }
 
-    /* Volume: match original formula from sound.c
-     * vol = (sSoundMusic * 4 - sSoundMusic) << 11  (for sSoundMusic in 0-10) */
+    /* Volume: match original formula from sound.c */
     fixedVol = ((long)sSoundMusic * 3L) << 11;
     TuneSetVolume(gTunePlayer, fixedVol);
 
     /* Queue for playback: -1 = play to end, queueFlags=0 = no loop */
-    TuneQueue(gTunePlayer, (unsigned long *)*gTuneDataH,
-              (Fixed)0x10000L, /* time scale */
-              0,               /* tuneStartPosition */
-              (unsigned long)-1L,  /* tuneStopPosition: -1 = play to end */
-              0,               /* queueFlags: 0 = play once */
-              (TuneCallBackUPP)NULL, 0);
+    {
+        ComponentResult err3;
+        err3 = TuneQueue(gTunePlayer, (unsigned long *)*gTuneDataH,
+                  (Fixed)0x10000L, 0, (unsigned long)-1L, 0,
+                  (TuneCallBackUPP)NULL, 0);
+        if (err3 != 0) {
+            gMusicEnabled = false;
+            return;
+        }
+    }
 
     /* Set volume again after queue (matches original pattern) */
     TuneSetVolume(gTunePlayer, fixedVol);
@@ -391,6 +412,7 @@ static QuestState sPlayerQuests[8];  /* one per player */
 #define ITEM_TYPE_FLYING    5  /* stack becomes flying */
 #define ITEM_TYPE_MOVEMENT  6  /* doubles stack movement */
 #define ITEM_TYPE_GOLD      7  /* +value gold per city per turn */
+#define ITEM_TYPE_FLAT_PLUS 8  /* flat +1 command bonus to all stacked units (68k FUN_000027de) */
 
 typedef struct {
     char name[20];
@@ -717,8 +739,30 @@ static short sSelectedArmySet = 0;  /* index into sArmySetNames */
 #define MAX_UNIT_TYPES    29
 #define UNIT_TYPE_ENTRY   0x3E  /* 62 bytes per entry */
 static unsigned char sUnitTypeTable[MAX_UNIT_TYPES * UNIT_TYPE_ENTRY];
+static unsigned char sUnitTypeTableBase[MAX_UNIT_TYPES * UNIT_TYPE_ENTRY]; /* original (pre-variance) */
 static short sUnitTypeCount = 0;
 static Boolean sUnitTypesLoaded = false;
+
+/* Movement cost table: 9 terrain types x 29 unit types.
+ * Separate from gs+0x60C which is the fight order table.
+ * Initialized during scenario load, before fight order init overwrites gs+0x60C. */
+static unsigned char sMoveCostTable[9 * 29];
+
+/* Wavefront pathfinder (68k CODE_115 FUN_000012c6).
+ * Cost grid: 112x156 shorts. Terrain cost cache: 112x156 bytes.
+ * Direction buffer: 200 bytes, each = direction 0-7, 0xFF = end. */
+#define PATH_GRID_W      112
+#define PATH_GRID_H      156
+#define PATH_COST_MAX    30000
+#define PATH_COST_BLOCK  30001
+#define PATH_MAX_STEPS   200
+static short         sPathCostGrid[PATH_GRID_W * PATH_GRID_H];
+static unsigned char sPathTerrainCache[PATH_GRID_W * PATH_GRID_H];
+static unsigned char sPathDirBuffer[PATH_MAX_STEPS];
+static short         sPathLength;
+/* Direction offsets: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW */
+static const short   sPathDX[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+static const short   sPathDY[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 
 /* City sprite sheet: PICT 25000 from Cities folder (640x240, 20x8 grid). */
 #define CITY_PICT_ID 25000
@@ -736,11 +780,33 @@ static short sMinimapZoom = 0;  /* 0=small(124x160), 1=medium(180x220), 2=large(
 /* Selected army tracking: -1 = no selection */
 static short sSelectedArmy = -1;
 
+/* === Stack grouping system (68k parallel arrays) ===
+ * Up to 8 armies can share one map tile.  These arrays track
+ * which armies are at the selected tile and how they are grouped
+ * for movement.  Armies with the same groupId move together.
+ * The 'selected' flag marks which armies are in the active group. */
+#define MAX_STACK 8
+static short       sStackArmyIdx[MAX_STACK]; /* army record indices (into gs+0x1604) */
+static short       sStackGroupId[MAX_STACK]; /* group assignment (0-7) */
+static short       sStackSelected[MAX_STACK]; /* 1=in active group, 0=not */
+static short       sStackSep[MAX_STACK];     /* separator: 0=group header, -1=same group */
+static short       sStackCount = 0;          /* number of armies at selected tile */
+static short       sActiveSlot = -1;         /* first selected slot, -1 if mixed */
+
+/* Backup arrays for Cancel in stack dialog */
+static short       sBakArmyIdx[MAX_STACK];
+static short       sBakGroupId[MAX_STACK];
+static short       sBakSelected[MAX_STACK];
+static short       sBakSep[MAX_STACK];
+static short       sBakStackCount = 0;
+static short       sBakActiveSlot = -1;
+
 /* Undo state: saves last army move for Cmd+Z */
 static short sUndoArmyIdx = -1;
 static short sUndoFromX = -1;
 static short sUndoFromY = -1;
 static short sUndoMovePts = -1;
+static short sUndoFortify = 0;
 
 /* Double-click detection state */
 static unsigned long sLastMapClickTick = 0;
@@ -765,6 +831,14 @@ static short sStatusTileY = -1;
 #define HIST_EVT_HERO      3
 #define HIST_EVT_DEFEAT    4
 #define HIST_EVT_DIPLOMACY 5
+
+/* Diplomacy state values for bits 2-3 of diplomacy byte (68k CODE_052/117)
+ * Byte layout: bits 0-1=displayed, 2-3=current state, 4=notify, 5=direction, 6-7=previous */
+#define DIPLO_PEACE    0  /* at peace, no alliance */
+#define DIPLO_ALLIANCE 1  /* allied */
+#define DIPLO_WAR      2  /* at war */
+#define DIPLO_GET_STATE(b)       (((b) >> 2) & 3)
+#define DIPLO_SET_STATE(b, s)    (((b) & 0xF3) | (((s) & 3) << 2))
 static struct {
     short turn;
     short eventType;
@@ -826,10 +900,15 @@ static void RecordTurnSnapshot(void)
 #define FOG_MAP_W 112
 #define FOG_MAP_H 156
 #define FOG_BYTES_PER_PLAYER ((FOG_MAP_W * FOG_MAP_H + 7) / 8)
-#define FOG_SIGHT_RANGE 3  /* tiles of visibility around armies/cities */
+/* 68k fog reveal: asymmetric [-2,+3] in both axes (6 tiles, not 7) */
+#define FOG_SIGHT_MIN -2  /* tiles visible in negative direction */
+#define FOG_SIGHT_MAX  3  /* tiles visible in positive direction */
 
 static unsigned char sFogExplored[8][FOG_BYTES_PER_PLAYER];  /* ever seen */
 static unsigned char sFogVisible[8][FOG_BYTES_PER_PLAYER];   /* currently visible */
+
+/* Forward declaration — needed by FogUpdatePlayer before main forward decl block */
+static short GetEffectiveUnitClass(short armyIdx);
 
 static void FogSetBit(unsigned char *map, short x, short y)
 {
@@ -847,13 +926,30 @@ static Boolean FogGetBit(unsigned char *map, short x, short y)
     return (map[idx >> 3] & (1 << (idx & 7))) != 0;
 }
 
-/* Reveal area around a point for a given player */
+/* Reveal area around a point for a given player — city vision [-2,+3] (6x6)
+ * 68k CODE_067 FUN_00002ab4: cities get full asymmetric vision range */
 static void FogReveal(short player, short cx, short cy)
 {
     short dx, dy;
     if (player < 0 || player > 7) return;
-    for (dy = -FOG_SIGHT_RANGE; dy <= FOG_SIGHT_RANGE; dy++) {
-        for (dx = -FOG_SIGHT_RANGE; dx <= FOG_SIGHT_RANGE; dx++) {
+    for (dy = FOG_SIGHT_MIN; dy <= FOG_SIGHT_MAX; dy++) {
+        for (dx = FOG_SIGHT_MIN; dx <= FOG_SIGHT_MAX; dx++) {
+            FogSetBit(sFogExplored[player], cx + dx, cy + dy);
+            FogSetBit(sFogVisible[player], cx + dx, cy + dy);
+        }
+    }
+}
+
+/* Reveal area around a unit — radius depends on unit type (68k CODE_067 FUN_00002c20)
+ * Flying units (class 0x0E): [-2,+2] (5x5). Normal units: [-1,+1] (3x3). */
+static void FogRevealUnit(short player, short cx, short cy, Boolean isFlying)
+{
+    short dx, dy, rMin, rMax;
+    if (player < 0 || player > 7) return;
+    rMin = isFlying ? -2 : -1;
+    rMax = isFlying ?  2 :  1;
+    for (dy = rMin; dy <= rMax; dy++) {
+        for (dx = rMin; dx <= rMax; dx++) {
             FogSetBit(sFogExplored[player], cx + dx, cy + dy);
             FogSetBit(sFogVisible[player], cx + dx, cy + dy);
         }
@@ -884,14 +980,16 @@ static void FogUpdatePlayer(short player)
         }
     }
 
-    /* Reveal around owned armies */
+    /* Reveal around owned armies (68k CODE_067 FUN_00002c20:
+     * flying units get [-2,+2], normal units get [-1,+1]) */
     {
         short armyCount = *(short *)(gs + 0x1602);
         if (armyCount > 100) armyCount = 100;
         for (i = 0; i < armyCount; i++) {
             unsigned char *army = gs + 0x1604 + i * 0x42;
             if ((short)(unsigned char)army[0x15] == player) {
-                FogReveal(player, *(short *)(army + 0x00), *(short *)(army + 0x02));
+                Boolean flying = (GetEffectiveUnitClass(i) == 0x0E);
+                FogRevealUnit(player, *(short *)(army + 0x00), *(short *)(army + 0x02), flying);
             }
         }
     }
@@ -997,10 +1095,13 @@ static void GetUnitTypeName(short unitType, Str255 pName)
  *   [0]=strength, [1]=prod_turns, [2]=gold_cost, [3]=movement */
 static short GetUnitTypeStat(short unitType, short statIndex)
 {
+    /* DAT 20000 stores stats as big-endian shorts with the game value
+     * in the high byte (e.g., strength 3 = 0x0300). The 68k reads these
+     * as char casts (high byte only). Return the high byte. */
     if (sUnitTypesLoaded && unitType >= 0 && unitType < sUnitTypeCount) {
         unsigned char *entry = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
         unsigned char *stat = entry + 0x16 + statIndex * 2;
-        return (short)((stat[0] << 8) | stat[1]);
+        return (short)stat[0]; /* high byte = actual game value */
     }
     return 0;
 }
@@ -1020,20 +1121,34 @@ static short GetProductionTurns(short unitType)
     return 4;  /* default */
 }
 
+/* Recalculate army strength display: SUM(HP * 2) for all occupied slots */
+static void RecalcArmyStrength(unsigned char *army);
+
 /* Main map chrome dimensions */
 #define SCROLLBAR_W    16   /* width of right scrollbar track */
 #define SCROLLBAR_H    18   /* height of bottom bar (compact shield area + padding) */
-#define SHIELD_ICON_W  13   /* width per shield slot (scaled down from native 39x36) */
-#define SHIELD_ICON_H  13   /* height per shield icon (scaled down from native 39x36) */
-#define SHIELD_GAP      3   /* pixels between each shield icon */
-#define SHIELD_AREA_W  (MAX_FACTIONS * SHIELD_ICON_W + (MAX_FACTIONS - 1) * SHIELD_GAP + 3)
+#define SHIELD_SLOT_W  16   /* 68k CODE_067: 16px stride per shield slot */
+#define SHIELD_ICON_W  15   /* actual icon width within slot (15x13 from PICT 30024) */
+#define SHIELD_ICON_H  13   /* actual icon height (15x13 from PICT 30024) */
+#define SHIELD_STRIP_W 128  /* 68k: total shield strip = 8 slots * 16px = 128px */
 
-/* Shield icons: cicn 30600-30607 from shield set file, fallback to terrain file */
+/* Shield icons: cicn 30600-30607 from external shield set file (e.g. Elemental Shields).
+ * For default armies (no external file), shields come from PICT 30024 sprite sheet. */
 static CIconHandle sShieldIcons[MAX_FACTIONS];
 static Boolean     sShieldsLoaded = false;
 static short       sShieldResFile = -1;          /* resource file ref for shield set */
-static GWorldPtr   sShieldBigGW   = NULL;        /* PICT 15009: big shields 288x59 */
-static GWorldPtr   sShieldSmallGW = NULL;        /* PICT 15010: small shields 368x64 */
+static GWorldPtr   sShieldBigGW   = NULL;        /* PICT 30011/15009: big shields (capital banners) */
+static GWorldPtr   sShieldSmallGW = NULL;        /* PICT 30024/15010: small shields (dialog+map) */
+static RGBColor    sShieldSheetBgColor;           /* background color sampled from PICT 30024 for transparent blit */
+
+/* PICT 30024 layout: 368x64, multi-region sprite sheet.
+ * Row 0 (y=0..26):  map shields — 26px wide x 27px tall, stride 26.
+ * Row 1 (y=27..62): banner shields — 31px wide x 36px tall, stride 31.
+ * Small icons at x=208: 13x15 (stride 13).
+ * 68k CODE_067 case 3: srcRect = {0, owner*26, 27, owner*26+26}. */
+#define SMALL_SHIELD_W    26
+#define SMALL_SHIELD_H    27
+#define SMALL_SHIELD_ROW1 27
 
 /* Native Mac scrollbar controls for main game window */
 static ControlHandle sVScrollBar = NULL;
@@ -1041,6 +1156,9 @@ static ControlHandle sHScrollBar = NULL;
 
 /* Display depth save/restore for 256-color switching */
 static short       sOriginalDepth = 0;  /* 0 = not changed */
+
+/* Minimap ocean background (PICT 1012, 224x312) */
+static GWorldPtr   sMinimapOceanGW = NULL;
 
 /* Color cursors (crsr resources) */
 static CCrsrHandle sDefaultCursor = NULL;    /* crsr 1000: default game cursor */
@@ -1056,6 +1174,7 @@ static CCrsrHandle sHandCursor    = NULL;    /* crsr 1003: map scrolling */
 #define NUM_CMD_ICONS      6    /* cicn 1000-1005: command buttons */
 #define NUM_SCROLL_ICONS   9    /* cicn 1011-1019: 3x3 directional pad */
 #define NUM_SHORTCUT_SLOTS 4    /* visible shortcut slots at bottom */
+#define INFO_LEFT_PAD      7    /* left padding in info panel */
 static CIconHandle sShortcutIcons[NUM_SHORTCUT_ICONS]; /* cicn 2000-2025 */
 static CIconHandle sCmdIcons[NUM_CMD_ICONS];           /* cicn 1000-1005 */
 static CIconHandle sScrollIcons[NUM_SCROLL_ICONS];     /* cicn 1011-1019 */
@@ -1117,6 +1236,74 @@ static short  sScenarioCount = 0;
 
 
 /* ===================================================================
+ * CenterViewportOnPlayer — Center the map viewport on a player's capital
+ *
+ * Finds the current player (gs+0x110) and centers the viewport on their
+ * capital city. Falls back to first owned army if no capital found.
+ * Must be called after GameInit AND after ShowGameSetup changes the player.
+ * =================================================================== */
+static void CenterViewportOnPlayer(void)
+{
+    unsigned char *gs;
+    short currentPlayer, i;
+
+    if (*gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+
+    currentPlayer = *(short *)(gs + 0x110);
+    if (currentPlayer < 0 || currentPlayer >= MAX_FACTIONS) {
+        sViewportX = 0; sViewportY = 0;
+        return;
+    }
+
+    /* Try capital city first (68k: verify capital still owned by player) */
+    {
+        unsigned char *pstat = gs + 0x186 + currentPlayer * 0x14;
+        short capX = *(short *)(pstat + 0x04);
+        short capY = *(short *)(pstat + 0x06);
+
+        if (capX > 0 || capY > 0) {
+            short cci, ccc = *(short *)(gs + 0x810);
+            if (ccc > 40) ccc = 40;
+            for (cci = 0; cci < ccc; cci++) {
+                unsigned char *city = gs + 0x812 + cci * 0x20;
+                if (*(short *)(city + 0x00) == capX &&
+                    *(short *)(city + 0x02) == capY &&
+                    *(short *)(city + 0x04) == currentPlayer) {
+                    sViewportX = capX - 7;
+                    sViewportY = capY - 5;
+                    goto clamp;
+                }
+            }
+        }
+    }
+
+    /* Fallback: find first army belonging to this player */
+    {
+        short armyCount = *(short *)(gs + 0x1602);
+        if (armyCount > 100) armyCount = 100;  /* sanity cap */
+        for (i = 0; i < armyCount; i++) {
+            unsigned char *army = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)army[0x15] == currentPlayer) {
+                sViewportX = *(short *)(army + 0x00) - 7;
+                sViewportY = *(short *)(army + 0x02) - 5;
+                goto clamp;
+            }
+        }
+    }
+
+    sViewportX = 0;
+    sViewportY = 0;
+
+clamp:
+    if (sViewportX < 0) sViewportX = 0;
+    if (sViewportY < 0) sViewportY = 0;
+    if (sViewportX > sMapWidth - 1)  sViewportX = sMapWidth - 1;
+    if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
+}
+
+
+/* ===================================================================
  * GameInit — Initialize game state after loading SCN data
  *
  * Reconstructed from FUN_1003c368 (GameInit, 1232 bytes).
@@ -1135,13 +1322,17 @@ static void GameInit(void)
     gs  = (unsigned char *)*gGameState;
     ext = (*gExtState != 0) ? (unsigned char *)*gExtState : NULL;
 
-    /* --- Basic game state fields --- */
+    /* --- Basic game state fields (68k CODE_117 FUN_00001ab6) --- */
 
     /* Current turn = 1 */
     *(short *)(gs + 0x136) = 1;
 
     /* Game started flag = 0 (not started yet, becomes 1 after first move) */
     *(short *)(gs + 0x15e) = 0;
+
+    /* Clear resource/intro flags (68k: gs+0x118=0, gs+0x158=0) */
+    *(short *)(gs + 0x118) = 0;
+    *(short *)(gs + 0x158) = 0;
 
     /* Map dimensions — write to game state so other code can read them */
     *(short *)(gs + 0x17a) = sMapHeight;
@@ -1151,7 +1342,7 @@ static void GameInit(void)
     *(short *)(gs + 0x176) = 0;  /* scroll_y */
     *(short *)(gs + 0x178) = 0;  /* scroll_x */
 
-    /* Max army slots */
+    /* Max army slots (68k: starts at 10, grows as armies are created) */
     *(short *)(gs + 0x182) = 100;
 
     /* --- Player alive flags --- */
@@ -1176,31 +1367,63 @@ static void GameInit(void)
         *(short *)(gs + 0x164 + i * 2) = i;
     }
 
-    /* --- Hero hire scores: random 1-8 per player --- */
+    /* --- Hero hire scores and tracking (68k CODE_117 FUN_00000a8e) --- */
+    /* 68k randomizes hero hire scores with func_0x00002ad0(8) (random 0-7).
+     * This affects hero availability timing per-player. */
     {
-        unsigned long ticks = TickCount();
+        unsigned short rSeed = (unsigned short)TickCount();
         for (i = 0; i < 8; i++) {
-            *(short *)(gs + 0x1122 + i * 2) = (short)((ticks + i * 7) % 8) + 1;
+            rSeed = rSeed * 25173 + 13849;  /* simple LCG */
+            *(short *)(gs + 0x1122 + i * 2) = (short)(rSeed % 8);
+            *(short *)(gs + 0x1132 + i * 2) = (short)0xFFFF; /* tracking: -1 sentinel */
         }
     }
 
-    /* --- Per-player gold from SCN data --- */
-    /* Gold is at player*0x14 + 0x186. SCN already loaded this.
-     * Verify it's reasonable; if zero, give starting gold. */
+    /* --- Per-player gold initialization (68k CODE_117 FUN_00001ab6) --- */
+    /* 68k preserves SCN scenario gold at gs+0x186+i*0x14 for alive players.
+     * Only zero gold for eliminated players. */
     for (i = 0; i < 8; i++) {
-        short gold = *(short *)(gs + 0x186 + i * 0x14);
-        if (gold == 0 && *(short *)(gs + 0x138 + i * 2) != 0) {
-            *(short *)(gs + 0x186 + i * 0x14) = 100;  /* default starting gold */
+        if (*(short *)(gs + 0x138 + i * 2) == 0) {
+            *(short *)(gs + 0x186 + i * 0x14) = 0;    /* no gold for eliminated */
         }
+        /* Alive players keep their SCN-defined starting gold */
     }
 
-    /* --- Initialize diplomacy table (0x1582, 8x8 matrix of shorts) --- */
-    /* Original encoding: 0x2800 = at peace, 0x0000 = at war.
-     * Table is 128 bytes: 8 rows x 8 cols x 2 bytes per entry.
-     * All entries default to 0x2800 (at peace). */
+    /* --- Initialize diplomacy table (0x1582, 8x8 matrix of BYTES) --- */
+    /* 68k CODE_117 FUN_00000ad2: each entry is 1 byte with bitfields:
+     *   Bits 2-3: diplomatic state (extracted as (byte>>2)&3: 0=peace, 2=war)
+     *   Bit 3 (0x08): war flag
+     *   Bit 4 (0x10): diplomatic change notification
+     *   Bit 5 (0x20): direction of change
+     * Table is 64 bytes: 8 rows x 8 cols x 1 byte per entry.
+     * Default: 0x00 (at peace, all flags clear). */
     for (i = 0; i < 8; i++) {
         for (j = 0; j < 8; j++) {
-            *(short *)(gs + 0x1582 + (i * 8 + j) * 2) = 0x2800;
+            *(gs + 0x1582 + i * 8 + j) = 0x00;
+        }
+    }
+
+    /* --- Extract city ownership from MAP tile data (68k CODE_117) ---
+     * SCN city+0x04 is the city NAME (char[20]), NOT the owner.
+     * The owner nibble lives in MAP tile byte 1, bits 3:0.
+     * We extract it here and overwrite city+0x04 with the numeric owner,
+     * converting the field from name to runtime owner for all downstream code.
+     * City names are separately loaded from the CTY resource into sCityNames[]. */
+    if (*gMapTiles != 0) {
+        unsigned char *mapData = (unsigned char *)*gMapTiles;
+        short cityCount = *(short *)(gs + 0x810);
+        if (cityCount > 40) cityCount = 40;
+        for (i = 0; i < cityCount; i++) {
+            unsigned char *city = gs + 0x812 + i * 0x20;
+            short cx = *(short *)(city + 0x00);
+            short cy = *(short *)(city + 0x02);
+            if (cx >= 0 && cx < 112 && cy >= 0 && cy < 156) {
+                long tileOff = (long)cy * 0xE0 + (long)cx * 2;
+                short tileOwner = (short)(mapData[tileOff + 1] & 0x0F);
+                *(short *)(city + 0x04) = tileOwner;
+            } else {
+                *(short *)(city + 0x04) = (short)0xFF;  /* out of bounds = neutral */
+            }
         }
     }
 
@@ -1216,30 +1439,34 @@ static void GameInit(void)
 
         *(short *)(ext + 0x24a) = cityCount;
 
-        /* Copy city records into extended state format.
-         * SCN city record (0x20 bytes) → extended city record (0x5C bytes).
-         * SCN city layout (at gs + 0x812 + i*0x20):
+        /* City record layout AFTER ownership extraction above:
          *   +0x00: city_x (short)
          *   +0x02: city_y (short)
-         *   +0x04: owner (short, 0-7 or 0xFF=neutral)
+         *   +0x04: owner (short, extracted from MAP tile — was name in SCN)
          *   +0x06: defense (short)
          *   +0x08: income (short)
          *   +0x0A: name_index (short)
          *   +0x0C-0x1F: production data
          */
         for (i = 0; i < cityCount; i++) {
+            unsigned char *city = gs + 0x812 + i * 0x20;
             unsigned char *extCity = ext + 0x24c + i * 0x5c;
+            short siteType = (short)(unsigned char)city[0x18];
 
             /* Mark city as active */
             *(short *)(extCity + 0x00) = 1;
 
-            /* Copy basic fields */
-            *(short *)(extCity + 0x02) = 0;   /* producing_type = unit type 0 (default) */
+            /* Default: produce nothing (-1) for non-cities */
+            *(short *)(extCity + 0x02) = -1;
             *(short *)(extCity + 0x04) = -1;  /* garrison_army = none */
 
-            /* Initialize production slots to empty */
-            for (j = 0; j < 4; j++)
-                *(short *)(extCity + 0x06 + j * 2) = -1;
+            /* Initialize production capability slots from SCN city data.
+             * SCN city record +0x0C-+0x15: up to 5 producible unit type indices.
+             * Each is a short; -1 (0xFFFF) = empty slot. */
+            for (j = 0; j < 4; j++) {
+                short pType = *(short *)(city + 0x0C + j * 2);
+                *(short *)(extCity + 0x06 + j * 2) = pType;
+            }
 
             /* Initialize build queue to empty */
             for (j = 0; j < 12; j++)
@@ -1249,11 +1476,21 @@ static void GameInit(void)
             for (j = 0; j < 4; j++)
                 *(short *)(extCity + 0x3e + j * 2) = -1;
 
-            /* Initialize production timer (4 turns default) */
-            *(short *)(extCity + 0x58) = 4;
-
-            /* Copy city flags from SCN */
-            /* The SCN has production capabilities encoded in the city data */
+            /* For actual cities (not ruins/temples), start producing
+             * the first available unit type */
+            if (siteType == 0) {
+                short firstProd = *(short *)(extCity + 0x06);
+                if (firstProd >= 0 && firstProd < MAX_UNIT_TYPES) {
+                    *(short *)(extCity + 0x02) = firstProd;
+                    *(short *)(extCity + 0x58) = GetProductionTurns(firstProd);
+                } else {
+                    /* Fallback: produce unit type 0 */
+                    *(short *)(extCity + 0x02) = 0;
+                    *(short *)(extCity + 0x58) = GetProductionTurns(0);
+                }
+            } else {
+                *(short *)(extCity + 0x58) = 0;  /* non-cities don't produce */
+            }
         }
 
         /* Clear per-army byte arrays */
@@ -1293,7 +1530,43 @@ static void GameInit(void)
         }
     }
 
+    /* --- Validate player capitals (68k CODE_117 FUN_00001ab6 step 2) --- */
+    /* If a player has no capital city, mark them as eliminated.
+     * This prevents orphaned players with no home base. */
+    {
+        short factionCount = *(short *)(gs + 0x10C);
+        if (factionCount < 1 || factionCount > 8) factionCount = 8;
+        for (i = 0; i < factionCount; i++) {
+            unsigned char *pstat = gs + 0x186 + i * 0x14;
+            short capX = *(short *)(pstat + 0x04);
+            short capY = *(short *)(pstat + 0x06);
+            if (capX == 0 && capY == 0) {
+                /* No capital found — check if player has any cities at all */
+                short cityCount = *(short *)(gs + 0x810);
+                Boolean hasCity = false;
+                if (cityCount > 40) cityCount = 40;
+                for (j = 0; j < cityCount; j++) {
+                    unsigned char *site = gs + 0x812 + j * 0x20;
+                    if (*(short *)(site + 0x04) == i &&
+                        (unsigned char)site[0x18] == 0) {
+                        hasCity = true;
+                        break;
+                    }
+                }
+                if (!hasCity) {
+                    *(short *)(gs + 0x138 + i * 2) = 0;  /* eliminate */
+                    *(short *)(gs + 0x148 + i * 2) = 0;
+                    *(short *)(gs + 0xd0 + i * 2) = 1;   /* force to AI */
+                }
+            }
+        }
+    }
+
     /* --- Initialize army records --- */
+    /* Clear runtime fields for all 100 army slots (matching 68k CODE_116
+     * FUN_0000000c). The SCN data provides static fields (name, type, stats,
+     * owner at +0x15); runtime fields (orders, movement, items) must be
+     * zeroed before gameplay. */
     {
         short armyCount = *(short *)(gs + 0x1602);
         if (armyCount < 0) armyCount = 0;
@@ -1302,58 +1575,426 @@ static void GameInit(void)
         for (i = 0; i < armyCount; i++) {
             unsigned char *army = gs + 0x1604 + i * 0x42;
 
-            /* Clear movement orders */
-            *(short *)(army + 0x36) = 0;  /* target_x = 0 */
-            *(short *)(army + 0x34) = 0;  /* target_y = 0 */
+            /* Clear runtime status bytes */
+            army[0x2c] = 0;  /* build/fortify counter */
+            army[0x2d] = 0;  /* fortification state */
+            army[0x2e] = 0;  /* current movement points (set below) */
+
+            /* Copy SCN owner to runtime owner (68k: +0x15 → +0x2F).
+             * The runtime owner changes during gameplay when armies are
+             * captured; the SCN owner stays fixed for history tracking. */
+            army[0x2f] = army[0x15];
+
+            army[0x30] = 0;  /* has-moved-this-turn flag */
+
+            /* Clear movement orders (hasOrders, targetX, targetY) */
+            *(short *)(army + 0x32) = 0;  /* hasOrders */
+            *(short *)(army + 0x34) = 0;  /* target_x */
+            *(short *)(army + 0x36) = 0;  /* target_y */
+
+            /* Clear status/misc bytes */
+            army[0x38] = army[0x38] & 0xFF;  /* preserve high bits */
+            army[0x39] = 0;
 
             /* Clear hero items (0x3A-0x40) */
             for (j = 0x3a; j <= 0x40; j += 2)
                 *(short *)(army + j) = 0;
 
-            /* Initialize fortification state */
-            army[0x2d] = 0;  /* not fortified */
-            army[0x2e] = 0;
-            army[0x2c] = 0;
-
-            /* Set army as not having moved */
-            army[0x30] = 0;
-
-            /* Set initial movement points from base movement */
-            army[0x2e] = army[0x1a];  /* current_mp = base_mp of first unit */
+            /* Set initial movement points from base movement stat */
+            army[0x2e] = army[0x1a];  /* current_mp = base_mp of lead unit */
         }
     }
 
-    /* --- Center viewport on current player's capital city --- */
+    /* --- Initialize movement cost table (9 terrain x 29 units) --- */
+    /* Copy from gs+0x60C (where SCN data lives) into sMoveCostTable,
+     * then fill defaults if empty. This must happen BEFORE fight order
+     * init in BeginGame() which overwrites gs+0x60C.
+     * Layout: sMoveCostTable[terrainType * 29 + unitType] = cost (0=impassable) */
     {
-        short currentPlayer = *(short *)(gs + 0x110);
-        unsigned char *pstat = gs + 0x186 + currentPlayer * 0x14;
-        short capX = *(short *)(pstat + 0x04);
-        short capY = *(short *)(pstat + 0x06);
-
-        if (capX > 0 || capY > 0) {
-            /* Center on capital */
-            sViewportX = capX - 7;
-            sViewportY = capY - 5;
-        } else {
-            /* Fallback: find first army */
-            short armyCount = *(short *)(gs + 0x1602);
-            Boolean found = false;
-            for (i = 0; i < armyCount && !found; i++) {
-                unsigned char *army = gs + 0x1604 + i * 0x42;
-                if ((short)(unsigned char)army[0x15] == currentPlayer) {
-                    sViewportX = *(short *)(army + 0x00) - 7;
-                    sViewportY = *(short *)(army + 0x02) - 5;
-                    found = true;
+        Boolean tableEmpty = true;
+        BlockMoveData(gs + 0x60C, sMoveCostTable, 9 * 29);
+        for (i = 0; i < 9 * 29 && tableEmpty; i++) {
+            if (sMoveCostTable[i] != 0) tableEmpty = false;
+        }
+        if (tableEmpty) {
+            /* Fill with defaults: land costs by terrain
+             * 68k types: 0=grass,1=forest,2=swamp,3=hills,4=mountain,
+             *            5=shore,6=bridge,7=road,8=river/shallow water */
+            static const unsigned char defaultCosts[9] = {
+                2,  /* 0 grass: 2 MP */
+                3,  /* 1 forest: 3 MP */
+                4,  /* 2 swamp: 4 MP */
+                3,  /* 3 hills: 3 MP */
+                6,  /* 4 mountains: 6 MP (most units can't) */
+                2,  /* 5 shore: 2 MP */
+                2,  /* 6 bridge: 2 MP */
+                2,  /* 7 road: 2 MP (road overlay bonus applied separately) */
+                0,  /* 8 river/shallow water: 0 for land (naval gets 2 via per-unit init) */
+            };
+            short ut, tt;
+            for (ut = 0; ut < 29; ut++) {
+                short isNaval = 0;
+                /* Check if this unit type is naval (terrain class 5 in DAT) */
+                if (sUnitTypesLoaded && ut < sUnitTypeCount) {
+                    unsigned char *ute = sUnitTypeTable + ut * UNIT_TYPE_ENTRY;
+                    short tClass = *(short *)(ute + 0x00);
+                    if (tClass == 5) isNaval = 1;
+                }
+                for (tt = 0; tt < 9; tt++) {
+                    if (isNaval) {
+                        /* Naval: can traverse water and shore, not land */
+                        if (tt == 8)      sMoveCostTable[tt * 29 + ut] = 2;
+                        else if (tt == 5) sMoveCostTable[tt * 29 + ut] = 2;  /* shore */
+                        else              sMoveCostTable[tt * 29 + ut] = 0;  /* land: impassable */
+                    } else {
+                        sMoveCostTable[tt * 29 + ut] = defaultCosts[tt];
+                        /* Mountains: impassable for most except heroes */
+                        if (tt == 4 && ut != 0x1C) sMoveCostTable[tt * 29 + ut] = 0;
+                    }
                 }
             }
-            if (!found) { sViewportX = 0; sViewportY = 0; }
+        }
+    }
+
+    /* --- Activate ~30% of ruins/temples as searchable (68k CODE_117 FUN_0000185e) --- */
+    {
+        short siteCount = *(short *)(gs + 0x810);
+        short numToActivate, activated = 0;
+        if (siteCount > 40) siteCount = 40;
+
+        /* Initialize all sites: active=0, visited_bitmask=0xFF */
+        for (i = 0; i < siteCount; i++) {
+            unsigned char *site = gs + 0x812 + i * 0x20;
+            site[0x1C] = 0;     /* not active */
+            site[0x1E] = 0xFF;  /* visited bitmask: all bits set */
         }
 
-        /* Clamp viewport */
-        if (sViewportX < 0) sViewportX = 0;
-        if (sViewportY < 0) sViewportY = 0;
-        if (sViewportX > sMapWidth - 1)  sViewportX = sMapWidth - 1;
-        if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
+        /* Randomly activate ~30% of ruins/temples/libraries.
+         * First count eligible sites, then activate up to 30% of them. */
+        {
+            short eligibleCount = 0, attempts = 0;
+            for (i = 0; i < siteCount; i++) {
+                short sType = (short)(unsigned char)(gs + 0x812 + i * 0x20)[0x18];
+                if (sType >= 2 && sType <= 5) eligibleCount++;
+            }
+            numToActivate = (eligibleCount * 3) / 10;
+            if (numToActivate < 1 && eligibleCount > 0) numToActivate = 1;
+            if (numToActivate > eligibleCount) numToActivate = eligibleCount;
+
+            while (activated < numToActivate && attempts < siteCount * 10) {
+                short idx = (short)((unsigned short)Random() % siteCount);
+                unsigned char *site = gs + 0x812 + idx * 0x20;
+                short sType = (short)(unsigned char)site[0x18];
+                attempts++;
+                if (site[0x1C] != 0) continue;  /* already active */
+                if (sType >= 2 && sType <= 5) {
+                    site[0x1C] = 1;  /* mark active (searchable) */
+                    site[0x1E] = 0;  /* clear visited bitmask */
+                    activated++;
+                }
+            }
+        }
+    }
+
+    /* --- Place items in ruins (68k CODE_117 FUN_00000f68) --- */
+    /* 68k pre-places 8-22 items at activated ruin/temple/library sites.
+     * Items are from sItemTable, assigned to specific ruins so each item
+     * can only be found once. Powerful items placed farther from capitals. */
+    {
+        short siteCount = *(short *)(gs + 0x810);
+        short itemIdx = 0;
+        short activeSites[40];
+        short activeCount = 0;
+        unsigned short rSeed2 = (unsigned short)TickCount();
+        if (siteCount > 40) siteCount = 40;
+
+        /* Collect activated site types 2-5 (item/defended/gold/ally) */
+        for (i = 0; i < siteCount; i++) {
+            unsigned char *site = gs + 0x812 + i * 0x20;
+            short sType = (short)(unsigned char)site[0x18];
+            if (sType >= 2 && sType <= 5 && site[0x1C] != 0) {
+                if (activeCount < 40)
+                    activeSites[activeCount++] = i;
+            }
+        }
+
+        /* Shuffle active sites for randomized item placement */
+        for (i = activeCount - 1; i > 0; i--) {
+            rSeed2 = rSeed2 * 25173 + 13849;
+            { short swapIdx = (short)(rSeed2 % (i + 1));
+              short tmp = activeSites[i];
+              activeSites[i] = activeSites[swapIdx];
+              activeSites[swapIdx] = tmp; }
+        }
+
+        /* Place items at ruins (up to 22 items, max one per site) */
+        for (i = 0; i < activeCount && itemIdx < 22 && itemIdx < MAX_ITEMS; i++) {
+            unsigned char *site = gs + 0x812 + activeSites[i] * 0x20;
+            unsigned char *itemRec = gs + 0xD12 + itemIdx * 0x1E;
+            const ItemDef *itemDef = &sItemTable[itemIdx];
+            short nameLen = 0;
+
+            /* Copy item name */
+            while (nameLen < 19 && itemDef->name[nameLen] != '\0') {
+                itemRec[nameLen] = (unsigned char)itemDef->name[nameLen];
+                nameLen++;
+            }
+            itemRec[nameLen] = 0;
+
+            /* Set type, value, and location */
+            itemRec[0x14] = (unsigned char)itemDef->type;
+            itemRec[0x15] = (unsigned char)itemDef->value;
+            itemRec[0x16] = 1;  /* status: in ruin */
+            *(short *)(itemRec + 0x18) = activeSites[i];  /* site index */
+            *(short *)(itemRec + 0x1A) = *(short *)(site + 0x00);  /* X */
+            *(short *)(itemRec + 0x1C) = *(short *)(site + 0x02);  /* Y */
+            itemIdx++;
+        }
+    }
+
+    /* --- Create neutral garrison armies (68k CODE_117 FUN_00000be0) --- */
+    /* The original game populates neutral cities with defender armies.
+     * For each neutral city (owner 0xFF), place a garrison army with
+     * 1-3 units of a producible type. */
+    {
+        short siteCount = *(short *)(gs + 0x810);
+        short armyCount = *(short *)(gs + 0x1602);
+        if (siteCount > 40) siteCount = 40;
+        if (armyCount < 0) armyCount = 0;
+
+        for (i = 0; i < siteCount && armyCount < 100; i++) {
+            unsigned char *site = gs + 0x812 + i * 0x20;
+            short sOwner = *(short *)(site + 0x04);
+            short sType = (short)(unsigned char)site[0x18];
+            short sx = *(short *)(site + 0x00);
+            short sy = *(short *)(site + 0x02);
+
+            /* Only garrison actual neutral cities (type 0, owner 0xFF/-1/0x0F) */
+            if (sType != 0) continue;
+            if (sOwner >= 0 && sOwner < 8) continue;  /* player-owned, skip */
+
+            /* Check if city already has an army on it */
+            {
+                Boolean hasArmy = false;
+                for (j = 0; j < armyCount; j++) {
+                    unsigned char *army = gs + 0x1604 + j * 0x42;
+                    if (*(short *)(army + 0x00) == sx &&
+                        *(short *)(army + 0x02) == sy) {
+                        hasArmy = true;
+                        break;
+                    }
+                }
+                if (hasArmy) continue;
+            }
+
+            /* Create a garrison army at this city */
+            {
+                unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
+                short garrisonSize = (short)((unsigned short)Random() % 3) + 1;
+                short prodType;
+
+                /* Use city's first producible unit type, else default to 0 */
+                prodType = *(short *)(site + 0x0C);
+                if (prodType < 0 || prodType >= MAX_UNIT_TYPES) prodType = 0;
+
+                /* Clear the entire army record */
+                for (j = 0; j < 0x42; j++) newArmy[j] = 0;
+
+                /* Position */
+                *(short *)(newArmy + 0x00) = sx;
+                *(short *)(newArmy + 0x02) = sy;
+
+                /* Owner: neutral (0x0F) */
+                newArmy[0x15] = 0x0F;
+                newArmy[0x2f] = 0x0F;
+
+                /* Sprite index: use prodType * 2 (same mapping as player armies) */
+                {
+                    static unsigned char sprMap[] = {0, 2, 4, 6, 8, 10};
+                    if (prodType >= 0 && prodType <= 5)
+                        newArmy[0x14] = sprMap[prodType];
+                    else
+                        newArmy[0x14] = 0;
+                }
+
+                /* Fill unit slots */
+                {
+                    short totalHP = 0;
+                    for (j = 0; j < 4; j++) {
+                        if (j < garrisonSize) {
+                            newArmy[0x16 + j] = (unsigned char)prodType;
+                            newArmy[0x1a + j] = 10;  /* base movement */
+                            newArmy[0x1e + j] = 3;   /* base HP */
+                            newArmy[0x22 + j] = 0;   /* defense bonus */
+                            newArmy[0x26 + j] = 0;   /* experience */
+                            totalHP += 3;
+                        } else {
+                            newArmy[0x16 + j] = 0xFF; /* empty slot */
+                        }
+                    }
+                    RecalcArmyStrength(newArmy);
+                }
+
+                /* Movement points */
+                newArmy[0x2e] = 10;
+
+                armyCount++;
+            }
+        }
+
+        /* Update army count */
+        *(short *)(gs + 0x1602) = armyCount;
+    }
+
+    /* --- Center viewport on current player's capital city --- */
+    CenterViewportOnPlayer();
+
+    /* --- Clear fog and defended bits on map tiles and road data (68k CODE_117 step 23) ---
+     * Map tile byte 1: clear bit 5 (visibility), clear bit 4 (army present)
+     * Road data: clear bit 6 (city-defended) for each tile */
+    if (*gMapTiles != 0) {
+        unsigned char *mapData = (unsigned char *)*gMapTiles;
+        unsigned char *roadData = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
+        short mx, my;
+        for (my = 0; my < 156 && my < sMapHeight; my++) {
+            for (mx = 0; mx < 112 && mx < sMapWidth; mx++) {
+                unsigned short off = my * 0xE0 + mx * 2;
+                mapData[off + 1] &= 0xCF;  /* clear bits 4+5 (army present + visibility) */
+                if (roadData)
+                    roadData[my * 0x70 + mx] &= 0xBF;  /* clear bit 6 (city-defended) */
+            }
+        }
+    }
+
+    /* --- Stamp city/site terrain indices into map tiles (68k CODE_128 FUN_000003ae) ---
+     * Cities overwrite the terrain index (byte 0) in a 2x2 area with special values:
+     *   0x0B = capital, 0x0A = player city, 0x0C = neutral city, 0x09 = ruin/site
+     * Also write owner into byte 1 low nibble. */
+    if (*gMapTiles != 0) {
+        unsigned char *mapData = (unsigned char *)*gMapTiles;
+        short siteCount = *(short *)(gs + 0x810);
+        if (siteCount > 40) siteCount = 40;
+
+        for (i = 0; i < siteCount; i++) {
+            unsigned char *site = gs + 0x812 + i * 0x20;
+            short sx = *(short *)(site + 0x00);
+            short sy = *(short *)(site + 0x02);
+            short sOwner = *(short *)(site + 0x04);
+            short sType = (short)(unsigned char)site[0x18];
+            unsigned char terrIdx;
+            unsigned char ownerNibble;
+            Boolean isCapital = false;
+
+            /* Check if this city is a player's capital (matches pstat capital coords) */
+            if (sType == 0 && sOwner >= 0 && sOwner < 8) {
+                unsigned char *pstat = gs + 0x186 + sOwner * 0x14;
+                short capX = *(short *)(pstat + 0x04);
+                short capY = *(short *)(pstat + 0x06);
+                if (capX == sx && capY == sy) isCapital = true;
+            }
+
+            /* Determine terrain index for this site type */
+            if (isCapital)        terrIdx = 0x0B;  /* capital */
+            else if (sType == 0)  terrIdx = (sOwner >= 0 && sOwner < 8) ? 0x0A : 0x0C;  /* city: player=0A, neutral=0C */
+            else                  terrIdx = 0x09;   /* ruin/temple/library */
+
+            ownerNibble = (sOwner >= 0 && sOwner < 8) ? (unsigned char)sOwner : 0x0F;
+
+            /* Stamp the 2x2 tile area */
+            {
+                short dx, dy;
+                for (dy = 0; dy < 2; dy++) {
+                    for (dx = 0; dx < 2; dx++) {
+                        short tx = sx + dx;
+                        short ty = sy + dy;
+                        if (tx >= 0 && tx < sMapWidth && ty >= 0 && ty < sMapHeight) {
+                            unsigned short off = ty * 0xE0 + tx * 2;
+                            mapData[off] = terrIdx;
+                            mapData[off + 1] = (mapData[off + 1] & 0xF0) | (ownerNibble & 0x0F);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* --- Stamp army owners into map tiles (68k CODE_117 FUN_0000035c) ---
+     * Write army owner into the tile byte 1 low nibble and set army-present bit. */
+    if (*gMapTiles != 0) {
+        unsigned char *mapData = (unsigned char *)*gMapTiles;
+        short armyCount = *(short *)(gs + 0x1602);
+        if (armyCount > 100) armyCount = 100;
+
+        for (i = 0; i < armyCount; i++) {
+            unsigned char *army = gs + 0x1604 + i * 0x42;
+            short ax = *(short *)(army + 0x00);
+            short ay = *(short *)(army + 0x02);
+            short aOwner = (short)(unsigned char)army[0x15];
+
+            if (army[0x16] == 0xFF) continue;  /* empty slot */
+            if (ax < 0 || ay < 0 || ax >= sMapWidth || ay >= sMapHeight) continue;
+
+            {
+                unsigned short off = ay * 0xE0 + ax * 2;
+                unsigned char ownerNib = (aOwner < 8) ? aOwner : 0x0F;
+                mapData[off + 1] = (mapData[off + 1] & 0xE0) | 0x10 | (ownerNib & 0x0F);
+                /* bit 4 = army present, bits 0-3 = owner */
+            }
+        }
+    }
+
+    /* --- Apply random unit stat variance (68k CODE_117 FUN_00002118) --- */
+    /* Each game slightly randomizes unit type stats for variety.
+     * Restore base stats first, then apply small random deltas. */
+    if (sUnitTypesLoaded && sUnitTypeCount > 0) {
+        unsigned short rSeedV = (unsigned short)TickCount();
+        /* Restore original stats from base table */
+        BlockMoveData(sUnitTypeTableBase, sUnitTypeTable,
+                      (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
+        for (i = 0; i < sUnitTypeCount; i++) {
+            unsigned char *ute = sUnitTypeTable + i * UNIT_TYPE_ENTRY;
+            short str = *(short *)(ute + 0x16);
+            short mov = *(short *)(ute + 0x1C);
+            short cost = *(short *)(ute + 0x1A);
+            short turns = *(short *)(ute + 0x18);
+
+            rSeedV = rSeedV * 25173 + 13849;
+            /* 10% chance: strength +/-1 */
+            if ((rSeedV % 10) == 0) {
+                short delta = ((rSeedV / 10) & 1) ? 1 : -1;
+                str += delta;
+                if (str < 1) str = 1;
+                if (str > 9) str = 9;
+                *(short *)(ute + 0x16) = str;
+            }
+            rSeedV = rSeedV * 25173 + 13849;
+            /* 20% chance: movement +/-2 */
+            if ((rSeedV % 5) == 0) {
+                short delta = ((rSeedV / 5) & 1) ? 2 : -2;
+                mov += delta;
+                if (mov < 6) mov = 6;
+                if (mov > 30) mov = 30;
+                *(short *)(ute + 0x1C) = mov;
+            }
+            rSeedV = rSeedV * 25173 + 13849;
+            /* 10% chance: production turns +/-1 */
+            if ((rSeedV % 10) == 0) {
+                short delta = ((rSeedV / 10) & 1) ? 1 : -1;
+                turns += delta;
+                if (turns < 1) turns = 1;
+                if (turns > 20) turns = 20;
+                *(short *)(ute + 0x18) = turns;
+            }
+            rSeedV = rSeedV * 25173 + 13849;
+            /* 10% chance: cost +/-25% */
+            if ((rSeedV % 10) == 0) {
+                short delta = cost / 4;
+                if ((rSeedV / 10) & 1) cost += delta;
+                else cost -= delta;
+                if (cost < 10) cost = 10;
+                *(short *)(ute + 0x1A) = cost;
+            }
+        }
     }
 
     /* --- Initialize fog of war --- */
@@ -1694,9 +2335,9 @@ static void LoadTerrainSprites(void)
     sTerrainGW  = LoadPICTIntoGWorld(30022);  /* tiles 0-95 */
     sTerrainGW2 = LoadPICTIntoGWorld(30023);  /* tiles 96-191 */
 
-    /* Load road/overlay sprite sheet (640x80, 13 columns x 2 rows of 40x40 tiles).
+    /* Load road/overlay sprite sheet (640x80, 13 road tiles per row, 2 rows of 40x40).
      * Tiles 0-16: road segments (RD values 1-17 map to tiles 0-16).
-     * Original uses roadType % 13 for column, roadType / 13 for row. */
+     * Tile index = (RD value - 1). col = tileIdx % 13, row = tileIdx / 13. */
     sRoadGW = LoadPICTIntoGWorld(30021);
 
     /* Generate a 1-bit mask from the road sprite sheet for CopyMask.
@@ -1712,9 +2353,9 @@ static void LoadTerrainSprites(void)
         GetGWorld(&sp, &sd);
         SetGWorld(sRoadGW, NULL);
         LockPixels(roadPM);
-        /* Sample background color from column 13+ (x=520+) which is empty space
-         * past the 13-column tile grid. Original uses palette index 0xF4 (244). */
-        GetCPixel(520, 0, &sRoadBgColor);
+        /* Sample background color from row 1, column 2 (x=80, y=40) which is empty
+         * space in the 16-col grid (only tile 16 is at row 1, col 0). */
+        GetCPixel(80, 40, &sRoadBgColor);
 
         roadBounds = (**roadPM).bounds;
         rw = roadBounds.right - roadBounds.left;
@@ -1787,15 +2428,34 @@ static void LoadTerrainSprites(void)
         }
     }
 
-    /* Try loading shield cicn 30600-30607 from terrain resource file.
-     * Don't set sShieldsLoaded here — LoadShieldIcons() will try
-     * built-in cicn 3020-3027 as fallback later. */
-    {
-        short si;
-        for (si = 0; si < MAX_FACTIONS; si++) {
-            if (sShieldIcons[si] == NULL)
-                sShieldIcons[si] = GetCIcon(30600 + si);
-        }
+    /* Load shield sprite sheets from terrain file while it's the active resource.
+     * Terrain file has NO cicn shield icons — only PICT sprite sheets.
+     * Must load here (not in LoadShieldIcons) because Get1Resource only
+     * searches the current resource file. */
+    if (sShieldBigGW == NULL)
+        sShieldBigGW = LoadPICTIntoGWorld(30011);
+    if (sShieldSmallGW == NULL)
+        sShieldSmallGW = LoadPICTIntoGWorld(30024);
+
+    /* Sample shield sprite sheet background color for transparent blitting.
+     * Pixel (0,0) is faction 0's shield artwork — NOT background!
+     * Sample from (310,26) which is in a gap between sprite regions:
+     * - Right of region F (small emblems, ends x=279)
+     * - Left of region C/D (tiny icons, starts x=312)
+     * - Below region A map shields (ends y=26), between G banners (y=27) */
+    if (sShieldSmallGW != NULL) {
+        CGrafPtr sp; GDHandle sd;
+        Rect gwBounds;
+        GetGWorld(&sp, &sd);
+        SetGWorld(sShieldSmallGW, NULL);
+        LockPixels(GetGWorldPixMap(sShieldSmallGW));
+        gwBounds = (**GetGWorldPixMap(sShieldSmallGW)).bounds;
+        if (gwBounds.right > 310 && gwBounds.bottom > 26)
+            GetCPixel(310, 26, &sShieldSheetBgColor);
+        else
+            GetCPixel(0, 0, &sShieldSheetBgColor);
+        UnlockPixels(GetGWorldPixMap(sShieldSmallGW));
+        SetGWorld(sp, sd);
     }
 
     UseResFile(oldResFile);
@@ -1906,8 +2566,52 @@ static void LoadArmySprites(void)
     for (i = 0; i < ARMY_SHEETS; i++)
         sArmyGW[i] = NULL;
 
-    /* "Default" (index 0) means no external army set — use colored markers */
+    /* "Default" (index 0) means no external army set — load army sprites
+     * from the terrain resource file instead (PICTs 30000-30009). */
     if (sSelectedArmySet == 0) {
+        if (sTerrainResFile != -1) {
+            short oldRes = CurResFile();
+            UseResFile(sTerrainResFile);
+            for (i = 0; i < ARMY_SHEETS; i++) {
+                PicHandle pic = (PicHandle)Get1Resource('PICT', 30000 + i);
+                if (pic == NULL) continue;
+                {
+                    Rect picRect = (**pic).picFrame;
+                    short w = picRect.right - picRect.left;
+                    short h = picRect.bottom - picRect.top;
+                    Rect bounds;
+                    CGrafPtr sp2; GDHandle sd2;
+                    SetRect(&bounds, 0, 0, w, h);
+                    if (NewGWorld(&sArmyGW[i], 0, &bounds, NULL, NULL, 0) == noErr && sArmyGW[i] != NULL) {
+                        GetGWorld(&sp2, &sd2);
+                        SetGWorld(sArmyGW[i], NULL);
+                        LockPixels(GetGWorldPixMap(sArmyGW[i]));
+                        EraseRect(&bounds);
+                        DrawPicture(pic, &bounds);
+                        GetCPixel(0, 0, &sArmyBgColor[i]);
+                        UnlockPixels(GetGWorldPixMap(sArmyGW[i]));
+                        SetGWorld(sp2, sd2);
+                    }
+                }
+                ReleaseResource((Handle)pic);
+            }
+            /* Also load unit type definitions from DAT 20000 in terrain file */
+            {
+                Handle datH = Get1Resource('DAT ', 20000);
+                if (datH != NULL) {
+                    long datSize = GetHandleSize(datH);
+                    HLock(datH);
+                    sUnitTypeCount = (short)(datSize / UNIT_TYPE_ENTRY);
+                    if (sUnitTypeCount > MAX_UNIT_TYPES) sUnitTypeCount = MAX_UNIT_TYPES;
+                    BlockMoveData(*datH, sUnitTypeTable, (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
+                    BlockMoveData(sUnitTypeTable, sUnitTypeTableBase, (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
+                    sUnitTypesLoaded = true;
+                    HUnlock(datH);
+                    ReleaseResource(datH);
+                }
+            }
+            UseResFile(oldRes);
+        }
         sArmyLoaded = true;
         return;
     }
@@ -1984,6 +2688,9 @@ static void LoadArmySprites(void)
             if (sUnitTypeCount > MAX_UNIT_TYPES)
                 sUnitTypeCount = MAX_UNIT_TYPES;
             BlockMoveData(*datH, sUnitTypeTable,
+                          (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
+            /* Save original stats for per-game variance restoration */
+            BlockMoveData(sUnitTypeTable, sUnitTypeTableBase,
                           (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
             sUnitTypesLoaded = true;
             HUnlock(datH);
@@ -2065,25 +2772,113 @@ static void LoadShieldIcons(void)
 {
     short i;
 
-    if (sShieldsLoaded)
-        return;
-
-    /* Load default shields: cicn 3020-3027 baked into the app resource fork.
-     * These are the non-Spectremia default shield set. */
+    /* Dispose existing cicn icons (these are per-shield-set) */
     for (i = 0; i < MAX_FACTIONS; i++) {
-        CIconHandle sh = GetCIcon(3020 + i);
-        if (sh != NULL) {
-            if (sShieldIcons[i] != NULL)
-                DisposeCIcon(sShieldIcons[i]);
-            sShieldIcons[i] = sh;
+        if (sShieldIcons[i] != NULL) {
+            DisposeCIcon(sShieldIcons[i]);
+            sShieldIcons[i] = NULL;
         }
     }
 
-    /* Load big/small shield sprite sheets from main app resources if available */
+    /* Only dispose sprite sheet GWorlds when switching to external shield set.
+     * For default armies, keep the terrain-loaded PICTs 30011/30024. */
+    if (sSelectedArmySet > 0) {
+        if (sShieldBigGW != NULL) {
+            DisposeGWorld(sShieldBigGW);
+            sShieldBigGW = NULL;
+        }
+        if (sShieldSmallGW != NULL) {
+            DisposeGWorld(sShieldSmallGW);
+            sShieldSmallGW = NULL;
+        }
+    }
+
+    /* If a non-default army set is selected, try matching shield set file.
+     * Army set "Spectremia Armies" → Shields "Elemental Shields", etc.
+     * Convention: look for any file in :Shields: folder. */
+    if (sSelectedArmySet > 0) {
+        short vRefNum;
+        long dirID;
+        OSErr err = HGetVol(NULL, &vRefNum, &dirID);
+        if (err == noErr) {
+            /* Try to open a shield file from the Shields folder.
+             * Scan the folder and open the first non-Icon file found. */
+            FSSpec shieldsDir;
+            err = FSMakeFSSpec(vRefNum, dirID, "\p:Shields:", &shieldsDir);
+            if (err == noErr) {
+                CInfoPBRec cipb;
+                Str255 name;
+                short shieldsDirID;
+                BlockZero(&cipb, sizeof(cipb));
+                cipb.dirInfo.ioNamePtr = shieldsDir.name;
+                cipb.dirInfo.ioVRefNum = shieldsDir.vRefNum;
+                cipb.dirInfo.ioDrDirID = shieldsDir.parID;
+                err = PBGetCatInfoSync(&cipb);
+                if (err == noErr && (cipb.dirInfo.ioFlAttrib & 0x10)) {
+                    short oldResFile = CurResFile();
+                    short shieldResFile;
+                    shieldsDirID = cipb.dirInfo.ioDrDirID;
+                    /* Find matching shield file by iterating */
+                    {
+                        short idx = 1;
+                        while (1) {
+                            FSSpec shSpec;
+                            BlockZero(&cipb, sizeof(cipb));
+                            cipb.hFileInfo.ioNamePtr = name;
+                            cipb.hFileInfo.ioVRefNum = vRefNum;
+                            cipb.hFileInfo.ioDirID = shieldsDirID;
+                            cipb.hFileInfo.ioFDirIndex = idx++;
+                            err = PBGetCatInfoSync(&cipb);
+                            if (err != noErr) break;
+                            if (cipb.hFileInfo.ioFlAttrib & 0x10) continue;
+                            if (name[1] == 'I' && name[2] == 'c' && name[3] == 'o' && name[4] == 'n') continue;
+                            /* Open this shield file */
+                            err = FSMakeFSSpec(vRefNum, shieldsDirID, name, &shSpec);
+                            if (err != noErr) continue;
+                            shieldResFile = FSpOpenResFile(&shSpec, fsRdPerm);
+                            if (shieldResFile != -1) {
+                                UseResFile(shieldResFile);
+                                for (i = 0; i < MAX_FACTIONS; i++) {
+                                    CIconHandle sh = GetCIcon(30600 + i);
+                                    if (sh != NULL)
+                                        sShieldIcons[i] = sh;
+                                }
+                                if (sShieldBigGW == NULL)
+                                    sShieldBigGW = LoadPICTIntoGWorld(15009);
+                                /* Don't load PICT 15010 — its layout (46px columns)
+                                 * differs from terrain PICT 30024 (26px columns).
+                                 * cicn icons are used for drawing instead. */
+                                UseResFile(oldResFile);
+                                /* Don't close — icons reference the file */
+                            }
+                            break;  /* use first matching file */
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* Default: load PICT 30011 (big capital banners) and PICT 30024 (dialog+map shields)
+     * from the terrain resource file. The terrain file has NO cicn shield icons —
+     * default army shields are ONLY in these PICT sprite sheets.
+     * External shield sets (Spectremia etc.) use PICT 15009/15010 + cicn 30600-30607. */
+    if (sShieldBigGW == NULL && sTerrainResFile != -1) {
+        short oldRes = CurResFile();
+        UseResFile(sTerrainResFile);
+        sShieldBigGW = LoadPICTIntoGWorld(30011);
+        if (sShieldSmallGW == NULL)
+            sShieldSmallGW = LoadPICTIntoGWorld(30024);
+        UseResFile(oldRes);
+    }
+    /* Final fallback to main app resources */
     if (sShieldBigGW == NULL)
         sShieldBigGW = LoadPICTIntoGWorld(15009);
     if (sShieldSmallGW == NULL)
         sShieldSmallGW = LoadPICTIntoGWorld(15010);
+
+    /* Note: shields are drawn with srcCopy from the sprite sheet.
+     * Transparent mode (36) is unreliable in SheepShaver. */
 
     sShieldsLoaded = true;
 }
@@ -2126,6 +2921,131 @@ static void DrawBigShield(short factionIdx, const Rect *dstRect)
         }
     } else if (sShieldIcons[factionIdx] != NULL) {
         PlotCIcon(dstRect, sShieldIcons[factionIdx]);
+    }
+}
+
+/* ===================================================================
+ * DrawShieldIcon — Draw a faction shield from either cicn or sprite sheet
+ *
+ * Uses PlotCIcon if a cicn handle exists (external shield sets like
+ * Spectremia have cicn 30600-30607). For default armies (no cicn),
+ * blits from PICT 30024 top row (dialog shields) with srcCopy.
+ * =================================================================== */
+static void DrawShieldIcon(short factionIdx, const Rect *dstRect)
+{
+    if (factionIdx < 0 || factionIdx >= MAX_FACTIONS) return;
+
+    /* External shield sets provide cicn — use those (handles transparency via mask) */
+    if (sShieldIcons[factionIdx] != NULL) {
+        PlotCIcon(dstRect, sShieldIcons[factionIdx]);
+        return;
+    }
+
+    /* Default armies: blit from PICT 30024 top row.
+     * Use transparent mode (36) so background pixels are skipped. */
+    if (sShieldSmallGW != NULL) {
+        GrafPtr curPort;
+        PixMapHandle pm = GetGWorldPixMap(sShieldSmallGW);
+        Rect srcR;
+        RGBColor savedBg;
+
+        GetPort(&curPort);
+        SetRect(&srcR,
+                factionIdx * SMALL_SHIELD_W, 0,
+                factionIdx * SMALL_SHIELD_W + SMALL_SHIELD_W,
+                SMALL_SHIELD_H);
+
+        if (LockPixels(pm)) {
+            GetBackColor(&savedBg);
+            RGBBackColor(&sShieldSheetBgColor);
+            CopyBits((BitMap *)*pm,
+                     &curPort->portBits,
+                     &srcR, dstRect, 36, NULL);
+            RGBBackColor(&savedBg);
+            UnlockPixels(pm);
+        }
+    }
+}
+
+/* ===================================================================
+ * DrawMapShield — Draw a faction shield with swords from sprite sheet
+ *
+ * Uses PICT 30024 bottom row (map shields with crossed swords) for
+ * default armies. Falls back to DrawShieldIcon for external sets.
+ * =================================================================== */
+static void DrawMapShield(short factionIdx, const Rect *dstRect)
+{
+    if (factionIdx < 0 || factionIdx >= MAX_FACTIONS) return;
+
+    /* External shield sets: use cicn */
+    if (sShieldIcons[factionIdx] != NULL) {
+        PlotCIcon(dstRect, sShieldIcons[factionIdx]);
+        return;
+    }
+
+    /* Default armies: blit from PICT 30024 row 0 (map shields).
+     * 68k CODE_067 case 3: srcRect = {0, owner*26, 27, owner*26+26}.
+     * Use transparent mode (36) matching 68k's mode 0x10024. */
+    if (sShieldSmallGW != NULL) {
+        GrafPtr curPort;
+        PixMapHandle pm = GetGWorldPixMap(sShieldSmallGW);
+        Rect srcR;
+        RGBColor savedBg;
+
+        GetPort(&curPort);
+        SetRect(&srcR,
+                factionIdx * SMALL_SHIELD_W, 0,
+                factionIdx * SMALL_SHIELD_W + SMALL_SHIELD_W,
+                SMALL_SHIELD_H);
+
+        if (LockPixels(pm)) {
+            GetBackColor(&savedBg);
+            RGBBackColor(&sShieldSheetBgColor);
+            CopyBits((BitMap *)*pm,
+                     &curPort->portBits,
+                     &srcR, dstRect, 36, NULL);
+            RGBBackColor(&savedBg);
+            UnlockPixels(pm);
+        }
+    }
+}
+
+/* ===================================================================
+ * DrawSmallShieldIcon — Draw a tiny shield for bottom bar / lists
+ *
+ * 68k CODE_067 case 2: srcRect = {0, owner*13+208, 15, owner*13+221}.
+ * Uses the small icon region of PICT 30024 (13x15 at x=208).
+ * =================================================================== */
+static void DrawSmallShieldIcon(short factionIdx, const Rect *dstRect)
+{
+    if (factionIdx < 0 || factionIdx >= MAX_FACTIONS) return;
+
+    if (sShieldIcons[factionIdx] != NULL) {
+        PlotCIcon(dstRect, sShieldIcons[factionIdx]);
+        return;
+    }
+
+    if (sShieldSmallGW != NULL) {
+        GrafPtr curPort;
+        PixMapHandle pm = GetGWorldPixMap(sShieldSmallGW);
+        Rect srcR;
+        RGBColor savedBg;
+
+        GetPort(&curPort);
+        /* Case 2 small icons: 13x15 at x=208+owner*13, y=0..14 */
+        SetRect(&srcR,
+                208 + factionIdx * 13, 0,
+                208 + factionIdx * 13 + 13, 15);
+
+        if (LockPixels(pm)) {
+            GetBackColor(&savedBg);
+            RGBBackColor(&sShieldSheetBgColor);
+            CopyBits((BitMap *)*pm,
+                     &curPort->portBits,
+                     &srcR, dstRect, 36, NULL);
+            RGBBackColor(&savedBg);
+            UnlockPixels(pm);
+        }
     }
 }
 
@@ -2617,7 +3537,8 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
     /* --- Phase 3: Place cities --- */
     {
         short factionCount = 8;
-        short neutralCount = 20 + ((unsigned short)Random() % 11);
+        /* 68k CODE_020: neutral count from config, typical 10-15 */
+        short neutralCount = 10 + ((unsigned short)Random() % 6);
         short totalCities;
 
         totalCities = factionCount + neutralCount;
@@ -2700,7 +3621,8 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
         /* Place ruins on land (site_type=5 at offset 0x18, active=1 at 0x1c) */
         {
-            short ruinCount = 15 + ((unsigned short)Random() % 11);  /* 15-25 ruins */
+            /* 68k CODE_020: fill remaining slots with ruins (up to 40 total sites) */
+            short ruinCount = 40 - cityCount;
             short ri;
             for (ri = 0; ri < ruinCount && cityCount < 40; ri++) {
                 short attempts = 0;
@@ -2728,10 +3650,12 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
                     if (!tooClose) {
                         unsigned char *ruin = gs + 0x812 + cityCount * 0x20;
+                        /* 68k CODE_020: site types 2-5 (item, defended, gold, ally) */
+                        static const unsigned char siteTypes[] = {2, 3, 4, 5};
                         *(short *)(ruin + 0x00) = rx;
                         *(short *)(ruin + 0x02) = ry;
                         *(short *)(ruin + 0x04) = (short)0xFF;  /* no owner */
-                        ruin[0x18] = 5;    /* site_type = ruin */
+                        ruin[0x18] = siteTypes[(unsigned short)Random() % 4];
                         *(short *)(ruin + 0x1c) = 1;  /* active/searchable */
                         cityCount++;
                         break;
@@ -2869,16 +3793,26 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
     }
 
     /* --- Phase 4: Initialize game state --- */
+    /* Faction name pool from DAT 1010 "RANDOM": 8 slots x 5 variants each.
+     * Original game picks one variant randomly per slot. */
     {
-        static const char *factionNames[] = {
-            "Sirians", "Storm Giants", "Grey Dwarves", "Orcs of Kor",
-            "Elvallie", "Horse Lords", "Selentines", "Lord Bane"
+        static const char *factionNamePool[8][5] = {
+            {"White Knights", "Guardians",   "Argentia",     "Knights Arcana", "Chivalria"},
+            {"Dragonlords",  "Mountainmen",  "Frost Giants", "Ice Jarls",      "Storm Kings"},
+            {"Gnomes",       "Dark Dwarves", "Dwarrows",     "Khazarak",       "Rockfiends"},
+            {"Goblins",      "Ymorgians",    "Balad Naran",  "Ogre Lords",     "Kobolds"},
+            {"Eldakkar",     "Forestfolk",   "Treelords",    "Light Elves",    "Dark Elves"},
+            {"Emphidians",   "Ilish Empire", "Mathreans",    "Demonlords",     "Serricea"},
+            {"Wild Men",     "Frost Tribe",  "Barbarians",   "Oinland",        "Horse Kings"},
+            {"Zhoragh",      "Black Hand",   "Deathmaster",  "Lich-King",      "Dark Knights"}
         };
+        short nameVariant = (unsigned short)Random() % 5;
         for (i = 0; i < 8; i++) {
             short j;
             unsigned char *name = gs + i * 20;
-            for (j = 0; factionNames[i][j] != 0 && j < 19; j++)
-                name[j] = factionNames[i][j];
+            const char *src = factionNamePool[i][nameVariant];
+            for (j = 0; src[j] != 0 && j < 19; j++)
+                name[j] = src[j];
             name[j] = 0;
         }
     }
@@ -2891,10 +3825,6 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
     /* Create one starting army per faction at their starting city */
     {
         short armyIdx = 0;
-        static const char *armyNames[] = {
-            "1st Sirians", "1st Giants", "1st Dwarves", "1st Orcs",
-            "1st Elvallie", "1st Horsemen", "1st Selentin", "1st Lord Bane"
-        };
 
         for (i = 0; i < 8 && i < cityCount && armyIdx < 100; i++) {
             unsigned char *city = gs + 0x812 + i * 0x20;
@@ -2907,10 +3837,17 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             *(short *)(army + 0x00) = cx;
             *(short *)(army + 0x02) = cy;
 
-            /* Name */
-            for (j = 0; armyNames[i][j] != 0 && j < 15; j++)
-                army[0x04 + j] = armyNames[i][j];
-            army[0x04 + j] = 0;
+            /* Name: "1st <faction>" derived from game state faction name */
+            {
+                const char *prefix = "1st ";
+                unsigned char *facName = gs + i * 20;
+                short p;
+                for (p = 0; prefix[p] && p < 15; p++)
+                    army[0x04 + p] = prefix[p];
+                for (j = 0; facName[j] != 0 && p + j < 15; j++)
+                    army[0x04 + p + j] = facName[j];
+                army[0x04 + p + j] = 0;
+            }
 
             /* Sprite and owner */
             army[0x14] = 2;   /* sprite type 2 */
@@ -2932,8 +3869,8 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
             /* Bonus and experience = 0 (already zeroed) */
 
-            /* Strength display */
-            *(short *)(army + 0x2a) = 35;  /* sum of HPs * factor */
+            /* Strength display = SUM(HP * 2) = (5+5+4+6)*2 = 40 */
+            RecalcArmyStrength(army);
 
             /* Active unit type */
             army[0x2c] = 11;  /* type 11 */
@@ -2964,7 +3901,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             short j2;
 
             /* Skip ruins and non-city sites */
-            if (sType == 2 || sType == 5 || sType == 6) continue;
+            if (sType >= 2 && sType <= 5) continue;
 
             cx = *(short *)(city + 0x00);
             cy = *(short *)(city + 0x02);
@@ -2993,9 +3930,9 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                 army[0x1f] = 5;      /* HP[1] */
                 army[0x20] = 4;      /* HP[2] */
                 army[0x21] = 0;      /* HP[3] */
-                *(short *)(army + 0x2a) = 22;  /* strength display */
+                RecalcArmyStrength(army);  /* (5+5+4)*2 = 28 */
             } else {
-                /* Setup B (odd cities): single Heavy Infantry, strength 16 */
+                /* Setup B (odd cities): single Heavy Infantry */
                 army[0x14] = 2;      /* Heavy Infantry sprite */
                 army[0x16] = 1;      /* unit_types[0] = Heavy Infantry */
                 army[0x17] = 0xFF;   /* slot 1 empty */
@@ -3009,7 +3946,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                 army[0x1f] = 0;      /* HP[1] */
                 army[0x20] = 0;      /* HP[2] */
                 army[0x21] = 0;      /* HP[3] */
-                *(short *)(army + 0x2a) = 16;  /* strength display */
+                RecalcArmyStrength(army);  /* 4*2 = 8 */
             }
 
             armyIdx++;
@@ -3400,7 +4337,7 @@ static Boolean ShowScenarioSelection(void)
     }
 
     /* Progress bar dimensions (shared between drawing and resource loading blocks) */
-    short barLeft = 80, barRight = 380, barTop = 200, barH = 16;
+    short barLeft = 155, barRight = 305, barTop = 200, barH = 16;
 
     /* Play splash sound at load start */
     PlaySound(SND_SPLASH);
@@ -3420,8 +4357,22 @@ static Boolean ShowScenarioSelection(void)
         SetPort(scenWin);
         SetRect(&r, 0, 0, 480, 360);
 
-        /* Draw loading screen background */
-        DrawMarbleBackground(&r);
+        /* Draw loading screen background: PICT 1010 (parchment scroll) */
+        {
+            PicHandle loadBg = GetPicture(1010);
+            if (loadBg != NULL) {
+                Rect pf = (**loadBg).picFrame;
+                Rect bgR;
+                short pw = pf.right - pf.left;
+                short ph = pf.bottom - pf.top;
+                SetRect(&bgR, (480 - pw) / 2, (360 - ph) / 2,
+                        (480 - pw) / 2 + pw, (360 - ph) / 2 + ph);
+                DrawMarbleBackground(&r);
+                DrawPicture(loadBg, &bgR);
+            } else {
+                DrawMarbleBackground(&r);
+            }
+        }
 
         /* Title: "Loading Scenario" */
         TextFont(2);
@@ -3452,6 +4403,16 @@ static Boolean ShowScenarioSelection(void)
         RGBForeColor(&ltBlue);
         MoveTo(barLeft, barTop - 6);
         DrawString(GetCachedString(STR_MISC, 25, "\pReading scenario data..."));
+
+        /* Cover any PICT 1010 embedded bar graphic before drawing our own.
+         * The PICT background may have a decorative bar at wider dimensions. */
+        {
+            Rect coverR;
+            RGBColor parchment = {0xDDDD, 0xCCCC, 0xAAAA};
+            SetRect(&coverR, 60, barTop - 4, 420, barTop + barH + 4);
+            RGBForeColor(&parchment);
+            PaintRect(&coverR);
+        }
 
         /* Progress bar frame */
         SetRect(&barFrame, barLeft, barTop, barRight, barTop + barH);
@@ -4323,7 +5284,7 @@ static Boolean ShowGameSetup(void)
         (screenRect.right - winW) / 2 + winW,
         (screenRect.bottom - winH) / 2 + winH);
 
-    setupWin = NewCWindow(NULL, &winRect, "\p", true,
+    setupWin = NewCWindow(NULL, &winRect, "\p", false,
                           plainDBox, (WindowPtr)-1L, false, 0);
     if (setupWin == NULL)
         return false;
@@ -4340,6 +5301,7 @@ static Boolean ShowGameSetup(void)
 
     {
         Boolean needsRedraw = true;
+        Boolean setupShown = false;
         unsigned long startTick = TickCount();
 
         while (!done) {
@@ -4406,20 +5368,11 @@ static Boolean ShowGameSetup(void)
                             PaintOval(&fillRect);
                         }
 
-                        /* Shield icon next to radio button */
-                        if (sShieldsLoaded && sShieldIcons[i] != NULL) {
+                        /* Shield icon next to radio button (13x15 small shield) */
+                        if (sShieldsLoaded) {
                             Rect shR;
-                            SetRect(&shR, 52, yPos - 10, 52 + 14, yPos + 4);
-                            PlotCIcon(&shR, sShieldIcons[i]);
-                        } else {
-                            /* Fallback: small colored square */
-                            Rect colorDot;
-                            RGBColor black = {0, 0, 0};
-                            SetRect(&colorDot, 52, yPos - 8, 64, yPos + 2);
-                            RGBForeColor(&sPlayerColors[i + 1]);
-                            PaintRect(&colorDot);
-                            RGBForeColor(&black);
-                            FrameRect(&colorDot);
+                            SetRect(&shR, 52, yPos - 10, 52 + 13, yPos + 5);
+                            DrawSmallShieldIcon(i, &shR);
                         }
 
                         RGBForeColor(&white);
@@ -4624,11 +5577,11 @@ static Boolean ShowGameSetup(void)
                         FrameRect(&boxRect);
                         PenSize(1, 1);
 
-                        /* Shield icon in faction box */
-                        if (sShieldsLoaded && sShieldIcons[i] != NULL) {
+                        /* Shield icon in faction box (13x15 small shield) */
+                        if (sShieldsLoaded) {
                             Rect shR;
-                            SetRect(&shR, bx + 4, by + 3, bx + 4 + 14, by + 3 + 14);
-                            PlotCIcon(&shR, sShieldIcons[i]);
+                            SetRect(&shR, bx + 4, by + 3, bx + 4 + 13, by + 3 + 15);
+                            DrawSmallShieldIcon(i, &shR);
                         }
 
                         /* Faction name (bold, offset for shield) */
@@ -4886,6 +5839,12 @@ static Boolean ShowGameSetup(void)
                              srcCopy, NULL);
                 }
 
+                /* Show window after first blit to avoid white flash */
+                if (!setupShown) {
+                    ShowWindow(setupWin);
+                    setupShown = true;
+                }
+
                 needsRedraw = false;
             }
 
@@ -4966,6 +5925,9 @@ static Boolean ShowGameSetup(void)
                         SetRect(&armyDropRect, 30, 268, 220, 286);
                         if (PtInRect(localPt, &armyDropRect)) {
                             sSelectedArmySet = (sSelectedArmySet + 1) % sArmySetCount;
+                            /* Reload shields to match the selected army set */
+                            sShieldsLoaded = false;
+                            LoadShieldIcons();
                             needsRedraw = true;
                         }
                     }
@@ -5078,11 +6040,11 @@ static Boolean ShowGameSetup(void)
                             /* Randomize AI level for non-human factions */
                             for (i = 0; i < factionCount; i++) {
                                 if (sFactionAI[i] != 0)
-                                    sFactionAI[i] = (short)(TickCount() % 3) + 1;
+                                    sFactionAI[i] = (short)((unsigned short)Random() % 3) + 1;
                             }
                             /* Toggle character flags randomly */
                             for (i = 0; i < factionCount; i++)
-                                sFactionCharacter[i] = ((TickCount() + i * 7) % 3 != 0);
+                                sFactionCharacter[i] = ((unsigned short)Random() % 3 != 0);
                             needsRedraw = true;
                         }
                     }
@@ -5108,6 +6070,9 @@ static Boolean ShowGameSetup(void)
                         SetRect(&armyDropRect, 310, 268, 540, 286);
                         if (PtInRect(localPt, &armyDropRect)) {
                             sSelectedArmySet = (sSelectedArmySet + 1) % sArmySetCount;
+                            /* Reload shields to match the selected army set */
+                            sShieldsLoaded = false;
+                            LoadShieldIcons();
                             needsRedraw = true;
                         }
                     }
@@ -5263,6 +6228,106 @@ static Boolean ShowGameSetup(void)
         for (i = 0; i < 8; i++) {
             *(short *)(gs + 0x164 + i * 2) = i;  /* Sequential turn order */
         }
+
+        /* Re-initialize diplomacy matrix based on actual option setting.
+         * GameInit() set all to peace (0x00), but the user may have
+         * changed the diplomacy flag in Edit Options.
+         * 68k CODE_117 FUN_00000ad2: clears bits 2-3, sets state 2 (war) if
+         * diplomacy disabled, then copies bits 2-3 to bits 0-1. */
+        {
+            short di, dj;
+            for (di = 0; di < 8; di++) {
+                for (dj = 0; dj < 8; dj++) {
+                    unsigned char *dip = gs + 0x1582 + di * 8 + dj;
+                    unsigned char state = sOptDiplomacy ? DIPLO_PEACE : DIPLO_WAR;
+                    *dip = DIPLO_SET_STATE(0, state) | (state & 3);  /* bits 2-3=state, bits 0-1=copy */
+                }
+            }
+        }
+
+        /* Clear per-faction tracking counters (68k CODE_117 FUN_00000a8e) */
+        for (i = 0; i < 8; i++) {
+            *(short *)(gs + 0x1122 + i * 2) = 0;       /* hero hire scores */
+            *(short *)(gs + 0x1132 + i * 2) = (short)0xFFFF;  /* history min */
+        }
+
+        /* Set AI difficulty per-faction (Knight=1, Lord=2, Warlord=3) */
+        for (i = 0; i < factionCount; i++) {
+            if (sFactionAI[i] > 0) {
+                *(short *)(gs + 0xc0 + i * 2) = sFactionAI[i];  /* AI level */
+            } else {
+                *(short *)(gs + 0xc0 + i * 2) = 0;  /* Human */
+            }
+        }
+
+        /* Default faction names for dead/unused slots (68k CODE_116 FUN_00000332) */
+        for (i = 0; i < 8; i++) {
+            if (*(short *)(gs + 0x138 + i * 2) == 0) {
+                /* Dead faction: set AI type to Warlord (3) */
+                *(short *)(gs + 0xc0 + i * 2) = 3;
+            }
+        }
+
+        /* Initialize fight order table (from CODE_060): 29 bytes per player
+         * at gs + (player * 0x1D) + 0x60C.
+         * Default: sequential ordering 0-28 (lower = fights first). */
+        {
+            short pi, ut;
+            for (pi = 0; pi < 9; pi++) {
+                for (ut = 0; ut < 29; ut++) {
+                    gs[ut + pi * 0x1D + 0x60C] = (unsigned char)ut;
+                }
+            }
+        }
+
+        /* Additional init from 68k CODE_117 FUN_00001ab6 */
+        *(short *)(gs + 0x15E) = 0;   /* quest flag */
+        *(short *)(gs + 0x158) = 0;   /* special game mode */
+        for (i = 0; i < 8; i++) {
+            *(short *)(gs + 0x0E0 + i * 2) = 0;  /* enhancement flags */
+            *(short *)(gs + 0x148 + i * 2) = sOptHiddenMap ? 1 : 0;  /* fog per player */
+        }
+
+        /* Clear per-player hero instance records (gs+0x1422, 0x2C bytes each) */
+        for (i = 0; i < 8; i++) {
+            short b;
+            for (b = 0; b < 0x2C; b++)
+                gs[0x1422 + i * 0x2C + b] = 0;
+        }
+
+        /* Clear quest records (gs+0x1142, 0x0C bytes per player) */
+        for (i = 0; i < 8; i++) {
+            short b;
+            for (b = 0; b < 0x0C; b++)
+                gs[0x1142 + i * 0x0C + b] = 0;
+        }
+
+        /* Clear item records (gs+0xD12, 0x1E bytes x 22 items max) */
+        for (i = 0; i < 22; i++) {
+            short b;
+            for (b = 0; b < 0x1E; b++)
+                gs[0xD12 + i * 0x1E + b] = 0;
+        }
+
+        /* Set not-playing factions' capitals to neutral army ownership */
+        {
+            short armyCount = *(short *)(gs + 0x1602);
+            if (armyCount > 100) armyCount = 100;
+            for (i = 0; i < 8; i++) {
+                if (*(short *)(gs + 0x138 + i * 2) == 0) {
+                    short capX = *(short *)(gs + 0x18A + i * 0x14);
+                    short capY = *(short *)(gs + 0x18C + i * 0x14);
+                    short ai2;
+                    for (ai2 = 0; ai2 < armyCount; ai2++) {
+                        unsigned char *army = gs + 0x1604 + ai2 * 0x42;
+                        if (*(short *)(army + 0x00) == capX &&
+                            *(short *)(army + 0x02) == capY) {
+                            army[0x15] = 0x0F;  /* neutral owner */
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (offscreen != NULL)
@@ -5299,8 +6364,15 @@ static RGBColor sTerrainColors[NUM_TERRAIN_COLORS] = {
  * =================================================================== */
 static short sDebugShowTileSheet = 0;  /* press 'T' to toggle tile sheet view */
 
-/* Forward declaration for movement cost (used in movement range BFS) */
+/* Forward declarations for movement cost and item-based movement helpers */
 static short GetMovementCost(short mapX, short mapY, short unitClass);
+static short GetEffectiveUnitClass(short armyIdx);
+static Boolean ArmyHasFlightItem(short armyIdx);
+static Boolean ArmyHasDoubleMoveItem(short armyIdx);
+static short ComputeWavefrontPath(short srcX, short srcY, short dstX, short dstY, short unitClass);
+static short ExecutePathSteps(short armyIdx);
+static Boolean CheckAndResolveCombat(short movingArmyIdx);
+static void TryAutoSearchRuin(short armyIdx);
 
 static void DrawMapInWindow(WindowPtr win)
 {
@@ -5437,7 +6509,7 @@ static void DrawMapInWindow(WindowPtr win)
 
                 /* Direct mapping: tile index = RD value - 1 (original game subtracts 1) */
                 tileIdx = rd - 1;
-                spriteCol = tileIdx % 13;  /* 13 columns per row (original: / 0xd) */
+                spriteCol = tileIdx % 13;  /* 13 road tiles per row (68k confirmed) */
                 spriteRow = tileIdx / 13;
                 SetRect(&srcRect,
                     spriteCol * TERRAIN_TILE_W,
@@ -5522,7 +6594,7 @@ static void DrawMapInWindow(WindowPtr win)
 
     /* --- Draw city/ruin/temple icons from SCN data at gs+0x812 --- */
     /* Each site record is 0x20 bytes: +0=x, +2=y, +4=owner, +6=defense, +8=income, +0x18=site_type */
-    /* site_type: 0=city, 2=temple, 5=ruin, 6=library */
+    /* site_type: 0/1=city, 2=item, 3=defended, 4=gold, 5=ally */
     if (hasScn) {
         short cityCount = *(short *)(scnData + 0x810);
         if (cityCount > 40) cityCount = 40;
@@ -5543,8 +6615,16 @@ static void DrawMapInWindow(WindowPtr win)
                 screenY >= winRect.top - TERRAIN_TILE_H &&
                 screenY < winRect.bottom) {
 
-                if (siteType == 2 || siteType == 5 || siteType == 6) {
-                    /* === Ruin / Temple / Library icon === */
+                /* Fog of war: hide unexplored cities/ruins */
+                if (*(short *)(scnData + 0x116) != 0) {
+                    short curP = *(short *)(scnData + 0x110);
+                    if (curP >= 0 && curP < 8 &&
+                        !FogGetBit(sFogExplored[curP], cx, cy))
+                        continue;
+                }
+
+                if (siteType >= 2 && siteType <= 5) {
+                    /* === Ruin / Site icon (types 2-5) === */
                     RGBColor stoneGray = {0x8888, 0x8888, 0x7777};
                     RGBColor darkStone = {0x5555, 0x5555, 0x4444};
 
@@ -5596,18 +6676,14 @@ static void DrawMapInWindow(WindowPtr win)
                                 screenX + 22, screenY + TERRAIN_TILE_H - 2);
                         RGBForeColor(&darkStone);
                         PaintRect(&rubble);
-                        /* Flag marker if type 6 (library) */
-                        if (siteType == 6) {
-                            RGBColor blue = {0x3333, 0x3333, 0xFFFF};
-                            RGBForeColor(&blue);
-                            MoveTo(screenX + 16, screenY + 4);
-                            LineTo(screenX + 16, screenY + 12);
-                            {
-                                Rect flag;
-                                SetRect(&flag, screenX + 17, screenY + 4,
-                                        screenX + 22, screenY + 8);
-                                PaintRect(&flag);
-                            }
+                        /* Type 3 (defended): red X marker */
+                        if (siteType == 3) {
+                            RGBColor red = {0xFFFF, 0x3333, 0x3333};
+                            RGBForeColor(&red);
+                            MoveTo(screenX + 12, screenY + 6);
+                            LineTo(screenX + 22, screenY + 16);
+                            MoveTo(screenX + 22, screenY + 6);
+                            LineTo(screenX + 12, screenY + 16);
                         }
                     }
                 } else {
@@ -5735,6 +6811,14 @@ static void DrawMapInWindow(WindowPtr win)
                 short colorIdx = (cityOwner >= 0 && cityOwner < 8) ? cityOwner + 1 : 8;
                 RGBColor shadowCol = {0x0000, 0x0000, 0x0000};
                 Str255 cityPName;
+
+                /* Fog of war: hide city names in unexplored tiles */
+                if (*(short *)(scnData + 0x116) != 0) {
+                    short curP = *(short *)(scnData + 0x110);
+                    if (curP >= 0 && curP < 8 &&
+                        !FogGetBit(sFogExplored[curP], cx, cy))
+                        continue;
+                }
                 short nameLen = 0;
 
                 /* Get city name from CTY resource data, or fall back to faction name */
@@ -5810,6 +6894,15 @@ static void DrawMapInWindow(WindowPtr win)
             if (ax < 0 || ay < 0) continue;             /* invalid coords */
             if (ax >= sMapWidth || ay >= sMapHeight) continue;
 
+            /* Fog of war: hide enemy armies in non-visible tiles */
+            if (*(short *)(scnData + 0x116) != 0) {
+                short curPlayer = *(short *)(scnData + 0x110);
+                if (curPlayer >= 0 && curPlayer < 8 && owner != curPlayer) {
+                    if (!FogGetBit(sFogVisible[curPlayer], ax, ay))
+                        continue;
+                }
+            }
+
             screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
             screenY = winRect.top  + (ay - sViewportY) * TERRAIN_TILE_H;
 
@@ -5819,27 +6912,49 @@ static void DrawMapInWindow(WindowPtr win)
                 screenY < winRect.bottom) {
 
                 short colorIdx = (owner >= 0 && owner < 8) ? owner + 1 : 0;
+                /* 68k CODE_067 FUN_000014e2: uses army[0x14] (sprite_index) directly.
+                 * This is the authoritative sprite index set by the scenario/game.
+                 * Do NOT use army[0x16] (unit type) + table lookup — that gives
+                 * wrong results for heroes and loaded scenarios. */
                 short spriteIdx = (short)(unsigned char)army[0x14];
+                short sheetIdx = (owner >= 0 && owner < 8) ? owner :
+                                 (owner == 0x0F && ARMY_SHEETS > 8) ? 8 : 0;
+                GWorldPtr armyGW;
+                short spriteCol, spriteRow;
+
+                /* Hero gender remapping: 68k FUN_000000ae remaps sprite 0x1C
+                 * to 0x1D for female heroes (gs+0x594+slot*2 == 1). */
+                if (spriteIdx == 0x1C && army[0x2D] > 0) {
+                    short heroSlot = (short)(unsigned char)army[0x2D] - 1;
+                    if (heroSlot >= 0 && heroSlot < 40) {
+                        short gender = *(short *)(scnData + 0x594 + heroSlot * 2);
+                        if (gender == 1) spriteIdx = 0x1D;
+                    }
+                }
+
                 /* Each 512x64 sheet has unit types in a 16x2 grid (32px cells).
-                 * Sheet 0 = default facing. col = spriteIdx % 16, row = spriteIdx / 16. */
-                short spriteCol = spriteIdx % 16;
-                short spriteRow = spriteIdx / 16;
-                GWorldPtr armyGW = (sArmyGW[0] != NULL) ? sArmyGW[0] : NULL;
+                 * Sheet per faction: sArmyGW[owner]. */
+                spriteCol = spriteIdx % 16;
+                spriteRow = spriteIdx / 16;
+                armyGW = (sArmyGW[sheetIdx] != NULL) ? sArmyGW[sheetIdx] :
+                         (sArmyGW[0] != NULL) ? sArmyGW[0] : NULL;
 
                 if (sArmyLoaded && armyGW != NULL) {
-                    /* Blit army sprite from sprite sheet */
+                    /* Blit army sprite from sprite sheet.
+                     * 68k CODE_067 FUN_000014e2: srcY = (idx/16)*30, width=29, height=32.
+                     * Destination: tile + 7px horizontal offset. */
                     Rect srcRect, dstRect;
                     short srcX = spriteCol * 32;
-                    short srcY = spriteRow * 32;
+                    short srcY = spriteRow * 30;  /* row stride is 30, not 32 */
                     SetRect(&srcRect, srcX, srcY, srcX + 29, srcY + 32);
-                    SetRect(&dstRect, screenX + 1, screenY - 1,
-                            screenX + 30, screenY + 31);
+                    SetRect(&dstRect, screenX + 7, screenY + 7,
+                            screenX + 7 + 29, screenY + 7 + 32);
 
                     LockPixels(GetGWorldPixMap(armyGW));
                     {
                         RGBColor savedBg;
                         GetBackColor(&savedBg);
-                        RGBBackColor(&sArmyBgColor[0]);
+                        RGBBackColor(&sArmyBgColor[sheetIdx]);
                         CopyBits((BitMap *)*GetGWorldPixMap(armyGW),
                                  &((GrafPtr)win)->portBits,
                                  &srcRect, &dstRect,
@@ -5848,19 +6963,43 @@ static void DrawMapInWindow(WindowPtr win)
                     }
                     UnlockPixels(GetGWorldPixMap(armyGW));
 
-                    /* Draw owner color indicator (small colored bar below sprite) */
-                    {
-                        Rect barRect;
+                    /* Draw faction shield icon overlapping army sprite.
+                     * 68k CODE_067 case 3: shield at (tileX+7, tileY+7), 26x27px. */
+                    if (owner >= 0 && owner < MAX_FACTIONS) {
+                        Rect shR;
+                        SetRect(&shR, screenX + 7, screenY + 7,
+                                screenX + 7 + SMALL_SHIELD_W, screenY + 7 + SMALL_SHIELD_H);
+                        DrawMapShield(owner, &shR);
+                    } else {
+                        /* Neutral army (owner 0x0F): small gray shield.
+                         * 68k remaps 0x0F to player 8 index. */
+                        Rect nR;
+                        RGBColor gray = {0x8888, 0x8888, 0x8888};
                         RGBColor black = {0, 0, 0};
-                        SetRect(&barRect, screenX + 4, screenY + TERRAIN_TILE_H - 6,
-                                screenX + TERRAIN_TILE_W - 4, screenY + TERRAIN_TILE_H - 2);
-                        RGBForeColor(&sPlayerColors[colorIdx]);
-                        PaintRect(&barRect);
+                        SetRect(&nR, screenX + 7, screenY + 7,
+                                screenX + 7 + 12, screenY + 7 + 12);
+                        RGBForeColor(&gray);
+                        PaintRoundRect(&nR, 4, 4);
                         RGBForeColor(&black);
-                        FrameRect(&barRect);
+                        FrameRoundRect(&nR, 4, 4);
                     }
                 } else {
-                    /* No army sprites loaded — skip drawing */
+                    /* No army sprites loaded — draw shield + colored oval */
+                    Rect markerR;
+                    RGBColor black = {0, 0, 0};
+                    SetRect(&markerR, screenX + 6, screenY + 2,
+                            screenX + TERRAIN_TILE_W - 6, screenY + TERRAIN_TILE_H - 12);
+                    RGBForeColor(&sPlayerColors[colorIdx]);
+                    PaintOval(&markerR);
+                    RGBForeColor(&black);
+                    FrameOval(&markerR);
+                    /* Shield icon at tile+7,+7 */
+                    if (owner >= 0 && owner < MAX_FACTIONS) {
+                        Rect shR;
+                        SetRect(&shR, screenX + 7, screenY + 7,
+                                screenX + 7 + SMALL_SHIELD_W, screenY + 7 + SMALL_SHIELD_H);
+                        DrawMapShield(owner, &shR);
+                    }
                 }
             }
         }
@@ -5877,12 +7016,22 @@ static void DrawMapInWindow(WindowPtr win)
             unsigned char *army = scnData + 0x1604 + i * 0x42;
             short ax = *(short *)(army + 0x00);
             short ay = *(short *)(army + 0x02);
+            short aOwn = (short)(unsigned char)army[0x15];
             short screenX, screenY;
 
             /* Skip invalid/empty army records */
             if (army[0x16] == 0xFF) continue;
             if (ax < 0 || ay < 0) continue;
             if (ax >= sMapWidth || ay >= sMapHeight) continue;
+
+            /* Fog of war: hide enemy army strength in non-visible tiles */
+            if (*(short *)(scnData + 0x116) != 0) {
+                short curP = *(short *)(scnData + 0x110);
+                if (curP >= 0 && curP < 8 && aOwn != curP) {
+                    if (!FogGetBit(sFogVisible[curP], ax, ay))
+                        continue;
+                }
+            }
 
             screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
             screenY = winRect.top  + (ay - sViewportY) * TERRAIN_TILE_H;
@@ -5929,9 +7078,18 @@ static void DrawMapInWindow(WindowPtr win)
                 short ax = *(short *)(army + 0x00);
                 short ay = *(short *)(army + 0x02);
                 if (ax < 0 || ay < 0 || ax >= sMapWidth || ay >= sMapHeight) continue;
+                /* Fog of war: hide enemy defend indicators */
+                if (*(short *)(scnData + 0x116) != 0) {
+                    short curP = *(short *)(scnData + 0x110);
+                    short aOwn = (short)(unsigned char)army[0x15];
+                    if (curP >= 0 && curP < 8 && aOwn != curP &&
+                        !FogGetBit(sFogVisible[curP], ax, ay))
+                        continue;
+                }
             }
-            if (army[0x2d] > 0) {
-                /* Army is defending/fortified: draw shield indicator */
+            if (*gExtState != 0 &&
+                ((unsigned char *)*gExtState)[0x56 + i] == 7) {
+                /* Army is guarding (ext state army_state == 7): draw shield indicator */
                 short ax = *(short *)(army + 0x00);
                 short ay = *(short *)(army + 0x02);
                 short screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
@@ -5964,8 +7122,19 @@ static void DrawMapInWindow(WindowPtr win)
             unsigned char *army = scnData + 0x1604 + i * 0x42;
             short ax = *(short *)(army + 0x00);
             short ay = *(short *)(army + 0x02);
+            short aOwn = (short)(unsigned char)army[0x15];
             short screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
             short screenY = winRect.top  + (ay - sViewportY) * TERRAIN_TILE_H;
+
+            if (army[0x16] == 0xFF) continue;
+
+            /* Fog of war: hide enemy stack badges */
+            if (*(short *)(scnData + 0x116) != 0) {
+                short curP = *(short *)(scnData + 0x110);
+                if (curP >= 0 && curP < 8 && aOwn != curP &&
+                    !FogGetBit(sFogVisible[curP], ax, ay))
+                    continue;
+            }
 
             if (screenX >= winRect.left && screenX < winRect.right &&
                 screenY >= winRect.top && screenY < winRect.bottom) {
@@ -5987,21 +7156,23 @@ static void DrawMapInWindow(WindowPtr win)
                         }
                     }
                     if (isFirst) {
+                        /* 68k CODE_067: stack badge 14x16 at (tile+13, tile+16) */
                         Rect badge;
                         Str255 numStr;
                         RGBColor badgeBg = {0xFFFF, 0xFFFF, 0xFFFF};
                         RGBColor badgeTxt = {0x0000, 0x0000, 0x0000};
-                        SetRect(&badge, screenX, screenY,
-                                screenX + 10, screenY + 10);
+                        SetRect(&badge, screenX + 13, screenY + 16,
+                                screenX + 13 + 14, screenY + 16 + 16);
                         RGBForeColor(&badgeBg);
-                        PaintOval(&badge);
+                        PaintRoundRect(&badge, 4, 4);
                         RGBForeColor(&badgeTxt);
-                        FrameOval(&badge);
+                        FrameRoundRect(&badge, 4, 4);
                         TextFont(3);
                         TextSize(9);
                         TextFace(bold);
-                        MoveTo(screenX + 2, screenY + 9);
                         NumToString((long)stackCount, numStr);
+                        MoveTo(screenX + 13 + (14 - StringWidth(numStr)) / 2,
+                               screenY + 16 + 12);
                         DrawString(numStr);
                         TextFace(0);
                     }
@@ -6016,7 +7187,7 @@ static void DrawMapInWindow(WindowPtr win)
         if (sSelectedArmy < armyCount2) {
             unsigned char *selArmy2 = scnData + 0x1604 + sSelectedArmy * 0x42;
             short movePts2 = (short)(unsigned char)selArmy2[0x2e];
-            short unitCls2 = (short)(unsigned char)selArmy2[0x16];
+            short unitCls2 = GetEffectiveUnitClass(sSelectedArmy);
             short armyX2 = *(short *)(selArmy2 + 0x00);
             short armyY2 = *(short *)(selArmy2 + 0x02);
 
@@ -6125,7 +7296,8 @@ static void DrawMapInWindow(WindowPtr win)
                 unsigned long blinkPhase = (TickCount() / 15) & 1;
                 if (blinkPhase) {
                     Rect selRect;
-                    RGBColor selColor = {0xFFFF, 0xFFFF, 0x0000};
+                    /* 68k CODE_067: selection color is tan (0xEBEB, 0xA3A3, 0x7777) */
+                    RGBColor selColor = {0xEBEB, 0xA3A3, 0x7777};
                     SetRect(&selRect, screenX, screenY,
                             screenX + TERRAIN_TILE_W, screenY + TERRAIN_TILE_H);
                     RGBForeColor(&selColor);
@@ -6241,6 +7413,50 @@ static void DrawMapInWindow(WindowPtr win)
                         Rect arrR;
                         SetRect(&arrR, sx2 - 3, sy2 - 3, sx2 + 3, sy2 + 3);
                         PaintOval(&arrR);
+                    }
+                }
+            }
+        }
+    }
+
+    /* --- Draw movement order lines for all owned armies with orders --- */
+    if (hasScn) {
+        short armyCount = *(short *)(scnData + 0x1602);
+        short curP = *(short *)(scnData + 0x110);
+        short ai4;
+        if (armyCount > 100) armyCount = 100;
+        for (ai4 = 0; ai4 < armyCount; ai4++) {
+            unsigned char *a = scnData + 0x1604 + ai4 * 0x42;
+            short aOwner = (short)(unsigned char)a[0x15];
+            if (aOwner != curP) continue;
+            if (a[0x16] == 0xFF) continue;
+            if (ai4 == sSelectedArmy) continue;  /* already drawn above */
+            if (*(short *)(a + 0x32) != 0) {
+                short ax3 = *(short *)(a + 0x00);
+                short ay3 = *(short *)(a + 0x02);
+                short tx3 = *(short *)(a + 0x34);
+                short ty3 = *(short *)(a + 0x36);
+                short sx3 = winRect.left + (ax3 - sViewportX) * TERRAIN_TILE_W + TERRAIN_TILE_W / 2;
+                short sy3 = winRect.top  + (ay3 - sViewportY) * TERRAIN_TILE_H + TERRAIN_TILE_H / 2;
+                short tx3s = winRect.left + (tx3 - sViewportX) * TERRAIN_TILE_W + TERRAIN_TILE_W / 2;
+                short ty3s = winRect.top  + (ty3 - sViewportY) * TERRAIN_TILE_H + TERRAIN_TILE_H / 2;
+                if ((sx3 >= winRect.left && sx3 < winRect.right) ||
+                    (tx3s >= winRect.left && tx3s < winRect.right)) {
+                    RGBColor ordColor = {0x8888, 0x8888, 0xFFFF};  /* light blue */
+                    short odx = tx3s - sx3, ody = ty3s - sy3;
+                    short oSteps = ((odx < 0 ? -odx : odx) + (ody < 0 ? -ody : ody)) / 10;
+                    short oi;
+                    if (oSteps < 2) oSteps = 2;
+                    if (oSteps > 40) oSteps = 40;
+                    RGBForeColor(&ordColor);
+                    for (oi = 0; oi <= oSteps; oi++) {
+                        if (oi % 3 == 0) {
+                            short px = sx3 + (odx * oi) / oSteps;
+                            short py = sy3 + (ody * oi) / oSteps;
+                            Rect dot;
+                            SetRect(&dot, px, py, px + 2, py + 2);
+                            PaintRect(&dot);
+                        }
                     }
                 }
             }
@@ -6386,14 +7602,19 @@ static void DrawMapInWindow(WindowPtr win)
         }
     }
 
-    /* --- Draw shield strip + turn text in the bottom-left of the window --- */
+    /* --- Draw shield strip + turn text + scrollbar in bottom bar ---
+     * 68k layout: [Turn N text] [gap] [128px shield strip right-aligned] [scrollbar]
+     * Shields drawn in TURN ORDER (gs+0x164), 16px stride, right-aligned. */
     if (hasScn && scnData != NULL) {
         Rect fullPort = win->portRect;
-        Rect shieldBar;
         short factionCount = *(short *)(scnData + 0x10C);
         short curPlayer = *(short *)(scnData + 0x110);
         short turn = *(short *)(scnData + 0x136);
-        short fi, shieldX;
+        short slotIdx;
+        short aliveCount = 0;
+        /* 68k: shield strip is right-aligned, 128px wide, at right edge of pane
+         * X = (slot + (8 - aliveCount)) * 16 + paneRight - 128 */
+        short paneRight = fullPort.right - 16;  /* reserve 16px for scrollbar */
         RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
         RGBColor black = {0x0000, 0x0000, 0x0000};
         Str255 numStr;
@@ -6401,49 +7622,77 @@ static void DrawMapInWindow(WindowPtr win)
         if (factionCount < 1) factionCount = 1;
         if (factionCount > 8) factionCount = 8;
 
-        /* White background for shield area (matches original) */
-        SetRect(&shieldBar, fullPort.left, fullPort.bottom - SCROLLBAR_H,
-                fullPort.left + SHIELD_AREA_W + 50, fullPort.bottom);
-        RGBForeColor(&white);
-        PaintRect(&shieldBar);
+        /* Count alive factions for right-alignment */
+        { short ai3;
+          for (ai3 = 0; ai3 < 8; ai3++) {
+            if (*(short *)(scnData + 0x138 + ai3 * 2) != 0) aliveCount++;
+          }
+        }
+        if (aliveCount < 1) aliveCount = factionCount;
 
-        /* "Turn N" text in black on white background */
+        /* White background: turn text area + shield strip */
+        {
+            Rect leftBar;
+            SetRect(&leftBar, fullPort.left, fullPort.bottom - SCROLLBAR_H,
+                    paneRight, fullPort.bottom);
+            RGBForeColor(&white);
+            PaintRect(&leftBar);
+        }
+
+        /* "Turn N" text in red at bottom-left (original uses red) */
+        { RGBColor turnRed = {0xDDDD, 0x0000, 0x0000};
         TextFont(3);
         TextSize(9);
         TextFace(bold);
-        RGBForeColor(&black);
+        RGBForeColor(&turnRed);
         MoveTo(fullPort.left + 3, fullPort.bottom - 4);
         DrawString(GetCachedString(STR_MISC, 12, "\pTurn "));
         NumToString((long)turn, numStr);
         DrawString(numStr);
+        }
 
-        /* Small shields with gaps between them */
-        shieldX = fullPort.left + 48;
-        for (fi = 0; fi < factionCount; fi++) {
-            Rect sR;
+        /* Shields: left-aligned right after "Turn N" text, 16px stride */
+        { short aliveSlot = 0;
+        short shieldBaseX;
+        /* Measure turn text width to position shields after it */
+        { Str255 turnLabel;
+          short turnTextW;
+          BlockMoveData(GetCachedString(STR_MISC, 12, "\pTurn "), turnLabel, 256);
+          turnTextW = StringWidth(turnLabel) + StringWidth(numStr);
+          shieldBaseX = fullPort.left + 3 + turnTextW + 6;
+        }
+        for (slotIdx = 0; slotIdx < factionCount; slotIdx++) {
+            short factionIdx = *(short *)(scnData + 0x164 + slotIdx * 2);
+            short shieldX, shieldY;
+            if (factionIdx < 0 || factionIdx >= 8) continue;
+            if (*(short *)(scnData + 0x138 + factionIdx * 2) == 0) continue;
+            shieldX = shieldBaseX + aliveSlot * SHIELD_SLOT_W;
+            shieldY = fullPort.bottom - SCROLLBAR_H + (SCROLLBAR_H - SHIELD_ICON_H) / 2;
+            { Rect sR;
 
-            if (fi == curPlayer) {
-                /* Current player: thick black border (2px) around shield */
+            /* Highlight current player with black border */
+            if (factionIdx == curPlayer) {
                 Rect bR;
-                SetRect(&bR, shieldX - 2, fullPort.bottom - SHIELD_ICON_H - 5,
-                        shieldX + SHIELD_ICON_W + 2, fullPort.bottom - 1);
+                SetRect(&bR, shieldX - 1, shieldY - 1,
+                        shieldX + SHIELD_ICON_W + 1, shieldY + SHIELD_ICON_H + 1);
                 RGBForeColor(&black);
                 PaintRect(&bR);
             }
 
-            SetRect(&sR, shieldX, fullPort.bottom - SHIELD_ICON_H - 3,
-                    shieldX + SHIELD_ICON_W, fullPort.bottom - 3);
+            SetRect(&sR, shieldX, shieldY,
+                    shieldX + SHIELD_ICON_W, shieldY + SHIELD_ICON_H);
 
-            if (sShieldsLoaded && sShieldIcons[fi] != NULL) {
-                PlotCIcon(&sR, sShieldIcons[fi]);
+            if (sShieldsLoaded && (sShieldIcons[factionIdx] != NULL || sShieldSmallGW != NULL)) {
+                DrawSmallShieldIcon(factionIdx, &sR);
             } else {
                 /* Fallback: colored rectangle */
-                RGBForeColor(&sPlayerColors[fi + 1]);
+                RGBForeColor(&sPlayerColors[factionIdx + 1]);
                 PaintRect(&sR);
             }
-
-            shieldX += SHIELD_ICON_W + SHIELD_GAP;
+            }
+            aliveSlot++;
         }
+        }  /* end aliveSlot scope */
     }
 }
 
@@ -6467,16 +7716,25 @@ static void DrawOverviewInWindow(WindowPtr win)
     mapData = (unsigned char *)*gMapTiles;
     r = win->portRect;
 
-    /* Fill background black so unfilled areas don't show white */
-    {
+    /* Fill background: PICT 1012 ocean gradient, or black fallback */
+    if (sMinimapOceanGW != NULL) {
+        PixMapHandle opm = GetGWorldPixMap(sMinimapOceanGW);
+        if (LockPixels(opm)) {
+            Rect srcR = {0, 0, 312, 224};
+            CopyBits((BitMap *)*opm,
+                     &((GrafPtr)win)->portBits,
+                     &srcR, &r, srcCopy, NULL);
+            UnlockPixels(opm);
+        }
+    } else {
         RGBColor bg = {0x0000, 0x0000, 0x0000};
         RGBForeColor(&bg);
         PaintRect(&r);
     }
 
-    /* Scale factor: 1 pixel per tile at small, 2px at medium/large */
+    /* Scale factor: always 2px per tile (68k CODE_128 never uses 1x) */
     {
-        short scale = (sMinimapZoom >= 1) ? 2 : 1;
+        short scale = 2;
         unsigned char *scnData = (*gGameState != 0) ? (unsigned char *)*gGameState : NULL;
 
         for (y = 0; y < sMapHeight && y * scale < (r.bottom - r.top); y++) {
@@ -6535,6 +7793,48 @@ static void DrawOverviewInWindow(WindowPtr win)
             }
         }
 
+        /* Fog of war overlay on minimap */
+        if (*gGameState != 0 && *(short *)((unsigned char *)*gGameState + 0x116) != 0) {
+            unsigned char *gs2 = (unsigned char *)*gGameState;
+            short curP = *(short *)(gs2 + 0x110);
+            if (curP >= 0 && curP < 8) {
+                RGBColor fogBlack = {0, 0, 0};
+                RGBColor fogDim = {0x3333, 0x3333, 0x3333};
+                short fx, fy;
+                for (fy = 0; fy < sMapHeight; fy++) {
+                    for (fx = 0; fx < sMapWidth; fx++) {
+                        if (!FogGetBit(sFogExplored[curP], fx, fy)) {
+                            /* Unexplored: solid black */
+                            RGBForeColor(&fogBlack);
+                            if (scale == 1) {
+                                MoveTo(r.left + fx, r.top + fy);
+                                LineTo(r.left + fx, r.top + fy);
+                            } else {
+                                Rect fpx;
+                                SetRect(&fpx, r.left + fx * scale, r.top + fy * scale,
+                                             r.left + fx * scale + scale, r.top + fy * scale + scale);
+                                PaintRect(&fpx);
+                            }
+                        } else if (!FogGetBit(sFogVisible[curP], fx, fy)) {
+                            /* Explored but not visible: dimmed */
+                            RGBForeColor(&fogDim);
+                            PenMode(subOver);
+                            if (scale == 1) {
+                                MoveTo(r.left + fx, r.top + fy);
+                                LineTo(r.left + fx, r.top + fy);
+                            } else {
+                                Rect fpx;
+                                SetRect(&fpx, r.left + fx * scale, r.top + fy * scale,
+                                             r.left + fx * scale + scale, r.top + fy * scale + scale);
+                                PaintRect(&fpx);
+                            }
+                            PenMode(srcCopy);
+                        }
+                    }
+                }
+            }
+        }
+
         /* Draw city/ruin dots on minimap from SCN site records at gs+0x812 */
         if (*gGameState != 0) {
             unsigned char *gs2 = (unsigned char *)*gGameState;
@@ -6550,17 +7850,29 @@ static void DrawOverviewInWindow(WindowPtr win)
                 short siteType = (short)(unsigned char)city[0x18];
 
                 if (cx >= 0 && cx < sMapWidth && cy >= 0 && cy < sMapHeight) {
+                    /* Fog of war: hide unexplored cities on minimap */
+                    if (*(short *)(gs2 + 0x116) != 0) {
+                        short curP = *(short *)(gs2 + 0x110);
+                        if (curP >= 0 && curP < 8 &&
+                            !FogGetBit(sFogExplored[curP], cx, cy))
+                            continue;
+                    }
                     Rect dot;
-                    if (siteType == 2 || siteType == 5 || siteType == 6) {
+                    if (siteType >= 2 && siteType <= 5) {
+                        /* Ruins/temples: small gray dot */
                         RGBColor ruinGray = {0x9999, 0x9999, 0x7777};
                         SetRect(&dot, r.left + cx * scale, r.top + cy * scale,
-                                r.left + cx * scale + scale, r.top + cy * scale + scale);
+                                r.left + cx * scale + 3, r.top + cy * scale + 3);
                         RGBForeColor(&ruinGray);
                     } else {
+                        /* Cities: 5x5 dot with black outline (68k CODE_128) */
                         short colorIdx = (owner >= 0 && owner < 8) ? owner + 1 : 8;
-                        short dotSz = (scale == 1) ? 3 : 4;
+                        RGBColor black3 = {0, 0, 0};
                         SetRect(&dot, r.left + cx * scale - 1, r.top + cy * scale - 1,
-                                r.left + cx * scale + dotSz - 1, r.top + cy * scale + dotSz - 1);
+                                r.left + cx * scale + 5, r.top + cy * scale + 5);
+                        RGBForeColor(&black3);
+                        PaintRect(&dot);
+                        InsetRect(&dot, 1, 1);
                         RGBForeColor(&sPlayerColors[colorIdx]);
                     }
                     PaintRect(&dot);
@@ -6579,20 +7891,52 @@ static void DrawOverviewInWindow(WindowPtr win)
                 unsigned char *army = gs2 + 0x1604 + ai * 0x42;
                 short ax = *(short *)(army + 0x00);
                 short ay = *(short *)(army + 0x02);
-                short owner = (short)(unsigned char)army[0x15];
-                short colorIdx = (owner >= 0 && owner < 8) ? owner + 1 : 0;
+                short aOwner = (short)(unsigned char)army[0x15];
+                short colorIdx = (aOwner >= 0 && aOwner < 8) ? aOwner + 1 : 8;
 
+                if (army[0x16] == 0xFF) continue;
                 if (ax >= 0 && ax < sMapWidth && ay >= 0 && ay < sMapHeight) {
-                    RGBForeColor(&sPlayerColors[colorIdx]);
-                    if (scale == 1) {
-                        MoveTo(r.left + ax, r.top + ay);
-                        LineTo(r.left + ax, r.top + ay);
-                    } else {
-                        Rect px;
-                        SetRect(&px, r.left + ax * scale, r.top + ay * scale,
-                                     r.left + ax * scale + scale, r.top + ay * scale + scale);
-                        PaintRect(&px);
+                    /* Fog of war: hide enemy armies on minimap */
+                    if (*(short *)(gs2 + 0x116) != 0) {
+                        short curP = *(short *)(gs2 + 0x110);
+                        if (curP >= 0 && curP < 8 && aOwner != curP &&
+                            !FogGetBit(sFogVisible[curP], ax, ay))
+                            continue;
                     }
+                    /* 68k CODE_128: army dots are ~7px squares */
+                    Rect px;
+                    RGBColor black2 = {0, 0, 0};
+                    SetRect(&px, r.left + ax * scale - 1, r.top + ay * scale - 1,
+                                 r.left + ax * scale + 5, r.top + ay * scale + 5);
+                    /* Black outline for contrast */
+                    RGBForeColor(&black2);
+                    InsetRect(&px, -1, -1);
+                    PaintRect(&px);
+                    InsetRect(&px, 1, 1);
+                    RGBForeColor(&sPlayerColors[colorIdx]);
+                    PaintRect(&px);
+                }
+            }
+
+            /* Highlight selected army with crosshair */
+            if (sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
+                unsigned char *selA = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                short sx = *(short *)(selA + 0x00);
+                short sy = *(short *)(selA + 0x02);
+                if (sx >= 0 && sx < sMapWidth && sy >= 0 && sy < sMapHeight) {
+                    RGBColor yellow = {0xFFFF, 0xFFFF, 0x0000};
+                    short cx2 = r.left + sx * scale + scale / 2;
+                    short cy2 = r.top + sy * scale + scale / 2;
+                    RGBForeColor(&yellow);
+                    /* Crosshair lines */
+                    MoveTo(cx2 - 4, cy2);
+                    LineTo(cx2 - 2, cy2);
+                    MoveTo(cx2 + 2, cy2);
+                    LineTo(cx2 + 4, cy2);
+                    MoveTo(cx2, cy2 - 4);
+                    LineTo(cx2, cy2 - 2);
+                    MoveTo(cx2, cy2 + 2);
+                    LineTo(cx2, cy2 + 4);
                 }
             }
         }
@@ -6640,6 +7984,102 @@ static void DrawOverviewInWindow(WindowPtr win)
 
 
 /* ===================================================================
+ * DrawMinimapInRect — draw a small overview map into any port rect
+ *
+ * Used by dialogs (hero hire, hero inspect, city info, etc.)
+ * to show a minimap inset with an optional highlight marker.
+ * highlightX/Y = -1 means no highlight.
+ * =================================================================== */
+static void DrawMinimapInRect(Rect *destRect, short highlightX, short highlightY)
+{
+    unsigned char *mapData;
+    short x, y;
+
+    if (!sMapLoaded || *gMapTiles == 0)
+        return;
+
+    mapData = (unsigned char *)*gMapTiles;
+
+    /* Black background */
+    {
+        RGBColor bg = {0x0000, 0x0000, 0x3333};
+        RGBForeColor(&bg);
+        PaintRect(destRect);
+    }
+
+    /* 1 pixel per tile, clipped to destRect */
+    {
+        unsigned char *scnData = (*gGameState != 0) ? (unsigned char *)*gGameState : NULL;
+        short destW = destRect->right - destRect->left;
+        short destH = destRect->bottom - destRect->top;
+
+        for (y = 0; y < sMapHeight && y < destH; y++) {
+            for (x = 0; x < sMapWidth && x < destW; x++) {
+                unsigned short tileOffset = y * 0xE0 + x * 2;
+                unsigned char terrainIdx = mapData[tileOffset];
+
+                if (sMapColorLoaded && terrainIdx < MAPCOLOR_SIZE) {
+                    short colorIdx = (short)sMapColor[terrainIdx];
+                    if (colorIdx >= MINIMAP_PAL_SIZE) colorIdx = 0;
+                    RGBForeColor(&sMinimapPalette[colorIdx]);
+                } else if (scnData != NULL) {
+                    short terrainType = (short)(unsigned char)scnData[terrainIdx + 0x711];
+                    if (terrainType >= NUM_TERRAIN_COLORS) terrainType = 0;
+                    RGBForeColor(&sTerrainColors[terrainType]);
+                } else {
+                    RGBForeColor(&sMinimapPalette[10]);
+                }
+                MoveTo(destRect->left + x, destRect->top + y);
+                LineTo(destRect->left + x, destRect->top + y);
+            }
+        }
+
+        /* City dots */
+        if (*gGameState != 0) {
+            unsigned char *gs2 = (unsigned char *)*gGameState;
+            short cityCount = *(short *)(gs2 + 0x810);
+            short ci;
+            if (cityCount > 40) cityCount = 40;
+            for (ci = 0; ci < cityCount; ci++) {
+                unsigned char *city = gs2 + 0x812 + ci * 0x20;
+                short cx = *(short *)(city + 0x00);
+                short cy = *(short *)(city + 0x02);
+                short owner = *(short *)(city + 0x04);
+                if (cx >= 0 && cx < destW && cy >= 0 && cy < destH) {
+                    short colorIdx = (owner >= 0 && owner < 8) ? owner + 1 : 8;
+                    Rect dot;
+                    SetRect(&dot, destRect->left + cx - 1, destRect->top + cy - 1,
+                            destRect->left + cx + 2, destRect->top + cy + 2);
+                    RGBForeColor(&sPlayerColors[colorIdx]);
+                    PaintRect(&dot);
+                }
+            }
+        }
+
+        /* Highlight marker (crosshair) */
+        if (highlightX >= 0 && highlightY >= 0 &&
+            highlightX < destW && highlightY < destH) {
+            RGBColor yellow = {0xFFFF, 0xFFFF, 0x0000};
+            short px = destRect->left + highlightX;
+            short py = destRect->top + highlightY;
+            RGBForeColor(&yellow);
+            MoveTo(px - 5, py); LineTo(px - 2, py);
+            MoveTo(px + 2, py); LineTo(px + 5, py);
+            MoveTo(px, py - 5); LineTo(px, py - 2);
+            MoveTo(px, py + 2); LineTo(px, py + 5);
+        }
+
+        /* Border */
+        {
+            RGBColor border = {0x6666, 0x6666, 0x6666};
+            RGBForeColor(&border);
+            FrameRect(destRect);
+        }
+    }
+}
+
+
+/* ===================================================================
  * ToggleMinimapZoom — cycle through 3 minimap zoom levels
  *
  * Small:  124x160, 1px/tile (default)
@@ -6663,12 +8103,12 @@ static void ToggleMinimapZoom(void)
         short newW, newH, infoTop;
 
         if (sMinimapZoom == 0) {
-            /* Small: 1px/tile, sized to fit map */
-            newW = sMapWidth;
-            newH = sMapHeight;
+            /* Small: 2px/tile (drawing always uses 2), compact window */
+            newW = sMapWidth * 2;
+            newH = sMapHeight * 2;
             if (newW < 124) newW = 124;
             if (newH < 100) newH = 100;
-            if (newW > 200) newW = 200;
+            if (newW > 240) newW = 240;
             if (newH > 200) newH = 200;
         } else if (sMinimapZoom == 1) {
             /* Medium: 2px/tile, sized to fit map */
@@ -6714,11 +8154,13 @@ static void ToggleMinimapZoom(void)
  * =================================================================== */
 
 /* ===================================================================
- * ShowCityInfo — Modal dialog showing city details
+ * ShowCityInfo — Modal city dialog with info, production, and armies
  *
- * Shows city name, owner, defense, income, and production info.
- * Allows renaming for owned cities.  cityIndex is the index into
- * the SCN city table at gs+0x812.
+ * Full city management dialog matching original 68k behavior:
+ * - Info tab: name, owner, defense, income, production status
+ * - Production tab: change production type (own cities only)
+ * - Armies at city: list of armies stationed here
+ * cityIndex is the index into the SCN city table at gs+0x812.
  * =================================================================== */
 static void ShowCityInfo(short cityIndex)
 {
@@ -6730,6 +8172,11 @@ static void ShowCityInfo(short cityIndex)
     unsigned char *gs;
     unsigned char *city;
     short      cityX, cityY, owner, defense, income;
+    short      curTab = 0;  /* 0=Info, 1=Production, 2=Armies */
+    Boolean    isOwnCity;
+    short      curPlayer;
+    #define CITY_WIN_W 380
+    #define CITY_WIN_H 340
 
     if (*gGameState == 0)
         return;
@@ -6748,13 +8195,15 @@ static void ShowCityInfo(short cityIndex)
     owner   = *(short *)(city + 0x04);
     defense = *(short *)(city + 0x06);
     income  = *(short *)(city + 0x08);
+    curPlayer = *(short *)(gs + 0x110);
+    isOwnCity = (owner >= 0 && owner < 8 && owner == curPlayer);
 
-    /* Center 320x280 window */
+    /* Center window */
     SetRect(&winRect,
-        (screenRect.right - 320) / 2,
-        (screenRect.bottom - 280) / 2,
-        (screenRect.right - 320) / 2 + 320,
-        (screenRect.bottom - 280) / 2 + 280);
+        (screenRect.right - CITY_WIN_W) / 2,
+        (screenRect.bottom - CITY_WIN_H) / 2,
+        (screenRect.right - CITY_WIN_W) / 2 + CITY_WIN_W,
+        (screenRect.bottom - CITY_WIN_H) / 2 + CITY_WIN_H);
 
     cityWin = NewCWindow(NULL, &winRect, "\p", true,
                           plainDBox, (WindowPtr)-1L, false, 0);
@@ -6765,7 +8214,7 @@ static void ShowCityInfo(short cityIndex)
 
     {
         Rect obounds;
-        SetRect(&obounds, 0, 0, 320, 280);
+        SetRect(&obounds, 0, 0, CITY_WIN_W, CITY_WIN_H);
         NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
     }
 
@@ -6774,6 +8223,11 @@ static void ShowCityInfo(short cityIndex)
     {
         Boolean needsRedraw = true;
         unsigned long startTick = TickCount();
+        /* Production slot button rects (up to 4) */
+        Rect prodBtnR[4];
+        short numProdSlots = 0;
+        /* Tab button rects */
+        Rect tabR[3];
 
         while (!done) {
             EventRecord evt;
@@ -6782,7 +8236,13 @@ static void ShowCityInfo(short cityIndex)
                 Rect r;
                 CGrafPtr savedPort;
                 GDHandle savedDevice;
-                SetRect(&r, 0, 0, 320, 280);
+                RGBColor labelColor = {0xAAAA, 0xAAAA, 0xAAAA};
+                RGBColor valueColor = {0xCCCC, 0xDDDD, 0xFFFF};
+                RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
+                RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                RGBColor black = {0, 0, 0};
+                Str255 numStr;
+                SetRect(&r, 0, 0, CITY_WIN_W, CITY_WIN_H);
 
                 if (offscreen != NULL) {
                     GetGWorld(&savedPort, &savedDevice);
@@ -6790,15 +8250,14 @@ static void ShowCityInfo(short cityIndex)
                     LockPixels(GetGWorldPixMap(offscreen));
                 }
 
-                /* Background: city PICT 3300 or marble fallback */
+                /* Background */
                 {
                     PicHandle cityBg = GetPicture(3300);
                     if (cityBg) {
-                        /* Tile the 128x128 PICT to fill the 320x280 dialog */
                         Rect tR;
                         short tx, ty;
-                        for (ty = 0; ty < 280; ty += 128)
-                            for (tx = 0; tx < 320; tx += 128) {
+                        for (ty = 0; ty < CITY_WIN_H; ty += 128)
+                            for (tx = 0; tx < CITY_WIN_W; tx += 128) {
                                 SetRect(&tR, tx, ty, tx + 128, ty + 128);
                                 DrawPicture(cityBg, &tR);
                             }
@@ -6819,29 +8278,18 @@ static void ShowCityInfo(short cityIndex)
                 /* Owner shield */
                 if (owner >= 0 && owner < 8) {
                     Rect shR;
-                    SetRect(&shR, 260, 10, 260 + BIG_SHIELD_W, 10 + BIG_SHIELD_H);
+                    SetRect(&shR, CITY_WIN_W - 50, 10,
+                            CITY_WIN_W - 50 + BIG_SHIELD_W, 10 + BIG_SHIELD_H);
                     DrawBigShield(owner, &shR);
                 }
 
-                /* Title: "City" */
+                /* City name */
                 {
-                    RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
                     RGBForeColor(&gold);
                     TextFont(2);
                     TextSize(18);
                     TextFace(bold);
-                    MoveTo(20, 30);
-                    DrawString(GetCachedString(STR_CITY_DIALOG, 0, "\pCity"));
-                }
-
-                /* City name — from CTY resource, or faction name */
-                {
-                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    RGBForeColor(&white);
-                    TextFont(2);
-                    TextSize(14);
-                    TextFace(bold);
-                    MoveTo(20, 56);
+                    MoveTo(20, 28);
                     if (cityIndex < sCityNameCount && sCityNames[cityIndex][0] != '\0') {
                         Str255 pName;
                         char *cn = sCityNames[cityIndex];
@@ -6858,83 +8306,117 @@ static void ShowCityInfo(short cityIndex)
                         pName[0] = (unsigned char)nlen;
                         BlockMoveData(namePtr, pName + 1, nlen);
                         DrawString(pName);
-                        DrawString(GetCachedString(STR_CITY_DIALOG, 23, "\p City"));
+                        DrawString("\p City");
                     } else {
-                        DrawString(GetCachedString(STR_CITY_DIALOG, 24, "\pNeutral City"));
+                        DrawString("\pNeutral City");
                     }
                 }
 
-                /* City feature icons (cicn 3300-3303) */
+                /* Owner name below city name */
+                if (owner >= 0 && owner < 8) {
+                    Str255 pName;
+                    unsigned char *namePtr = gs + owner * 20;
+                    short nlen = 0;
+                    while (nlen < 20 && namePtr[nlen] != 0) nlen++;
+                    pName[0] = (unsigned char)nlen;
+                    BlockMoveData(namePtr, pName + 1, nlen);
+                    RGBForeColor(&white);
+                    TextFont(3);
+                    TextSize(10);
+                    TextFace(0);
+                    MoveTo(20, 42);
+                    DrawString(pName);
+                }
+
+                /* Tab buttons with cicn icons */
                 {
-                    short ic;
-                    for (ic = 0; ic < 4; ic++) {
-                        if (sCityTabIcons[ic]) {
-                            Rect icR;
-                            SetRect(&icR, 220 + ic * 22, 10, 236 + ic * 22, 26);
-                            PlotCIcon(&icR, sCityTabIcons[ic]);
+                    short ti;
+                    static unsigned char *tabNames[3] = {
+                        "\pInfo", "\pBuild", "\pArmies"
+                    };
+                    LoadDialogIcons();
+                    for (ti = 0; ti < 3; ti++) {
+                        short tabLabelX;
+                        SetRect(&tabR[ti], 15 + ti * 90, 52, 15 + ti * 90 + 82, 68);
+                        if (ti == curTab) {
+                            RGBColor selBg = {0x4444, 0x4444, 0x7777};
+                            RGBForeColor(&selBg);
+                        } else {
+                            RGBColor normBg = {0x2222, 0x2222, 0x3333};
+                            RGBForeColor(&normBg);
                         }
+                        PaintRoundRect(&tabR[ti], 6, 6);
+                        RGBForeColor(&white);
+                        FrameRoundRect(&tabR[ti], 6, 6);
+                        tabLabelX = tabR[ti].left + 4;
+                        /* Draw tab icon (cicn 3300-3303) */
+                        if (sCityTabIcons[ti] != NULL) {
+                            Rect icoR;
+                            SetRect(&icoR, tabLabelX, tabR[ti].top + 1,
+                                    tabLabelX + 14, tabR[ti].bottom - 1);
+                            PlotCIcon(&icoR, sCityTabIcons[ti]);
+                            tabLabelX += 16;
+                        }
+                        TextFont(3);
+                        TextSize(10);
+                        TextFace(bold);
+                        MoveTo(tabLabelX, tabR[ti].bottom - 4);
+                        DrawString(tabNames[ti]);
                     }
                 }
 
-                /* Stats */
+                /* Content area */
                 {
-                    RGBColor labelColor = {0xAAAA, 0xAAAA, 0xAAAA};
-                    RGBColor valueColor = {0xCCCC, 0xDDDD, 0xFFFF};
-                    Str255 numStr;
-                    short yBase = 86;
+                    Rect contentR;
+                    RGBColor contentBg = {0x1111, 0x1111, 0x1111};
+                    SetRect(&contentR, 10, 72, CITY_WIN_W - 10, CITY_WIN_H - 40);
+                    RGBForeColor(&contentBg);
+                    PaintRect(&contentR);
+                    {
+                        RGBColor contentBdr = {0x5555, 0x5555, 0x5555};
+                        RGBForeColor(&contentBdr);
+                        FrameRect(&contentR);
+                    }
+                }
 
+                /* ---- Tab content ---- */
+                if (curTab == 0) {
+                    /* INFO TAB */
+                    short yBase = 90;
                     TextFont(3);
                     TextSize(10);
                     TextFace(0);
 
-                    /* Location */
-                    RGBForeColor(&labelColor);
-                    MoveTo(30, yBase);
-                    DrawString(GetCachedString(STR_CITY_DIALOG, 1, "\pLocation:"));
-                    RGBForeColor(&valueColor);
-                    MoveTo(130, yBase);
-                    NumToString((long)cityX, numStr);
-                    DrawString(numStr);
-                    DrawString("\p, ");
-                    NumToString((long)cityY, numStr);
-                    DrawString(numStr);
-
-                    /* Owner */
-                    RGBForeColor(&labelColor);
-                    MoveTo(30, yBase + 20);
-                    DrawString(GetCachedString(STR_CITY_DIALOG, 2, "\pOwner:"));
-                    RGBForeColor(&valueColor);
-                    MoveTo(130, yBase + 20);
-                    if (owner >= 0 && owner < 8) {
-                        Str255 pName;
-                        unsigned char *namePtr = gs + owner * 20;
-                        short nlen = 0;
-                        while (nlen < 20 && namePtr[nlen] != 0) nlen++;
-                        pName[0] = (unsigned char)nlen;
-                        BlockMoveData(namePtr, pName + 1, nlen);
-                        DrawString(pName);
-                    } else {
-                        DrawString(GetCachedString(STR_CITY_DIALOG, 8, "\pNeutral"));
-                    }
-
                     /* Defense */
                     RGBForeColor(&labelColor);
-                    MoveTo(30, yBase + 40);
-                    DrawString(GetCachedString(STR_CITY_DIALOG, 3, "\pDefense:"));
+                    MoveTo(25, yBase);
+                    DrawString("\pDefense:");
                     RGBForeColor(&valueColor);
-                    MoveTo(130, yBase + 40);
+                    MoveTo(120, yBase);
                     NumToString((long)defense, numStr);
                     DrawString(numStr);
 
                     /* Income */
                     RGBForeColor(&labelColor);
-                    MoveTo(30, yBase + 60);
-                    DrawString(GetCachedString(STR_CITY_DIALOG, 4, "\pIncome:"));
+                    MoveTo(25, yBase + 18);
+                    DrawString("\pIncome:");
                     RGBForeColor(&valueColor);
-                    MoveTo(130, yBase + 60);
+                    MoveTo(120, yBase + 18);
                     NumToString((long)income, numStr);
                     DrawString(numStr);
-                    DrawString(GetCachedString(STR_CITY_DIALOG, 25, "\p gp/turn"));
+                    DrawString("\p gp/turn");
+
+                    /* Location */
+                    RGBForeColor(&labelColor);
+                    MoveTo(25, yBase + 36);
+                    DrawString("\pLocation:");
+                    RGBForeColor(&valueColor);
+                    MoveTo(120, yBase + 36);
+                    NumToString((long)cityX, numStr);
+                    DrawString(numStr);
+                    DrawString("\p, ");
+                    NumToString((long)cityY, numStr);
+                    DrawString(numStr);
 
                     /* Production status */
                     if (*gExtState != 0) {
@@ -6944,63 +8426,66 @@ static void ShowCityInfo(short cityIndex)
                         short prodTurns = *(short *)(extCity + 0x58);
 
                         RGBForeColor(&labelColor);
-                        MoveTo(30, yBase + 80);
-                        DrawString(GetCachedString(STR_CITY_DIALOG, 5, "\pProducing:"));
+                        MoveTo(25, yBase + 60);
+                        DrawString("\pProducing:");
                         RGBForeColor(&valueColor);
-                        MoveTo(130, yBase + 80);
+                        MoveTo(120, yBase + 60);
                         if (producing >= 0) {
                             Str255 prodName;
                             short totalTurns = GetProductionTurns(producing);
+                            short prodCost = GetUnitTypeStat(producing, 4);
                             GetUnitTypeName(producing, prodName);
                             DrawString(prodName);
-                            if (prodTurns > 0) {
-                                DrawString(GetCachedString(STR_CITY_DIALOG, 32, "\p ("));
-                                NumToString((long)prodTurns, numStr);
+                            DrawString("\p (");
+                            NumToString((long)prodTurns, numStr);
+                            DrawString(numStr);
+                            DrawString("\p turns");
+                            if (prodCost > 0) {
+                                DrawString("\p, ");
+                                NumToString((long)prodCost, numStr);
                                 DrawString(numStr);
-                                DrawString(GetCachedString(STR_CITY_DIALOG, 26, "\p turns)"));
-                            } else {
-                                DrawString(GetCachedString(STR_CITY_DIALOG, 27, "\p (ready)"));
+                                DrawString("\pgp");
                             }
+                            DrawString("\p)");
 
-                            /* Production progress bar */
+                            /* Progress bar */
                             if (totalTurns > 0) {
-                                Rect trackR, fillR;
+                                Rect trackR2, fillR2;
                                 short elapsed = totalTurns - prodTurns;
-                                short barW = 150;
+                                short barW = 200;
                                 short fillW;
                                 RGBColor trackCol = {0x3333, 0x3333, 0x3333};
                                 RGBColor fillCol = {0x3333, 0xBBBB, 0x3333};
-                                RGBColor readyCol = {0x4444, 0xFFFF, 0x4444};
                                 if (elapsed < 0) elapsed = 0;
                                 if (elapsed > totalTurns) elapsed = totalTurns;
                                 fillW = (elapsed * barW) / totalTurns;
-                                SetRect(&trackR, 30, yBase + 88, 30 + barW, yBase + 96);
+                                SetRect(&trackR2, 25, yBase + 68, 25 + barW, yBase + 76);
                                 RGBForeColor(&trackCol);
-                                PaintRoundRect(&trackR, 4, 4);
+                                PaintRoundRect(&trackR2, 4, 4);
                                 if (fillW > 0) {
-                                    SetRect(&fillR, 30, yBase + 88, 30 + fillW, yBase + 96);
-                                    RGBForeColor(prodTurns <= 0 ? &readyCol : &fillCol);
-                                    PaintRoundRect(&fillR, 4, 4);
+                                    SetRect(&fillR2, 25, yBase + 68, 25 + fillW, yBase + 76);
+                                    RGBForeColor(&fillCol);
+                                    PaintRoundRect(&fillR2, 4, 4);
                                 }
                                 {
                                     RGBColor bdr = {0x6666, 0x6666, 0x6666};
                                     RGBForeColor(&bdr);
-                                    FrameRoundRect(&trackR, 4, 4);
+                                    FrameRoundRect(&trackR2, 4, 4);
                                 }
                             }
                         } else {
-                            DrawString(GetCachedString(STR_CITY_DIALOG, 6, "\pNothing"));
+                            DrawString("\pNothing");
                         }
 
-                        /* Vectoring info */
+                        /* Vectoring */
                         {
                             short vectorCity = *(short *)(extCity + 0x3e);
                             if (vectorCity >= 0 && vectorCity != cityIndex) {
                                 RGBForeColor(&labelColor);
-                                MoveTo(30, yBase + 100);
-                                DrawString(GetCachedString(STR_CITY_DIALOG, 7, "\pVectoring to:"));
+                                MoveTo(25, yBase + 90);
+                                DrawString("\pVectoring to:");
                                 RGBForeColor(&valueColor);
-                                MoveTo(130, yBase + 100);
+                                MoveTo(120, yBase + 90);
                                 if (vectorCity < sCityNameCount &&
                                     sCityNames[vectorCity][0] != '\0') {
                                     Str255 pName;
@@ -7011,21 +8496,404 @@ static void ShowCityInfo(short cityIndex)
                                     BlockMoveData(cn, pName + 1, nlen2);
                                     DrawString(pName);
                                 } else {
-                                    DrawString(GetCachedString(STR_CITY_DIALOG, 28, "\pCity #"));
+                                    DrawString("\pCity #");
                                     NumToString((long)vectorCity, numStr);
                                     DrawString(numStr);
                                 }
                             }
                         }
                     }
+
+                    /* Armies at this city (brief list) */
+                    {
+                        short armyCount = *(short *)(gs + 0x1602);
+                        short ai2, armyY = yBase + 116;
+                        short armiesHere = 0;
+                        if (armyCount > 100) armyCount = 100;
+                        RGBForeColor(&labelColor);
+                        MoveTo(25, armyY);
+                        DrawString("\pArmies here:");
+                        armyY += 16;
+                        for (ai2 = 0; ai2 < armyCount && armiesHere < 6; ai2++) {
+                            unsigned char *a = gs + 0x1604 + ai2 * 0x42;
+                            short aax = *(short *)(a + 0x00);
+                            short aay = *(short *)(a + 0x02);
+                            if (a[0x16] == 0xFF) continue;
+                            if (aax == cityX && aay == cityY) {
+                                Str255 uName;
+                                if ((unsigned char)a[0x16] == 0x1C) {
+                                    unsigned char *hn = a + 0x04; short nl = 0;
+                                    while (nl < 15 && hn[nl]) nl++;
+                                    uName[0] = (unsigned char)nl;
+                                    BlockMoveData(hn, uName + 1, nl);
+                                } else {
+                                    GetUnitTypeName((short)(unsigned char)a[0x16], uName);
+                                }
+                                RGBForeColor(&valueColor);
+                                TextSize(9);
+                                MoveTo(35, armyY);
+                                DrawString(uName);
+                                DrawString("\p  str:");
+                                NumToString((long)*(short *)(a + 0x2a), numStr);
+                                DrawString(numStr);
+                                armyY += 14;
+                                armiesHere++;
+                            }
+                        }
+                        if (armiesHere == 0) {
+                            RGBForeColor(&valueColor);
+                            TextSize(9);
+                            MoveTo(35, armyY);
+                            DrawString("\pNone");
+                        }
+                    }
+
+                } else if (curTab == 1) {
+                    /* PRODUCTION TAB - show available production types for this city */
+                    short yBase = 84;
+                    numProdSlots = 0;
+
+                    TextFont(3);
+                    TextSize(10);
+
+                    if (!isOwnCity) {
+                        RGBForeColor(&labelColor);
+                        TextFace(0);
+                        MoveTo(25, yBase + 20);
+                        DrawString("\pYou do not control this city.");
+                    } else if (*gExtState != 0) {
+                        unsigned char *ext = (unsigned char *)*gExtState;
+                        unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
+                        short producing = *(short *)(extCity + 0x02);
+                        short pi2;
+
+                        /* Column headers */
+                        RGBForeColor(&labelColor);
+                        TextFace(bold);
+                        TextSize(9);
+                        MoveTo(25, yBase);
+                        DrawString("\pUnit Type");
+                        MoveTo(170, yBase);
+                        DrawString("\pStr");
+                        MoveTo(200, yBase);
+                        DrawString("\pMov");
+                        MoveTo(228, yBase);
+                        DrawString("\pCost");
+                        MoveTo(260, yBase);
+                        DrawString("\pTurns");
+                        {
+                            RGBColor lineCol = {0x4444, 0x4444, 0x4444};
+                            RGBForeColor(&lineCol);
+                            MoveTo(20, yBase + 4);
+                            LineTo(CITY_WIN_W - 25, yBase + 4);
+                        }
+
+                        /* List available production slots */
+                        for (pi2 = 0; pi2 < 4; pi2++) {
+                            short pType = *(short *)(extCity + 0x06 + pi2 * 2);
+                            if (pType >= 0 && pType < 29) {
+                                Str255 uName;
+                                short str2, mov, turns;
+                                short rowY = yBase + 12 + numProdSlots * 28;
+                                Boolean isCurrent = (pType == producing);
+
+                                GetUnitTypeName(pType, uName);
+                                str2 = GetUnitTypeStat(pType, 0);
+                                mov = GetUnitTypeStat(pType, 3);
+                                turns = GetProductionTurns(pType);
+
+                                /* Button background */
+                                SetRect(&prodBtnR[numProdSlots], 18, rowY - 8,
+                                        CITY_WIN_W - 18, rowY + 16);
+                                if (isCurrent) {
+                                    RGBColor selBg = {0x2222, 0x3333, 0x5555};
+                                    RGBForeColor(&selBg);
+                                    PaintRoundRect(&prodBtnR[numProdSlots], 6, 6);
+                                    {
+                                        RGBColor selBdr = {0x6666, 0x8888, 0xFFFF};
+                                        RGBForeColor(&selBdr);
+                                        FrameRoundRect(&prodBtnR[numProdSlots], 6, 6);
+                                    }
+                                } else {
+                                    RGBColor normBg = {0x1A1A, 0x1A1A, 0x2222};
+                                    RGBForeColor(&normBg);
+                                    PaintRoundRect(&prodBtnR[numProdSlots], 6, 6);
+                                    {
+                                        RGBColor normBdr = {0x4444, 0x4444, 0x4444};
+                                        RGBForeColor(&normBdr);
+                                        FrameRoundRect(&prodBtnR[numProdSlots], 6, 6);
+                                    }
+                                }
+
+                                /* Draw army sprite (use city owner's faction sheet) */
+                                {
+                                    short pSheet = (owner >= 0 && owner < ARMY_SHEETS) ? owner : 0;
+                                    GWorldPtr pGW = sArmyGW[pSheet] ? sArmyGW[pSheet] : sArmyGW[0];
+                                    if (sArmyLoaded && pGW != NULL) {
+                                        short si = 0;
+                                        Rect srcR2, dstR2;
+                                        PixMapHandle pm;
+                                        if (sUnitTypesLoaded && pType < sUnitTypeCount) {
+                                            unsigned char *ute = sUnitTypeTable + pType * UNIT_TYPE_ENTRY;
+                                            si = *(short *)(ute + 0x24);
+                                        }
+                                        SetRect(&srcR2, (si % 16) * 32, (si / 16) * 30,
+                                                (si % 16) * 32 + 29, (si / 16) * 30 + 32);
+                                        SetRect(&dstR2, 22, rowY - 6, 48, rowY + 14);
+                                        pm = GetGWorldPixMap(pGW);
+                                        if (LockPixels(pm)) {
+                                            RGBColor savedBg2;
+                                            GetBackColor(&savedBg2);
+                                            RGBBackColor(&sArmyBgColor[pSheet]);
+                                            CopyBits((BitMap *)*pm,
+                                                     (BitMap *)*GetGWorldPixMap(offscreen),
+                                                     &srcR2, &dstR2, 36, NULL);
+                                            RGBBackColor(&savedBg2);
+                                            UnlockPixels(pm);
+                                        }
+                                    }
+                                }
+
+                                /* Unit name */
+                                RGBForeColor(isCurrent ? &gold : &white);
+                                TextFace(isCurrent ? bold : 0);
+                                TextSize(10);
+                                MoveTo(52, rowY + 4);
+                                DrawString(uName);
+                                if (isCurrent) {
+                                    DrawString("\p *");
+                                }
+
+                                /* Stats */
+                                RGBForeColor(&valueColor);
+                                TextFace(0);
+                                TextSize(9);
+                                MoveTo(170, rowY + 4);
+                                NumToString((long)str2, numStr);
+                                DrawString(numStr);
+                                MoveTo(200, rowY + 4);
+                                NumToString((long)mov, numStr);
+                                DrawString(numStr);
+                                {
+                                    short pCost = GetUnitTypeStat(pType, 4);
+                                    if (pCost > 0) {
+                                        MoveTo(228, rowY + 4);
+                                        NumToString((long)pCost, numStr);
+                                        DrawString(numStr);
+                                    }
+                                }
+                                MoveTo(260, rowY + 4);
+                                NumToString((long)turns, numStr);
+                                DrawString(numStr);
+
+                                numProdSlots++;
+                            }
+                        }
+
+                        if (numProdSlots == 0) {
+                            RGBForeColor(&labelColor);
+                            TextFace(0);
+                            MoveTo(25, yBase + 20);
+                            DrawString("\pNo production available.");
+                        }
+
+                        /* Current production timer */
+                        if (producing >= 0) {
+                            short prodTurns = *(short *)(extCity + 0x58);
+                            short totalTurns = GetProductionTurns(producing);
+                            short timerY = yBase + 16 + numProdSlots * 28 + 10;
+                            Rect trackR3, fillR3;
+                            short elapsed2, fillW2;
+                            RGBColor trackCol = {0x3333, 0x3333, 0x3333};
+                            RGBColor fillCol = {0x3333, 0xBBBB, 0x3333};
+
+                            RGBForeColor(&labelColor);
+                            TextFace(0);
+                            TextSize(9);
+                            MoveTo(25, timerY);
+                            DrawString("\pProgress: ");
+                            NumToString((long)(totalTurns - prodTurns), numStr);
+                            DrawString(numStr);
+                            DrawString("\p/");
+                            NumToString((long)totalTurns, numStr);
+                            DrawString(numStr);
+                            DrawString("\p turns");
+
+                            elapsed2 = totalTurns - prodTurns;
+                            if (elapsed2 < 0) elapsed2 = 0;
+                            if (totalTurns > 0) {
+                                fillW2 = (elapsed2 * 200) / totalTurns;
+                                SetRect(&trackR3, 25, timerY + 4, 225, timerY + 12);
+                                RGBForeColor(&trackCol);
+                                PaintRoundRect(&trackR3, 4, 4);
+                                if (fillW2 > 0) {
+                                    SetRect(&fillR3, 25, timerY + 4, 25 + fillW2, timerY + 12);
+                                    RGBForeColor(&fillCol);
+                                    PaintRoundRect(&fillR3, 4, 4);
+                                }
+                                {
+                                    RGBColor bdr = {0x6666, 0x6666, 0x6666};
+                                    RGBForeColor(&bdr);
+                                    FrameRoundRect(&trackR3, 4, 4);
+                                }
+                            }
+                        }
+                    }
+
+                } else if (curTab == 2) {
+                    /* ARMIES TAB - detailed list of armies at this city */
+                    short armyCount = *(short *)(gs + 0x1602);
+                    short ai3, armyY = 84;
+                    short armiesHere = 0;
+                    if (armyCount > 100) armyCount = 100;
+
+                    /* Column headers */
+                    RGBForeColor(&labelColor);
+                    TextFont(3);
+                    TextSize(9);
+                    TextFace(bold);
+                    MoveTo(25, armyY);
+                    DrawString("\pArmy Name");
+                    MoveTo(165, armyY);
+                    DrawString("\pStr");
+                    MoveTo(200, armyY);
+                    DrawString("\pMP");
+                    MoveTo(230, armyY);
+                    DrawString("\pUnits");
+                    {
+                        RGBColor lineCol = {0x4444, 0x4444, 0x4444};
+                        RGBForeColor(&lineCol);
+                        MoveTo(20, armyY + 4);
+                        LineTo(CITY_WIN_W - 25, armyY + 4);
+                    }
+                    armyY += 16;
+
+                    for (ai3 = 0; ai3 < armyCount && armiesHere < 8; ai3++) {
+                        unsigned char *a = gs + 0x1604 + ai3 * 0x42;
+                        short aax = *(short *)(a + 0x00);
+                        short aay = *(short *)(a + 0x02);
+                        if (a[0x16] == 0xFF) continue;
+                        if (aax == cityX && aay == cityY) {
+                            Str255 aName;
+                            short alen = 0, ui3, unitCount = 0;
+                            short aOwner = (short)(unsigned char)a[0x15];
+                            short colorIdx2 = (aOwner >= 0 && aOwner < 8) ? aOwner + 1 : 0;
+
+                            /* Army name */
+                            while (alen < 16 && a[0x04 + alen] != 0) alen++;
+                            if (alen > 0) {
+                                aName[0] = (unsigned char)alen;
+                                BlockMoveData(a + 0x04, aName + 1, alen);
+                            } else {
+                                aName[0] = 5;
+                                BlockMoveData("Army ", aName + 1, 5);
+                            }
+
+                            /* Owner color bar */
+                            {
+                                Rect ownerBar;
+                                SetRect(&ownerBar, 20, armyY - 8, 23, armyY + 4);
+                                RGBForeColor(&sPlayerColors[colorIdx2]);
+                                PaintRect(&ownerBar);
+                            }
+
+                            /* Draw army sprite (use per-faction sheet) */
+                            {
+                                short aSheet = (aOwner >= 0 && aOwner < ARMY_SHEETS) ? aOwner : 0;
+                                GWorldPtr aGW = sArmyGW[aSheet] ? sArmyGW[aSheet] : sArmyGW[0];
+                                if (sArmyLoaded && aGW != NULL) {
+                                    short si2 = (short)(unsigned char)a[0x14];
+                                    Rect srcR3, dstR3;
+                                    PixMapHandle pm2;
+                                    SetRect(&srcR3, (si2 % 16) * 32, (si2 / 16) * 30,
+                                            (si2 % 16) * 32 + 29, (si2 / 16) * 30 + 32);
+                                    SetRect(&dstR3, 26, armyY - 8, 50, armyY + 10);
+                                    pm2 = GetGWorldPixMap(aGW);
+                                    if (LockPixels(pm2)) {
+                                        RGBColor savedBg3;
+                                        GetBackColor(&savedBg3);
+                                        RGBBackColor(&sArmyBgColor[aSheet]);
+                                        CopyBits((BitMap *)*pm2,
+                                                 (BitMap *)*GetGWorldPixMap(offscreen),
+                                                 &srcR3, &dstR3, 36, NULL);
+                                        RGBBackColor(&savedBg3);
+                                        UnlockPixels(pm2);
+                                    }
+                                }
+                            }
+
+                            /* Name */
+                            RGBForeColor(&white);
+                            TextFace(bold);
+                            TextSize(10);
+                            MoveTo(54, armyY + 2);
+                            DrawString(aName);
+
+                            /* Strength */
+                            RGBForeColor(&valueColor);
+                            TextFace(0);
+                            TextSize(9);
+                            MoveTo(165, armyY + 2);
+                            NumToString((long)*(short *)(a + 0x2a), numStr);
+                            DrawString(numStr);
+
+                            /* Movement points */
+                            MoveTo(200, armyY + 2);
+                            NumToString((long)(unsigned char)a[0x2e], numStr);
+                            DrawString(numStr);
+
+                            /* Unit count */
+                            for (ui3 = 0; ui3 < 4; ui3++) {
+                                if (a[0x16 + ui3] != 0xFF) unitCount++;
+                            }
+                            MoveTo(230, armyY + 2);
+                            NumToString((long)unitCount, numStr);
+                            DrawString(numStr);
+                            DrawString("\p/4");
+
+                            /* Unit types row */
+                            {
+                                short ux;
+                                TextSize(8);
+                                RGBForeColor(&labelColor);
+                                ux = 54;
+                                for (ui3 = 0; ui3 < 4; ui3++) {
+                                    if (a[0x16 + ui3] != 0xFF) {
+                                        Str255 utn;
+                                        if ((unsigned char)a[0x16 + ui3] == 0x1C) {
+                                            unsigned char *hn = a + 0x04; short nl = 0;
+                                            while (nl < 15 && hn[nl]) nl++;
+                                            utn[0] = (unsigned char)nl;
+                                            BlockMoveData(hn, utn + 1, nl);
+                                        } else {
+                                            GetUnitTypeName((short)(unsigned char)a[0x16 + ui3], utn);
+                                        }
+                                        MoveTo(ux, armyY + 14);
+                                        DrawString(utn);
+                                        ux += StringWidth(utn) + 8;
+                                    }
+                                }
+                            }
+
+                            armyY += 28;
+                            armiesHere++;
+                        }
+                    }
+
+                    if (armiesHere == 0) {
+                        RGBForeColor(&valueColor);
+                        TextFace(0);
+                        TextSize(10);
+                        MoveTo(25, armyY);
+                        DrawString("\pNo armies stationed here.");
+                    }
                 }
 
                 /* OK button */
                 {
-                    RGBColor black = {0, 0, 0};
-                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
                     Rect okBtn;
-                    SetRect(&okBtn, 120, 244, 200, 266);
+                    SetRect(&okBtn, CITY_WIN_W / 2 - 40, CITY_WIN_H - 32,
+                            CITY_WIN_W / 2 + 40, CITY_WIN_H - 10);
                     RGBForeColor(&white);
                     PaintRoundRect(&okBtn, 8, 8);
                     RGBForeColor(&black);
@@ -7036,8 +8904,8 @@ static void ShowCityInfo(short cityIndex)
                     TextFont(3);
                     TextSize(10);
                     TextFace(bold);
-                    MoveTo(okBtn.left + 16, okBtn.bottom - 6);
-                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
+                    MoveTo(okBtn.left + 24, okBtn.bottom - 6);
+                    DrawString("\pOK");
                 }
 
                 /* Blit to window */
@@ -7061,9 +8929,46 @@ static void ShowCityInfo(short cityIndex)
                 Rect okBtn;
                 SetPort(cityWin);
                 GlobalToLocal(&localPt);
-                SetRect(&okBtn, 120, 244, 200, 266);
-                if (PtInRect(localPt, &okBtn))
+
+                /* OK button */
+                SetRect(&okBtn, CITY_WIN_W / 2 - 40, CITY_WIN_H - 32,
+                        CITY_WIN_W / 2 + 40, CITY_WIN_H - 10);
+                if (PtInRect(localPt, &okBtn)) {
                     done = true;
+                    continue;
+                }
+
+                /* Tab buttons */
+                {
+                    short ti2;
+                    for (ti2 = 0; ti2 < 3; ti2++) {
+                        if (PtInRect(localPt, &tabR[ti2]) && ti2 != curTab) {
+                            curTab = ti2;
+                            needsRedraw = true;
+                            break;
+                        }
+                    }
+                }
+
+                /* Production slot buttons (Build tab only, own city) */
+                if (curTab == 1 && isOwnCity && *gExtState != 0) {
+                    short pi3;
+                    for (pi3 = 0; pi3 < numProdSlots; pi3++) {
+                        if (PtInRect(localPt, &prodBtnR[pi3])) {
+                            /* Change production to this slot */
+                            unsigned char *ext = (unsigned char *)*gExtState;
+                            unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
+                            short selectedType = *(short *)(extCity + 0x06 + pi3 * 2);
+                            short curProd = *(short *)(extCity + 0x02);
+                            if (selectedType >= 0 && selectedType != curProd) {
+                                *(short *)(extCity + 0x02) = selectedType;
+                                *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
+                                needsRedraw = true;
+                            }
+                            break;
+                        }
+                    }
+                }
             }
             else if (evt.what == keyDown) {
                 char key = evt.message & charCodeMask;
@@ -7071,6 +8976,9 @@ static void ShowCityInfo(short cityIndex)
                     continue;
                 if (key == 0x0D || key == 0x03 || key == 0x1B)
                     done = true;
+                else if (key == '1') { curTab = 0; needsRedraw = true; }
+                else if (key == '2') { curTab = 1; needsRedraw = true; }
+                else if (key == '3') { curTab = 2; needsRedraw = true; }
             }
             else if (evt.what == updateEvt) {
                 needsRedraw = true;
@@ -7081,6 +8989,8 @@ static void ShowCityInfo(short cityIndex)
     if (offscreen != NULL)
         DisposeGWorld(offscreen);
     DisposeWindow(cityWin);
+    #undef CITY_WIN_W
+    #undef CITY_WIN_H
 }
 
 
@@ -7118,12 +9028,12 @@ static void ShowArmyInspect(short armyIndex)
         }
     }
 
-    /* Center 350x260 window */
+    /* Center 350x310 window */
     SetRect(&winRect,
         (screenRect.right - 350) / 2,
-        (screenRect.bottom - 260) / 2,
+        (screenRect.bottom - 310) / 2,
         (screenRect.right - 350) / 2 + 350,
-        (screenRect.bottom - 260) / 2 + 260);
+        (screenRect.bottom - 310) / 2 + 310);
 
     inspWin = NewCWindow(NULL, &winRect, "\p", true,
                           plainDBox, (WindowPtr)-1L, false, 0);
@@ -7132,7 +9042,7 @@ static void ShowArmyInspect(short armyIndex)
     SetPort(inspWin);
     {
         Rect obounds;
-        SetRect(&obounds, 0, 0, 350, 260);
+        SetRect(&obounds, 0, 0, 350, 310);
         NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
     }
 
@@ -7150,7 +9060,7 @@ static void ShowArmyInspect(short armyIndex)
                 CGrafPtr savedPort;
                 GDHandle savedDevice;
                 short ui;
-                SetRect(&r, 0, 0, 350, 260);
+                SetRect(&r, 0, 0, 350, 310);
 
                 if (offscreen != NULL) {
                     GetGWorld(&savedPort, &savedDevice);
@@ -7171,6 +9081,13 @@ static void ShowArmyInspect(short armyIndex)
                     PenSize(3, 3);
                     FrameRect(&r);
                     PenSize(1, 1);
+
+                    /* Owner faction shield */
+                    if (owner >= 0 && owner < 8) {
+                        Rect shR;
+                        SetRect(&shR, 300, 8, 300 + BIG_SHIELD_W, 8 + BIG_SHIELD_H);
+                        DrawBigShield(owner, &shR);
+                    }
                 }
 
                 /* Title: army name */
@@ -7193,7 +9110,7 @@ static void ShowArmyInspect(short armyIndex)
                     }
                 }
 
-                /* Army strength */
+                /* Army strength and movement */
                 {
                     RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
                     Str255 numStr;
@@ -7201,33 +9118,25 @@ static void ShowArmyInspect(short armyIndex)
                     TextFont(3);
                     TextSize(10);
                     TextFace(0);
-                    MoveTo(200, 26);
-                    DrawString(GetCachedString(STR_STACK_INFO, 1, "\pStrength: "));
+                    MoveTo(20, 42);
+                    DrawString("\pStrength: ");
                     NumToString((long)*(short *)(army + 0x2a), numStr);
                     DrawString(numStr);
-                }
-
-                /* Column headers */
-                {
-                    RGBColor labelColor = {0xAAAA, 0xAAAA, 0xAAAA};
-                    RGBForeColor(&labelColor);
-                    TextFont(3);
-                    TextSize(9);
-                    TextFace(bold);
-                    MoveTo(20, 48);
-                    DrawString(GetCachedString(STR_STACK_INFO, 2, "\pSlot"));
-                    MoveTo(60, 48);
-                    DrawString(GetCachedString(STR_STACK_INFO, 3, "\pType"));
-                    MoveTo(110, 48);
-                    DrawString(GetCachedString(STR_STACK_INFO, 4, "\pStr"));
-                    MoveTo(150, 48);
-                    DrawString(GetCachedString(STR_STACK_INFO, 5, "\pMov"));
-                    MoveTo(190, 48);
-                    DrawString(GetCachedString(STR_STACK_INFO, 6, "\pHP"));
-                    MoveTo(230, 48);
-                    DrawString(GetCachedString(STR_STACK_INFO, 7, "\pBonus"));
-                    MoveTo(280, 48);
-                    DrawString(GetCachedString(STR_STACK_INFO, 8, "\pXP"));
+                    DrawString("\p   Movement: ");
+                    NumToString((long)(unsigned char)army[0x2e], numStr);
+                    DrawString(numStr);
+                    /* Defend status */
+                    if (army[0x2d] > 0) {
+                        RGBColor defColor = {0x8888, 0xFFFF, 0x8888};
+                        RGBForeColor(&defColor);
+                        DrawString("\p  [Defending]");
+                    }
+                    /* Orders status */
+                    if (*(short *)(army + 0x32) != 0) {
+                        RGBColor ordColor = {0xAAAA, 0xAAAA, 0xFFFF};
+                        RGBForeColor(&ordColor);
+                        DrawString("\p  [Orders]");
+                    }
                 }
 
                 /* Separator line */
@@ -7238,10 +9147,10 @@ static void ShowArmyInspect(short armyIndex)
                     LineTo(335, 52);
                 }
 
-                /* Unit slots (up to 4) */
+                /* Unit slots (up to 4) with sprites */
                 TextFace(0);
                 for (ui = 0; ui < 4; ui++) {
-                    short yPos = 68 + ui * 36;
+                    short yPos = 68 + ui * 40;
                     unsigned char unitType = army[0x16 + ui];
                     unsigned char unitMoves = army[0x1a + ui];
                     unsigned char unitHits = army[0x1e + ui];
@@ -7254,54 +9163,110 @@ static void ShowArmyInspect(short armyIndex)
                     if (unitType == 0xFF) {
                         /* Empty slot */
                         RGBForeColor(&dim);
-                        MoveTo(20, yPos);
-                        NumToString((long)(ui + 1), numStr);
-                        DrawString(numStr);
-                        MoveTo(60, yPos);
+                        TextSize(10);
+                        MoveTo(50, yPos + 10);
                         DrawString(GetCachedString(STR_STACK_INFO, 9, "\p(empty)"));
                         continue;
                     }
 
+                    /* Row background */
+                    {
+                        Rect rowBg;
+                        RGBColor rowCol = {0x1A1A, 0x1A1A, 0x2222};
+                        SetRect(&rowBg, 15, yPos - 6, 335, yPos + 28);
+                        RGBForeColor(&rowCol);
+                        PaintRoundRect(&rowBg, 4, 4);
+                    }
+
+                    /* Draw unit sprite (use army owner's faction sheet) */
+                    {
+                        short uOwn = (short)(unsigned char)army[0x15];
+                        short uSheet = (uOwn >= 0 && uOwn < ARMY_SHEETS) ? uOwn : 0;
+                        GWorldPtr uGW = sArmyGW[uSheet] ? sArmyGW[uSheet] : sArmyGW[0];
+                        if (sArmyLoaded && uGW != NULL) {
+                            short si3 = 0;
+                            Rect srcR4, dstR4;
+                            PixMapHandle pm3;
+                            if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
+                                unsigned char *ute = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
+                                si3 = *(short *)(ute + 0x24);
+                            }
+                            SetRect(&srcR4, (si3 % 16) * 32, (si3 / 16) * 30,
+                                    (si3 % 16) * 32 + 29, (si3 / 16) * 30 + 32);
+                            SetRect(&dstR4, 18, yPos - 4, 46, yPos + 24);
+                            pm3 = GetGWorldPixMap(uGW);
+                            if (LockPixels(pm3)) {
+                                RGBColor savedBg4;
+                                GetBackColor(&savedBg4);
+                                RGBBackColor(&sArmyBgColor[uSheet]);
+                                CopyBits((BitMap *)*pm3,
+                                         (BitMap *)*GetGWorldPixMap(offscreen),
+                                         &srcR4, &dstR4, 36, NULL);
+                                RGBBackColor(&savedBg4);
+                                UnlockPixels(pm3);
+                            }
+                        }
+                    }
+
                     RGBForeColor(&white);
 
-                    /* Slot number */
-                    MoveTo(20, yPos);
-                    NumToString((long)(ui + 1), numStr);
-                    DrawString(numStr);
-
-                    /* Unit type */
-                    MoveTo(60, yPos);
+                    /* Unit type name (large) */
+                    TextSize(11);
+                    TextFace(bold);
+                    MoveTo(52, yPos + 6);
                     {
                         Str255 typeName;
                         GetUnitTypeName((short)unitType, typeName);
                         DrawString(typeName);
                     }
 
-                    /* Stats */
-                    MoveTo(110, yPos);
-                    NumToString((long)unitHits, numStr);
-                    DrawString(numStr);
+                    /* Stats row below name */
+                    {
+                        RGBColor statColor = {0xBBBB, 0xBBBB, 0xDDDD};
+                        RGBColor labelCol = {0x8888, 0x8888, 0x8888};
+                        TextFace(0);
+                        TextSize(9);
 
-                    MoveTo(150, yPos);
-                    NumToString((long)unitMoves, numStr);
-                    DrawString(numStr);
-
-                    MoveTo(190, yPos);
-                    NumToString((long)unitHits, numStr);
-                    DrawString(numStr);
-
-                    MoveTo(230, yPos);
-                    if (unitBonus > 0) {
-                        DrawString("\p+");
-                        NumToString((long)unitBonus, numStr);
+                        RGBForeColor(&labelCol);
+                        MoveTo(52, yPos + 20);
+                        DrawString("\pStr:");
+                        RGBForeColor(&statColor);
+                        /* Base strength from unit type table (not current HP) */
+                        {
+                            short baseStr = GetUnitTypeStat((short)unitType, 0);
+                            NumToString((long)(baseStr > 0 ? baseStr : unitHits), numStr);
+                        }
                         DrawString(numStr);
-                    } else {
-                        DrawString("\p-");
-                    }
 
-                    MoveTo(280, yPos);
-                    NumToString((long)unitExp, numStr);
-                    DrawString(numStr);
+                        RGBForeColor(&labelCol);
+                        DrawString("\p  Mov:");
+                        RGBForeColor(&statColor);
+                        NumToString((long)unitMoves, numStr);
+                        DrawString(numStr);
+
+                        RGBForeColor(&labelCol);
+                        DrawString("\p  HP:");
+                        RGBForeColor(&statColor);
+                        NumToString((long)unitHits, numStr);
+                        DrawString(numStr);
+
+                        if (unitBonus > 0) {
+                            RGBForeColor(&labelCol);
+                            DrawString("\p  Bonus:");
+                            RGBForeColor(&statColor);
+                            DrawString("\p+");
+                            NumToString((long)unitBonus, numStr);
+                            DrawString(numStr);
+                        }
+
+                        if (unitExp > 0) {
+                            RGBForeColor(&labelCol);
+                            DrawString("\p  XP:");
+                            RGBForeColor(&statColor);
+                            NumToString((long)unitExp, numStr);
+                            DrawString(numStr);
+                        }
+                    }
                 }
 
                 /* OK button */
@@ -7309,7 +9274,7 @@ static void ShowArmyInspect(short armyIndex)
                     RGBColor black = {0, 0, 0};
                     RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
                     Rect okBtn;
-                    SetRect(&okBtn, 135, 224, 215, 246);
+                    SetRect(&okBtn, 135, 274, 215, 296);
                     RGBForeColor(&white);
                     PaintRoundRect(&okBtn, 8, 8);
                     RGBForeColor(&black);
@@ -7344,7 +9309,7 @@ static void ShowArmyInspect(short armyIndex)
                 Rect okBtn;
                 SetPort(inspWin);
                 GlobalToLocal(&localPt);
-                SetRect(&okBtn, 135, 224, 215, 246);
+                SetRect(&okBtn, 135, 274, 215, 296);
                 if (PtInRect(localPt, &okBtn))
                     done = true;
             }
@@ -7366,17 +9331,26 @@ static void ShowArmyInspect(short armyIndex)
 }
 
 
+/* Forward declarations for stack grouping and window refresh */
+static void BuildStackArrays(short leadArmyIdx);
+static void InvalidateAllGameWindows(void);
+
 /* ===================================================================
- * SelectNextArmy — Cycle to next unfinished army for current player
+ * SelectNextArmy — Select nearest unfinished army for current player
  *
- * Implements "Next Group" (Cmd+N).  Starts from current selection
- * and wraps around to find an army owned by the current player
- * that hasn't moved yet this turn.
+ * Implements "Next Group" (Cmd+N).  68k CODE_115 FUN_000032c0:
+ * Uses Manhattan distance from viewport center to pick the nearest
+ * army that has movement points, is not fortified, and has no queued
+ * orders.  Armies at distance 0 (already at viewport) are penalized
+ * to 9000 so they're picked last.
  * =================================================================== */
 static void SelectNextArmy(void)
 {
     unsigned char *gs;
-    short currentPlayer, armyCount, startIdx, idx, checked;
+    short currentPlayer, armyCount, i;
+    short bestIdx = -1;
+    short bestDist = 10000;
+    short vpCenterX, vpCenterY;
 
     if (*gGameState == 0)
         return;
@@ -7387,43 +9361,78 @@ static void SelectNextArmy(void)
     if (armyCount <= 0 || armyCount > 100)
         return;
 
-    startIdx = (sSelectedArmy >= 0) ? (sSelectedArmy + 1) % armyCount : 0;
-
-    /* First pass: find army with remaining movement points, not defending */
-    for (checked = 0; checked < armyCount; checked++) {
-        idx = (startIdx + checked) % armyCount;
-        {
-            unsigned char *army = gs + 0x1604 + idx * 0x42;
-            short owner = (short)(unsigned char)army[0x15];
-            short movePts = (short)(unsigned char)army[0x2e];
-            short hasOrders = *(short *)(army + 0x32);
-            short fortified = army[0x2d];
-
-            if (owner == currentPlayer && movePts > 0 &&
-                hasOrders == 0 && fortified == 0) {
-                goto selectArmy;
-            }
-        }
-    }
-
-    /* Second pass: any army owned by current player */
-    for (checked = 0; checked < armyCount; checked++) {
-        idx = (startIdx + checked) % armyCount;
-        {
-            unsigned char *army = gs + 0x1604 + idx * 0x42;
-            short owner = (short)(unsigned char)army[0x15];
-
-            if (owner == currentPlayer) {
-                goto selectArmy;
-            }
-        }
-    }
-    return;
-
-selectArmy:
+    /* Viewport center for distance calculation */
     {
-        unsigned char *army = gs + 0x1604 + idx * 0x42;
-        sSelectedArmy = idx;
+        short tilesWide = 10, tilesHigh = 10;
+        if (*gMainGameWindow != 0) {
+            Rect p = ((WindowPtr)*gMainGameWindow)->portRect;
+            tilesWide = (p.right - p.left - SCROLLBAR_W) / TERRAIN_TILE_W;
+            tilesHigh = (p.bottom - p.top - SCROLLBAR_H) / TERRAIN_TILE_H;
+        }
+        vpCenterX = sViewportX + tilesWide / 2;
+        vpCenterY = sViewportY + tilesHigh / 2;
+    }
+
+    /* Find nearest army with movement, not fortified, no orders (68k logic) */
+    for (i = armyCount - 1; i >= 0; i--) {
+        unsigned char *army = gs + 0x1604 + i * 0x42;
+        short owner = (short)(unsigned char)army[0x15];
+        short ax, ay, dist, dx, dy;
+        short movePts, hasOrders, fortified;
+
+        if (owner != currentPlayer) continue;
+        ax = *(short *)(army + 0x00);
+        if (ax < 0) continue;  /* not placed */
+        if (army[0x16] == 0xFF) continue;  /* dead */
+
+        movePts = (short)(unsigned char)army[0x2e];
+        if (movePts <= 0) continue;  /* no movement */
+        fortified = army[0x2d];
+        if (fortified != 0) continue;  /* fortified/garrisoned */
+        hasOrders = *(short *)(army + 0x32);
+        if (hasOrders != 0) continue;  /* queued orders */
+
+        /* Manhattan distance from viewport center */
+        ay = *(short *)(army + 0x02);
+        dx = ax - vpCenterX;
+        if (dx < 0) dx = -dx;
+        dy = ay - vpCenterY;
+        if (dy < 0) dy = -dy;
+        dist = dx + dy;
+
+        /* Penalize army at viewport center (68k: distance 0 → 9000) */
+        if (dist == 0) dist = 9000;
+
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = i;
+        }
+    }
+
+    /* Fallback: any army owned by current player with movement,
+     * still skipping fortified and ordered armies (68k behavior) */
+    if (bestIdx < 0) {
+        for (i = 0; i < armyCount; i++) {
+            unsigned char *army = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)army[0x15] == currentPlayer &&
+                army[0x16] != 0xFF &&
+                (short)(unsigned char)army[0x2e] > 0 &&
+                army[0x2d] == 0 &&
+                *(short *)(army + 0x32) == 0) {
+                bestIdx = i;
+                break;
+            }
+        }
+    }
+
+    if (bestIdx < 0)
+        return;
+
+    /* Select and center viewport on chosen army */
+    {
+        unsigned char *army = gs + 0x1604 + bestIdx * 0x42;
+        sSelectedArmy = bestIdx;
+        BuildStackArrays(bestIdx);
 
         /* Center viewport on selected army */
         {
@@ -7457,6 +9466,144 @@ selectArmy:
 }
 
 
+/* ===================================================================
+ * BuildStackArrays — Populate parallel arrays for all armies at a tile
+ *
+ * Called when an army is selected (clicked on map).  Finds all armies
+ * at the same tile owned by the same player and builds the stack
+ * arrays.  The selected army becomes group 0 and is marked selected.
+ * Other armies at the same tile get their own groups.
+ *
+ * 68k: CODE_123 FUN_00000788 + FUN_000008de
+ * =================================================================== */
+static void BuildStackArrays(short leadArmyIdx)
+{
+    unsigned char *gs;
+    unsigned char *lead;
+    short ax, ay, owner, armyCount;
+    short ai, si;
+
+    if (*gGameState == 0 || leadArmyIdx < 0)
+        return;
+
+    gs = (unsigned char *)*gGameState;
+    armyCount = *(short *)(gs + 0x1602);
+    if (leadArmyIdx >= armyCount)
+        return;
+
+    lead = gs + 0x1604 + leadArmyIdx * 0x42;
+    ax = *(short *)(lead + 0x00);
+    ay = *(short *)(lead + 0x02);
+    owner = (short)(unsigned char)lead[0x15];
+
+    /* Clear arrays */
+    for (si = 0; si < MAX_STACK; si++) {
+        sStackArmyIdx[si] = -1;
+        sStackGroupId[si] = -1;
+        sStackSelected[si] = 0;
+        sStackSep[si] = -1;
+    }
+    sStackCount = 0;
+
+    /* Put the lead army first */
+    sStackArmyIdx[0] = leadArmyIdx;
+    sStackGroupId[0] = 0;
+    sStackSelected[0] = 1;
+    sStackSep[0] = 0;
+    sStackCount = 1;
+
+    /* Find all other armies at the same tile with same owner */
+    for (ai = 0; ai < armyCount && sStackCount < MAX_STACK; ai++) {
+        unsigned char *army = gs + 0x1604 + ai * 0x42;
+        if (ai == leadArmyIdx)
+            continue;
+        if (*(short *)(army + 0x00) == ax &&
+            *(short *)(army + 0x02) == ay &&
+            (short)(unsigned char)army[0x15] == owner) {
+            si = sStackCount;
+            sStackArmyIdx[si] = ai;
+            /* Check group tag (army+0x11): if same tag as lead AND non-zero,
+             * put in same group.  Otherwise give own group. */
+            if (lead[0x11] != 0 && army[0x11] == lead[0x11]) {
+                sStackGroupId[si] = 0;
+                sStackSelected[si] = 1;
+                sStackSep[si] = -1;
+            } else {
+                sStackGroupId[si] = sStackCount;
+                sStackSelected[si] = 0;
+                sStackSep[si] = 0;
+            }
+            sStackCount++;
+        }
+    }
+
+    /* Sort by groupId, then by unit type priority within group.
+     * 68k uses insertion sort: primary key groupId, secondary unit priority. */
+    {
+        short i, j;
+        for (i = 1; i < sStackCount; i++) {
+            short tmpIdx = sStackArmyIdx[i];
+            short tmpGrp = sStackGroupId[i];
+            short tmpSel = sStackSelected[i];
+            short tmpSep = sStackSep[i];
+            /* Get unit type for sort key */
+            unsigned char *armyI = gs + 0x1604 + tmpIdx * 0x42;
+            short typeI = (short)(unsigned char)armyI[0x16];
+
+            j = i - 1;
+            while (j >= 0) {
+                unsigned char *armyJ = gs + 0x1604 + sStackArmyIdx[j] * 0x42;
+                short typeJ = (short)(unsigned char)armyJ[0x16];
+                /* Sort: groupId ascending, then unit type ascending (lower = higher priority) */
+                if (sStackGroupId[j] > tmpGrp ||
+                    (sStackGroupId[j] == tmpGrp && typeJ > typeI)) {
+                    sStackArmyIdx[j + 1] = sStackArmyIdx[j];
+                    sStackGroupId[j + 1] = sStackGroupId[j];
+                    sStackSelected[j + 1] = sStackSelected[j];
+                    sStackSep[j + 1] = sStackSep[j];
+                    j--;
+                } else {
+                    break;
+                }
+            }
+            sStackArmyIdx[j + 1] = tmpIdx;
+            sStackGroupId[j + 1] = tmpGrp;
+            sStackSelected[j + 1] = tmpSel;
+            sStackSep[j + 1] = tmpSep;
+        }
+    }
+
+    /* Recalculate separators after sort */
+    if (sStackCount > 0) {
+        sStackSep[0] = 0;
+        for (si = 1; si < sStackCount; si++) {
+            sStackSep[si] = (sStackGroupId[si] == sStackGroupId[si - 1]) ? -1 : 0;
+        }
+    }
+
+    /* Renumber groups to be contiguous (0, 1, 2, ...) */
+    {
+        short remap[MAX_STACK];
+        short nextId = 0, ri;
+        for (ri = 0; ri < MAX_STACK; ri++) remap[ri] = -1;
+        for (si = 0; si < sStackCount; si++) {
+            if (remap[sStackGroupId[si]] == -1)
+                remap[sStackGroupId[si]] = nextId++;
+            sStackGroupId[si] = remap[sStackGroupId[si]];
+        }
+    }
+
+    /* Find active slot (first selected entry) */
+    sActiveSlot = -1;
+    for (si = 0; si < sStackCount; si++) {
+        if (sStackSelected[si]) {
+            sActiveSlot = si;
+            break;
+        }
+    }
+}
+
+
 /* Forward declarations */
 static void RemoveArmy(short armyIndex);
 static void GetHeroItemBonus(short armyIdx, short *outBattle, short *outCommand,
@@ -7467,6 +9614,22 @@ static void CheckQuestProgress(short player);
 static short GetHeroLevel(short xp);
 static Boolean IsHeroFemale(short armyIdx);
 static void GetHeroTitle(short level, Boolean female, Str255 out);
+
+/* ===================================================================
+ * RecalcArmyStrength — Recalculate strength display value (army+0x2A).
+ *
+ * Formula: SUM(HP * 2) for all occupied unit slots.
+ * Must be called whenever unit HP or slot occupancy changes.
+ * =================================================================== */
+static void RecalcArmyStrength(unsigned char *army)
+{
+    short str = 0, i;
+    for (i = 0; i < 4; i++) {
+        if ((unsigned char)army[0x16 + i] != 0xFF)
+            str += (short)(unsigned char)army[0x1e + i] * 2;
+    }
+    *(short *)(army + 0x2a) = str;
+}
 
 /* ===================================================================
  * TryMergeArmies — Merge movingArmy into a friendly army at same tile.
@@ -7514,6 +9677,32 @@ static Boolean TryMergeArmies(short movingIdx)
                         tgtArmy[0x1e + tgtSlot] = movArmy[0x1e + slot];
                         tgtArmy[0x22 + tgtSlot] = movArmy[0x22 + slot];
                         tgtArmy[0x26 + tgtSlot] = movArmy[0x26 + slot];
+                        /* Transfer hero name and items if unit is a hero (0x1C) */
+                        if (movArmy[0x16 + slot] == 0x1C) {
+                            short hni;
+                            for (hni = 0; hni < 16; hni++)
+                                tgtArmy[0x04 + hni] = movArmy[0x04 + hni];
+                            {
+                                short itm;
+                                for (itm = 0; itm < ITEM_SLOTS; itm++) {
+                                    short itemId = *(short *)(movArmy + 0x3A + itm * 2);
+                                    *(short *)(tgtArmy + 0x3A + itm * 2) = itemId;
+                                    *(short *)(movArmy + 0x3A + itm * 2) = 0;
+                                    /* Update item record carrier to target army */
+                                    if (itemId >= 1 && itemId <= 22) {
+                                        unsigned char *itemRec = gs + 0xD12 + (itemId - 1) * 0x1E;
+                                        if (itemRec[0x16] == 3)
+                                            *(short *)(itemRec + 0x18) = i;
+                                    }
+                                }
+                            }
+                            /* Update hero instance record with new army index */
+                            if (mOwner >= 0 && mOwner < 8) {
+                                unsigned char *hr = gs + 0x1422 + mOwner * 0x2C;
+                                if (hr[0x00] != 0 && *(short *)(hr + 0x04) == movingIdx)
+                                    *(short *)(hr + 0x04) = i;
+                            }
+                        }
                         /* Mark source slot as empty */
                         movArmy[0x16 + slot] = 0xFF;
                         movArmy[0x1e + slot] = 0;
@@ -7523,14 +9712,7 @@ static Boolean TryMergeArmies(short movingIdx)
             }
 
             /* Recalculate target army strength */
-            {
-                short str = 0;
-                for (tgtSlot = 0; tgtSlot < 4; tgtSlot++) {
-                    if (tgtArmy[0x16 + tgtSlot] != 0xFF || tgtArmy[0x1e + tgtSlot] > 0)
-                        str += (short)(unsigned char)tgtArmy[0x1e + tgtSlot];
-                }
-                *(short *)(tgtArmy + 0x2a) = str;
-            }
+            RecalcArmyStrength(tgtArmy);
 
             /* Check if moving army is now empty */
             {
@@ -7548,14 +9730,7 @@ static Boolean TryMergeArmies(short movingIdx)
             }
 
             /* Recalculate moving army strength if partial transfer */
-            {
-                short str = 0;
-                for (slot = 0; slot < 4; slot++) {
-                    if (movArmy[0x16 + slot] != 0xFF || movArmy[0x1e + slot] > 0)
-                        str += (short)(unsigned char)movArmy[0x1e + slot];
-                }
-                *(short *)(movArmy + 0x2a) = str;
-            }
+            RecalcArmyStrength(movArmy);
             return false;
         }
     }
@@ -7567,7 +9742,8 @@ static Boolean TryMergeArmies(short movingIdx)
  * GetMovementCost — Returns movement point cost to enter a map tile.
  *
  * Uses terrain properties table (gs+0x711) and movement cost table
- * (gs+0x60C).  unitClass is the army's primary unit type (0-28).
+ * (sMoveCostTable, separate from fight order at gs+0x60C).
+ * unitClass is the army's primary unit type (0-28).
  * Returns 0 if impassable, otherwise 1-4 movement points.
  * =================================================================== */
 static short GetMovementCost(short mapX, short mapY, short unitClass)
@@ -7587,36 +9763,392 @@ static short GetMovementCost(short mapX, short mapY, short unitClass)
     terrainIdx = mapData[mapY * 0xE0 + mapX * 2];
     terrainType = gs[terrainIdx + 0x711];
 
-    /* Clamp terrain type to 0-8 (9 terrain types) */
+    /* Flying units (class 0x0E=14): all terrain costs capped at 2 (68k CODE_115) */
+    if (unitClass == 0x0E) {
+        /* Flying: all terrain passable at cost 2 */
+        return 2;
+    }
+
+    /* Handle terrain types beyond the 9-entry cost table (0-8).
+     * 68k terrain types: 0=grass,1=forest,2=swamp,3=hills,4=mountain,
+     * 5=shore,6=bridge,7=road,8=river, 9=deep water, 10=city, 11=ruin/temple */
     if (terrainType > 8) {
-        /* Special types: 10=road (fast), 11=water (impassable for land) */
-        if (terrainType == 10) return 1;  /* road: cheap */
-        if (terrainType == 11) {
-            /* Water: passable for naval units (type 5), impassable for others */
-            if (unitClass == 5 || unitClass == 0x1C) return 2;  /* naval/hero-with-flying */
-            return 0;  /* impassable for land units */
+        if (terrainType == 9) {
+            /* Deep water/ocean: passable for naval units only */
+            if (unitClass == 5) return 2;
+            return 0;
         }
+        if (terrainType == 10) return 2;  /* city tile: passable, cost 2 */
+        if (terrainType == 11) return 2;  /* ruin/temple: passable, cost 2 */
         return 2;  /* unknown: moderate */
     }
 
     /* Clamp unit class */
     if (unitClass < 0 || unitClass > 28) unitClass = 0;
 
-    cost = (short)(unsigned char)gs[terrainType * 0x1d + unitClass + 0x60c];
+    cost = (short)(unsigned char)sMoveCostTable[terrainType * 29 + unitClass];
     if (cost == 0) return 0;  /* impassable */
-    /* Movement costs up to 28 are valid in the original game */
 
     /* Road overlay bonus: if road data exists and this tile has a road,
-     * reduce cost to 1 (roads make travel faster through rough terrain) */
-    if (cost > 1 && *gRoadData != 0) {
+     * reduce cost to 2 (68k CODE_115 wavefront: road reduces cost to 2, not 1) */
+    if (cost > 2 && *gRoadData != 0) {
         unsigned char *roadData = (unsigned char *)*gRoadData;
         if (mapX < 112 && mapY < 156 && roadData[mapY * 112 + mapX] != 0)
-            cost = 1;
+            cost = 2;
     }
 
     return cost;
 }
 
+
+/* ===================================================================
+ * ComputeWavefrontPath — Dijkstra flood-fill pathfinder.
+ *
+ * 68k CODE_115 FUN_000012c6: computes optimal path from (srcX,srcY)
+ * to (dstX,dstY) for a given unit class. Uses 4-direction alternating
+ * sweeps over a 112x156 cost grid.
+ *
+ * Returns number of direction steps in sPathDirBuffer[], or -1 if
+ * destination is unreachable. Direction encoding: 0=N..7=NW, 0xFF=end.
+ * =================================================================== */
+static short ComputeWavefrontPath(short srcX, short srcY,
+                                   short dstX, short dstY,
+                                   short unitClass)
+{
+    short x, y, d, pass;
+    short maxX, maxY;
+    Boolean changed;
+
+    if (srcX < 0 || srcY < 0 || dstX < 0 || dstY < 0) return -1;
+    maxX = sMapWidth;  if (maxX > PATH_GRID_W) maxX = PATH_GRID_W;
+    maxY = sMapHeight; if (maxY > PATH_GRID_H) maxY = PATH_GRID_H;
+    if (srcX >= maxX || srcY >= maxY || dstX >= maxX || dstY >= maxY) return -1;
+    if (srcX == dstX && srcY == dstY) { sPathLength = 0; sPathDirBuffer[0] = 0xFF; return 0; }
+
+    /* --- Phase 1: Build terrain cost cache (one GetMovementCost per tile) --- */
+    for (y = 0; y < maxY; y++) {
+        short rowOff = y * PATH_GRID_W;
+        for (x = 0; x < maxX; x++) {
+            short c = GetMovementCost(x, y, unitClass);
+            sPathTerrainCache[rowOff + x] = (unsigned char)(c > 255 ? 255 : c);
+        }
+    }
+
+    /* --- Phase 2: Initialize cost grid --- */
+    {
+        long total = PATH_GRID_W * PATH_GRID_H;
+        long i;
+        for (i = 0; i < total; i++)
+            sPathCostGrid[i] = PATH_COST_MAX;
+    }
+    /* Mark impassable tiles */
+    for (y = 0; y < maxY; y++) {
+        short rowOff = y * PATH_GRID_W;
+        for (x = 0; x < maxX; x++) {
+            if (sPathTerrainCache[rowOff + x] == 0)
+                sPathCostGrid[rowOff + x] = PATH_COST_BLOCK;
+        }
+    }
+    /* Source tile: cost 0 (68k sets -10, but 0 is equivalent for our sweep) */
+    sPathCostGrid[srcY * PATH_GRID_W + srcX] = 0;
+    /* Destination must be reachable — unblock it even if terrain says impassable
+     * (army can move TO a tile with enemies for combat) */
+    if (sPathCostGrid[dstY * PATH_GRID_W + dstX] == PATH_COST_BLOCK)
+        sPathCostGrid[dstY * PATH_GRID_W + dstX] = PATH_COST_MAX;
+
+    /* --- Phase 3: Wavefront expansion — 4-direction alternating sweeps ---
+     * 68k CODE_115 FUN_000015a8: N→S/W→E, S→N/E→W, N→S/E→W, S→N/W→E.
+     * Repeat until no cost updates (converged). Max 50 iterations. */
+    for (pass = 0; pass < 50; pass++) {
+        changed = false;
+
+        /* Sweep 1: N→S, W→E (top-left to bottom-right) */
+        for (y = 0; y < maxY; y++) {
+            for (x = 0; x < maxX; x++) {
+                short cur = sPathCostGrid[y * PATH_GRID_W + x];
+                if (cur >= PATH_COST_MAX) continue;
+                for (d = 0; d < 8; d++) {
+                    short nx = x + sPathDX[d], ny = y + sPathDY[d];
+                    short nc, newC;
+                    if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
+                    if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
+                    nc = (short)sPathTerrainCache[ny * PATH_GRID_W + nx];
+                    if (nc <= 0) continue;
+                    newC = cur + nc;
+                    if (newC < sPathCostGrid[ny * PATH_GRID_W + nx]) {
+                        sPathCostGrid[ny * PATH_GRID_W + nx] = newC;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        /* Sweep 2: S→N, E→W (bottom-right to top-left) */
+        for (y = maxY - 1; y >= 0; y--) {
+            for (x = maxX - 1; x >= 0; x--) {
+                short cur = sPathCostGrid[y * PATH_GRID_W + x];
+                if (cur >= PATH_COST_MAX) continue;
+                for (d = 0; d < 8; d++) {
+                    short nx = x + sPathDX[d], ny = y + sPathDY[d];
+                    short nc, newC;
+                    if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
+                    if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
+                    nc = (short)sPathTerrainCache[ny * PATH_GRID_W + nx];
+                    if (nc <= 0) continue;
+                    newC = cur + nc;
+                    if (newC < sPathCostGrid[ny * PATH_GRID_W + nx]) {
+                        sPathCostGrid[ny * PATH_GRID_W + nx] = newC;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (!changed) break;  /* Converged */
+
+        /* Sweep 3: N→S, E→W */
+        changed = false;
+        for (y = 0; y < maxY; y++) {
+            for (x = maxX - 1; x >= 0; x--) {
+                short cur = sPathCostGrid[y * PATH_GRID_W + x];
+                if (cur >= PATH_COST_MAX) continue;
+                for (d = 0; d < 8; d++) {
+                    short nx = x + sPathDX[d], ny = y + sPathDY[d];
+                    short nc, newC;
+                    if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
+                    if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
+                    nc = (short)sPathTerrainCache[ny * PATH_GRID_W + nx];
+                    if (nc <= 0) continue;
+                    newC = cur + nc;
+                    if (newC < sPathCostGrid[ny * PATH_GRID_W + nx]) {
+                        sPathCostGrid[ny * PATH_GRID_W + nx] = newC;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        /* Sweep 4: S→N, W→E */
+        for (y = maxY - 1; y >= 0; y--) {
+            for (x = 0; x < maxX; x++) {
+                short cur = sPathCostGrid[y * PATH_GRID_W + x];
+                if (cur >= PATH_COST_MAX) continue;
+                for (d = 0; d < 8; d++) {
+                    short nx = x + sPathDX[d], ny = y + sPathDY[d];
+                    short nc, newC;
+                    if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
+                    if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
+                    nc = (short)sPathTerrainCache[ny * PATH_GRID_W + nx];
+                    if (nc <= 0) continue;
+                    newC = cur + nc;
+                    if (newC < sPathCostGrid[ny * PATH_GRID_W + nx]) {
+                        sPathCostGrid[ny * PATH_GRID_W + nx] = newC;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (!changed) break;
+    }
+
+    /* --- Phase 4: Check destination reachability --- */
+    if (sPathCostGrid[dstY * PATH_GRID_W + dstX] >= PATH_COST_MAX)
+        return -1;
+
+    /* --- Phase 5: Traceback — follow steepest descent from dst to src ---
+     * 68k CODE_115 FUN_000029c6: walks backward, stores reversed directions.
+     * We collect back-to-source directions, then reverse + rotate by 4. */
+    {
+        short cx = dstX, cy = dstY;
+        short revLen = 0;
+        unsigned char revDirs[PATH_MAX_STEPS];
+
+        while ((cx != srcX || cy != srcY) && revLen < PATH_MAX_STEPS - 1) {
+            short bestDir = -1;
+            short bestCost = sPathCostGrid[cy * PATH_GRID_W + cx];
+            short bestNX = cx, bestNY = cy;
+
+            for (d = 0; d < 8; d++) {
+                short nx = cx + sPathDX[d], ny = cy + sPathDY[d];
+                short nc;
+                if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
+                nc = sPathCostGrid[ny * PATH_GRID_W + nx];
+                if (nc < bestCost && nc < PATH_COST_MAX) {
+                    bestCost = nc;
+                    bestDir = d;
+                    bestNX = nx;
+                    bestNY = ny;
+                }
+            }
+
+            if (bestDir < 0) break;  /* stuck — shouldn't happen */
+            revDirs[revLen++] = (unsigned char)bestDir;
+            cx = bestNX;
+            cy = bestNY;
+        }
+
+        /* Reverse and rotate directions: back-to-source dir D → forward dir (D+4)%8 */
+        sPathLength = 0;
+        {
+            short ri;
+            for (ri = revLen - 1; ri >= 0; ri--)
+                sPathDirBuffer[sPathLength++] = (unsigned char)((revDirs[ri] + 4) % 8);
+        }
+        sPathDirBuffer[sPathLength] = 0xFF;
+    }
+
+    return sPathLength;
+}
+
+
+/* ===================================================================
+ * ExecutePathSteps — Execute pre-computed path for an army.
+ *
+ * Reads directions from sPathDirBuffer[], moves the army step by step,
+ * deducting movement costs. Stops when: out of MP, combat encountered,
+ * path ends, or tile blocked. Also moves grouped armies.
+ *
+ * Returns: number of steps actually taken (0 if none possible).
+ * =================================================================== */
+static short ExecutePathSteps(short armyIdx)
+{
+    unsigned char *gs, *army;
+    short stepsTaken = 0, step;
+    short armyCount;
+
+    if (*gGameState == 0) return 0;
+    gs = (unsigned char *)*gGameState;
+    armyCount = *(short *)(gs + 0x1602);
+    if (armyCount > 100) armyCount = 100;
+    if (armyIdx < 0 || armyIdx >= armyCount) return 0;
+
+    for (step = 0; step < sPathLength && sPathDirBuffer[step] != 0xFF; step++) {
+        short dir, curX, curY, newX, newY;
+        short movePts, unitClass, cost;
+
+        /* Re-read army pointer (may shift due to RemoveArmy in combat) */
+        armyCount = *(short *)(gs + 0x1602);
+        if (armyCount > 100) armyCount = 100;
+        if (armyIdx >= armyCount) break;
+        army = gs + 0x1604 + armyIdx * 0x42;
+
+        movePts = (short)(unsigned char)army[0x2e];
+        if (movePts <= 0) break;
+
+        dir = (short)sPathDirBuffer[step];
+        if (dir < 0 || dir > 7) break;
+
+        curX = *(short *)(army + 0x00);
+        curY = *(short *)(army + 0x02);
+        newX = curX + sPathDX[dir];
+        newY = curY + sPathDY[dir];
+
+        if (newX < 0 || newX >= sMapWidth || newY < 0 || newY >= sMapHeight)
+            break;
+
+        unitClass = GetEffectiveUnitClass(armyIdx);
+        cost = GetMovementCost(newX, newY, unitClass);
+        if (cost <= 0 || movePts < cost) break;
+
+        /* 68k CODE_115 FUN_000003c4: tile stack limit of 8 armies.
+         * Count armies already at destination; if adding our group would exceed 8, stop. */
+        { short tileCount = 0, groupSize = 1, gi3;
+            for (gi3 = 0; gi3 < sStackCount; gi3++)
+                if (sStackSelected[gi3] && sStackArmyIdx[gi3] >= 0 &&
+                    sStackArmyIdx[gi3] != armyIdx) groupSize++;
+            { short ti;
+              for (ti = 0; ti < armyCount; ti++) {
+                  unsigned char *ta = gs + 0x1604 + ti * 0x42;
+                  if (ta[0x16] == 0xFF) continue;
+                  if (*(short *)(ta + 0x00) == newX && *(short *)(ta + 0x02) == newY)
+                      tileCount++;
+              }
+            }
+            if (tileCount + groupSize > 8) break;
+        }
+
+        /* Group movement: check ALL selected members can afford this step
+         * (68k CODE_115 FUN_00001208: uses minimum MP across group) */
+        { short gi2; Boolean groupBlocked = false;
+            for (gi2 = 0; gi2 < sStackCount && !groupBlocked; gi2++) {
+                if (sStackSelected[gi2] && sStackArmyIdx[gi2] >= 0 &&
+                    sStackArmyIdx[gi2] != armyIdx) {
+                    unsigned char *ga2 = gs + 0x1604 + sStackArmyIdx[gi2] * 0x42;
+                    short gCost2 = GetMovementCost(newX, newY, GetEffectiveUnitClass(sStackArmyIdx[gi2]));
+                    short gMove2 = (short)(unsigned char)ga2[0x2e];
+                    if (gCost2 <= 0 || gMove2 < gCost2) groupBlocked = true;
+                }
+            }
+            if (groupBlocked) break;
+        }
+
+        /* Store undo info for first step */
+        if (stepsTaken == 0) {
+            sUndoArmyIdx = armyIdx;
+            sUndoFromX = curX;
+            sUndoFromY = curY;
+            sUndoMovePts = movePts;
+            sUndoFortify = (short)(unsigned char)army[0x2d];
+        }
+
+        /* Move lead army */
+        *(short *)(army + 0x00) = newX;
+        *(short *)(army + 0x02) = newY;
+        army[0x2e] = (unsigned char)(movePts - cost);
+        army[0x2d] = 0;  /* clear fortification on move */
+
+        /* Move grouped armies */
+        { short gi;
+            for (gi = 0; gi < sStackCount; gi++) {
+                if (sStackSelected[gi] && sStackArmyIdx[gi] >= 0 &&
+                    sStackArmyIdx[gi] != armyIdx) {
+                    unsigned char *ga = gs + 0x1604 + sStackArmyIdx[gi] * 0x42;
+                    short gCost = GetMovementCost(newX, newY, GetEffectiveUnitClass(sStackArmyIdx[gi]));
+                    short gMove = (short)(unsigned char)ga[0x2e];
+                    *(short *)(ga + 0x00) = newX;
+                    *(short *)(ga + 0x02) = newY;
+                    ga[0x2d] = 0;
+                    ga[0x2e] = (unsigned char)(gMove - gCost);
+                }
+            }
+        }
+
+        stepsTaken++;
+
+        /* Fog reveal (68k CODE_067: flying=5x5, normal=3x3) */
+        if (sOptHiddenMap) {
+            short armyOwner = (short)(unsigned char)army[0x15];
+            FogRevealUnit(armyOwner, newX, newY, unitClass == 0x0E);
+        }
+
+        /* Combat check — stops path execution */
+        if (CheckAndResolveCombat(armyIdx)) {
+            armyCount = *(short *)(gs + 0x1602);
+            if (armyCount > 100) armyCount = 100;
+            break;
+        }
+
+        /* Try merging with friendly army */
+        if (TryMergeArmies(armyIdx)) {
+            armyCount = *(short *)(gs + 0x1602);
+            if (armyCount > 100) armyCount = 100;
+            break;
+        }
+
+        /* Auto-search ruins */
+        TryAutoSearchRuin(armyIdx);
+
+        /* Check if reached destination */
+        if (*(short *)(army + 0x00) == *(short *)(army + 0x34) &&
+            *(short *)(army + 0x02) == *(short *)(army + 0x36)) {
+            *(short *)(army + 0x32) = 0;
+            break;
+        }
+    }
+
+    return stepsTaken;
+}
 
 
 /* ===================================================================
@@ -7633,6 +10165,58 @@ static void RemoveArmy(short armyIndex)
     armyCount = *(short *)(gs + 0x1602);
     if (armyIndex < 0 || armyIndex >= armyCount) return;
 
+    /* If this army contains a hero, drop items and clear hero record */
+    {
+        unsigned char *army = gs + 0x1604 + armyIndex * 0x42;
+        short owner = (short)(unsigned char)army[0x15];
+        short u;
+        for (u = 0; u < 4; u++) {
+            if ((short)(unsigned char)army[0x16 + u] == 0x1C && owner < 8) {
+                unsigned char *heroRec = gs + 0x1422 + owner * 0x2C;
+                short ax = *(short *)(army + 0x00);
+                short ay = *(short *)(army + 0x02);
+                short si;
+
+                /* Drop items on hero death (68k CODE_042 FUN_00000930).
+                 * If hero dies on water (sea), items are permanently lost.
+                 * Otherwise items drop at death location. */
+                {
+                    Boolean onWater = false;
+                    if (*gMapTiles != 0 &&
+                        ax >= 0 && ax < sMapWidth && ay >= 0 && ay < sMapHeight) {
+                        unsigned char *md = (unsigned char *)*gMapTiles;
+                        unsigned char ti = md[ay * 0xE0 + ax * 2];
+                        unsigned char tt = gs[ti + 0x711];
+                        if (tt == 9) onWater = true;  /* sea */
+                    }
+                    for (si = 0; si < ITEM_SLOTS; si++) {
+                        short itemId = *(short *)(army + 0x3A + si * 2);
+                        if (itemId > 0 && itemId <= 22) {
+                            unsigned char *itemRec = gs + 0xD12 + (itemId - 1) * 0x1E;
+                            if (onWater) {
+                                /* 68k: items lost at sea — status 0, no location */
+                                itemRec[0x16] = 0;
+                                *(short *)(itemRec + 0x18) = 0;
+                                *(short *)(itemRec + 0x1A) = -1;
+                                *(short *)(itemRec + 0x1C) = -1;
+                            } else {
+                                /* 68k: items drop at death coordinates */
+                                itemRec[0x16] = 1;  /* status: on ground */
+                                *(short *)(itemRec + 0x18) = 0;  /* clear carrier */
+                                *(short *)(itemRec + 0x1A) = ax;
+                                *(short *)(itemRec + 0x1C) = ay;
+                            }
+                        }
+                        *(short *)(army + 0x3A + si * 2) = 0;
+                    }
+                }
+
+                heroRec[0x00] = 0;  /* clear active flag */
+                break;
+            }
+        }
+    }
+
     /* Shift all armies after this one down by one slot */
     for (j = armyIndex; j < armyCount - 1; j++) {
         unsigned char *dst = gs + 0x1604 + j * 0x42;
@@ -7643,11 +10227,51 @@ static void RemoveArmy(short armyIndex)
     }
     *(short *)(gs + 0x1602) = armyCount - 1;
 
+    /* Update hero instance records: decrement army indices above removed slot */
+    {
+        short p;
+        for (p = 0; p < 8; p++) {
+            unsigned char *heroRec = gs + 0x1422 + p * 0x2C;
+            if (heroRec[0x00] != 0) {
+                short heroArmyIdx = *(short *)(heroRec + 0x04);
+                if (heroArmyIdx > armyIndex)
+                    *(short *)(heroRec + 0x04) = heroArmyIdx - 1;
+            }
+        }
+    }
+
+    /* Update item carrier indices: items referencing armies above removed slot
+     * need their carrier index decremented (68k does this in FUN_00000e98). */
+    {
+        short ii;
+        for (ii = 0; ii < 22; ii++) {
+            unsigned char *itemRec = gs + 0xD12 + ii * 0x1E;
+            if (itemRec[0x16] == 3) {  /* status: carried by army */
+                short carrierIdx = *(short *)(itemRec + 0x18);
+                if (carrierIdx > armyIndex)
+                    *(short *)(itemRec + 0x18) = carrierIdx - 1;
+            }
+        }
+    }
+
     /* Fix selected army reference */
     if (sSelectedArmy == armyIndex)
         sSelectedArmy = -1;
     else if (sSelectedArmy > armyIndex)
         sSelectedArmy--;
+
+    /* Fix stack army indices (shift down those above removed index) */
+    {
+        short si2;
+        for (si2 = 0; si2 < sStackCount; si2++) {
+            if (sStackArmyIdx[si2] == armyIndex) {
+                /* This stack entry was removed; invalidate it */
+                sStackArmyIdx[si2] = -1;
+            } else if (sStackArmyIdx[si2] > armyIndex) {
+                sStackArmyIdx[si2]--;
+            }
+        }
+    }
 }
 
 
@@ -7671,8 +10295,9 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
     short i, round;
     short attAlive, defAlive;
     short result;
+    short terrainDef_out = 1, cityDef_out = 0, fortDef_out = 0;
+    short defHeroBonus_out = 0;
     long attTotal, defTotal;
-    long rng;
 
     /* Modal result dialog variables */
     WindowPtr combatWin;
@@ -7686,124 +10311,340 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
     attArmy = gs + 0x1604 + attackerIdx * 0x42;
     defArmy = gs + 0x1604 + defenderIdx * 0x42;
 
-    /* Gather unit stats: count active slots, sum strength */
-    attSlots = 0;
-    defSlots = 0;
-    attTotal = 0;
-    defTotal = 0;
+    /* ============================================================
+     * Combat system based on decompiled 68k CODE_104 (a1Fight1Possibly)
+     *
+     * Per-stack attack values computed from:
+     *   base strength (HP) + combat bonus (XP) + terrain defense +
+     *   hero leader bonus + item bonuses + city/fortification defense.
+     * All values capped at scenario max (gs+0x112, default 15).
+     *
+     * Die-roll mechanic: rand(20) or rand(24) (intense combat).
+     * XOR logic: exactly one side must fail per round.
+     * 68k HP system: each combatant starts with combat HP=1,
+     * dies when HP goes below 0 (2 hits to kill).
+     * ============================================================ */
 
-    for (i = 0; i < 4; i++) {
-        attType[i] = (short)(unsigned char)attArmy[0x16 + i];
-        attHits[i] = (short)(unsigned char)attArmy[0x1e + i];
-        attOrigType[i] = attType[i];
-        attOrigHits[i] = attHits[i];
-        if (attType[i] != 0xFF && attHits[i] > 0) {
-            attSlots++;
-            attTotal += (short)(unsigned char)attArmy[0x1e + i] +
-                        (short)(unsigned char)attArmy[0x22 + i];
-        }
-
-        defType[i] = (short)(unsigned char)defArmy[0x16 + i];
-        defHits[i] = (short)(unsigned char)defArmy[0x1e + i];
-        defOrigType[i] = defType[i];
-        defOrigHits[i] = defHits[i];
-        if (defType[i] != 0xFF && defHits[i] > 0) {
-            defSlots++;
-            defTotal += (short)(unsigned char)defArmy[0x1e + i] +
-                        (short)(unsigned char)defArmy[0x22 + i];
-        }
-    }
-
-    if (attSlots == 0 || defSlots == 0)
-        return (attSlots > 0) ? 1 : ((defSlots > 0) ? 0 : -1);
-
-    /* Terrain defense bonus for defender */
-    if (*gMapTiles != 0) {
-        short defX = *(short *)(defArmy + 0x00);
-        short defY = *(short *)(defArmy + 0x02);
-        if (defX >= 0 && defX < sMapWidth && defY >= 0 && defY < sMapHeight) {
-            unsigned char *tile = (unsigned char *)*gMapTiles + defY * 0xE0 + defX * 2;
-            unsigned char terrIdx = tile[0];
-            /* Forest/hills/mountains give defender +1 to +3 HP */
-            if (terrIdx >= 20 && terrIdx < 40)       /* forest-like */
-                defTotal += 2;
-            else if (terrIdx >= 40 && terrIdx < 60)   /* hills-like */
-                defTotal += 3;
-            else if (terrIdx >= 60 && terrIdx < 80)   /* mountain-like */
-                defTotal += 5;
-        }
-    }
-
-    /* Fortification bonus: if defender is fortified, +3 defense */
-    if (defArmy[0x2d] > 0)
-        defTotal += 3;
-
-    /* City defense bonus: if defender is in a city, +4 defense */
+    /* Per-stack attack/defense values (capped at 15) */
     {
-        short defX = *(short *)(defArmy + 0x00);
-        short defY = *(short *)(defArmy + 0x02);
-        short cityCount = *(short *)(gs + 0x810);
-        short ci;
-        if (cityCount > 40) cityCount = 40;
-        for (ci = 0; ci < cityCount; ci++) {
-            unsigned char *city = gs + 0x812 + ci * 0x20;
-            if (*(short *)(city + 0x00) == defX &&
-                *(short *)(city + 0x02) == defY) {
-                defTotal += 4 + *(short *)(city + 0x06);  /* +4 + city defense */
-                break;
+        short attValue[4], defValue[4];
+        short terrainDef = 1;   /* default terrain defense */
+        short cityDef = 0;
+        short fortDef = 0;
+        /* combatOnWater removed: embarked cap disabled (port system not implemented) */
+        short attHeroBonus = 0, defHeroBonus = 0;
+        short attItemBonus = 0, defItemBonus = 0;
+        short dieRange = sOptIntenseCombat ? 24 : 20;
+
+        /* Gather unit stats */
+        attSlots = 0;
+        defSlots = 0;
+        attTotal = 0;
+        defTotal = 0;
+
+        for (i = 0; i < 4; i++) {
+            attType[i] = (short)(unsigned char)attArmy[0x16 + i];
+            attHits[i] = (short)(unsigned char)attArmy[0x1e + i];
+            attOrigType[i] = attType[i];
+            attOrigHits[i] = attHits[i];
+            if (attType[i] != 0xFF && attHits[i] > 0) attSlots++;
+
+            defType[i] = (short)(unsigned char)defArmy[0x16 + i];
+            defHits[i] = (short)(unsigned char)defArmy[0x1e + i];
+            defOrigType[i] = defType[i];
+            defOrigHits[i] = defHits[i];
+            if (defType[i] != 0xFF && defHits[i] > 0) defSlots++;
+        }
+
+        if (attSlots == 0 || defSlots == 0)
+            return (attSlots > 0) ? 1 : ((defSlots > 0) ? 0 : -1);
+
+        /* Terrain defense for defender (from decompiled FUN_00001592):
+         * Uses gs+0x711 terrain type table.
+         * Type 4 (mountain) → +2, types 5/6 (forest) → +3,
+         * types 10/11 (city/castle) → +0 (city bonus separate),
+         * all others → +1 */
+        if (*gMapTiles != 0) {
+            short defX = *(short *)(defArmy + 0x00);
+            short defY = *(short *)(defArmy + 0x02);
+            if (defX >= 0 && defX < sMapWidth && defY >= 0 && defY < sMapHeight) {
+                unsigned char *mapData = (unsigned char *)*gMapTiles;
+                unsigned char terrIdx = mapData[defY * 0xE0 + defX * 2];
+                unsigned char terrType = gs[terrIdx + 0x711];
+                /* combatOnWater detection removed: embarked cap disabled */
+                switch (terrType) {
+                    case 4:             terrainDef = 2; break;  /* mountain */
+                    case 5: case 6:     terrainDef = 3; break;  /* forest */
+                    case 10: case 11:   terrainDef = 0; break;  /* city/castle (separate) */
+                    default:            terrainDef = 1; break;  /* plains, etc. */
+                }
+                /* Road on tile: remove terrain defense (68k: road bit → return 0) */
+                if (terrainDef > 0 && *gRoadData != 0) {
+                    unsigned char *rd = (unsigned char *)*gRoadData;
+                    if (defX < 112 && defY < 156 && rd[defY * 112 + defX] != 0)
+                        terrainDef = 0;
+                }
             }
         }
-    }
 
-    /* Hero item bonuses: battle items boost hero, command items boost all */
-    {
-        short battleB, cmdB, goldB;
-        Boolean flyB, moveB;
+        /* 68k CODE_104: fortification gives NO combat bonus.
+         * It only prevents auto-selection for movement. */
 
-        /* Attacker items */
-        GetHeroItemBonus(attackerIdx, &battleB, &cmdB, &goldB, &flyB, &moveB);
-        attTotal += battleB + cmdB;  /* battle + command bonuses */
-
-        /* Defender items */
-        GetHeroItemBonus(defenderIdx, &battleB, &cmdB, &goldB, &flyB, &moveB);
-        defTotal += battleB + cmdB;
-    }
-
-    /* Combat rounds: each round, one attacker unit fights one defender unit.
-     * Strength comparison with random factor (d6). Higher total wins the round,
-     * loser loses 1 HP. Repeat until one side is eliminated. */
-    for (round = 0; round < 200; round++) {
-        short ai = -1, di = -1;
-
-        /* Pick first alive attacker and defender */
-        for (i = 0; i < 4; i++) {
-            if (attType[i] != 0xFF && attHits[i] > 0 && ai < 0) ai = i;
-            if (defType[i] != 0xFF && defHits[i] > 0 && di < 0) di = i;
-        }
-        if (ai < 0 || di < 0) break;
-
-        /* Roll: strength + bonus + d6 */
-        rng = (long)(TickCount() & 0x7FFF);
-        attStrength = attHits[ai] + (short)(unsigned char)attArmy[0x22 + ai]
-                      + (short)(rng % 6) + 1;
-        defStrength = defHits[di] + (short)(unsigned char)defArmy[0x22 + di]
-                      + (short)((rng / 7) % 6) + 1;
-
-        /* Add terrain/city bonus spread across rounds */
-        if (round == 0) {
-            defStrength += (short)(defTotal - (defSlots *
-                ((short)(unsigned char)defArmy[0x1e + di] +
-                 (short)(unsigned char)defArmy[0x22 + di])));
+        /* City defense bonus (68k CODE_104: city_record+0x14 for city strength,
+         * neutral defenders get halved city defense) */
+        {
+            short defX = *(short *)(defArmy + 0x00);
+            short defY = *(short *)(defArmy + 0x02);
+            short cityCount = *(short *)(gs + 0x810);
+            short ci;
+            if (cityCount > 40) cityCount = 40;
+            for (ci = 0; ci < cityCount; ci++) {
+                unsigned char *city = gs + 0x812 + ci * 0x20;
+                if (*(short *)(city + 0x00) == defX &&
+                    *(short *)(city + 0x02) == defY) {
+                    cityDef = 2 + *(short *)(city + 0x06);  /* base 2 + city walls */
+                    if (cityDef > 6) cityDef = 6;
+                    /* 68k CODE_104: neutral defenders get halved city defense */
+                    if ((short)(unsigned char)defArmy[0x15] == 0x0F)
+                        cityDef /= 2;
+                    break;
+                }
+            }
         }
 
-        if (attStrength >= defStrength) {
-            defHits[di]--;
-            if (defHits[di] <= 0)
-                defType[di] = 0xFF;  /* unit killed */
-        } else {
-            attHits[ai]--;
-            if (attHits[ai] <= 0)
-                attType[ai] = 0xFF;  /* unit killed */
+        /* Item bonuses (68k CODE_104): must compute before hero command bonus
+         * because battle items feed into hero command strength rating. */
+        {
+            short attBattleB, attCmdB, attGoldB;
+            short defBattleB, defCmdB, defGoldB;
+            Boolean attFlyB, attMoveB, defFlyB, defMoveB;
+            GetHeroItemBonus(attackerIdx, &attBattleB, &attCmdB, &attGoldB, &attFlyB, &attMoveB);
+            GetHeroItemBonus(defenderIdx, &defBattleB, &defCmdB, &defGoldB, &defFlyB, &defMoveB);
+            attItemBonus = attCmdB;  /* command items (type 2+8) boost all stacked units */
+            defItemBonus = defCmdB;
+
+            /* Hero leader bonus: strongest hero (strength + battle items) / 2, capped at 9.
+             * 68k CODE_104: DAT_00015b54[min(hero_strength + FUN_00002782(battle_items), 9)] */
+            for (i = 0; i < 4; i++) {
+                if (attType[i] == 0x1C && attHits[i] > 0) {
+                    short hs = (short)(unsigned char)attArmy[0x1e + i] + attBattleB;
+                    short bonus = hs / 2;
+                    if (bonus > 9) bonus = 9;
+                    if (bonus > attHeroBonus) attHeroBonus = bonus;
+                }
+                if (defType[i] == 0x1C && defHits[i] > 0) {
+                    short hs = (short)(unsigned char)defArmy[0x1e + i] + defBattleB;
+                    short bonus = hs / 2;
+                    if (bonus > 9) bonus = 9;
+                    if (bonus > defHeroBonus) defHeroBonus = bonus;
+                }
+            }
+
+            /* Compute per-stack attack values, capped at scenario max (gs+0x112).
+             * 68k CODE_104: min(totalBonus, gs[0x112]). Default scenario max = 15. */
+            {
+                short maxStrength = *(short *)(gs + 0x112);
+                short defOwnerByte = (short)(unsigned char)defArmy[0x15];
+                if (maxStrength < 1) maxStrength = 15;  /* fallback */
+
+                for (i = 0; i < 4; i++) {
+                    /* 68k CODE_104: base = unit strength (record+8 in 68k = +0x1e in PPC)
+                     * plus accumulated combat bonus (+0x22), hero command, and items */
+                    attValue[i] = (short)(unsigned char)attArmy[0x1e + i]
+                                + (short)(unsigned char)attArmy[0x22 + i]
+                                + attHeroBonus + attItemBonus;
+                    /* Hero-specific: battle item bonus applies only to hero */
+                    if (attType[i] == 0x1C)
+                        attValue[i] += attBattleB;
+                    /* NOTE: Boat-embarked combat cap disabled. The 68k checks
+                     * army+0x0C (status flags) bit 0x1000 for embarked status, but in
+                     * our PPC record, offset 0x0C is inside the name string. Without
+                     * the port/embarkation system, no army can be properly embarked.
+                     * The old check was reading garbage from name bytes, randomly
+                     * capping unit strength to 4. Re-enable when port system exists. */
+                    if (attValue[i] < 1) attValue[i] = 1;
+                    if (attValue[i] > maxStrength) attValue[i] = maxStrength;
+
+                    /* Defender: base strength + bonus + terrain + city + fort + hero + items.
+                     * 68k: neutral halving applies ONLY to terrain component. */
+                    {
+                        short defTerrAdj = terrainDef;
+                        if (defOwnerByte == 0x0F)
+                            defTerrAdj = terrainDef / 2;
+                        defValue[i] = (short)(unsigned char)defArmy[0x1e + i]
+                                    + (short)(unsigned char)defArmy[0x22 + i]
+                                    + defTerrAdj + cityDef + fortDef
+                                    + defHeroBonus + defItemBonus;
+                    }
+                    if (defType[i] == 0x1C)
+                        defValue[i] += defBattleB;
+                    /* NOTE: Boat-embarked defender cap disabled — same reason as
+                     * attacker (see above). defArmy+0x0C reads name string. */
+                    if (defValue[i] < 1) defValue[i] = 1;
+                    if (defValue[i] > maxStrength) defValue[i] = maxStrength;
+                }
+            }
+            /* Export bonuses for display in combat dialog */
+            terrainDef_out = terrainDef;
+            cityDef_out = cityDef;
+            fortDef_out = fortDef;
+            defHeroBonus_out = defHeroBonus;
+        }
+
+        /* Sort unit slots by fight order priority (from CODE_060/CODE_104).
+         * Fight order table at gs + (player * 0x1D) + 0x60C.
+         * Lower value = fights first. Heroes get +50 to fight last. */
+        {
+            short attOwner = (short)(unsigned char)attArmy[0x15];
+            short defOwner = (short)(unsigned char)defArmy[0x15];
+            short attOrder[4], defOrder[4];
+            short j, k;
+
+            for (i = 0; i < 4; i++) {
+                if (attType[i] != 0xFF && attType[i] < 29 && attOwner < 9) {
+                    attOrder[i] = (short)(unsigned char)gs[attType[i] + attOwner * 0x1D + 0x60C];
+                    if (attType[i] == 0x1C) attOrder[i] += 50; /* heroes last */
+                } else {
+                    attOrder[i] = 999; /* empty/dead slots sort to end */
+                }
+                if (defType[i] != 0xFF && defType[i] < 29 && defOwner < 9) {
+                    defOrder[i] = (short)(unsigned char)gs[defType[i] + defOwner * 0x1D + 0x60C];
+                    if (defType[i] == 0x1C) defOrder[i] += 50;
+                } else {
+                    defOrder[i] = 999;
+                }
+            }
+
+            /* 68k CODE_104: insertion sort with stable ordering (no random jitter).
+             * Ties are broken by natural array position (earlier units fight first). */
+
+            /* Insertion sort attacker slots by fight order */
+            for (j = 1; j < 4; j++) {
+                short keyOrd = attOrder[j];
+                short keyType = attType[j], keyHits = attHits[j];
+                short keyOType = attOrigType[j], keyOHits = attOrigHits[j];
+                short keyVal = attValue[j];
+                k = j - 1;
+                while (k >= 0 && attOrder[k] > keyOrd) {
+                    attOrder[k + 1] = attOrder[k];
+                    attType[k + 1] = attType[k];
+                    attHits[k + 1] = attHits[k];
+                    attOrigType[k + 1] = attOrigType[k];
+                    attOrigHits[k + 1] = attOrigHits[k];
+                    attValue[k + 1] = attValue[k];
+                    k--;
+                }
+                attOrder[k + 1] = keyOrd;
+                attType[k + 1] = keyType;
+                attHits[k + 1] = keyHits;
+                attOrigType[k + 1] = keyOType;
+                attOrigHits[k + 1] = keyOHits;
+                attValue[k + 1] = keyVal;
+            }
+
+            /* Insertion sort defender slots by fight order */
+            for (j = 1; j < 4; j++) {
+                short keyOrd = defOrder[j];
+                short keyType = defType[j], keyHits = defHits[j];
+                short keyOType = defOrigType[j], keyOHits = defOrigHits[j];
+                short keyVal = defValue[j];
+                k = j - 1;
+                while (k >= 0 && defOrder[k] > keyOrd) {
+                    defOrder[k + 1] = defOrder[k];
+                    defType[k + 1] = defType[k];
+                    defHits[k + 1] = defHits[k];
+                    defOrigType[k + 1] = defOrigType[k];
+                    defOrigHits[k + 1] = defOrigHits[k];
+                    defValue[k + 1] = defValue[k];
+                    k--;
+                }
+                defOrder[k + 1] = keyOrd;
+                defType[k + 1] = keyType;
+                defHits[k + 1] = keyHits;
+                defOrigType[k + 1] = keyOType;
+                defOrigHits[k + 1] = keyOHits;
+                defValue[k + 1] = keyVal;
+            }
+        }
+
+        /* Combat rounds: die-roll based (from decompiled FUN_000003d2).
+         * Each round picks the first alive attacker and defender stack.
+         * Each side rolls rand(20 or 24) against their OWN stat.
+         * Rolling ABOVE your stat = you fail (get hit).
+         * XOR logic: exactly one side must fail per round.
+         * If both fail or both succeed, the round is skipped (reroll).
+         *
+         * 68k HP system: each combatant has combat HP initialized to 1.
+         * A hit decrements HP. Unit dies when HP < 0 (signed), meaning
+         * each unit effectively takes 2 hits to die (1 → 0 → -1=dead).
+         * Combat HP is separate from the unit's strength stat. */
+        {
+            short attCombatHP[4], defCombatHP[4];  /* combat HP: init 1, die at <0 */
+            short aiIdx = 0, diIdx = 0;  /* advancing indices like 68k */
+            for (i = 0; i < 4; i++) {
+                attCombatHP[i] = (attType[i] != 0xFF && attHits[i] > 0) ? 1 : -1;
+                defCombatHP[i] = (defType[i] != 0xFF && defHits[i] > 0) ? 1 : -1;
+            }
+            for (round = 0; round < 10000; round++) {
+                short attRoll, defRoll;
+                Boolean attFail, defFail;
+
+                /* Advance to next alive unit (68k uses advancing counters) */
+                while (aiIdx < 4 && attCombatHP[aiIdx] < 0) aiIdx++;
+                while (diIdx < 4 && defCombatHP[diIdx] < 0) diIdx++;
+                if (aiIdx >= 4 || diIdx >= 4) break;
+
+                /* Emergency escape: 68k forces attRoll=0, defRoll=100 after 10000 rounds,
+                 * which always kills the defender (defRoll=100 > any stat). */
+                if (round >= 9990) {
+                    defCombatHP[diIdx] = -1;
+                    if (defCombatHP[diIdx] < 0) { defType[diIdx] = 0xFF; diIdx++; }
+                    continue;
+                }
+
+                /* Each side rolls against own stat (68k FUN_000003d2).
+                 * Roll > stat = fail (you get hit). */
+                attRoll = (short)((unsigned short)Random() % dieRange);
+                defRoll = (short)((unsigned short)Random() % dieRange);
+
+                attFail = (attRoll > attValue[aiIdx]);
+                defFail = (defRoll > defValue[diIdx]);
+
+                /* XOR logic: exactly one side must fail.
+                 * Both fail or neither fail = skip (reroll). */
+                if (attFail == defFail) continue;
+
+                if (attFail) {
+                    /* 68k CODE_104 FUN_000003d2: hero vs neutral protection.
+                     * When heroes enabled, a human player's hero attacking
+                     * neutral armies is protected from failed die rolls.
+                     * 68k enters the defender-hit branch via OR, but the inner
+                     * guard (defFail && attSucceed) prevents actual damage.
+                     * Net effect: round is skipped, no damage to either side. */
+                    if (*(short *)(gs + 0x12e) != 0 &&
+                        attType[aiIdx] == 0x1C &&
+                        *(short *)(gs + 0xd0 + (short)(unsigned char)attArmy[0x15] * 2) == 0 &&
+                        (short)(unsigned char)defArmy[0x15] == 0x0F) {
+                        continue;  /* Hero protected: skip round */
+                    } else {
+                        /* Normal: attacker hit */
+                        attCombatHP[aiIdx]--;
+                        if (attCombatHP[aiIdx] < 0) {
+                            attType[aiIdx] = 0xFF;
+                            attHits[aiIdx] = 0;
+                            aiIdx++;
+                        }
+                    }
+                } else {
+                    /* Defender hit: decrement combat HP, die at < 0 (68k) */
+                    defCombatHP[diIdx]--;
+                    if (defCombatHP[diIdx] < 0) {
+                        defType[diIdx] = 0xFF;
+                        defHits[diIdx] = 0;
+                        diIdx++;
+                    }
+                }
+            }
         }
     }
 
@@ -7825,72 +10666,123 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
         for (i = 0; i < 4; i++) {
             attArmy[0x16 + i] = (unsigned char)(attType[i] & 0xFF);
             attArmy[0x1e + i] = (unsigned char)(attHits[i] > 0 ? attHits[i] : 0);
-            /* XP gain for survivors: +1 XP per battle won, bonus at every 3 XP */
+            /* XP gain: survivors earn XP. Heroes level at thresholds 15/30/60.
+             * From decompiled CODE_133: on level-up, if combat_strength > 14
+             * gain +1 command, else gain +1 combat_strength. */
             if (attType[i] != 0xFF && attHits[i] > 0) {
                 short xp = (short)(unsigned char)attArmy[0x26 + i];
                 short oldHeroLvl = GetHeroLevel(xp);
-                short oldLevel = xp / 3;
-                if (xp < 15) {
-                    xp++;
+                if (xp < 60) {  /* 68k caps at 60 (6-bit field) */
+                    xp += (attType[i] == 0x1C) ? 3 : 1;  /* heroes gain 3 XP, units 1 */
+                    if (xp > 60) xp = 60;
                     attArmy[0x26 + i] = (unsigned char)xp;
-                    /* Level up: gain +1 combat bonus */
-                    if (xp / 3 > oldLevel) {
+                    /* Non-hero level bonus: every 5 XP gain +1 combat bonus */
+                    if (attType[i] != 0x1C && xp / 5 > (xp - 1) / 5) {
                         short bonus = (short)(unsigned char)attArmy[0x22 + i];
-                        if (bonus < 8) attArmy[0x22 + i] = (unsigned char)(bonus + 1);
+                        if (bonus < 9) attArmy[0x22 + i] = (unsigned char)(bonus + 1);
                     }
-                    /* Hero title promotion notification */
+                    /* Hero level-up: +2 movement per level ONLY (68k CODE_080 FUN_00000996).
+                     * The 68k gives NO HP/strength bonus on level-up — only +2 movement.
+                     * The previous +1 HP per level was fabricated. */
                     if (attType[i] == 0x1C && GetHeroLevel(xp) > oldHeroLvl) {
                         short newLvl = GetHeroLevel(xp);
+                        short levelsGained = newLvl - oldHeroLvl;
+                        short baseMov = (short)(unsigned char)attArmy[0x1a];
+                        short lvl;
+                        for (lvl = 0; lvl < levelsGained; lvl++) {
+                            if (baseMov + 2 <= 99) baseMov += 2; else baseMov = 99;
+                        }
+                        attArmy[0x1a] = (unsigned char)baseMov;
+                        RecalcArmyStrength(attArmy);
                         short attOwn = (short)(unsigned char)attArmy[0x15];
                         if (*(short *)((unsigned char *)*gGameState + 0xd0 + attOwn * 2) == 0) {
                             WindowPtr lvWin;
                             Rect lvR;
-                            SetRect(&lvR, 0, 0, 300, 90);
-                            OffsetRect(&lvR, 170, 200);
+                            PicHandle lvPict = NULL;
+                            short lvW = 300, lvH = 200;
+
+                            PlaySound(SND_ORCH);
+
+                            /* Try loading level-up artwork PICT (4022=L2, 4023=L3, 4024=L4) */
+                            if (newLvl >= 2 && newLvl <= 4)
+                                lvPict = GetPicture(4020 + newLvl);
+                            if (lvPict) {
+                                Rect pf = (**lvPict).picFrame;
+                                lvW = pf.right - pf.left;
+                                lvH = pf.bottom - pf.top;
+                            }
+
+                            SetRect(&lvR, 0, 0, lvW, lvH);
+                            OffsetRect(&lvR, (640 - lvW) / 2, (480 - lvH) / 2);
                             lvWin = NewCWindow(NULL, &lvR, "\p", true,
                                                plainDBox, (WindowPtr)-1, false, 0);
                             if (lvWin) {
-                                RGBColor bg2 = {0x1800, 0x1800, 0x2800};
                                 RGBColor gold2 = {0xFFFF, 0xDDDD, 0x3333};
                                 RGBColor wh2 = {0xFFFF, 0xFFFF, 0xFFFF};
+                                RGBColor shadow = {0x0000, 0x0000, 0x0000};
                                 EventRecord lvEvt;
                                 unsigned long lvTk;
                                 Str255 titleStr, hname2;
                                 Boolean fem = IsHeroFemale(attackerIdx);
-                                unsigned char *hn = (unsigned char *)*gGameState + 0x224 + attackerIdx * 0x14;
+                                unsigned char *hn = (unsigned char *)*gGameState + 0x1604 + attackerIdx * 0x42 + 0x04;
                                 short nl2 = 0;
-                                while (nl2 < 18 && hn[nl2]) nl2++;
+                                while (nl2 < 15 && hn[nl2]) nl2++;
                                 hname2[0] = (unsigned char)nl2;
                                 BlockMoveData(hn, hname2 + 1, nl2);
                                 GetHeroTitle(newLvl, fem, titleStr);
                                 SetPort(lvWin);
-                                RGBForeColor(&bg2); PaintRect(&lvWin->portRect);
+
+                                /* Background: PICT artwork or marble fallback */
+                                if (lvPict) {
+                                    Rect dr = lvWin->portRect;
+                                    DrawPicture(lvPict, &dr);
+                                } else {
+                                    DrawMarbleBackground(&lvWin->portRect);
+                                }
                                 RGBForeColor(&gold2); PenSize(2,2); FrameRect(&lvWin->portRect); PenNormal();
-                                TextFont(3); TextSize(12); TextFace(bold);
-                                RGBForeColor(&gold2);
-                                MoveTo(20, 22);
+
+                                /* Title text with shadow */
+                                TextFont(3); TextSize(14); TextFace(bold);
+                                RGBForeColor(&shadow);
+                                MoveTo(21, lvH - 63);
                                 DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
-                                TextFace(0); TextSize(10);
-                                RGBForeColor(&wh2);
-                                MoveTo(20, 44);
+                                RGBForeColor(&gold2);
+                                MoveTo(20, lvH - 64);
+                                DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
+                                DrawString(titleStr);
+                                DrawString("\p!");
+
+                                /* Hero name line */
+                                TextFace(0); TextSize(11);
+                                RGBForeColor(&shadow);
+                                MoveTo(21, lvH - 43);
                                 DrawString(hname2);
                                 DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
+                                RGBForeColor(&wh2);
+                                MoveTo(20, lvH - 44);
+                                DrawString(hname2);
+                                DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
+                                DrawString(titleStr);
+                                DrawString("\p!");
+
+                                /* Stats line */
                                 RGBForeColor(&gold2);
-                                MoveTo(20, 66);
+                                TextSize(10);
+                                MoveTo(20, lvH - 22);
                                 DrawString(GetCachedString(STR_COMBAT, 2, "\pLevel: "));
                                 {
                                     Str255 ns2;
                                     NumToString((long)newLvl, ns2); DrawString(ns2);
                                     DrawString(GetCachedString(STR_COMBAT, 3, "\p   Str: "));
                                     NumToString((long)(unsigned char)attArmy[0x1e + i], ns2); DrawString(ns2);
-                                    DrawString(GetCachedString(STR_COMBAT, 4, "\p   Cmd: "));
-                                    NumToString((long)(unsigned char)attArmy[0x22 + i], ns2); DrawString(ns2);
+                                    DrawString(GetCachedString(STR_COMBAT, 4, "\p   Mov: "));
+                                    NumToString((long)(unsigned char)attArmy[0x1a], ns2); DrawString(ns2);
                                 }
-                                lvTk = TickCount() + SpeedTicks(120);
+                                lvTk = TickCount() + SpeedTicks(180);
                                 while (TickCount() < lvTk) {
                                     if (WaitNextEvent(mDownMask | keyDownMask, &lvEvt, 5, NULL)) break;
                                 }
@@ -7902,12 +10794,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             }
         }
         /* Recalculate attacker strength display */
-        {
-            short str = 0;
-            for (i = 0; i < 4; i++)
-                if (attType[i] != 0xFF) str += attHits[i];
-            *(short *)(attArmy + 0x2a) = str;
-        }
+        RecalcArmyStrength(attArmy);
     } else if (result == 0) {
         for (i = 0; i < 4; i++) {
             defArmy[0x16 + i] = (unsigned char)(defType[i] & 0xFF);
@@ -7915,67 +10802,109 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             if (defType[i] != 0xFF && defHits[i] > 0) {
                 short xp = (short)(unsigned char)defArmy[0x26 + i];
                 short oldHeroLvl2 = GetHeroLevel(xp);
-                short oldLevel = xp / 3;
-                if (xp < 15) {
-                    xp++;
+                if (xp < 60) {  /* 68k caps at 60 (6-bit field) */
+                    xp += (defType[i] == 0x1C) ? 3 : 1;
+                    if (xp > 60) xp = 60;
                     defArmy[0x26 + i] = (unsigned char)xp;
-                    if (xp / 3 > oldLevel) {
+                    if (defType[i] != 0x1C && xp / 5 > (xp - 1) / 5) {
                         short bonus = (short)(unsigned char)defArmy[0x22 + i];
-                        if (bonus < 8) defArmy[0x22 + i] = (unsigned char)(bonus + 1);
+                        if (bonus < 9) defArmy[0x22 + i] = (unsigned char)(bonus + 1);
                     }
-                    /* Hero title promotion notification (defender) */
+                    /* Hero level-up: +2 movement per level ONLY (68k CODE_080 FUN_00000996) */
                     if (defType[i] == 0x1C && GetHeroLevel(xp) > oldHeroLvl2) {
                         short newLvl = GetHeroLevel(xp);
+                        short levelsGained = newLvl - oldHeroLvl2;
+                        short baseMov2 = (short)(unsigned char)defArmy[0x1a];
+                        short lvl2;
+                        for (lvl2 = 0; lvl2 < levelsGained; lvl2++) {
+                            if (baseMov2 + 2 <= 99) baseMov2 += 2; else baseMov2 = 99;
+                        }
+                        defArmy[0x1a] = (unsigned char)baseMov2;
+                        RecalcArmyStrength(defArmy);
                         short defOwn = (short)(unsigned char)defArmy[0x15];
                         if (*(short *)((unsigned char *)*gGameState + 0xd0 + defOwn * 2) == 0) {
                             WindowPtr lvWin;
                             Rect lvR;
-                            SetRect(&lvR, 0, 0, 300, 90);
-                            OffsetRect(&lvR, 170, 200);
+                            PicHandle lvPict = NULL;
+                            short lvW = 300, lvH = 200;
+
+                            PlaySound(SND_ORCH);
+
+                            if (newLvl >= 2 && newLvl <= 4)
+                                lvPict = GetPicture(4020 + newLvl);
+                            if (lvPict) {
+                                Rect pf = (**lvPict).picFrame;
+                                lvW = pf.right - pf.left;
+                                lvH = pf.bottom - pf.top;
+                            }
+
+                            SetRect(&lvR, 0, 0, lvW, lvH);
+                            OffsetRect(&lvR, (640 - lvW) / 2, (480 - lvH) / 2);
                             lvWin = NewCWindow(NULL, &lvR, "\p", true,
                                                plainDBox, (WindowPtr)-1, false, 0);
                             if (lvWin) {
-                                RGBColor bg2 = {0x1800, 0x1800, 0x2800};
                                 RGBColor gold2 = {0xFFFF, 0xDDDD, 0x3333};
                                 RGBColor wh2 = {0xFFFF, 0xFFFF, 0xFFFF};
+                                RGBColor shadow = {0x0000, 0x0000, 0x0000};
                                 EventRecord lvEvt;
                                 unsigned long lvTk;
                                 Str255 titleStr, hname2;
                                 Boolean fem = IsHeroFemale(defenderIdx);
-                                unsigned char *hn = (unsigned char *)*gGameState + 0x224 + defenderIdx * 0x14;
+                                unsigned char *hn = (unsigned char *)*gGameState + 0x1604 + defenderIdx * 0x42 + 0x04;
                                 short nl2 = 0;
-                                while (nl2 < 18 && hn[nl2]) nl2++;
+                                while (nl2 < 15 && hn[nl2]) nl2++;
                                 hname2[0] = (unsigned char)nl2;
                                 BlockMoveData(hn, hname2 + 1, nl2);
                                 GetHeroTitle(newLvl, fem, titleStr);
                                 SetPort(lvWin);
-                                RGBForeColor(&bg2); PaintRect(&lvWin->portRect);
+
+                                if (lvPict) {
+                                    Rect dr = lvWin->portRect;
+                                    DrawPicture(lvPict, &dr);
+                                } else {
+                                    DrawMarbleBackground(&lvWin->portRect);
+                                }
                                 RGBForeColor(&gold2); PenSize(2,2); FrameRect(&lvWin->portRect); PenNormal();
-                                TextFont(3); TextSize(12); TextFace(bold);
-                                RGBForeColor(&gold2);
-                                MoveTo(20, 22);
+
+                                TextFont(3); TextSize(14); TextFace(bold);
+                                RGBForeColor(&shadow);
+                                MoveTo(21, lvH - 63);
                                 DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
-                                TextFace(0); TextSize(10);
-                                RGBForeColor(&wh2);
-                                MoveTo(20, 44);
+                                RGBForeColor(&gold2);
+                                MoveTo(20, lvH - 64);
+                                DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
+                                DrawString(titleStr);
+                                DrawString("\p!");
+
+                                TextFace(0); TextSize(11);
+                                RGBForeColor(&shadow);
+                                MoveTo(21, lvH - 43);
                                 DrawString(hname2);
                                 DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
                                 DrawString(titleStr);
                                 DrawString("\p!");
+                                RGBForeColor(&wh2);
+                                MoveTo(20, lvH - 44);
+                                DrawString(hname2);
+                                DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
+                                DrawString(titleStr);
+                                DrawString("\p!");
+
                                 RGBForeColor(&gold2);
-                                MoveTo(20, 66);
+                                TextSize(10);
+                                MoveTo(20, lvH - 22);
                                 DrawString(GetCachedString(STR_COMBAT, 2, "\pLevel: "));
                                 {
                                     Str255 ns2;
                                     NumToString((long)newLvl, ns2); DrawString(ns2);
                                     DrawString(GetCachedString(STR_COMBAT, 3, "\p   Str: "));
                                     NumToString((long)(unsigned char)defArmy[0x1e + i], ns2); DrawString(ns2);
-                                    DrawString(GetCachedString(STR_COMBAT, 4, "\p   Cmd: "));
-                                    NumToString((long)(unsigned char)defArmy[0x22 + i], ns2); DrawString(ns2);
+                                    DrawString(GetCachedString(STR_COMBAT, 4, "\p   Mov: "));
+                                    NumToString((long)(unsigned char)defArmy[0x1a], ns2); DrawString(ns2);
                                 }
-                                lvTk = TickCount() + SpeedTicks(120);
+                                lvTk = TickCount() + SpeedTicks(180);
                                 while (TickCount() < lvTk) {
                                     if (WaitNextEvent(mDownMask | keyDownMask, &lvEvt, 5, NULL)) break;
                                 }
@@ -7986,12 +10915,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                 }
             }
         }
-        {
-            short str = 0;
-            for (i = 0; i < 4; i++)
-                if (defType[i] != 0xFF) str += defHits[i];
-            *(short *)(defArmy + 0x2a) = str;
-        }
+        RecalcArmyStrength(defArmy);
     }
 
     /* === Medal award for surviving units (small chance after combat) === */
@@ -8004,7 +10928,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
         short winOwner = winArmy ? (short)(unsigned char)winArmy[0x15] : -1;
 
         if (winArmy != NULL && result != 2) {
-            short rng = (short)(((unsigned short)TickCount()) % 100);
+            short rng = (short)((unsigned short)Random() % 100);
             /* ~15% chance of medal after each victory */
             if (rng < 15) {
                 /* Pick a random surviving unit */
@@ -8015,8 +10939,8 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     if (winType[i] != 0xFF && winHits[i] > 0) candidates[nc++] = i;
                 }
                 if (nc > 0) {
-                    short slot = candidates[((unsigned short)TickCount()) % nc];
-                    short medalType = ((unsigned short)TickCount()) % 4;
+                    short slot = candidates[(unsigned short)Random() % nc];
+                    short medalType = (unsigned short)Random() % 4;
                     short oldVal, newVal;
                     Boolean isStr = (medalType < 2);  /* 0,1 = str; 2,3 = move */
 
@@ -8025,13 +10949,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                         newVal = oldVal + 1;
                         if (newVal > 9) newVal = 9;
                         winArmy[0x1e + slot] = (unsigned char)newVal;
-                        /* Recalculate total strength */
-                        {
-                            short str = 0;
-                            for (i = 0; i < 4; i++)
-                                if ((unsigned char)winArmy[0x16 + i] != 0xFF) str += (short)(unsigned char)winArmy[0x1e + i];
-                            *(short *)(winArmy + 0x2a) = str;
-                        }
+                        RecalcArmyStrength(winArmy);
                     } else {
                         oldVal = (short)(unsigned char)winArmy[0x1a + slot];
                         newVal = oldVal + 2;
@@ -8064,7 +10982,16 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                             EventRecord mEvt;
                             unsigned long mTk;
                             Str255 uName, ns;
-                            GetUnitTypeName((short)(unsigned char)winArmy[0x16 + slot], uName);
+                            if ((unsigned char)winArmy[0x16 + slot] == 0x1C) {
+                                /* Hero: use individual name from army record */
+                                unsigned char *hn = winArmy + 0x04;
+                                short nl = 0;
+                                while (nl < 15 && hn[nl]) nl++;
+                                uName[0] = (unsigned char)nl;
+                                BlockMoveData(hn, uName + 1, nl);
+                            } else {
+                                GetUnitTypeName((short)(unsigned char)winArmy[0x16 + slot], uName);
+                            }
                             SetPort(mWin);
                             if (medalPict) DrawPicture(medalPict, &mWin->portRect);
                             else { RGBForeColor(&mbg); PaintRect(&mWin->portRect); }
@@ -8127,11 +11054,11 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
         }
         if (!showDialog) return result;
     }
-    SetRect(&winRect, 0, 0, 400, 300);
-    OffsetRect(&winRect, 150, 130);
+    SetRect(&winRect, 0, 0, 400, 340);
+    OffsetRect(&winRect, 150, 100);
     combatWin = NewCWindow(NULL, &winRect, "\p", true,
                            plainDBox, (WindowPtr)-1L, false, 0);
-    SetRect(&gwRect, 0, 0, 400, 300);
+    SetRect(&gwRect, 0, 0, 400, 340);
     NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
 
     if (combatWin != NULL && offGW != NULL) {
@@ -8206,19 +11133,68 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             for (i = 0; i < 4; i++) {
                 Str255 uName;
                 if (attOrigType[i] == 0xFF) continue;
-                GetUnitTypeName(attOrigType[i], uName);
+                /* Show hero's individual name + title instead of generic "Hero" */
+                if (attOrigType[i] == 0x1C) {
+                    unsigned char *hn = attArmy + 0x04;
+                    short nl = 0;
+                    Str255 htitle;
+                    short xp = (short)(unsigned char)attArmy[0x26];
+                    short lvl = GetHeroLevel(xp);
+                    Boolean fem = IsHeroFemale(attackerIdx);
+                    while (nl < 15 && hn[nl]) nl++;
+                    uName[0] = (unsigned char)nl;
+                    BlockMoveData(hn, uName + 1, nl);
+                    GetHeroTitle(lvl, fem, htitle);
+                    if (uName[0] + htitle[0] + 2 < 250) {
+                        uName[uName[0] + 1] = ','; uName[uName[0] + 2] = ' ';
+                        BlockMoveData(htitle + 1, uName + uName[0] + 3, htitle[0]);
+                        uName[0] += htitle[0] + 2;
+                    }
+                } else {
+                    GetUnitTypeName(attOrigType[i], uName);
+                }
 
-                MoveTo(24, yPos);
+                /* Unit sprite */
+                {
+                    short sSheet = (attOwner >= 0 && attOwner < ARMY_SHEETS) ? attOwner : 0;
+                    GWorldPtr sGW = sArmyGW[sSheet] ? sArmyGW[sSheet] : sArmyGW[0];
+                    if (sArmyLoaded && sGW != NULL) {
+                        short sprIdx = attOrigType[i];
+                        short sprCol2, sprRow2;
+                        Rect srcR2, dstR2;
+                        if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
+                            unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
+                            sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                        }
+                        sprCol2 = sprIdx % 16;
+                        sprRow2 = sprIdx / 16;
+                        SetRect(&srcR2, sprCol2 * 32, sprRow2 * 30,
+                                sprCol2 * 32 + 29, sprRow2 * 30 + 28);
+                        SetRect(&dstR2, 14, yPos - 12, 14 + 20, yPos + 6);
+                        LockPixels(GetGWorldPixMap(sGW));
+                        {
+                            RGBColor savedBg;
+                            GetBackColor(&savedBg);
+                            RGBBackColor(&sArmyBgColor[sSheet]);
+                            CopyBits((BitMap *)*GetGWorldPixMap(sGW),
+                                     (BitMap *)*GetGWorldPixMap(offGW),
+                                     &srcR2, &dstR2, 36, NULL);
+                            RGBBackColor(&savedBg);
+                        }
+                        UnlockPixels(GetGWorldPixMap(sGW));
+                    }
+                }
+
+                MoveTo(38, yPos);
                 if (attType[i] == 0xFF || attHits[i] <= 0) {
                     RGBForeColor(&deadCol);
                     DrawString(uName);
-                    MoveTo(150, yPos);
+                    MoveTo(160, yPos);
                     DrawString(GetCachedString(STR_COMBAT, 14, "\pKILLED"));
                 } else {
-                    short dmg = attOrigHits[i] - attHits[i];
                     RGBForeColor(&aliveCol);
                     DrawString(uName);
-                    MoveTo(130, yPos);
+                    MoveTo(160, yPos);
                     RGBForeColor(&white);
                     NumToString((long)attHits[i], numStr);
                     DrawString(numStr);
@@ -8226,16 +11202,8 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     NumToString((long)attOrigHits[i], numStr);
                     DrawString(numStr);
                     DrawString(GetCachedString(STR_COMBAT, 15, "\p HP"));
-                    if (dmg > 0) {
-                        RGBColor dmgCol = {0xFFFF, 0xAAAA, 0x4444};
-                        RGBForeColor(&dmgCol);
-                        DrawString("\p (-");
-                        NumToString((long)dmg, numStr);
-                        DrawString(numStr);
-                        DrawString("\p)");
-                    }
                 }
-                yPos += 16;
+                yPos += 22;
             }
 
             /* Separator */
@@ -8270,19 +11238,68 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             for (i = 0; i < 4; i++) {
                 Str255 uName;
                 if (defOrigType[i] == 0xFF) continue;
-                GetUnitTypeName(defOrigType[i], uName);
+                /* Show hero's individual name + title instead of generic "Hero" */
+                if (defOrigType[i] == 0x1C) {
+                    unsigned char *hn = defArmy + 0x04;
+                    short nl = 0;
+                    Str255 htitle;
+                    short xp = (short)(unsigned char)defArmy[0x26];
+                    short lvl = GetHeroLevel(xp);
+                    Boolean fem = IsHeroFemale(defenderIdx);
+                    while (nl < 15 && hn[nl]) nl++;
+                    uName[0] = (unsigned char)nl;
+                    BlockMoveData(hn, uName + 1, nl);
+                    GetHeroTitle(lvl, fem, htitle);
+                    if (uName[0] + htitle[0] + 2 < 250) {
+                        uName[uName[0] + 1] = ','; uName[uName[0] + 2] = ' ';
+                        BlockMoveData(htitle + 1, uName + uName[0] + 3, htitle[0]);
+                        uName[0] += htitle[0] + 2;
+                    }
+                } else {
+                    GetUnitTypeName(defOrigType[i], uName);
+                }
 
-                MoveTo(24, yPos);
+                /* Unit sprite */
+                {
+                    short sSheet = (defOwner >= 0 && defOwner < ARMY_SHEETS) ? defOwner : 0;
+                    GWorldPtr sGW = sArmyGW[sSheet] ? sArmyGW[sSheet] : sArmyGW[0];
+                    if (sArmyLoaded && sGW != NULL) {
+                        short sprIdx = defOrigType[i];
+                        short sprCol2, sprRow2;
+                        Rect srcR2, dstR2;
+                        if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
+                            unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
+                            sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                        }
+                        sprCol2 = sprIdx % 16;
+                        sprRow2 = sprIdx / 16;
+                        SetRect(&srcR2, sprCol2 * 32, sprRow2 * 30,
+                                sprCol2 * 32 + 29, sprRow2 * 30 + 28);
+                        SetRect(&dstR2, 14, yPos - 12, 14 + 20, yPos + 6);
+                        LockPixels(GetGWorldPixMap(sGW));
+                        {
+                            RGBColor savedBg;
+                            GetBackColor(&savedBg);
+                            RGBBackColor(&sArmyBgColor[sSheet]);
+                            CopyBits((BitMap *)*GetGWorldPixMap(sGW),
+                                     (BitMap *)*GetGWorldPixMap(offGW),
+                                     &srcR2, &dstR2, 36, NULL);
+                            RGBBackColor(&savedBg);
+                        }
+                        UnlockPixels(GetGWorldPixMap(sGW));
+                    }
+                }
+
+                MoveTo(38, yPos);
                 if (defType[i] == 0xFF || defHits[i] <= 0) {
                     RGBForeColor(&deadCol);
                     DrawString(uName);
-                    MoveTo(150, yPos);
+                    MoveTo(160, yPos);
                     DrawString(GetCachedString(STR_COMBAT, 14, "\pKILLED"));
                 } else {
-                    short dmg = defOrigHits[i] - defHits[i];
                     RGBForeColor(&aliveCol);
                     DrawString(uName);
-                    MoveTo(130, yPos);
+                    MoveTo(160, yPos);
                     RGBForeColor(&white);
                     NumToString((long)defHits[i], numStr);
                     DrawString(numStr);
@@ -8290,16 +11307,8 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     NumToString((long)defOrigHits[i], numStr);
                     DrawString(numStr);
                     DrawString(GetCachedString(STR_COMBAT, 15, "\p HP"));
-                    if (dmg > 0) {
-                        RGBColor dmgCol = {0xFFFF, 0xAAAA, 0x4444};
-                        RGBForeColor(&dmgCol);
-                        DrawString("\p (-");
-                        NumToString((long)dmg, numStr);
-                        DrawString(numStr);
-                        DrawString("\p)");
-                    }
                 }
-                yPos += 16;
+                yPos += 22;
             }
 
             /* Terrain/bonus info line */
@@ -8309,6 +11318,36 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             DrawString(GetCachedString(STR_COMBAT, 17, "\pRounds: "));
             NumToString((long)round, numStr);
             DrawString(numStr);
+            /* Show defender's bonuses */
+            {
+                short bonusX = 20;
+                short bonusY = yPos + 24;
+                RGBColor bonusCol = {0x8888, 0xAAAA, 0xCCCC};
+                RGBForeColor(&bonusCol);
+                MoveTo(bonusX, bonusY);
+                DrawString("\pDef bonuses: ");
+                if (terrainDef_out > 0) {
+                    DrawString("\pTerrain +");
+                    NumToString((long)terrainDef_out, numStr); DrawString(numStr);
+                    DrawString("\p  ");
+                }
+                if (cityDef_out > 0) {
+                    DrawString("\pCity +");
+                    NumToString((long)cityDef_out, numStr); DrawString(numStr);
+                    DrawString("\p  ");
+                }
+                if (fortDef_out > 0) {
+                    DrawString("\pFort +");
+                    NumToString((long)fortDef_out, numStr); DrawString(numStr);
+                    DrawString("\p  ");
+                }
+                if (defHeroBonus_out > 0) {
+                    DrawString("\pHero +");
+                    NumToString((long)defHeroBonus_out, numStr); DrawString(numStr);
+                }
+                if (terrainDef_out == 0 && cityDef_out == 0 && fortDef_out == 0 && defHeroBonus_out == 0)
+                    DrawString("\pNone");
+            }
             TextSize(10);
         }
 
@@ -8316,7 +11355,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
         {
             Rect bannerR;
             RGBColor bannerBg, bannerText;
-            SetRect(&bannerR, 20, 240, 380, 264);
+            SetRect(&bannerR, 20, 280, 380, 304);
 
             if (result == 1) {
                 bannerBg.red = 0x0000; bannerBg.green = 0x4444; bannerBg.blue = 0x0000;
@@ -8333,13 +11372,13 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             RGBForeColor(&bannerText);
             TextFace(bold);
             if (result == 1) {
-                MoveTo(110, 257);
+                MoveTo(110, 297);
                 DrawString(GetCachedString(STR_COMBAT, 18, "\pAttacker is VICTORIOUS!"));
             } else if (result == 0) {
-                MoveTo(110, 257);
+                MoveTo(110, 297);
                 DrawString(GetCachedString(STR_COMBAT, 19, "\pDefender holds the field!"));
             } else {
-                MoveTo(110, 257);
+                MoveTo(110, 297);
                 DrawString(GetCachedString(STR_COMBAT, 20, "\pBoth armies destroyed!"));
             }
             TextFace(0);
@@ -8349,10 +11388,10 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
         {
             Rect okRect;
             RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-            SetRect(&okRect, 160, 270, 240, 292);
+            SetRect(&okRect, 160, 310, 240, 332);
             RGBForeColor(&white);
             FrameRoundRect(&okRect, 8, 8);
-            MoveTo(186, 286);
+            MoveTo(186, 326);
             DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
         }
 
@@ -8706,10 +11745,11 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         oOwner = (short)(unsigned char)other[0x15];
 
         if (ox == mx && oy == my && oOwner != mOwner) {
-            /* Check diplomacy: if at peace, skip combat (armies coexist) */
-            /* Bounds check: neutrals (owner outside 0-7) always fight */
+            /* Check diplomacy: only fight if at war (68k CODE_115: state 2)
+             * Peace (0) and alliance (1) both prevent combat.
+             * Neutrals (owner outside 0-7) always fight. */
             if (mOwner >= 0 && mOwner < 8 && oOwner >= 0 && oOwner < 8 &&
-                *(short *)(gs + 0x1582 + (mOwner * 8 + oOwner) * 2) >= 0x1000) continue;
+                DIPLO_GET_STATE(*(gs + 0x1582 + mOwner * 8 + oOwner)) != DIPLO_WAR) continue;
 
             /* Military Advisor: show assessment before combat for human attacker */
             if (sOptMilAdvisor && mOwner >= 0 && mOwner < 8 &&
@@ -8824,9 +11864,17 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                 }
 
                 if (!doAttack) {
-                    /* Retreat: move army back to previous tile */
+                    /* Retreat: move army back to previous tile.
+                     * The army has already been moved onto the enemy tile
+                     * by the caller, so restore from undo state. */
+                    if (sUndoArmyIdx >= 0) {
+                        *(short *)(movArmy + 0x00) = sUndoFromX;
+                        *(short *)(movArmy + 0x02) = sUndoFromY;
+                        movArmy[0x2e] = (unsigned char)sUndoMovePts;
+                        sUndoArmyIdx = -1;
+                    }
                     *(short *)(movArmy + 0x32) = 0;  /* clear orders */
-                    return false;
+                    return true;  /* combat "occurred" so caller won't try merge */
                 }
             }
 
@@ -8878,6 +11926,23 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             if (combatResult == 1) {
                 /* Attacker wins: remove defender */
                 RemoveArmy(i);
+                /* Deduct movement points from winner (68k CODE_108 FUN_00000164):
+                 * Combat costs terrain movement cost at the battle tile.
+                 * Adjust army index since RemoveArmy may shift the array. */
+                {
+                    short winIdx = (i < movingArmyIdx) ? movingArmyIdx - 1 : movingArmyIdx;
+                    unsigned char *winner = gs + 0x1604 + winIdx * 0x42;
+                    short mp = (short)(unsigned char)winner[0x2e];
+                    short combatCost = GetMovementCost(mx, my, (short)(unsigned char)winner[0x16]);
+                    if (combatCost <= 0) combatCost = 2;
+                    mp -= combatCost;
+                    if (mp < 0) mp = 0;
+                    winner[0x2e] = (unsigned char)mp;
+                    /* Clear movement orders after combat (68k CODE_108: dest → -1) */
+                    *(short *)(winner + 0x34) = -1;
+                    *(short *)(winner + 0x36) = -1;
+                    *(short *)(winner + 0x32) = 0;
+                }
                 /* Check city capture */
                 {
                     short cityCount = *(short *)(gs + 0x810);
@@ -8889,6 +11954,47 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                             *(short *)(city + 0x02) == my) {
                             short prevOwner = *(short *)(city + 0x04);
                             *(short *)(city + 0x04) = mOwner;  /* capture city */
+
+                            /* Update map tiles to new owner (68k: city capture updates tile owner) */
+                            if (*gMapTiles != 0) {
+                                unsigned char *capMap = (unsigned char *)*gMapTiles;
+                                short cdx, cdy;
+                                for (cdy = 0; cdy < 2; cdy++) {
+                                    for (cdx = 0; cdx < 2; cdx++) {
+                                        short ctx = mx + cdx, cty = my + cdy;
+                                        if (ctx >= 0 && ctx < sMapWidth && cty >= 0 && cty < sMapHeight) {
+                                            unsigned short coff = cty * 0xE0 + ctx * 2;
+                                            capMap[coff] = 0x0A;  /* player city */
+                                            capMap[coff + 1] = (capMap[coff + 1] & 0xF0) | (mOwner & 0x0F);
+                                        }
+                                    }
+                                }
+                            }
+
+                            /* Gold transfer on capture (68k CODE_133 FUN_00000046):
+                             * goldPerCity = defender_gold / defender_city_count
+                             * goldTaken = goldPerCity / 2 */
+                            if (prevOwner >= 0 && prevOwner < 8 && prevOwner != 0x0F &&
+                                mOwner >= 0 && mOwner < 8) {
+                                short defGold = *(short *)(gs + 0x186 + prevOwner * 0x14);
+                                short defCities = 0;
+                                short ci2;
+                                for (ci2 = 0; ci2 < cityCount; ci2++) {
+                                    unsigned char *c2 = gs + 0x812 + ci2 * 0x20;
+                                    if (*(short *)(c2 + 0x04) == prevOwner) defCities++;
+                                }
+                                if (defCities > 0) {
+                                    short goldPerCity = defGold / defCities;
+                                    short goldTaken = goldPerCity / 2;
+                                    if (goldTaken > 0) {
+                                        short newGold = *(short *)(gs + 0x186 + mOwner * 0x14) + goldTaken;
+                                        if (newGold > 30000) newGold = 30000;
+                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold;
+                                        *(short *)(gs + 0x186 + prevOwner * 0x14) = defGold - goldTaken;
+                                    }
+                                }
+                            }
+
                             RecordEvent(turnNum, HIST_EVT_CAPTURE, mOwner,
                                 "Captured a city");
                             ShowCityCaptureNotification(mOwner, prevOwner, mx, my);
@@ -8968,10 +12074,14 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                     DisposeWindow(rzWin);
 
                                     if (choice == 1) {
-                                        /* Pillage: gain gold, lose some defense */
-                                        short pillGold = 50 + ((unsigned short)TickCount() % 100);
+                                        /* Pillage: gain gold based on city income + defense (68k) */
+                                        short cDef = *(short *)(city + 0x06);
+                                        short cInc = *(short *)(city + 0x08);
+                                        short pillGold = cInc * 4 + cDef * 2 + ((unsigned short)Random() % 20);
                                         short curGold = *(short *)(gs + 0x186 + mOwner * 0x14);
-                                        *(short *)(gs + 0x186 + mOwner * 0x14) = curGold + pillGold;
+                                        short newGold = curGold + pillGold;
+                                        if (newGold > 30000) newGold = 30000; /* 68k gold cap */
+                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold;
                                         /* Reduce city defense by 1 */
                                         {
                                             short def = *(short *)(city + 0x06);
@@ -9009,10 +12119,13 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                             }
                                         }
                                     } else if (choice == 2) {
-                                        /* Raze: destroy city — set owner to -1, gain some gold */
-                                        short razeGold = 25 + ((unsigned short)TickCount() % 50);
+                                        /* Raze: destroy city, gain gold based on income (68k) */
+                                        short cInc2 = *(short *)(city + 0x08);
+                                        short razeGold = cInc2 * 2 + ((unsigned short)Random() % 10);
                                         short curGold = *(short *)(gs + 0x186 + mOwner * 0x14);
-                                        *(short *)(gs + 0x186 + mOwner * 0x14) = curGold + razeGold;
+                                        short newGold2 = curGold + razeGold;
+                                        if (newGold2 > 30000) newGold2 = 30000; /* 68k gold cap */
+                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold2;
                                         *(short *)(city + 0x04) = -1;  /* razed */
                                         *(short *)(city + 0x06) = 0;   /* no defense */
                                         *(short *)(city + 0x08) = 0;   /* no income */
@@ -9044,16 +12157,105 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                                 DisposeWindow(rzWin2);
                                             }
                                         }
+                                        /* 68k CODE_139: update map tiles to neutral for razed city */
+                                        if (*gMapTiles != 0) {
+                                            unsigned char *rzMap = (unsigned char *)*gMapTiles;
+                                            short rcx = *(short *)(city + 0x00);
+                                            short rcy = *(short *)(city + 0x02);
+                                            short rdx, rdy;
+                                            for (rdy = 0; rdy < 2; rdy++) {
+                                                for (rdx = 0; rdx < 2; rdx++) {
+                                                    short rtx = rcx + rdx, rty = rcy + rdy;
+                                                    if (rtx >= 0 && rtx < sMapWidth && rty >= 0 && rty < sMapHeight) {
+                                                        unsigned short toff = rty * 0xE0 + rtx * 2;
+                                                        rzMap[toff] = 0x0C;  /* neutral city terrain */
+                                                        rzMap[toff + 1] = (rzMap[toff + 1] & 0xF0) | 0x0F;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        /* 68k CODE_139: clear army orders pointing at razed city */
+                                        {
+                                            short rcx2 = *(short *)(city + 0x00);
+                                            short rcy2 = *(short *)(city + 0x02);
+                                            short rai;
+                                            for (rai = 0; rai < armyCount; rai++) {
+                                                unsigned char *ra = gs + 0x1604 + rai * 0x42;
+                                                if (*(short *)(ra + 0x32) != 0 &&
+                                                    *(short *)(ra + 0x34) == rcx2 &&
+                                                    *(short *)(ra + 0x36) == rcy2) {
+                                                    *(short *)(ra + 0x32) = 0;
+                                                    *(short *)(ra + 0x34) = -1;
+                                                    *(short *)(ra + 0x36) = -1;
+                                                }
+                                            }
+                                        }
+                                        /* Clear vectoring on other cities targeting razed city */
+                                        if (*gExtState != 0) {
+                                            unsigned char *rzExt = (unsigned char *)*gExtState;
+                                            short rCityCount = *(short *)(gs + 0x810);
+                                            short rcj;
+                                            if (rCityCount > 40) rCityCount = 40;
+                                            for (rcj = 0; rcj < rCityCount; rcj++) {
+                                                unsigned char *rzExtCity = rzExt + 0x24c + rcj * 0x5c;
+                                                short rvi;
+                                                for (rvi = 0; rvi < 4; rvi++) {
+                                                    if (*(short *)(rzExtCity + 0x3e + rvi * 2) == ci)
+                                                        *(short *)(rzExtCity + 0x3e + rvi * 2) = -1;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
 
-                            /* Reset and start production for captured city */
+                            /* Reset production and vectoring for captured city
+                             * (68k CODE_045: city capture clears all production state) */
                             if (*gExtState != 0) {
                                 unsigned char *ext = (unsigned char *)*gExtState;
                                 unsigned char *extCity = ext + 0x24c + ci * 0x5c;
                                 *(short *)(extCity + 0x02) = -1;  /* clear production */
                                 *(short *)(extCity + 0x58) = 0;   /* clear timer */
+                                { short vi; for (vi = 0; vi < 4; vi++)
+                                    *(short *)(extCity + 0x3e + vi * 2) = -1; } /* clear vectoring */
+
+                                /* 68k CODE_139: clear previous owner's army orders
+                                 * targeting the captured city. Armies sent to a now-enemy
+                                 * city should stop. */
+                                if (prevOwner >= 0 && prevOwner < 8) {
+                                    short ccx = *(short *)(city + 0x00);
+                                    short ccy = *(short *)(city + 0x02);
+                                    short cai;
+                                    for (cai = 0; cai < armyCount; cai++) {
+                                        unsigned char *ca = gs + 0x1604 + cai * 0x42;
+                                        if ((short)(unsigned char)ca[0x15] == prevOwner &&
+                                            *(short *)(ca + 0x32) != 0 &&
+                                            *(short *)(ca + 0x34) == ccx &&
+                                            *(short *)(ca + 0x36) == ccy) {
+                                            *(short *)(ca + 0x32) = 0;
+                                            *(short *)(ca + 0x34) = -1;
+                                            *(short *)(ca + 0x36) = -1;
+                                        }
+                                    }
+                                    /* Clear previous owner's city vectoring targeting
+                                     * the captured city (68k CODE_139 pattern). */
+                                    {
+                                        short ccj;
+                                        for (ccj = 0; ccj < cityCount; ccj++) {
+                                            unsigned char *cc = gs + 0x812 + ccj * 0x20;
+                                            if (*(short *)(cc + 0x04) != prevOwner) continue;
+                                            {
+                                                unsigned char *ccExt = ext + 0x24c + ccj * 0x5c;
+                                                short cvi;
+                                                for (cvi = 0; cvi < 4; cvi++) {
+                                                    if (*(short *)(ccExt + 0x3e + cvi * 2) == ci)
+                                                        *(short *)(ccExt + 0x3e + cvi * 2) = -1;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 /* Show production dialog for human player */
                                 if (mOwner >= 0 && mOwner < 8 &&
                                     *(short *)(gs + 0xd0 + mOwner * 2) == 0) {
@@ -9075,19 +12277,14 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                         prevCities++;
                                 }
                                 if (prevCities == 0) {
-                                    /* Eliminate player */
-                                    short aj2;
+                                    /* 68k CODE_130: eliminated players become AI-controlled.
+                                     * Armies remain as remnants (NOT removed). */
                                     *(short *)(gs + 0x138 + prevOwner * 2) = 0;
                                     *(short *)(gs + 0x148 + prevOwner * 2) = 0;
+                                    *(short *)(gs + 0xd0 + prevOwner * 2) = 1; /* convert to AI */
                                     RecordEvent(turnNum, HIST_EVT_DEFEAT, prevOwner,
                                         "Eliminated!");
                                     ShowEliminationNotification(prevOwner, mOwner);
-                                    /* Remove all their armies */
-                                    for (aj2 = armyCount - 1; aj2 >= 0; aj2--) {
-                                        unsigned char *a2 = gs + 0x1604 + aj2 * 0x42;
-                                        if ((short)(unsigned char)a2[0x15] == prevOwner)
-                                            RemoveArmy(aj2);
-                                    }
                                 }
                             }
                             break;
@@ -9303,8 +12500,8 @@ static void ShowReportDialog(short tab)
                     {
                         Rect colorBar;
                         SetRect(&colorBar, 18, yPos - 12, 38, yPos + 6);
-                        if (sShieldsLoaded && sShieldIcons[pi] != NULL) {
-                            PlotCIcon(&colorBar, sShieldIcons[pi]);
+                        if (sShieldsLoaded && (sShieldIcons[pi] != NULL || sShieldSmallGW != NULL)) {
+                            DrawShieldIcon(pi, &colorBar);
                         } else {
                             RGBColor black = {0, 0, 0};
                             RGBForeColor(&pColor);
@@ -9499,8 +12696,8 @@ static void ShowDiplomacyDialog(void)
                         Rect shR;
                         if (*(short *)(gs + 0x138 + pj * 2) == 0) continue;
                         SetRect(&shR, 115 + pj * 28, 34, 143 + pj * 28, 52);
-                        if (sShieldsLoaded && sShieldIcons[pj] != NULL) {
-                            PlotCIcon(&shR, sShieldIcons[pj]);
+                        if (sShieldsLoaded && (sShieldIcons[pj] != NULL || sShieldSmallGW != NULL)) {
+                            DrawShieldIcon(pj, &shR);
                         } else {
                             RGBColor black = {0, 0, 0};
                             Str255 n;
@@ -9524,8 +12721,8 @@ static void ShowDiplomacyDialog(void)
                         {
                             Rect colorBar;
                             SetRect(&colorBar, 18, yp - 10, 38, yp + 8);
-                            if (sShieldsLoaded && sShieldIcons[pi] != NULL) {
-                                PlotCIcon(&colorBar, sShieldIcons[pi]);
+                            if (sShieldsLoaded && (sShieldIcons[pi] != NULL || sShieldSmallGW != NULL)) {
+                                DrawShieldIcon(pi, &colorBar);
                             } else {
                                 RGBForeColor(&sPlayerColors[pi + 1]);
                                 PaintRect(&colorBar);
@@ -9555,20 +12752,13 @@ static void ShowDiplomacyDialog(void)
                                 RGBForeColor(&gray);
                                 PaintRect(&cellRect);
                             } else {
-                                RGBColor war = {0xFFFF, 0x4444, 0x4444};
-                                RGBColor peace = {0x8888, 0xFFFF, 0x8888};
-                                status = *(short *)(gs + 0x1582 + (pi * 8 + pj) * 2);
-                                if (status >= 0x1000) {
-                                    RGBForeColor(&peace);
-                                    PaintRect(&cellRect);
-                                    if (sDiploStateIcons[1])
-                                        PlotCIcon(&cellRect, sDiploStateIcons[1]);
-                                    else {
-                                        RGBForeColor(&black);
-                                        MoveTo(cellRect.left + 6, yp + 3);
-                                        DrawString(GetCachedString(STR_REPORT, 12, "\pP"));
-                                    }
-                                } else {
+                                RGBColor war     = {0xFFFF, 0x4444, 0x4444};
+                                RGBColor peace   = {0x8888, 0xFFFF, 0x8888};
+                                RGBColor alliance = {0x8888, 0x8888, 0xFFFF};
+                                short dState;
+                                status = *(gs + 0x1582 + pi * 8 + pj);
+                                dState = DIPLO_GET_STATE(status);
+                                if (dState == DIPLO_WAR) {
                                     RGBForeColor(&war);
                                     PaintRect(&cellRect);
                                     if (sDiploStateIcons[0])
@@ -9577,6 +12767,26 @@ static void ShowDiplomacyDialog(void)
                                         RGBForeColor(&black);
                                         MoveTo(cellRect.left + 6, yp + 3);
                                         DrawString(GetCachedString(STR_REPORT, 13, "\pW"));
+                                    }
+                                } else if (dState == DIPLO_ALLIANCE) {
+                                    RGBForeColor(&alliance);
+                                    PaintRect(&cellRect);
+                                    if (sDiploStateIcons[2])
+                                        PlotCIcon(&cellRect, sDiploStateIcons[2]);
+                                    else {
+                                        RGBForeColor(&black);
+                                        MoveTo(cellRect.left + 6, yp + 3);
+                                        DrawString("\pA");
+                                    }
+                                } else {  /* peace */
+                                    RGBForeColor(&peace);
+                                    PaintRect(&cellRect);
+                                    if (sDiploStateIcons[1])
+                                        PlotCIcon(&cellRect, sDiploStateIcons[1]);
+                                    else {
+                                        RGBForeColor(&black);
+                                        MoveTo(cellRect.left + 6, yp + 3);
+                                        DrawString(GetCachedString(STR_REPORT, 12, "\pP"));
                                     }
                                 }
                             }
@@ -9592,7 +12802,7 @@ static void ShowDiplomacyDialog(void)
                     RGBForeColor(&hint);
                     TextSize(9);
                     MoveTo(20, 274);
-                    DrawString(GetCachedString(STR_REPORT, 14, "\pClick a cell in your row to propose peace/war"));
+                    DrawString(GetCachedString(STR_REPORT, 14, "\pClick to cycle: Peace / Alliance / War"));
                 }
 
                 /* OK button */
@@ -9639,11 +12849,14 @@ static void ShowDiplomacyDialog(void)
                                 if (*(short *)(gs + 0x138 + pj * 2) == 0) continue;
                                 SetRect(&cell, 115 + pj * 28, yp - 8, 143 + pj * 28, yp + 6);
                                 if (PtInRect(mp, &cell)) {
-                                    /* Toggle peace/war (both directions) */
-                                    short cur = *(short *)(gs + 0x1582 + (curPlayer * 8 + pj) * 2);
-                                    short newVal = (cur >= 0x1000) ? 0 : 0x2800;
-                                    *(short *)(gs + 0x1582 + (curPlayer * 8 + pj) * 2) = newVal;
-                                    *(short *)(gs + 0x1582 + (pj * 8 + curPlayer) * 2) = newVal;
+                                    /* Cycle: peace→alliance→war→peace (68k CODE_052 FUN_000010b2) */
+                                    unsigned char *dp = gs + 0x1582 + curPlayer * 8 + pj;
+                                    unsigned char *dp2 = gs + 0x1582 + pj * 8 + curPlayer;
+                                    short cur = DIPLO_GET_STATE(*dp);
+                                    short next = (cur + 1) % 3;  /* 0→1→2→0 */
+                                    *dp = DIPLO_SET_STATE(*dp, next);
+                                    *dp = (*dp & 0xFC) | (next & 3);  /* copy to bits 0-1 */
+                                    *dp2 = *dp;  /* mirror for symmetry */
                                     needsRedraw = true;
                                     break;
                                 }
@@ -10067,10 +13280,10 @@ static void ShowHistoryDialog(short tab)
  * ShowTriumphsDialog — Show victory achievements/triumphs
  * =================================================================== */
 /* ===================================================================
- * ShowFightOrder — Reorder units within the selected army stack
+ * ShowFightOrder — Per-player global fight order editor (68k View 4600)
  *
- * Shows the 4 unit slots. Click a slot then click another to swap them.
- * This sets the combat priority (slot 0 fights first).
+ * Shows all available unit types in priority order. Click two slots to swap.
+ * Priority determines combat order: lower priority fights first.
  * =================================================================== */
 
 /* ===================================================================
@@ -10286,154 +13499,290 @@ static void ShowChangeSignpost(void)
 
 static void ShowFightOrder(short armyIndex)
 {
+    /* Per-player global fight order editor (68k CODE_060 / View 4600).
+     * The fight order table at gs + player * 0x1D + 0x60C has 29 bytes.
+     * Each byte is indexed by unit type and stores a priority value.
+     * Lower priority = fights first in combat. */
     WindowPtr foWin;
-    GWorldPtr offGW;
-    Rect winRect, gwRect;
-    Boolean foDone;
+    Rect winRect;
+    Boolean foDone, needsRedraw;
     EventRecord foEvt;
-    CGrafPtr savePort;
-    GDHandle saveGD;
-    Boolean needsRedraw;
-    short selectedSlot = -1;
-    unsigned char *gs, *army;
-    short armyCount;
+    unsigned char *gs;
+    short curPlayer;
+    short i;
+
+    /* Working state */
+    short displayOrder[29];  /* displayOrder[priority] = unit type ID */
+    short availCount = 0;    /* number of available unit types */
+    unsigned char origOrder[29]; /* backup for Cancel */
+
+    short selectedSlot = -1; /* selected priority slot (-1 = none) */
+    short scrollOffset = 0;  /* first visible priority index */
+
+#define FO_W        340
+#define FO_H        440
+#define FO_VIS      12   /* visible slots at a time */
+#define FO_SLOT_Y0  60   /* y of first slot */
+#define FO_SLOT_H   28   /* height per slot */
+#define FO_BTN_Y    (FO_SLOT_Y0 + FO_VIS * FO_SLOT_H + 8)
+
+    (void)armyIndex; /* fight order is per-player, not per-army */
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
-    armyCount = *(short *)(gs + 0x1602);
-    if (armyIndex < 0 || armyIndex >= armyCount) return;
-    army = gs + 0x1604 + armyIndex * 0x42;
+    curPlayer = *(short *)(gs + 0x110);
+    if (curPlayer < 0 || curPlayer > 7) return;
 
-    SetRect(&winRect, 0, 0, 320, 240);
-    OffsetRect(&winRect, 180, 120);
-    foWin = NewCWindow(NULL, &winRect, "\pFight Order", true,
+    /* Build displayOrder: scan priorities 0..28, find which unit type
+     * has each priority. Skip unit types with terrainClass == 5 (disabled). */
+    {
+        unsigned char *fightRow = gs + curPlayer * 0x1D + 0x60C;
+        short prio;
+        for (prio = 0; prio < 29; prio++) {
+            short ut;
+            for (ut = 0; ut < 29; ut++) {
+                if (fightRow[ut] == prio) {
+                    /* Check if unit type is available */
+                    if (sUnitTypesLoaded && ut < sUnitTypeCount) {
+                        unsigned char *ute = sUnitTypeTable + ut * UNIT_TYPE_ENTRY;
+                        short tClass = *(short *)(ute + 0x00);
+                        if (tClass == 5) continue; /* disabled */
+                    } else if (ut >= sUnitTypeCount && ut != 0x1C) {
+                        continue; /* not loaded and not hero */
+                    }
+                    displayOrder[availCount++] = ut;
+                    break;
+                }
+            }
+        }
+    }
+    if (availCount == 0) return;
+
+    /* Save original for Cancel */
+    BlockMoveData(gs + curPlayer * 0x1D + 0x60C, origOrder, 29);
+
+    /* Create window */
+    SetRect(&winRect, 0, 0, FO_W, FO_H);
+    OffsetRect(&winRect, (640 - FO_W) / 2, (480 - FO_H) / 2);
+    foWin = NewCWindow(NULL, &winRect, "\pFighting Order", true,
                        dBoxProc, (WindowPtr)-1, false, 0);
-    SetRect(&gwRect, 0, 0, 320, 240);
-    NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
-    if (offGW == NULL) { DisposeWindow(foWin); return; }
 
     needsRedraw = true;
     foDone = false;
 
     while (!foDone) {
         if (needsRedraw) {
-            short ui;
-            GetGWorld(&savePort, &saveGD);
-            SetGWorld(offGW, NULL);
-            LockPixels(GetGWorldPixMap(offGW));
+            Rect okBtn, cancelBtn, resetBtn, upBtn, downBtn;
+            RGBColor black = {0, 0, 0};
+            RGBColor selBg = {0xAAAA, 0xCCCC, 0xFFFF};
+            RGBColor hdrCol = {0x2222, 0x2222, 0x8888};
+            short si;
 
+            SetPort((WindowPtr)foWin);
+            DrawMarbleBackground(&foWin->portRect);
+            RGBForeColor(&black);
+            FrameRect(&foWin->portRect);
+
+            /* Title */
+            TextSize(14);
+            TextFace(bold);
+            MoveTo(100, 24);
+            DrawString("\pFighting Order");
+            TextSize(10);
+            TextFace(0);
+
+            /* Player name (faction names at gs + player * 20, 20 chars each) */
             {
-                RGBColor bg = {0xDDDD, 0xDDDD, 0xDDDD};
-                RGBColor black = {0, 0, 0};
-                RGBColor hdr = {0x2222, 0x2222, 0x8888};
-                RGBColor selBg = {0xAAAA, 0xCCCC, 0xFFFF};
-                Rect r;
-
-                RGBForeColor(&bg);
-                PaintRect(&gwRect);
-                RGBForeColor(&black);
-                FrameRect(&gwRect);
-
-                TextSize(12);
-                TextFace(bold);
-                MoveTo(90, 22);
-                DrawString(GetCachedString(STR_MISC, 0, "\pFight Order"));
-                TextFace(0);
-                TextSize(10);
-
-                /* Instructions */
-                {
-                    RGBColor gray = {0x6666, 0x6666, 0x6666};
-                    RGBForeColor(&gray);
-                    MoveTo(30, 38);
-                    DrawString(GetCachedString(STR_MISC, 1, "\pClick two slots to swap. Slot 1 fights first."));
-                    RGBForeColor(&black);
+                RGBColor pCol = sPlayerColors[curPlayer + 1];
+                unsigned char *facName = gs + curPlayer * 20;
+                RGBForeColor(&pCol);
+                MoveTo(100, 40);
+                if (facName[0] != 0) {
+                    Str255 pname;
+                    short nl = 0;
+                    while (nl < 20 && facName[nl] != 0) { pname[nl + 1] = facName[nl]; nl++; }
+                    pname[0] = nl;
+                    DrawString(pname);
                 }
-
-                /* Column headers */
-                RGBForeColor(&hdr);
-                TextFace(bold);
-                MoveTo(20, 56); DrawString(GetCachedString(STR_MISC, 2, "\p#"));
-                MoveTo(40, 56); DrawString(GetCachedString(STR_MISC, 3, "\pType"));
-                MoveTo(140, 56); DrawString(GetCachedString(STR_MISC, 4, "\pHP"));
-                MoveTo(180, 56); DrawString(GetCachedString(STR_MISC, 5, "\pMov"));
-                MoveTo(220, 56); DrawString(GetCachedString(STR_MISC, 6, "\pBonus"));
-                MoveTo(265, 56); DrawString(GetCachedString(STR_MISC, 7, "\pXP"));
-                TextFace(0);
                 RGBForeColor(&black);
-
-                /* Unit slots */
-                for (ui = 0; ui < 4; ui++) {
-                    short yTop = 62 + ui * 30;
-                    short yText = yTop + 20;
-                    unsigned char unitType = army[0x16 + ui];
-                    Rect slotRect;
-                    Str255 numStr;
-
-                    SetRect(&slotRect, 10, yTop, 310, yTop + 28);
-
-                    /* Highlight selected slot */
-                    if (ui == selectedSlot) {
-                        RGBForeColor(&selBg);
-                        PaintRect(&slotRect);
-                    }
-                    RGBForeColor(&black);
-                    FrameRect(&slotRect);
-
-                    /* Slot number */
-                    MoveTo(20, yText);
-                    NumToString((long)(ui + 1), numStr);
-                    DrawString(numStr);
-
-                    if (unitType == 0xFF) {
-                        RGBColor gray = {0x8888, 0x8888, 0x8888};
-                        RGBForeColor(&gray);
-                        MoveTo(40, yText);
-                        DrawString(GetCachedString(STR_MISC, 8, "\p(empty)"));
-                        RGBForeColor(&black);
-                    } else {
-                        /* Unit type name */
-                        MoveTo(40, yText);
-                        {
-                            Str255 typeName;
-                            GetUnitTypeName((short)unitType, typeName);
-                            DrawString(typeName);
-                        }
-
-                        /* Stats */
-                        MoveTo(140, yText);
-                        NumToString((long)(unsigned char)army[0x1e + ui], numStr);
-                        DrawString(numStr);
-                        MoveTo(180, yText);
-                        NumToString((long)(unsigned char)army[0x1a + ui], numStr);
-                        DrawString(numStr);
-                        MoveTo(220, yText);
-                        NumToString((long)(unsigned char)army[0x22 + ui], numStr);
-                        DrawString(numStr);
-                        MoveTo(265, yText);
-                        NumToString((long)(unsigned char)army[0x26 + ui], numStr);
-                        DrawString(numStr);
-                    }
-                }
-
-                /* OK button */
-                SetRect(&r, 130, 200, 190, 220);
-                FrameRoundRect(&r, 10, 10);
-                TextFace(bold);
-                MoveTo(148, 214);
-                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
-                TextFace(0);
             }
 
-            UnlockPixels(GetGWorldPixMap(offGW));
-            SetGWorld(savePort, saveGD);
-            SetPort((WindowPtr)foWin);
+            /* Column headers */
+            TextFace(bold);
+            TextSize(9);
+            RGBForeColor(&hdrCol);
+            MoveTo(14, FO_SLOT_Y0 - 4);
+            DrawString("\p#");
+            MoveTo(58, FO_SLOT_Y0 - 4);
+            DrawString("\pUnit Type");
+            MoveTo(200, FO_SLOT_Y0 - 4);
+            DrawString("\pStr");
+            MoveTo(240, FO_SLOT_Y0 - 4);
+            DrawString("\pMov");
+            TextFace(0);
+            RGBForeColor(&black);
 
-            LockPixels(GetGWorldPixMap(offGW));
-            CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                     &((GrafPtr)foWin)->portBits,
-                     &gwRect, &gwRect, srcCopy, NULL);
-            UnlockPixels(GetGWorldPixMap(offGW));
+            /* Draw visible slots */
+            for (si = 0; si < FO_VIS && (scrollOffset + si) < availCount; si++) {
+                short dispIdx = scrollOffset + si;
+                short unitType = displayOrder[dispIdx];
+                short yTop = FO_SLOT_Y0 + si * FO_SLOT_H;
+                Rect slotR;
+                Str255 numStr, uName;
+
+                SetRect(&slotR, 10, yTop, FO_W - 10, yTop + FO_SLOT_H - 2);
+
+                /* Background */
+                if (dispIdx == selectedSlot) {
+                    RGBForeColor(&selBg);
+                } else {
+                    RGBColor norm = {0xEEEE, 0xEEEE, 0xEEEE};
+                    RGBForeColor(&norm);
+                }
+                PaintRect(&slotR);
+                RGBForeColor(&black);
+                FrameRect(&slotR);
+
+                /* Priority number */
+                TextSize(10);
+                MoveTo(16, yTop + 18);
+                NumToString((long)(dispIdx + 1), numStr);
+                DrawString(numStr);
+                DrawString("\p.");
+
+                /* Unit sprite */
+                {
+                    short sSheet = (curPlayer >= 0 && curPlayer < ARMY_SHEETS) ? curPlayer : 0;
+                    GWorldPtr sGW = sArmyGW[sSheet] ? sArmyGW[sSheet] : sArmyGW[0];
+                    if (sArmyLoaded && sGW != NULL) {
+                        short sprIdx = unitType;
+                        short sprCol2, sprRow2;
+                        Rect srcR2, dstR2;
+                        if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
+                            unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
+                            sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                        }
+                        sprCol2 = sprIdx % 16;
+                        sprRow2 = sprIdx / 16;
+                        SetRect(&srcR2, sprCol2 * 32, sprRow2 * 30,
+                                sprCol2 * 32 + 29, sprRow2 * 30 + 28);
+                        SetRect(&dstR2, 36, yTop + 1, 36 + 24, yTop + 25);
+                        LockPixels(GetGWorldPixMap(sGW));
+                        {
+                            RGBColor savedBg;
+                            GetBackColor(&savedBg);
+                            RGBBackColor(&sArmyBgColor[sSheet]);
+                            CopyBits((BitMap *)*GetGWorldPixMap(sGW),
+                                     &((GrafPtr)foWin)->portBits,
+                                     &srcR2, &dstR2, 36, NULL);
+                            RGBBackColor(&savedBg);
+                        }
+                        UnlockPixels(GetGWorldPixMap(sGW));
+                    }
+                }
+
+                /* Unit type name */
+                MoveTo(64, yTop + 18);
+                GetUnitTypeName(unitType, uName);
+                DrawString(uName);
+
+                /* Strength and Movement stats from unit type table */
+                if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
+                    short str = GetUnitTypeStat(unitType, 0);
+                    short mov = GetUnitTypeStat(unitType, 3);
+                    MoveTo(200, yTop + 18);
+                    NumToString((long)str, numStr);
+                    DrawString(numStr);
+                    MoveTo(240, yTop + 18);
+                    NumToString((long)mov, numStr);
+                    DrawString(numStr);
+                }
+            }
+
+            /* Scroll indicators */
+            if (scrollOffset > 0) {
+                MoveTo(FO_W / 2 - 10, FO_SLOT_Y0 - 6);
+                TextSize(9);
+                DrawString("\p^ more");
+            }
+            if (scrollOffset + FO_VIS < availCount) {
+                MoveTo(FO_W / 2 - 10, FO_SLOT_Y0 + FO_VIS * FO_SLOT_H + 4);
+                TextSize(9);
+                DrawString("\pv more");
+            }
+
+            /* Buttons */
+            TextSize(10);
+            SetRect(&upBtn, 14, FO_BTN_Y, 74, FO_BTN_Y + 22);
+            SetRect(&downBtn, 80, FO_BTN_Y, 140, FO_BTN_Y + 22);
+            SetRect(&resetBtn, 146, FO_BTN_Y, 210, FO_BTN_Y + 22);
+            SetRect(&okBtn, 216, FO_BTN_Y, 270, FO_BTN_Y + 22);
+            SetRect(&cancelBtn, 276, FO_BTN_Y, 330, FO_BTN_Y + 22);
+
+            /* Up button */
+            {
+                RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+                if (selectedSlot > 0) btnFace.red = btnFace.green = btnFace.blue = 0xCCCC;
+                else btnFace.red = btnFace.green = btnFace.blue = 0xAAAA;
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&upBtn, 8, 8);
+                RGBForeColor(&black);
+                FrameRoundRect(&upBtn, 8, 8);
+                TextFace(bold);
+                MoveTo(30, FO_BTN_Y + 15);
+                DrawString("\pUp");
+                TextFace(0);
+            }
+            /* Down button */
+            {
+                RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+                if (selectedSlot >= 0 && selectedSlot < availCount - 1) ;
+                else btnFace.red = btnFace.green = btnFace.blue = 0xAAAA;
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&downBtn, 8, 8);
+                RGBForeColor(&black);
+                FrameRoundRect(&downBtn, 8, 8);
+                TextFace(bold);
+                MoveTo(90, FO_BTN_Y + 15);
+                DrawString("\pDown");
+                TextFace(0);
+            }
+            /* Reset button */
+            {
+                RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&resetBtn, 8, 8);
+                RGBForeColor(&black);
+                FrameRoundRect(&resetBtn, 8, 8);
+                TextFace(bold);
+                MoveTo(156, FO_BTN_Y + 15);
+                DrawString("\pReset");
+                TextFace(0);
+            }
+            /* OK button */
+            {
+                RGBColor btnFace = {0xAAAA, 0xDDDD, 0xAAAA};
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&okBtn, 8, 8);
+                RGBForeColor(&black);
+                FrameRoundRect(&okBtn, 8, 8);
+                TextFace(bold);
+                MoveTo(234, FO_BTN_Y + 15);
+                DrawString("\pOK");
+                TextFace(0);
+            }
+            /* Cancel button */
+            {
+                RGBColor btnFace = {0xDDDD, 0xAAAA, 0xAAAA};
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&cancelBtn, 8, 8);
+                RGBForeColor(&black);
+                FrameRoundRect(&cancelBtn, 8, 8);
+                TextFace(bold);
+                MoveTo(284, FO_BTN_Y + 15);
+                DrawString("\pCancel");
+                TextFace(0);
+            }
 
             needsRedraw = false;
         }
@@ -10442,72 +13791,168 @@ static void ShowFightOrder(short armyIndex)
 
         if (foEvt.what == mouseDown) {
             Point clickPt = foEvt.where;
-            Rect okBtn;
+            Rect okBtn, cancelBtn, resetBtn, upBtn, downBtn;
+            short si;
+
             SetPort((WindowPtr)foWin);
             GlobalToLocal(&clickPt);
 
-            SetRect(&okBtn, 130, 200, 190, 220);
+            /* Button rects (same as draw) */
+            SetRect(&upBtn, 14, FO_BTN_Y, 74, FO_BTN_Y + 22);
+            SetRect(&downBtn, 80, FO_BTN_Y, 140, FO_BTN_Y + 22);
+            SetRect(&resetBtn, 146, FO_BTN_Y, 210, FO_BTN_Y + 22);
+            SetRect(&okBtn, 216, FO_BTN_Y, 270, FO_BTN_Y + 22);
+            SetRect(&cancelBtn, 276, FO_BTN_Y, 330, FO_BTN_Y + 22);
+
             if (PtInRect(clickPt, &okBtn)) {
+                /* OK: commit displayOrder to game state */
+                unsigned char *fightRow = gs + curPlayer * 0x1D + 0x60C;
+                for (i = 0; i < availCount; i++)
+                    fightRow[displayOrder[i]] = (unsigned char)i;
                 foDone = true;
+            } else if (PtInRect(clickPt, &cancelBtn)) {
+                /* Cancel: restore original */
+                BlockMoveData(origOrder, gs + curPlayer * 0x1D + 0x60C, 29);
+                foDone = true;
+            } else if (PtInRect(clickPt, &resetBtn)) {
+                /* Reset: copy defaults from row 8 (gs+0x6F4) */
+                unsigned char *defaults = gs + 0x6F4;
+                short prio;
+                availCount = 0;
+                for (prio = 0; prio < 29; prio++) {
+                    short ut;
+                    for (ut = 0; ut < 29; ut++) {
+                        if (defaults[ut] == prio) {
+                            if (sUnitTypesLoaded && ut < sUnitTypeCount) {
+                                unsigned char *ute = sUnitTypeTable + ut * UNIT_TYPE_ENTRY;
+                                short tClass = *(short *)(ute + 0x00);
+                                if (tClass == 5) continue;
+                            } else if (ut >= sUnitTypeCount && ut != 0x1C) {
+                                continue;
+                            }
+                            displayOrder[availCount++] = ut;
+                            break;
+                        }
+                    }
+                }
+                /* Also write defaults into game state immediately */
+                BlockMoveData(defaults, gs + curPlayer * 0x1D + 0x60C, 29);
+                selectedSlot = -1;
+                needsRedraw = true;
+            } else if (PtInRect(clickPt, &upBtn)) {
+                /* Move selected up in priority (lower index = fights first) */
+                if (selectedSlot > 0) {
+                    short tmp = displayOrder[selectedSlot];
+                    displayOrder[selectedSlot] = displayOrder[selectedSlot - 1];
+                    displayOrder[selectedSlot - 1] = tmp;
+                    selectedSlot--;
+                    /* Scroll to keep visible */
+                    if (selectedSlot < scrollOffset) scrollOffset = selectedSlot;
+                    needsRedraw = true;
+                }
+            } else if (PtInRect(clickPt, &downBtn)) {
+                /* Move selected down */
+                if (selectedSlot >= 0 && selectedSlot < availCount - 1) {
+                    short tmp = displayOrder[selectedSlot];
+                    displayOrder[selectedSlot] = displayOrder[selectedSlot + 1];
+                    displayOrder[selectedSlot + 1] = tmp;
+                    selectedSlot++;
+                    /* Scroll to keep visible */
+                    if (selectedSlot >= scrollOffset + FO_VIS)
+                        scrollOffset = selectedSlot - FO_VIS + 1;
+                    needsRedraw = true;
+                }
             } else {
                 /* Check slot clicks */
-                short si;
-                for (si = 0; si < 4; si++) {
-                    Rect slotRect;
-                    SetRect(&slotRect, 10, 62 + si * 30, 310, 90 + si * 30);
-                    if (PtInRect(clickPt, &slotRect)) {
+                for (si = 0; si < FO_VIS && (scrollOffset + si) < availCount; si++) {
+                    Rect slotR;
+                    short yTop = FO_SLOT_Y0 + si * FO_SLOT_H;
+                    SetRect(&slotR, 10, yTop, FO_W - 10, yTop + FO_SLOT_H - 2);
+                    if (PtInRect(clickPt, &slotR)) {
+                        short clickedIdx = scrollOffset + si;
                         if (selectedSlot < 0) {
-                            selectedSlot = si;
-                            needsRedraw = true;
-                        } else if (selectedSlot == si) {
-                            selectedSlot = -1;
-                            needsRedraw = true;
+                            selectedSlot = clickedIdx;
+                        } else if (selectedSlot == clickedIdx) {
+                            selectedSlot = -1; /* deselect */
                         } else {
-                            /* Swap slots */
-                            unsigned char tmpType = army[0x16 + selectedSlot];
-                            unsigned char tmpMoves = army[0x1a + selectedSlot];
-                            unsigned char tmpHits = army[0x1e + selectedSlot];
-                            unsigned char tmpBonus = army[0x22 + selectedSlot];
-                            unsigned char tmpExp = army[0x26 + selectedSlot];
-
-                            army[0x16 + selectedSlot] = army[0x16 + si];
-                            army[0x1a + selectedSlot] = army[0x1a + si];
-                            army[0x1e + selectedSlot] = army[0x1e + si];
-                            army[0x22 + selectedSlot] = army[0x22 + si];
-                            army[0x26 + selectedSlot] = army[0x26 + si];
-
-                            army[0x16 + si] = tmpType;
-                            army[0x1a + si] = tmpMoves;
-                            army[0x1e + si] = tmpHits;
-                            army[0x22 + si] = tmpBonus;
-                            army[0x26 + si] = tmpExp;
-
+                            /* Swap the two entries */
+                            short tmp = displayOrder[selectedSlot];
+                            displayOrder[selectedSlot] = displayOrder[clickedIdx];
+                            displayOrder[clickedIdx] = tmp;
                             selectedSlot = -1;
-                            needsRedraw = true;
                         }
+                        needsRedraw = true;
                         break;
                     }
+                }
+                /* Check scroll area clicks */
+                if (clickPt.v < FO_SLOT_Y0 && scrollOffset > 0) {
+                    scrollOffset--;
+                    needsRedraw = true;
+                } else if (clickPt.v > FO_SLOT_Y0 + FO_VIS * FO_SLOT_H &&
+                           clickPt.v < FO_BTN_Y &&
+                           scrollOffset + FO_VIS < availCount) {
+                    scrollOffset++;
+                    needsRedraw = true;
                 }
             }
         } else if (foEvt.what == keyDown) {
             char key = foEvt.message & charCodeMask;
-            if (key == 0x0D || key == 0x03 || key == 0x1B) foDone = true;
+            if (key == 0x0D || key == 0x03) {
+                /* Return/Enter = OK */
+                unsigned char *fightRow = gs + curPlayer * 0x1D + 0x60C;
+                for (i = 0; i < availCount; i++)
+                    fightRow[displayOrder[i]] = (unsigned char)i;
+                foDone = true;
+            } else if (key == 0x1B) {
+                /* Escape = Cancel */
+                BlockMoveData(origOrder, gs + curPlayer * 0x1D + 0x60C, 29);
+                foDone = true;
+            } else if (key == 0x1E) {
+                /* Up arrow key */
+                if (selectedSlot > 0) {
+                    short tmp = displayOrder[selectedSlot];
+                    displayOrder[selectedSlot] = displayOrder[selectedSlot - 1];
+                    displayOrder[selectedSlot - 1] = tmp;
+                    selectedSlot--;
+                    if (selectedSlot < scrollOffset) scrollOffset = selectedSlot;
+                    needsRedraw = true;
+                } else if (selectedSlot < 0 && availCount > 0) {
+                    selectedSlot = 0;
+                    needsRedraw = true;
+                }
+            } else if (key == 0x1F) {
+                /* Down arrow key */
+                if (selectedSlot >= 0 && selectedSlot < availCount - 1) {
+                    short tmp = displayOrder[selectedSlot];
+                    displayOrder[selectedSlot] = displayOrder[selectedSlot + 1];
+                    displayOrder[selectedSlot + 1] = tmp;
+                    selectedSlot++;
+                    if (selectedSlot >= scrollOffset + FO_VIS)
+                        scrollOffset = selectedSlot - FO_VIS + 1;
+                    needsRedraw = true;
+                } else if (selectedSlot < 0 && availCount > 0) {
+                    selectedSlot = 0;
+                    needsRedraw = true;
+                }
+            }
         } else if (foEvt.what == updateEvt) {
             if ((WindowPtr)foEvt.message == foWin) {
                 BeginUpdate(foWin);
-                SetPort((WindowPtr)foWin);
-                LockPixels(GetGWorldPixMap(offGW));
-                CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                         &((GrafPtr)foWin)->portBits,
-                         &gwRect, &gwRect, srcCopy, NULL);
-                UnlockPixels(GetGWorldPixMap(offGW));
                 EndUpdate(foWin);
+                needsRedraw = true;
             }
         }
     }
 
-    DisposeGWorld(offGW);
     DisposeWindow(foWin);
+
+#undef FO_W
+#undef FO_H
+#undef FO_VIS
+#undef FO_SLOT_Y0
+#undef FO_SLOT_H
+#undef FO_BTN_Y
 }
 
 
@@ -11023,7 +14468,7 @@ static void GenerateQuest(short player)
                 unsigned char *city = gs + 0x812 + idx * 0x20;
                 short owner = *(short *)(city + 0x04);
                 short sType = (short)(unsigned char)city[0x18];
-                if (sType == 2 || sType == 5 || sType == 6) continue;
+                if (sType >= 2 && sType <= 5) continue;
                 if (owner != player && owner >= 0 && owner < 8 &&
                     *(short *)(gs + 0x138 + owner * 2) != 0) {
                     enemyCity = idx;
@@ -11097,6 +14542,9 @@ static void CheckQuestProgress(short player)
                 unsigned char *city = gs + 0x812 + q->target * 0x20;
                 if (*(short *)(city + 0x04) == player)
                     q->completed = true;
+            } else {
+                /* Target city invalid — fail quest (68k: clears active flag) */
+                q->active = false;
             }
             break;
         case QUEST_EXPLORE:
@@ -11124,8 +14572,11 @@ static void CheckQuestProgress(short player)
 
     /* Award reward on completion */
     if (q->completed) {
-        if (q->reward > 0)
-            *(short *)(gs + 0x186 + player * 0x14) += q->reward;
+        if (q->reward > 0) {
+            short *qg = (short *)(gs + 0x186 + player * 0x14);
+            *qg = *qg + q->reward;
+            if (*qg > 30000) *qg = 30000; /* 68k gold cap */
+        }
         if (q->rewardItem > 0) {
             /* Try to give item to first hero */
             short armyCount = *(short *)(gs + 0x1602);
@@ -11277,10 +14728,15 @@ static void ShowQuestDialog(void)
                 MoveTo(40, 74);
                 switch (q->type) {
                     case QUEST_CAPTURE: {
-                        unsigned char *city = gs + 0x812 + q->target * 0x20;
-                        short owner = *(short *)(city + 0x04);
-                        short cx = *(short *)(city + 0x00);
-                        short cy = *(short *)(city + 0x02);
+                        short qCityCount = *(short *)(gs + 0x810);
+                        unsigned char *city;
+                        short owner, cx, cy;
+                        if (qCityCount > 40) qCityCount = 40;
+                        if (q->target < 0 || q->target >= qCityCount) break;
+                        city = gs + 0x812 + q->target * 0x20;
+                        owner = *(short *)(city + 0x04);
+                        cx = *(short *)(city + 0x00);
+                        cy = *(short *)(city + 0x02);
 
                         DrawString(GetCachedString(STR_QUEST, 12, "\pCapture the city at ("));
                         NumToString((long)cx, numStr); DrawString(numStr);
@@ -11964,9 +15420,51 @@ static void GetHeroItemBonus(short armyIdx,
                 case ITEM_TYPE_GOLD:     *outGold += item->value; break;
                 case ITEM_TYPE_FLYING:   *outFlying = true; break;
                 case ITEM_TYPE_MOVEMENT: *outDoubleMove = true; break;
+                case ITEM_TYPE_FLAT_PLUS: *outCommand += 1; break;  /* 68k FUN_000027de: flat +1 command */
             }
         }
     }
+}
+
+/* ===================================================================
+ * ArmyHasFlightItem — Returns true if any hero in the army carries
+ * a FLYING item, making the whole stack airborne.
+ * =================================================================== */
+static Boolean ArmyHasFlightItem(short armyIdx)
+{
+    short battle, command, gold;
+    Boolean flying, doubleMove;
+    GetHeroItemBonus(armyIdx, &battle, &command, &gold, &flying, &doubleMove);
+    return flying;
+}
+
+/* ===================================================================
+ * ArmyHasDoubleMoveItem — Returns true if any hero in the army carries
+ * a MOVEMENT item that doubles the stack's movement points.
+ * =================================================================== */
+static Boolean ArmyHasDoubleMoveItem(short armyIdx)
+{
+    short battle, command, gold;
+    Boolean flying, doubleMove;
+    GetHeroItemBonus(armyIdx, &battle, &command, &gold, &flying, &doubleMove);
+    return doubleMove;
+}
+
+/* ===================================================================
+ * GetEffectiveUnitClass — Returns the effective unit class for movement
+ * calculation, accounting for flying items.  If a hero in the army
+ * carries a FLYING item, returns 0x0E (flying unit class).
+ * =================================================================== */
+static short GetEffectiveUnitClass(short armyIdx)
+{
+    unsigned char *gs, *army;
+    short unitClass;
+    if (*gGameState == 0) return 0;
+    gs = (unsigned char *)*gGameState;
+    army = gs + 0x1604 + armyIdx * 0x42;
+    unitClass = (short)(unsigned char)army[0x16];
+    if (ArmyHasFlightItem(armyIdx)) unitClass = 0x0E;
+    return unitClass;
 }
 
 /* ===================================================================
@@ -11986,6 +15484,12 @@ static Boolean GiveItemToHero(short armyIdx, short itemId)
     for (slot = 0; slot < ITEM_SLOTS; slot++) {
         if (*(short *)(army + 0x3A + slot * 2) == 0) {
             *(short *)(army + 0x3A + slot * 2) = itemId;
+            /* Update item record table: status=3 (carried), carrier=armyIdx */
+            if (itemId >= 1 && itemId <= 22) {
+                unsigned char *itemRec = gs + 0xD12 + (itemId - 1) * 0x1E;
+                itemRec[0x16] = 3;  /* status: carried by hero */
+                *(short *)(itemRec + 0x18) = armyIdx;
+            }
             return true;
         }
     }
@@ -12054,10 +15558,10 @@ static void ShowItemsDialog(short armyIdx)
         TextFont(2); TextSize(14); TextFace(bold);
 
         /* Get hero name */
-        if (armyIdx < 40) {
-            heroName = gs + 0x224 + armyIdx * 0x14;
+        if (armyIdx < 100) {
+            heroName = gs + 0x1604 + armyIdx * 0x42 + 0x04;
             len = 0;
-            while (len < 18 && heroName[len] != 0) len++;
+            while (len < 15 && heroName[len] != 0) len++;
             hname[0] = (unsigned char)len;
             BlockMoveData(heroName, hname + 1, len);
         } else {
@@ -12119,6 +15623,7 @@ static void ShowItemsDialog(short armyIdx)
                 case ITEM_TYPE_FLYING:   typeName = "Flying"; break;
                 case ITEM_TYPE_MOVEMENT: typeName = "Move"; break;
                 case ITEM_TYPE_GOLD:     typeName = "Gold"; break;
+                case ITEM_TYPE_FLAT_PLUS: typeName = "Cmd+1"; break;
                 default: typeName = "?"; break;
             }
             tl = 0;
@@ -12214,7 +15719,12 @@ static void ShowItemsDialog(short armyIdx)
 }
 
 /* ===================================================================
- * ShowHeroInspect — Show hero info for current player's heroes
+ * ShowHeroInspect — Single-hero view matching original View 4000
+ *
+ * Shows one hero at a time with: minimap, hero name, army slots (up to 8
+ * units in the hero's group), stats (title, nearby, battles, commands,
+ * level, experience), item list, and left/right nav arrows to cycle
+ * between player's heroes.
  * =================================================================== */
 static void ShowHeroInspect(void)
 {
@@ -12222,22 +15732,49 @@ static void ShowHeroInspect(void)
     GWorldPtr offGW;
     Rect winRect, gwRect;
     Boolean heroDone;
-    EventRecord heroEvt;
-    CGrafPtr savePort;
-    GDHandle saveGD;
+
+    #define HINSP_W 420
+    #define HINSP_H 380
 
     if (*gGameState == 0) return;
 
     {
-        short heroArmyIds[8];  /* army indices of heroes for click detection */
+        unsigned char *gs = (unsigned char *)*gGameState;
+        short curPlayer = *(short *)(gs + 0x110);
+        short armyCount = *(short *)(gs + 0x1602);
+        short heroArmyIds[20]; /* army indices containing heroes */
+        short heroSlots[20];   /* which unit slot (0-3) is the hero */
         short heroCount = 0;
+        short curHeroIdx = 0;  /* which hero we're viewing */
         Boolean needsRedraw = true;
+        short ai, u;
 
-        SetRect(&winRect, 0, 0, 400, 300);
-        OffsetRect(&winRect, 140, 90);
-        heroWin = NewCWindow(NULL, &winRect, "\pHeroes", true,
-                             dBoxProc, (WindowPtr)-1, false, 0);
-        SetRect(&gwRect, 0, 0, 400, 300);
+        if (armyCount > 100) armyCount = 100;
+
+        /* Collect all heroes for this player */
+        for (ai = 0; ai < armyCount && heroCount < 20; ai++) {
+            unsigned char *army = gs + 0x1604 + ai * 0x42;
+            short owner = (short)(unsigned char)army[0x15];
+            if (owner != curPlayer) continue;
+            for (u = 0; u < 4; u++) {
+                if ((short)(unsigned char)army[0x16 + u] == 0x1C) {
+                    heroArmyIds[heroCount] = ai;
+                    heroSlots[heroCount] = u;
+                    heroCount++;
+                    break;
+                }
+            }
+        }
+
+        Rect screenRect = qd.screenBits.bounds;
+        SetRect(&winRect,
+            (screenRect.right - HINSP_W) / 2,
+            (screenRect.bottom - HINSP_H) / 2,
+            (screenRect.right - HINSP_W) / 2 + HINSP_W,
+            (screenRect.bottom - HINSP_H) / 2 + HINSP_H);
+        heroWin = NewCWindow(NULL, &winRect, "\p", true,
+                             plainDBox, (WindowPtr)-1, false, 0);
+        SetRect(&gwRect, 0, 0, HINSP_W, HINSP_H);
         NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
         if (heroWin == NULL || offGW == NULL) {
             if (offGW) DisposeGWorld(offGW);
@@ -12245,155 +15782,352 @@ static void ShowHeroInspect(void)
             return;
         }
 
+        /* Button rects */
+        Rect leftArrowR, rightArrowR, doneR, itemsR;
+        SetRect(&leftArrowR,  10, HINSP_H - 36, 50, HINSP_H - 12);
+        SetRect(&rightArrowR, HINSP_W - 50, HINSP_H - 36, HINSP_W - 10, HINSP_H - 12);
+        SetRect(&doneR,       (HINSP_W - 80) / 2, HINSP_H - 36, (HINSP_W + 80) / 2, HINSP_H - 12);
+        SetRect(&itemsR,      HINSP_W - 130, 220, HINSP_W - 20, 242);
+
         heroDone = false;
         while (!heroDone) {
             if (needsRedraw) {
+                CGrafPtr savePort;
+                GDHandle saveGD;
                 needsRedraw = false;
-                heroCount = 0;
 
                 GetGWorld(&savePort, &saveGD);
                 SetGWorld(offGW, NULL);
                 LockPixels(GetGWorldPixMap(offGW));
 
+                /* Background */
+                DrawMarbleBackground(&gwRect);
+
+                /* Border */
                 {
-                    RGBColor bg = {0xDDDD, 0xDDDD, 0xEEEE};
-                    RGBForeColor(&bg);
-                    PaintRect(&gwRect);
+                    RGBColor border = {0x6666, 0x6666, 0x9999};
+                    RGBForeColor(&border);
+                    PenSize(2, 2);
+                    FrameRect(&gwRect);
+                    PenSize(1, 1);
                 }
 
-                /* Title */
-                {
+                if (heroCount == 0) {
+                    /* No heroes */
+                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                    RGBForeColor(&white);
+                    TextFont(2); TextSize(14); TextFace(bold);
+                    MoveTo(120, HINSP_H / 2);
+                    DrawString(GetCachedString(STR_MISC, 48, "\pNo heroes in service."));
+                } else {
+                    unsigned char *army = gs + 0x1604 + heroArmyIds[curHeroIdx] * 0x42;
+                    short heroU = heroSlots[curHeroIdx];
+                    short heroAX = *(short *)(army + 0x00);
+                    short heroAY = *(short *)(army + 0x02);
+                    short heroStr = (short)(unsigned char)army[0x1e + heroU];
+                    short heroMov = (short)(unsigned char)army[0x1a + heroU];
+                    short heroCmd = (short)(unsigned char)army[0x22 + heroU];
+                    short heroXP  = (short)(unsigned char)army[0x26 + heroU];
+                    short heroLevel = GetHeroLevel(heroXP);
+                    Boolean female = IsHeroFemale(heroArmyIds[curHeroIdx]);
+                    Str255 hname, title, numStr;
                     RGBColor black = {0, 0, 0};
-                    RGBForeColor(&black);
-                    TextSize(12); TextFace(bold);
-                    MoveTo(130, 22);
-                    DrawString(GetCachedString(STR_HERO_INFO, 0, "\pInspect Heroes"));
-                    TextFace(0); TextSize(10);
-                }
+                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                    RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
+                    RGBColor labelC = {0xBBBB, 0xBBBB, 0xBBBB};
+                    RGBColor valueC = {0xFFFF, 0xFFFF, 0xFFFF};
 
-                /* Column headers */
-                {
-                    unsigned char *gs = (unsigned char *)*gGameState;
-                    short curPlayer = *(short *)(gs + 0x110);
-                    short armyCount = *(short *)(gs + 0x1602);
-                    short ai;
-                    RGBColor black = {0, 0, 0};
-                    Str255 numStr;
+                    /* Hero name from names table */
+                    {
+                        unsigned char *nameData = gs + 0x1604 + heroArmyIds[curHeroIdx] * 0x42 + 0x04;
+                        short nlen = 0;
+                        while (nlen < 15 && nameData[nlen] != 0) nlen++;
+                        hname[0] = (unsigned char)nlen;
+                        BlockMoveData(nameData, hname + 1, nlen);
+                    }
 
-                    if (armyCount > 100) armyCount = 100;
+                    /* ---- Minimap (top-left, 120x100) ---- */
+                    {
+                        Rect mmR;
+                        SetRect(&mmR, 12, 12, 132, 112);
+                        DrawMinimapInRect(&mmR, heroAX, heroAY);
+                    }
 
-                    MoveTo(20, 48); TextFace(bold);
-                    RGBForeColor(&black);
-                    DrawString(GetCachedString(STR_HERO_INFO, 1, "\pName                Str  Mv  Cmd  XP  Items"));
-                    TextFace(0);
+                    /* ---- Hero name (bold, gold, top center) ---- */
+                    RGBForeColor(&gold);
+                    TextFont(2); TextSize(14); TextFace(bold);
+                    MoveTo(144, 30);
+                    DrawString(hname);
 
-                    for (ai = 0; ai < armyCount && heroCount < 8; ai++) {
-                        unsigned char *army = gs + 0x1604 + ai * 0x42;
-                        short owner = (short)(unsigned char)army[0x15];
-                        short u;
-                        if (owner != curPlayer) continue;
+                    /* ---- Title (below name) ---- */
+                    GetHeroTitle(heroLevel, female, title);
+                    RGBForeColor(&white);
+                    TextFont(3); TextSize(10); TextFace(0);
+                    MoveTo(144, 46);
+                    DrawString(title);
+                    if (heroCount > 1) {
+                        /* Hero counter */
+                        RGBForeColor(&labelC);
+                        DrawString("\p  (");
+                        NumToString((long)(curHeroIdx + 1), numStr);
+                        DrawString(numStr);
+                        DrawString("\p/");
+                        NumToString((long)heroCount, numStr);
+                        DrawString(numStr);
+                        DrawString("\p)");
+                    }
 
-                        for (u = 0; u < 4; u++) {
-                            short uType = (short)(unsigned char)army[0x16 + u];
-                            if (uType == 0x1C) {
-                                short yp = 68 + heroCount * 24;
-                                unsigned char *heroName;
-                                Str255 hname;
-                                short len;
-                                short itemCount = 0, sl;
+                    /* ---- Army composition (8 unit slots) ---- */
+                    {
+                        short si;
+                        short slotX = 144, slotY = 60;
+                        RGBColor emptyC = {0x4444, 0x4444, 0x5555};
 
-                                heroArmyIds[heroCount] = ai;
+                        TextFont(3); TextSize(9); TextFace(0);
+                        for (si = 0; si < 4; si++) {
+                            Rect slotR;
+                            short uType = (short)(unsigned char)army[0x16 + si];
+                            SetRect(&slotR, slotX + si * 68, slotY,
+                                            slotX + si * 68 + 60, slotY + 36);
 
-                                /* Hero name */
-                                if (ai < 40) {
-                                    heroName = gs + 0x224 + ai * 0x14;
-                                    len = 0;
-                                    while (len < 18 && heroName[len] != 0) len++;
-                                    hname[0] = (unsigned char)len;
-                                    BlockMoveData(heroName, hname + 1, len);
-                                } else {
-                                    hname[0] = 4;
-                                    BlockMoveData("Hero", hname + 1, 4);
-                                }
+                            if (uType != 0xFF) {
+                                /* Draw unit info box */
+                                RGBColor unitBg = {0x2222, 0x2222, 0x3333};
+                                short hp = (short)(unsigned char)army[0x1e + si];
+                                short mv = (short)(unsigned char)army[0x1a + si];
+                                Str255 ns;
 
-                                /* Highlight row on hover-ish with alternating bg */
-                                if (heroCount % 2 == 1) {
-                                    RGBColor altBg = {0xCCCC, 0xCCCC, 0xDDDD};
-                                    Rect rowR;
-                                    SetRect(&rowR, 2, yp - 12, 398, yp + 10);
-                                    RGBForeColor(&altBg);
-                                    PaintRect(&rowR);
-                                }
-
-                                RGBForeColor(&sPlayerColors[curPlayer + 1]);
-                                MoveTo(20, yp);
-                                DrawString(hname);
-
+                                RGBForeColor(&unitBg);
+                                PaintRoundRect(&slotR, 4, 4);
                                 RGBForeColor(&black);
-                                MoveTo(180, yp);
-                                NumToString((long)(unsigned char)army[0x1e + u], numStr);
-                                DrawString(numStr);
+                                FrameRoundRect(&slotR, 4, 4);
 
-                                MoveTo(220, yp);
-                                NumToString((long)(unsigned char)army[0x1a + u], numStr);
-                                DrawString(numStr);
-
-                                MoveTo(260, yp);
-                                NumToString((long)(unsigned char)army[0x22 + u], numStr);
-                                DrawString(numStr);
-
-                                MoveTo(300, yp);
-                                NumToString((long)(unsigned char)army[0x26 + u], numStr);
-                                DrawString(numStr);
-
-                                /* Item count */
-                                for (sl = 0; sl < ITEM_SLOTS; sl++) {
-                                    if (*(short *)(army + 0x3A + sl * 2) > 0)
-                                        itemCount++;
-                                }
-                                MoveTo(340, yp);
-                                if (itemCount > 0) {
-                                    RGBColor gold = {0xCCCC, 0x9999, 0x0000};
-                                    RGBForeColor(&gold);
-                                    NumToString((long)itemCount, numStr);
-                                    DrawString(numStr);
-                                    DrawString("\p/4");
-                                } else {
-                                    RGBColor gray = {0x8888, 0x8888, 0x8888};
-                                    RGBForeColor(&gray);
-                                    DrawString("\p0/4");
+                                /* Unit type name */
+                                RGBForeColor(uType == 0x1C ? &gold : &white);
+                                MoveTo(slotR.left + 4, slotR.top + 12);
+                                {
+                                    Str255 uname;
+                                    if (uType == 0x1C) {
+                                        unsigned char *hn = army + 0x04; short nl = 0;
+                                        while (nl < 15 && hn[nl]) nl++;
+                                        uname[0] = (unsigned char)nl;
+                                        BlockMoveData(hn, uname + 1, nl);
+                                    } else {
+                                        GetUnitTypeName(uType, uname);
+                                    }
+                                    /* Truncate long names to fit slot */
+                                    if (uname[0] > 8) uname[0] = 8;
+                                    DrawString(uname);
                                 }
 
-                                heroCount++;
-                                break;
+                                /* HP/Mv below */
+                                RGBForeColor(&labelC);
+                                MoveTo(slotR.left + 4, slotR.top + 26);
+                                NumToString((long)hp, ns); DrawString(ns);
+                                DrawString("\p/");
+                                NumToString((long)mv, ns); DrawString(ns);
+                            } else {
+                                /* Empty slot */
+                                RGBForeColor(&emptyC);
+                                PaintRoundRect(&slotR, 4, 4);
+                                RGBForeColor(&labelC);
+                                FrameRoundRect(&slotR, 4, 4);
                             }
                         }
                     }
 
-                    if (heroCount == 0) {
-                        RGBForeColor(&black);
-                        MoveTo(100, 120);
-                        DrawString(GetCachedString(STR_MISC, 48, "\pNo heroes in service."));
-                    } else {
-                        /* Hint text */
-                        RGBColor hint = {0x6666, 0x6666, 0x9999};
-                        RGBForeColor(&hint);
-                        TextSize(9);
-                        MoveTo(20, 68 + heroCount * 24 + 10);
-                        DrawString(GetCachedString(STR_MISC, 76, "\pClick a hero row to view items."));
-                        TextSize(10);
+                    /* ---- Stats block (below minimap/army) ---- */
+                    {
+                        short yBase = 126;
+                        short labelX = 20, valueX = 130;
+                        short rightLabelX = 230, rightValueX = 340;
+
+                        TextFont(3); TextSize(10); TextFace(0);
+
+                        /* Left column */
+                        RGBForeColor(&labelC);
+                        MoveTo(labelX, yBase);
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 14, "\pStrength:"));
+                        RGBForeColor(&valueC);
+                        MoveTo(valueX, yBase);
+                        NumToString((long)heroStr, numStr); DrawString(numStr);
+
+                        RGBForeColor(&labelC);
+                        MoveTo(labelX, yBase + 18);
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 15, "\pMovement:"));
+                        RGBForeColor(&valueC);
+                        MoveTo(valueX, yBase + 18);
+                        NumToString((long)heroMov, numStr); DrawString(numStr);
+
+                        RGBForeColor(&labelC);
+                        MoveTo(labelX, yBase + 36);
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 16, "\pCommand:"));
+                        RGBForeColor(&valueC);
+                        MoveTo(valueX, yBase + 36);
+                        DrawString("\p+");
+                        NumToString((long)heroCmd, numStr); DrawString(numStr);
+
+                        /* Right column */
+                        RGBForeColor(&labelC);
+                        MoveTo(rightLabelX, yBase);
+                        DrawString("\pLevel:");
+                        RGBForeColor(&valueC);
+                        MoveTo(rightValueX, yBase);
+                        NumToString((long)heroLevel, numStr); DrawString(numStr);
+
+                        RGBForeColor(&labelC);
+                        MoveTo(rightLabelX, yBase + 18);
+                        DrawString("\pExperience:");
+                        RGBForeColor(&valueC);
+                        MoveTo(rightValueX, yBase + 18);
+                        NumToString((long)heroXP, numStr); DrawString(numStr);
+
+                        RGBForeColor(&labelC);
+                        MoveTo(rightLabelX, yBase + 36);
+                        DrawString("\pBattles:");
+                        RGBForeColor(&valueC);
+                        MoveTo(rightValueX, yBase + 36);
+                        /* Battles = XP for heroes (approx) */
+                        NumToString((long)(heroXP / 3), numStr); DrawString(numStr);
+
+                        /* Near: city name */
+                        RGBForeColor(&labelC);
+                        MoveTo(labelX, yBase + 60);
+                        DrawString(GetCachedString(STR_HERO_DIPLO, 20, "\pNear:"));
+                        RGBForeColor(&valueC);
+                        MoveTo(valueX, yBase + 60);
+                        {
+                            /* Find nearest city */
+                            short cityCount = *(short *)(gs + 0x810);
+                            short ci, bestDist = 9999;
+                            short bestCI = -1;
+                            if (cityCount > 40) cityCount = 40;
+                            for (ci = 0; ci < cityCount; ci++) {
+                                unsigned char *city = gs + 0x812 + ci * 0x20;
+                                short cx = *(short *)(city + 0x00);
+                                short cy = *(short *)(city + 0x02);
+                                short dist = (heroAX - cx) * (heroAX - cx) + (heroAY - cy) * (heroAY - cy);
+                                if (dist < bestDist) {
+                                    bestDist = dist;
+                                    bestCI = ci;
+                                }
+                            }
+                            if (bestCI >= 0) {
+                                unsigned char *cname = gs + 0x812 + bestCI * 0x20 + 0x0A;
+                                Str255 pName;
+                                short nlen = 0;
+                                while (nlen < 14 && cname[nlen] != 0) nlen++;
+                                pName[0] = (unsigned char)nlen;
+                                BlockMoveData(cname, pName + 1, nlen);
+                                DrawString(pName);
+                            }
+                        }
+                    }
+
+                    /* ---- Items section ---- */
+                    {
+                        short yItem = 220;
+                        short si;
+                        RGBColor gold2 = {0xCCCC, 0x9999, 0x0000};
+                        short itemCount = 0;
+
+                        RGBForeColor(&gold);
+                        TextFace(bold);
+                        MoveTo(20, yItem);
+                        DrawString("\pItems Carried:");
+                        TextFace(0);
+
+                        for (si = 0; si < ITEM_SLOTS; si++) {
+                            short itemId = *(short *)(army + 0x3A + si * 2);
+                            short yp = yItem + 18 + si * 18;
+                            if (itemId > 0 && itemId <= MAX_ITEMS) {
+                                const ItemDef *item = &sItemTable[itemId - 1];
+                                RGBForeColor(&white);
+                                MoveTo(30, yp);
+                                {
+                                    Str255 iname;
+                                    short nlen = 0;
+                                    while (item->name[nlen] != '\0') nlen++;
+                                    iname[0] = (unsigned char)nlen;
+                                    BlockMoveData(item->name, iname + 1, nlen);
+                                    DrawString(iname);
+                                }
+                                /* Bonus */
+                                if (item->value > 0) {
+                                    RGBForeColor(&gold2);
+                                    DrawString("\p +");
+                                    NumToString((long)item->value, numStr);
+                                    DrawString(numStr);
+                                }
+                                itemCount++;
+                            } else {
+                                RGBForeColor(&labelC);
+                                MoveTo(30, yp);
+                                DrawString("\p-");
+                            }
+                        }
+
+                        /* Items button (opens full item dialog) */
+                        {
+                            RGBColor btnBg = {0x3333, 0x3333, 0x5555};
+                            RGBForeColor(&btnBg);
+                            PaintRoundRect(&itemsR, 6, 6);
+                            RGBForeColor(&black);
+                            FrameRoundRect(&itemsR, 6, 6);
+                            RGBForeColor(&white);
+                            TextFace(bold);
+                            MoveTo(itemsR.left + 16, itemsR.bottom - 6);
+                            DrawString("\pView Items...");
+                            TextFace(0);
+                        }
                     }
                 }
 
-                /* OK button */
+                /* ---- Navigation: left/right arrows and Done button ---- */
                 {
-                    Rect okRect;
                     RGBColor black = {0, 0, 0};
-                    SetRect(&okRect, 160, 268, 240, 290);
+                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                    RGBColor btnBg = {0x3333, 0x3333, 0x5555};
+
+                    /* Left arrow */
+                    if (heroCount > 1) {
+                        RGBForeColor(&btnBg);
+                        PaintRoundRect(&leftArrowR, 6, 6);
+                        RGBForeColor(&black);
+                        FrameRoundRect(&leftArrowR, 6, 6);
+                        RGBForeColor(&white);
+                        TextFont(3); TextSize(12); TextFace(bold);
+                        MoveTo(leftArrowR.left + 14, leftArrowR.bottom - 7);
+                        DrawString("\p<");
+                        TextSize(10);
+                    }
+
+                    /* Right arrow */
+                    if (heroCount > 1) {
+                        RGBForeColor(&btnBg);
+                        PaintRoundRect(&rightArrowR, 6, 6);
+                        RGBForeColor(&black);
+                        FrameRoundRect(&rightArrowR, 6, 6);
+                        RGBForeColor(&white);
+                        TextFont(3); TextSize(12); TextFace(bold);
+                        MoveTo(rightArrowR.left + 14, rightArrowR.bottom - 7);
+                        DrawString("\p>");
+                        TextSize(10);
+                    }
+
+                    /* Done button */
+                    RGBForeColor(&btnBg);
+                    PaintRoundRect(&doneR, 8, 8);
                     RGBForeColor(&black);
-                    FrameRoundRect(&okRect, 8, 8);
-                    MoveTo(186, 284);
-                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
+                    FrameRoundRect(&doneR, 8, 8);
+                    PenSize(2, 2);
+                    FrameRoundRect(&doneR, 8, 8);
+                    PenSize(1, 1);
+                    RGBForeColor(&white);
+                    TextFace(bold);
+                    MoveTo(doneR.left + 22, doneR.bottom - 7);
+                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 2, "\pDone"));
+                    TextFace(0);
                 }
 
                 UnlockPixels(GetGWorldPixMap(offGW));
@@ -12410,44 +16144,54 @@ static void ShowHeroInspect(void)
                 }
             }
 
-            if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &heroEvt, 30, NULL)) {
-                if (heroEvt.what == keyDown) {
-                    heroDone = true;
-                } else if (heroEvt.what == mouseDown) {
-                    Point clickPt = heroEvt.where;
-                    short hi;
-                    GlobalToLocal(&clickPt);
-
-                    /* Check if click is on a hero row */
-                    for (hi = 0; hi < heroCount; hi++) {
-                        short rowTop = 68 + hi * 24 - 12;
-                        short rowBot = rowTop + 22;
-                        if (clickPt.v >= rowTop && clickPt.v < rowBot &&
-                            clickPt.h >= 2 && clickPt.h < 398) {
-                            ShowItemsDialog(heroArmyIds[hi]);
+            {
+                EventRecord heroEvt;
+                if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &heroEvt, 30, NULL)) {
+                    if (heroEvt.what == keyDown) {
+                        char key = heroEvt.message & charCodeMask;
+                        if (key == 0x1B || key == 0x0D || key == 0x03) {
+                            heroDone = true;
+                        } else if (key == 0x1C && heroCount > 1) {
+                            /* Left arrow key → previous hero */
+                            curHeroIdx = (curHeroIdx + heroCount - 1) % heroCount;
                             needsRedraw = true;
-                            break;
+                        } else if (key == 0x1D && heroCount > 1) {
+                            /* Right arrow key → next hero */
+                            curHeroIdx = (curHeroIdx + 1) % heroCount;
+                            needsRedraw = true;
                         }
+                    } else if (heroEvt.what == mouseDown) {
+                        Point clickPt = heroEvt.where;
+                        SetPort(heroWin);
+                        GlobalToLocal(&clickPt);
+
+                        if (PtInRect(clickPt, &doneR)) {
+                            heroDone = true;
+                        } else if (heroCount > 1 && PtInRect(clickPt, &leftArrowR)) {
+                            curHeroIdx = (curHeroIdx + heroCount - 1) % heroCount;
+                            needsRedraw = true;
+                        } else if (heroCount > 1 && PtInRect(clickPt, &rightArrowR)) {
+                            curHeroIdx = (curHeroIdx + 1) % heroCount;
+                            needsRedraw = true;
+                        } else if (heroCount > 0 && PtInRect(clickPt, &itemsR)) {
+                            /* Open item dialog for current hero */
+                            UnlockPixels(GetGWorldPixMap(offGW));
+                            ShowItemsDialog(heroArmyIds[curHeroIdx]);
+                            needsRedraw = true;
+                        }
+                    } else if (heroEvt.what == updateEvt &&
+                               (WindowPtr)heroEvt.message == heroWin) {
+                        Rect dr;
+                        BeginUpdate(heroWin);
+                        SetPort(heroWin);
+                        dr = heroWin->portRect;
+                        LockPixels(GetGWorldPixMap(offGW));
+                        CopyBits((BitMap *)*GetGWorldPixMap(offGW),
+                                 &((GrafPtr)heroWin)->portBits,
+                                 &gwRect, &dr, srcCopy, NULL);
+                        UnlockPixels(GetGWorldPixMap(offGW));
+                        EndUpdate(heroWin);
                     }
-                    /* Check OK button */
-                    if (clickPt.v >= 268 && clickPt.v <= 290 &&
-                        clickPt.h >= 160 && clickPt.h <= 240)
-                        heroDone = true;
-                    /* Also dismiss on click outside hero rows and below hint */
-                    if (hi >= heroCount && clickPt.v >= 268)
-                        heroDone = true;
-                } else if (heroEvt.what == updateEvt &&
-                           (WindowPtr)heroEvt.message == heroWin) {
-                    Rect dr;
-                    BeginUpdate(heroWin);
-                    SetPort(heroWin);
-                    dr = heroWin->portRect;
-                    LockPixels(GetGWorldPixMap(offGW));
-                    CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                             &((GrafPtr)heroWin)->portBits,
-                             &gwRect, &dr, srcCopy, NULL);
-                    UnlockPixels(GetGWorldPixMap(offGW));
-                    EndUpdate(heroWin);
                 }
             }
         }
@@ -12461,16 +16205,17 @@ static void ShowHeroInspect(void)
 /* ===================================================================
  * GetHeroLevel — return hero level 1-4 from XP
  *
- * Level 1 (Hero/Heroine): XP 0-2
- * Level 2 (Cavalier/Amazon): XP 3-5
- * Level 3 (Champion): XP 6-8
- * Level 4 (Paladin/Valkyrie): XP 9+
+ * From decompiled CODE_080 (a2StartOfTurn) FUN_00000998:
+ * Level 1 (Hero/Heroine): XP 0-14
+ * Level 2 (Cavalier/Amazon): XP 15-29
+ * Level 3 (Champion): XP 30-59
+ * Level 4 (Paladin/Valkyrie): XP 60+
  * =================================================================== */
 static short GetHeroLevel(short xp)
 {
-    if (xp >= 9) return 4;
-    if (xp >= 6) return 3;
-    if (xp >= 3) return 2;
+    if (xp >= 60) return 4;
+    if (xp >= 30) return 3;
+    if (xp >= 15) return 2;
     return 1;
 }
 
@@ -12479,17 +16224,17 @@ static short GetXPForNextLevel(short xp)
 {
     short lvl = GetHeroLevel(xp);
     if (lvl >= 4) return 0;
-    static const short thresholds[] = {3, 6, 9};
+    static const short thresholds[] = {15, 30, 60};
     return thresholds[lvl - 1] - xp;
 }
 
 /* Female hero name indices (Brynhild, Thundra, Silvara, Ravenna, Elandra) */
 static Boolean IsHeroFemale(short armyIdx)
 {
-    if (*gGameState == 0 || armyIdx < 0 || armyIdx >= 40) return false;
+    if (*gGameState == 0 || armyIdx < 0 || armyIdx >= 100) return false;
     {
         unsigned char *gs = (unsigned char *)*gGameState;
-        unsigned char *heroName = gs + 0x224 + armyIdx * 0x14;
+        unsigned char *heroName = gs + 0x1604 + armyIdx * 0x42 + 0x04;
         /* Check first few chars for known female names */
         if (heroName[0] == 'B' && heroName[1] == 'r') return true;  /* Brynhild */
         if (heroName[0] == 'T' && heroName[1] == 'h' && heroName[2] == 'u') return true;  /* Thundra */
@@ -12632,9 +16377,9 @@ static void ShowHeroLevels(void)
 
                         /* Hero name */
                         {
-                            unsigned char *heroName = gs + 0x224 + ai * 0x14;
+                            unsigned char *heroName = gs + 0x1604 + ai * 0x42 + 0x04;
                             short len = 0;
-                            while (len < 18 && heroName[len] != 0) len++;
+                            while (len < 15 && heroName[len] != 0) len++;
                             hname[0] = (unsigned char)len;
                             BlockMoveData(heroName, hname + 1, len);
                         }
@@ -12841,8 +16586,8 @@ static void ShowRuinsDialog(void)
                 Boolean isRuin, isVisible;
                 const unsigned char *typeName;
 
-                /* Original ruin/temple/library or already searched */
-                isRuin = (sType == 2 || sType == 5 || sType == 6);
+                /* Original ruin/site types 2-5 */
+                isRuin = (sType >= 2 && sType <= 5);
 
                 /* Only show sites that are/were ruins.  For unsearched sites,
                  * check site type.  For searched (type 0), we include them
@@ -12866,18 +16611,21 @@ static void ShowRuinsDialog(void)
                 }
 
                 /* Type name + icon */
-                if (sType == 2) typeName = "\pTemple";
-                else if (sType == 5) typeName = "\pRuin";
-                else typeName = "\pLibrary";
+                if (sType == 2) typeName = "\pItem";
+                else if (sType == 3) typeName = "\pDefended";
+                else if (sType == 4) typeName = "\pTreasure";
+                else typeName = "\pRuin";
 
                 {
                     RGBColor typeCol;
                     if (sType == 2) {
                         typeCol.red = 0x6666; typeCol.green = 0x6666; typeCol.blue = 0xCCCC;
-                    } else if (sType == 5) {
-                        typeCol.red = 0x9999; typeCol.green = 0x6666; typeCol.blue = 0x3333;
+                    } else if (sType == 3) {
+                        typeCol.red = 0xCCCC; typeCol.green = 0x3333; typeCol.blue = 0x3333;
+                    } else if (sType == 4) {
+                        typeCol.red = 0xCCCC; typeCol.green = 0xCCCC; typeCol.blue = 0x3333;
                     } else {
-                        typeCol.red = 0x3333; typeCol.green = 0x8888; typeCol.blue = 0x3333;
+                        typeCol.red = 0x9999; typeCol.green = 0x6666; typeCol.blue = 0x3333;
                     }
                     RGBForeColor(&typeCol);
                     {
@@ -12903,12 +16651,25 @@ static void ShowRuinsDialog(void)
                     NumToString((long)sy, numStr); DrawString(numStr);
                 }
 
-                /* Status */
+                /* Status with icon (per-player visited bitmask at site+0x1E) */
                 {
-                    RGBColor unsearched = {0xCCCC, 0x8888, 0x3333};
-                    RGBForeColor(&unsearched);
-                    MoveTo(210, yPos);
-                    DrawString(GetCachedString(STR_MISC, 54, "\pUnsearched"));
+                    Boolean isActive = (*(short *)(site + 0x1c) != 0);
+                    Boolean isSearchable = isActive &&
+                        (curPlayer >= 0 && curPlayer < 8 &&
+                         (site[0x1E] & (1 << curPlayer)) == 0);
+                    RGBColor unsearchedC = {0xCCCC, 0x8888, 0x3333};
+                    RGBColor searchedC   = {0x6666, 0x9999, 0x6666};
+                    /* cicn 3700 = unsearched, cicn 3701 = searched */
+                    if (sRuinIcons[0] != NULL || sRuinIcons[1] != NULL) {
+                        Rect sIco;
+                        SetRect(&sIco, 198, yPos - 9, 210, yPos + 1);
+                        CIconHandle ico = isSearchable ? sRuinIcons[0] : sRuinIcons[1];
+                        if (ico) PlotCIcon(&sIco, ico);
+                    }
+                    RGBForeColor(isSearchable ? &unsearchedC : &searchedC);
+                    MoveTo(214, yPos);
+                    DrawString(isSearchable ?
+                        GetCachedString(STR_MISC, 54, "\pUnsearched") : "\pSearched");
                 }
 
                 /* Visibility (fog of war) */
@@ -12932,7 +16693,7 @@ static void ShowRuinsDialog(void)
                 short totalRuins = 0;
                 for (ci = 0; ci < cityCount; ci++) {
                     short st = (short)(unsigned char)(gs + 0x812 + ci * 0x20)[0x18];
-                    if (st == 2 || st == 5 || st == 6) totalRuins++;
+                    if (st >= 2 && st <= 5) totalRuins++;
                 }
                 RGBForeColor(&gray2);
                 TextSize(9);
@@ -12987,7 +16748,7 @@ static void ShowRuinsDialog(void)
                     if (cc > 40) cc = 40;
                     for (ci2 = 0; ci2 < cc; ci2++) {
                         short st = (short)(unsigned char)(gs2 + 0x812 + ci2 * 0x20)[0x18];
-                        if (st == 2 || st == 5 || st == 6) {
+                        if (st >= 2 && st <= 5) {
                             if (rowCount == rowClicked) {
                                 /* Scroll map to this ruin */
                                 short rx = *(short *)(gs2 + 0x812 + ci2 * 0x20 + 0x00);
@@ -13029,197 +16790,502 @@ static void ShowRuinsDialog(void)
 
 
 /* ===================================================================
- * ShowStackDialog — Show all units at the selected army's location
+ * ShowStackDialog — Interactive stack grouping dialog (68k match)
+ *
+ * Matching CODE_079 a2Stack: lets the player regroup armies at a tile.
+ * - Click army slot to toggle in/out of active group
+ * - Group All: merge all into one group
+ * - Ungroup All: each army its own group
+ * - OK: commit group tags to army records (army+0x11)
+ * - Cancel: restore backup arrays
  * =================================================================== */
 static void ShowStackDialog(void)
 {
-    WindowPtr stkWin;
-    GWorldPtr offGW;
-    Rect winRect, gwRect;
-    Boolean stkDone;
-    EventRecord stkEvt;
-    CGrafPtr savePort;
-    GDHandle saveGD;
+    WindowPtr  stkWin;
+    Rect       winRect, screenRect;
+    Boolean    stkDone = false;
+    Boolean    needsRedraw = true;
+    short      si;
+    unsigned char *gs;
+
+    #define STK_W 340
+    #define STK_H 320
+    #define STK_SLOT_H 30
+    #define STK_SLOT_Y0 60
+    #define STK_BTN_W 80
+    #define STK_BTN_H 22
 
     if (*gGameState == 0 || sSelectedArmy < 0) {
         ShowBriefMessage("\pSelect an army first");
         return;
     }
 
-    SetRect(&winRect, 0, 0, 340, 260);
-    OffsetRect(&winRect, 170, 120);
-    stkWin = NewCWindow(NULL, &winRect, "\pArmy Stack", true,
-                        dBoxProc, (WindowPtr)-1, false, 0);
-    SetRect(&gwRect, 0, 0, 340, 260);
-    NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
-    if (stkWin == NULL || offGW == NULL) {
-        if (offGW) DisposeGWorld(offGW);
-        if (stkWin) DisposeWindow(stkWin);
+    gs = (unsigned char *)*gGameState;
+
+    /* Ensure stack arrays are populated */
+    if (sStackCount <= 0)
+        BuildStackArrays(sSelectedArmy);
+
+    /* Nothing to group if only 1 army */
+    if (sStackCount <= 1) {
+        ShowBriefMessage("\pOnly one army here");
         return;
     }
 
-    GetGWorld(&savePort, &saveGD);
-    SetGWorld(offGW, NULL);
-    LockPixels(GetGWorldPixMap(offGW));
-
-    {
-        RGBColor bg = {0xEEEE, 0xEEEE, 0xEEEE};
-        RGBForeColor(&bg);
-        PaintRect(&gwRect);
+    /* Backup state for Cancel (68k: FUN_0000094c) */
+    sBakStackCount = sStackCount;
+    sBakActiveSlot = sActiveSlot;
+    for (si = 0; si < MAX_STACK; si++) {
+        sBakArmyIdx[si]  = sStackArmyIdx[si];
+        sBakGroupId[si]  = sStackGroupId[si];
+        sBakSelected[si] = sStackSelected[si];
+        sBakSep[si]      = sStackSep[si];
     }
 
-    {
-        unsigned char *gs = (unsigned char *)*gGameState;
-        unsigned char *selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
-        short sx = *(short *)(selArmy + 0x00);
-        short sy = *(short *)(selArmy + 0x02);
-        short armyCount = *(short *)(gs + 0x1602);
-        short ai, stackCount = 0;
-        RGBColor black = {0, 0, 0};
-        Str255 numStr;
+    /* Center window on screen */
+    screenRect = qd.screenBits.bounds;
+    SetRect(&winRect,
+        (screenRect.right - STK_W) / 2,
+        (screenRect.bottom - STK_H) / 2,
+        (screenRect.right - STK_W) / 2 + STK_W,
+        (screenRect.bottom - STK_H) / 2 + STK_H);
 
-        if (armyCount > 100) armyCount = 100;
-
-        RGBForeColor(&black);
-        TextSize(12);
-        TextFace(bold);
-        MoveTo(90, 22);
-        DrawString(GetCachedString(STR_STACK_INFO, 0, "\pArmy Stack at ("));
-        NumToString((long)sx, numStr);
-        DrawString(numStr);
-        DrawString("\p, ");
-        NumToString((long)sy, numStr);
-        DrawString(numStr);
-        DrawString("\p)");
-        TextFace(0);
-        TextSize(10);
-
-        MoveTo(20, 46);
-        TextFace(bold);
-        DrawString(GetCachedString(STR_STACK_INFO, 1, "\pArmy       Units  Str   Owner"));
-        TextFace(0);
-
-        for (ai = 0; ai < armyCount && stackCount < 8; ai++) {
-            unsigned char *army = gs + 0x1604 + ai * 0x42;
-            short ax = *(short *)(army + 0x00);
-            short ay = *(short *)(army + 0x02);
-
-            if (ax == sx && ay == sy) {
-                short yp = 66 + stackCount * 22;
-                short owner = (short)(unsigned char)army[0x15];
-                short units = 0, str = 0, u;
-
-                for (u = 0; u < 4; u++) {
-                    if ((unsigned char)army[0x16 + u] != 0xFF) {
-                        units++;
-                        str += (short)(unsigned char)army[0x1e + u];
-                    }
-                }
-
-                /* Highlight selected army */
-                if (ai == sSelectedArmy) {
-                    RGBColor hilite = {0xFFFF, 0xFFFF, 0xAAAA};
-                    Rect hlRect;
-                    SetRect(&hlRect, 16, yp - 12, 324, yp + 8);
-                    RGBForeColor(&hilite);
-                    PaintRect(&hlRect);
-                }
-
-                RGBForeColor(&sPlayerColors[owner < 8 ? owner + 1 : 8]);
-                {
-                    Rect cb;
-                    SetRect(&cb, 20, yp - 8, 36, yp + 4);
-                    PaintRect(&cb);
-                    /* Unit type icon overlay */
-                    {
-                        short uType = (short)(unsigned char)army[0x16];
-                        if (uType < 8 && sStackTypeIcons[uType])
-                            PlotCIcon(&cb, sStackTypeIcons[uType]);
-                    }
-                }
-
-                RGBForeColor(&black);
-                MoveTo(42, yp);
-                DrawString(GetCachedString(STR_STACK_INFO, 10, "\pArmy "));
-                NumToString((long)(ai + 1), numStr);
-                DrawString(numStr);
-
-                MoveTo(130, yp);
-                NumToString((long)units, numStr);
-                DrawString(numStr);
-
-                MoveTo(190, yp);
-                NumToString((long)str, numStr);
-                DrawString(numStr);
-
-                MoveTo(250, yp);
-                {
-                    unsigned char *fname = gs + owner * FACTION_NAME_LEN;
-                    Str255 pname;
-                    short len = 0;
-                    while (len < 10 && fname[len] != 0) len++;
-                    pname[0] = (unsigned char)len;
-                    BlockMoveData(fname, pname + 1, len);
-                    DrawString(pname);
-                }
-
-                stackCount++;
-            }
-        }
-
-        if (stackCount == 0) {
-            MoveTo(80, 100);
-            DrawString(GetCachedString(STR_STACK_INFO, 11, "\pNo armies at this location."));
-        }
-    }
-
-    /* OK button */
-    {
-        Rect okRect;
-        RGBColor black = {0, 0, 0};
-        SetRect(&okRect, 130, 228, 210, 250);
-        RGBForeColor(&black);
-        FrameRoundRect(&okRect, 8, 8);
-        MoveTo(156, 244);
-        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
-    }
-
-    UnlockPixels(GetGWorldPixMap(offGW));
-    SetGWorld(savePort, saveGD);
-
+    stkWin = NewCWindow(NULL, &winRect, "\p", true,
+                         dBoxProc, (WindowPtr)-1L, false, 0);
+    if (stkWin == NULL) return;
     SetPort(stkWin);
-    {
-        Rect dr = stkWin->portRect;
-        LockPixels(GetGWorldPixMap(offGW));
-        CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                 &((GrafPtr)stkWin)->portBits,
-                 &gwRect, &dr, srcCopy, NULL);
-        UnlockPixels(GetGWorldPixMap(offGW));
-    }
 
-    stkDone = false;
     while (!stkDone) {
-        if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &stkEvt, 30, NULL)) {
-            if (stkEvt.what == mouseDown || stkEvt.what == keyDown)
-                stkDone = true;
+        EventRecord stkEvt;
+
+        if (needsRedraw) {
+            /* ---- Draw entire dialog ---- */
+            Rect r = stkWin->portRect;
+            RGBColor black  = {0x0000, 0x0000, 0x0000};
+            RGBColor selCol = {0xFFFF, 0xFFFF, 0xAAAA};
+            RGBColor btnFace = {0xCCCC, 0xCCCC, 0xCCCC};
+            RGBColor hilite  = {0xFFFF, 0xFFFF, 0xFFFF};
+            RGBColor shadow  = {0x5555, 0x5555, 0x5555};
+
+            DrawMarbleBackground(&r);
+
+            /* Title */
+            TextFont(3); TextSize(14); TextFace(bold);
+            RGBForeColor(&black);
+            MoveTo(80, 24);
+            DrawString(GetCachedString(STR_STACK_INFO, 0, "\pArmy Stack"));
+            TextFace(0);
+
+            /* Column headers */
+            TextFont(3); TextSize(10); TextFace(bold);
+            MoveTo(60, 50);
+            DrawString(GetCachedString(STR_STACK_INFO, 1, "\pUnit         Str  Move  Grp"));
+            TextFace(0); TextSize(10);
+
+            /* Draw each army slot */
+            for (si = 0; si < MAX_STACK; si++) {
+                short yp = STK_SLOT_Y0 + si * STK_SLOT_H;
+                Rect slotR;
+                SetRect(&slotR, 10, yp, STK_W - 10, yp + STK_SLOT_H - 2);
+
+                if (si < sStackCount) {
+                    short aidx = sStackArmyIdx[si];
+                    unsigned char *army = gs + 0x1604 + aidx * 0x42;
+                    short uType = (short)(unsigned char)army[0x16];
+                    short owner = (short)(unsigned char)army[0x15];
+                    short strength = *(short *)(army + 0x2a);
+                    short movePts = (short)(unsigned char)army[0x2e];
+                    short grp = sStackGroupId[si];
+                    Str255 numStr;
+                    Str255 uName;
+
+                    /* Background: yellow if selected, light gray if not */
+                    if (sStackSelected[si]) {
+                        RGBForeColor(&selCol);
+                    } else {
+                        RGBColor deselCol = {0xDDDD, 0xDDDD, 0xDDDD};
+                        RGBForeColor(&deselCol);
+                    }
+                    PaintRect(&slotR);
+
+                    /* Group color bar on left (player color mapped by group) */
+                    {
+                        Rect grpBar;
+                        short grpColor = (grp + owner) % 8 + 1;
+                        SetRect(&grpBar, 10, yp, 18, yp + STK_SLOT_H - 2);
+                        RGBForeColor(&sPlayerColors[grpColor]);
+                        PaintRect(&grpBar);
+                    }
+
+                    /* Army sprite icon */
+                    {
+                        short sSheet = (owner >= 0 && owner < ARMY_SHEETS) ? owner : 0;
+                        GWorldPtr sGW = sArmyGW[sSheet] ? sArmyGW[sSheet] : sArmyGW[0];
+                        if (sArmyLoaded && sGW != NULL) {
+                            short sprIdx = (short)(unsigned char)army[0x16];
+                            short sprCol2, sprRow2;
+                            Rect srcR2, dstR2;
+                            /* Map unit type to sprite: first unit slot's type */
+                            if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
+                                unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
+                                sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                            }
+                            sprCol2 = sprIdx % 16;
+                            sprRow2 = sprIdx / 16;
+                            SetRect(&srcR2, sprCol2 * 32, sprRow2 * 30,
+                                    sprCol2 * 32 + 29, sprRow2 * 30 + 28);
+                            SetRect(&dstR2, 22, yp + 1, 22 + 26, yp + 27);
+                            LockPixels(GetGWorldPixMap(sGW));
+                            {
+                                RGBColor savedBg;
+                                GetBackColor(&savedBg);
+                                RGBBackColor(&sArmyBgColor[sSheet]);
+                                CopyBits((BitMap *)*GetGWorldPixMap(sGW),
+                                         &((GrafPtr)stkWin)->portBits,
+                                         &srcR2, &dstR2, 36, NULL);
+                                RGBBackColor(&savedBg);
+                            }
+                            UnlockPixels(GetGWorldPixMap(sGW));
+                        }
+                    }
+
+                    /* Unit name */
+                    RGBForeColor(&black);
+                    MoveTo(52, yp + 18);
+                    if (uType == 0x1C) {
+                        unsigned char *hn = army + 0x04; short nl = 0;
+                        while (nl < 15 && hn[nl]) nl++;
+                        uName[0] = (unsigned char)nl;
+                        BlockMoveData(hn, uName + 1, nl);
+                    } else {
+                        GetUnitTypeName(uType, uName);
+                    }
+                    DrawString(uName);
+
+                    /* Strength */
+                    MoveTo(180, yp + 18);
+                    NumToString((long)strength, numStr);
+                    DrawString(numStr);
+
+                    /* Movement */
+                    MoveTo(220, yp + 18);
+                    NumToString((long)movePts, numStr);
+                    DrawString(numStr);
+
+                    /* Group number */
+                    MoveTo(270, yp + 18);
+                    if (sStackSelected[si]) {
+                        RGBColor grpTxt = {0x0000, 0x6666, 0x0000};
+                        RGBForeColor(&grpTxt);
+                        DrawString("\pGrp ");
+                        NumToString((long)(grp + 1), numStr);
+                        DrawString(numStr);
+                    } else {
+                        RGBColor dimTxt = {0x8888, 0x8888, 0x8888};
+                        RGBForeColor(&dimTxt);
+                        DrawString("\pGrp ");
+                        NumToString((long)(grp + 1), numStr);
+                        DrawString(numStr);
+                    }
+
+                    /* Slot border */
+                    RGBForeColor(&black);
+                    FrameRect(&slotR);
+                } else {
+                    /* Empty slot */
+                    RGBColor emptyCol = {0xBBBB, 0xBBBB, 0xBBBB};
+                    RGBForeColor(&emptyCol);
+                    PaintRect(&slotR);
+                    RGBForeColor(&black);
+                    FrameRect(&slotR);
+                }
+            }
+
+            /* --- Buttons: Group All, Ungroup All, OK, Cancel --- */
+            {
+                Rect grpBtn, ungrpBtn, okBtn, cancelBtn;
+                short btnY = STK_SLOT_Y0 + MAX_STACK * STK_SLOT_H + 6;
+                short btnGap = 10;
+
+                /* Group All */
+                SetRect(&grpBtn, 10, btnY, 10 + STK_BTN_W, btnY + STK_BTN_H);
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&grpBtn, 6, 6);
+                RGBForeColor(&hilite);
+                FrameRoundRect(&grpBtn, 6, 6);
+                RGBForeColor(&shadow);
+                MoveTo(grpBtn.right - 1, grpBtn.top + 2);
+                LineTo(grpBtn.right - 1, grpBtn.bottom - 2);
+                MoveTo(grpBtn.left + 2, grpBtn.bottom - 1);
+                LineTo(grpBtn.right - 2, grpBtn.bottom - 1);
+                RGBForeColor(&black);
+                MoveTo(grpBtn.left + 8, btnY + 16);
+                DrawString(GetCachedString(STR_STACK_INFO, 3, "\pGroup All"));
+
+                /* Ungroup All */
+                SetRect(&ungrpBtn, 10 + STK_BTN_W + btnGap, btnY,
+                         10 + 2 * STK_BTN_W + btnGap, btnY + STK_BTN_H);
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&ungrpBtn, 6, 6);
+                RGBForeColor(&hilite);
+                FrameRoundRect(&ungrpBtn, 6, 6);
+                RGBForeColor(&shadow);
+                MoveTo(ungrpBtn.right - 1, ungrpBtn.top + 2);
+                LineTo(ungrpBtn.right - 1, ungrpBtn.bottom - 2);
+                MoveTo(ungrpBtn.left + 2, ungrpBtn.bottom - 1);
+                LineTo(ungrpBtn.right - 2, ungrpBtn.bottom - 1);
+                RGBForeColor(&black);
+                MoveTo(ungrpBtn.left + 4, btnY + 16);
+                DrawString(GetCachedString(STR_STACK_INFO, 4, "\pUngroup All"));
+
+                /* OK */
+                SetRect(&okBtn, STK_W - 10 - STK_BTN_W, btnY,
+                         STK_W - 10, btnY + STK_BTN_H);
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&okBtn, 6, 6);
+                RGBForeColor(&hilite);
+                FrameRoundRect(&okBtn, 6, 6);
+                RGBForeColor(&shadow);
+                MoveTo(okBtn.right - 1, okBtn.top + 2);
+                LineTo(okBtn.right - 1, okBtn.bottom - 2);
+                MoveTo(okBtn.left + 2, okBtn.bottom - 1);
+                LineTo(okBtn.right - 2, okBtn.bottom - 1);
+                RGBForeColor(&black);
+                MoveTo(okBtn.left + 30, btnY + 16);
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
+
+                /* Cancel */
+                SetRect(&cancelBtn, STK_W - 10 - 2 * STK_BTN_W - btnGap, btnY,
+                         STK_W - 10 - STK_BTN_W - btnGap, btnY + STK_BTN_H);
+                RGBForeColor(&btnFace);
+                PaintRoundRect(&cancelBtn, 6, 6);
+                RGBForeColor(&hilite);
+                FrameRoundRect(&cancelBtn, 6, 6);
+                RGBForeColor(&shadow);
+                MoveTo(cancelBtn.right - 1, cancelBtn.top + 2);
+                LineTo(cancelBtn.right - 1, cancelBtn.bottom - 2);
+                MoveTo(cancelBtn.left + 2, cancelBtn.bottom - 1);
+                LineTo(cancelBtn.right - 2, cancelBtn.bottom - 1);
+                RGBForeColor(&black);
+                MoveTo(cancelBtn.left + 14, btnY + 16);
+                DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
+            }
+
+            needsRedraw = false;
+        }
+
+        if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &stkEvt, 10, NULL)) {
+            if (stkEvt.what == mouseDown) {
+                Point localPt;
+                short btnY = STK_SLOT_Y0 + MAX_STACK * STK_SLOT_H + 6;
+                Rect grpBtn, ungrpBtn, okBtn, cancelBtn;
+                short btnGap = 10;
+
+                SetPort(stkWin);
+                localPt = stkEvt.where;
+                GlobalToLocal(&localPt);
+
+                /* Check army slot clicks */
+                for (si = 0; si < sStackCount; si++) {
+                    Rect slotR;
+                    SetRect(&slotR, 10, STK_SLOT_Y0 + si * STK_SLOT_H,
+                            STK_W - 10, STK_SLOT_Y0 + si * STK_SLOT_H + STK_SLOT_H - 2);
+                    if (PtInRect(localPt, &slotR)) {
+                        /* Toggle army in/out of active group (68k FUN_00001380) */
+                        if (sStackSelected[si] == 0) {
+                            /* Join the active group: find groupId of first selected */
+                            short activeGrp = 0;
+                            short sj;
+                            for (sj = 0; sj < sStackCount; sj++) {
+                                if (sStackSelected[sj]) {
+                                    activeGrp = sStackGroupId[sj];
+                                    break;
+                                }
+                            }
+                            sStackGroupId[si] = activeGrp;
+                            sStackSelected[si] = 1;
+                        } else {
+                            /* Leave the group: only if not the last member */
+                            short memberCount = 0, sj;
+                            for (sj = 0; sj < sStackCount; sj++) {
+                                if (sStackGroupId[sj] == sStackGroupId[si])
+                                    memberCount++;
+                            }
+                            if (memberCount > 1) {
+                                /* Find first unused groupId */
+                                short newGrp, gj, gUsed;
+                                for (newGrp = 0; newGrp < MAX_STACK; newGrp++) {
+                                    gUsed = 0;
+                                    for (gj = 0; gj < sStackCount; gj++) {
+                                        if (sStackGroupId[gj] == newGrp) { gUsed = 1; break; }
+                                    }
+                                    if (!gUsed) break;
+                                }
+                                sStackGroupId[si] = newGrp;
+                                sStackSelected[si] = 0;
+                            }
+                        }
+                        /* Recalculate separators */
+                        if (sStackCount > 0) sStackSep[0] = 0;
+                        { short sj2; for (sj2 = 1; sj2 < sStackCount; sj2++)
+                            sStackSep[sj2] = (sStackGroupId[sj2] == sStackGroupId[sj2-1]) ? -1 : 0;
+                        }
+                        needsRedraw = true;
+                        PlaySound(SND_ARMY);
+                        break;
+                    }
+                }
+
+                /* Check button clicks */
+                SetRect(&grpBtn, 10, btnY, 10 + STK_BTN_W, btnY + STK_BTN_H);
+                SetRect(&ungrpBtn, 10 + STK_BTN_W + btnGap, btnY,
+                         10 + 2 * STK_BTN_W + btnGap, btnY + STK_BTN_H);
+                SetRect(&okBtn, STK_W - 10 - STK_BTN_W, btnY,
+                         STK_W - 10, btnY + STK_BTN_H);
+                SetRect(&cancelBtn, STK_W - 10 - 2 * STK_BTN_W - btnGap, btnY,
+                         STK_W - 10 - STK_BTN_W - btnGap, btnY + STK_BTN_H);
+
+                if (PtInRect(localPt, &grpBtn)) {
+                    /* Group All (68k FUN_00001548): all same group, all selected */
+                    short sj;
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        sStackGroupId[sj] = 0;
+                        sStackSelected[sj] = 1;
+                    }
+                    if (sStackCount > 0) sStackSep[0] = 0;
+                    { short sj2; for (sj2 = 1; sj2 < sStackCount; sj2++) sStackSep[sj2] = -1; }
+                    PlaySound(SND_ARMY);
+                    needsRedraw = true;
+                } else if (PtInRect(localPt, &ungrpBtn)) {
+                    /* Ungroup All (68k FUN_000015c6): each own group, select first */
+                    short sj;
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        sStackGroupId[sj] = sj;
+                        sStackSelected[sj] = 0;
+                    }
+                    if (sStackCount > 0) sStackSelected[0] = 1;
+                    if (sStackCount > 0) sStackSep[0] = 0;
+                    { short sj2; for (sj2 = 1; sj2 < sStackCount; sj2++) sStackSep[sj2] = 0; }
+                    PlaySound(SND_ARMY);
+                    needsRedraw = true;
+                } else if (PtInRect(localPt, &okBtn)) {
+                    /* OK: commit group tags to army records (army+0x11)
+                     * 68k FUN_000012da -> func_0x00006008 */
+                    short sj;
+                    unsigned char nextTag = 1;
+                    short tagMap[MAX_STACK];
+                    short tj;
+                    /* Map groupIds to unique group tags (1-8, 0 = ungrouped) */
+                    for (tj = 0; tj < MAX_STACK; tj++) tagMap[tj] = 0;
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        short grp = sStackGroupId[sj];
+                        if (grp >= 0 && grp < MAX_STACK && tagMap[grp] == 0) {
+                            /* Check if this group has >1 member */
+                            short cnt = 0, ck;
+                            for (ck = 0; ck < sStackCount; ck++) {
+                                if (sStackGroupId[ck] == grp) cnt++;
+                            }
+                            tagMap[grp] = (cnt > 1) ? nextTag++ : 0;
+                        }
+                    }
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        short aidx = sStackArmyIdx[sj];
+                        if (aidx >= 0) {
+                            unsigned char *army = gs + 0x1604 + aidx * 0x42;
+                            short grp = sStackGroupId[sj];
+                            army[0x11] = (grp >= 0 && grp < MAX_STACK) ?
+                                         (unsigned char)tagMap[grp] : 0;
+                        }
+                    }
+                    /* Update sSelectedArmy to first selected */
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        if (sStackSelected[sj] && sStackArmyIdx[sj] >= 0) {
+                            sSelectedArmy = sStackArmyIdx[sj];
+                            break;
+                        }
+                    }
+                    PlaySound(SND_ARMY);
+                    stkDone = true;
+                } else if (PtInRect(localPt, &cancelBtn)) {
+                    /* Cancel: restore backup (68k FUN_0000130e) */
+                    sStackCount = sBakStackCount;
+                    sActiveSlot = sBakActiveSlot;
+                    for (si = 0; si < MAX_STACK; si++) {
+                        sStackArmyIdx[si]  = sBakArmyIdx[si];
+                        sStackGroupId[si]  = sBakGroupId[si];
+                        sStackSelected[si] = sBakSelected[si];
+                        sStackSep[si]      = sBakSep[si];
+                    }
+                    PlaySound(SND_ARMY);
+                    stkDone = true;
+                }
+            }
+            else if (stkEvt.what == keyDown) {
+                char key = stkEvt.message & charCodeMask;
+                if (key == 0x0D || key == 0x03) {
+                    /* Return/Enter = OK */
+                    short sj;
+                    unsigned char nextTag = 1;
+                    short tagMap[MAX_STACK];
+                    short tj;
+                    for (tj = 0; tj < MAX_STACK; tj++) tagMap[tj] = 0;
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        short grp = sStackGroupId[sj];
+                        if (grp >= 0 && grp < MAX_STACK && tagMap[grp] == 0) {
+                            short cnt = 0, ck;
+                            for (ck = 0; ck < sStackCount; ck++) {
+                                if (sStackGroupId[ck] == grp) cnt++;
+                            }
+                            tagMap[grp] = (cnt > 1) ? nextTag++ : 0;
+                        }
+                    }
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        short aidx = sStackArmyIdx[sj];
+                        if (aidx >= 0) {
+                            unsigned char *army = gs + 0x1604 + aidx * 0x42;
+                            short grp = sStackGroupId[sj];
+                            army[0x11] = (grp >= 0 && grp < MAX_STACK) ?
+                                         (unsigned char)tagMap[grp] : 0;
+                        }
+                    }
+                    for (sj = 0; sj < sStackCount; sj++) {
+                        if (sStackSelected[sj] && sStackArmyIdx[sj] >= 0) {
+                            sSelectedArmy = sStackArmyIdx[sj];
+                            break;
+                        }
+                    }
+                    stkDone = true;
+                } else if (key == 0x1B) {
+                    /* Escape = Cancel */
+                    sStackCount = sBakStackCount;
+                    sActiveSlot = sBakActiveSlot;
+                    for (si = 0; si < MAX_STACK; si++) {
+                        sStackArmyIdx[si]  = sBakArmyIdx[si];
+                        sStackGroupId[si]  = sBakGroupId[si];
+                        sStackSelected[si] = sBakSelected[si];
+                        sStackSep[si]      = sBakSep[si];
+                    }
+                    stkDone = true;
+                }
+            }
             else if (stkEvt.what == updateEvt &&
                      (WindowPtr)stkEvt.message == stkWin) {
-                Rect dr;
                 BeginUpdate(stkWin);
-                SetPort(stkWin);
-                dr = stkWin->portRect;
-                LockPixels(GetGWorldPixMap(offGW));
-                CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                         &((GrafPtr)stkWin)->portBits,
-                         &gwRect, &dr, srcCopy, NULL);
-                UnlockPixels(GetGWorldPixMap(offGW));
+                needsRedraw = true;
                 EndUpdate(stkWin);
             }
         }
     }
 
-    DisposeGWorld(offGW);
     DisposeWindow(stkWin);
+    InvalidateAllGameWindows();
+
+    #undef STK_W
+    #undef STK_H
+    #undef STK_SLOT_H
+    #undef STK_SLOT_Y0
+    #undef STK_BTN_W
+    #undef STK_BTN_H
 }
 
 
@@ -13264,88 +17330,38 @@ static void MoveAllArmies(void)
                 short curY = *(short *)(army + 0x02);
                 short tgtX = *(short *)(army + 0x34);
                 short tgtY = *(short *)(army + 0x36);
-                short dx = tgtX - curX;
-                short dy = tgtY - curY;
-                short stepX = 0, stepY = 0;
                 short movePts = (short)(unsigned char)army[0x2e];
 
                 if (movePts <= 0) continue;
-
-                if (dx > 0) stepX = 1;
-                else if (dx < 0) stepX = -1;
-                if (dy > 0) stepY = 1;
-                else if (dy < 0) stepY = -1;
-
-                if (stepX != 0 || stepY != 0) {
-                    short newX = curX + stepX;
-                    short newY = curY + stepY;
-                    short unitClass = (short)(unsigned char)army[0x16];
-                    short cost = GetMovementCost(newX, newY, unitClass);
-
-                    if (cost == 0 || movePts < cost) {
-                        /* Direct path blocked: try all 8 directions */
-                        static const short altDx[8] = {1,-1,0,0,1,-1,1,-1};
-                        static const short altDy[8] = {0,0,1,-1,1,1,-1,-1};
-                        long bestD2 = 999999L;
-                        short bestC2 = 0, bestX2 = -1, bestY2 = -1, d2;
-                        for (d2 = 0; d2 < 8; d2++) {
-                            short nx2 = curX + altDx[d2];
-                            short ny2 = curY + altDy[d2];
-                            short nc2;
-                            long nd2;
-                            if (nx2 < 0 || nx2 >= sMapWidth ||
-                                ny2 < 0 || ny2 >= sMapHeight) continue;
-                            nc2 = GetMovementCost(nx2, ny2, unitClass);
-                            if (nc2 <= 0 || nc2 > movePts) continue;
-                            nd2 = (long)(tgtX - nx2) * (tgtX - nx2) +
-                                  (long)(tgtY - ny2) * (tgtY - ny2) + nc2 * 2;
-                            if (nd2 < bestD2) {
-                                bestD2 = nd2; bestC2 = nc2;
-                                bestX2 = nx2; bestY2 = ny2;
-                            }
-                        }
-                        if (bestX2 < 0) {
-                            *(short *)(army + 0x32) = 0;
-                            continue;
-                        }
-                        newX = bestX2; newY = bestY2; cost = bestC2;
-                    }
-
-                    if (newX >= 0 && newX < sMapWidth &&
-                        newY >= 0 && newY < sMapHeight) {
-                        *(short *)(army + 0x00) = newX;
-                        *(short *)(army + 0x02) = newY;
-                        army[0x2e] = (unsigned char)(movePts - cost);
-                        anyMoved = 1;
-
-                        if (sOptHiddenMap) {
-                            short armyOwner = (short)(unsigned char)army[0x15];
-                            FogReveal(armyOwner, newX, newY);
-                        }
-
-                        if (CheckAndResolveCombat(i)) {
-                            armyCount = *(short *)(gs + 0x1602);
-                            if (armyCount > 100) armyCount = 100;
-                            break;
-                        }
-
-                        /* Try merging with friendly army at destination */
-                        if (TryMergeArmies(i)) {
-                            armyCount = *(short *)(gs + 0x1602);
-                            if (armyCount > 100) armyCount = 100;
-                            break;
-                        }
-
-                        /* Auto-search ruins if hero on ruin */
-                        TryAutoSearchRuin(i);
-                    }
+                if (curX == tgtX && curY == tgtY) {
+                    *(short *)(army + 0x32) = 0;
+                    continue;
                 }
 
-                /* Check if reached destination */
-                army = gs + 0x1604 + i * 0x42;  /* re-read in case of shifts */
-                if (*(short *)(army + 0x00) == tgtX &&
-                    *(short *)(army + 0x02) == tgtY) {
-                    *(short *)(army + 0x32) = 0;
+                /* Wavefront pathfinder: compute optimal path then execute
+                 * (68k CODE_115 FUN_000012c6 + FUN_00001258) */
+                {
+                    short unitClass = GetEffectiveUnitClass(i);
+                    short pathLen = ComputeWavefrontPath(curX, curY, tgtX, tgtY, unitClass);
+                    if (pathLen > 0) {
+                        /* ExecutePathSteps uses sStackSelected for group movement,
+                         * but during MoveAllArmies no stack is selected. Clear group
+                         * context to avoid stale references, then execute path. */
+                        short savedStackCount = sStackCount;
+                        sStackCount = 0;  /* no group during queued movement */
+                        {
+                            short took = ExecutePathSteps(i);
+                            if (took > 0) anyMoved = 1;
+                        }
+                        sStackCount = savedStackCount;
+                        /* Army may have been removed in combat */
+                        armyCount = *(short *)(gs + 0x1602);
+                        if (armyCount > 100) armyCount = 100;
+                        if (i >= armyCount) break;
+                    } else {
+                        /* Unreachable: cancel orders */
+                        *(short *)(army + 0x32) = 0;
+                    }
                 }
             }
         }
@@ -13408,17 +17424,18 @@ static void InvalidateAllGameWindows(void)
 }
 
 
-/* ===================================================================
- * ShowArmySelection — Let player pick starting army for their capital
- *
- * Shows a dialog with available unit types. The selected unit type
- * replaces the player's starting army at their capital city.
- * =================================================================== */
-static void ShowArmySelection(short playerIdx)
+/* ShowArmySelection removed — confirmed fabricated by 68k CODE_117 analysis.
+ * Original game creates starting armies from scenario data (FUN_00001ecc),
+ * not via a player selection dialog. */
+
+#if 0  /* REMOVED: fabricated ShowArmySelection */
+static void ShowArmySelection_REMOVED(short playerIdx)
 {
     WindowPtr  selWin;
+    GWorldPtr  selOffGW = NULL;
     Rect       winRect;
     Boolean    done = false;
+    Boolean    selShown = false;
     short      selected = 0;
     short      numChoices = 4;
     Rect       screenRect = qd.screenBits.bounds;
@@ -13426,35 +17443,82 @@ static void ShowArmySelection(short playerIdx)
     /* Match original dialog layout from screenshot */
     short      winW = 270, winH = 300;
 
-    /* Unit types available at game start (from original scenario data) */
-    static const char *armyChoiceNames[] = {
+    /* Unit types available at game start.
+     * Use loaded DAT 20000 unit type table if available, else fallback. */
+    char dynNames[4][24];
+    short armyMoves[4], armyHP[4], armySprites[4], armyStrength[4];
+    static const char *fallbackNames[] = {
         "Light Infantry", "Heavy Infantry", "Cavalry", "Archers"
     };
-    static const short armyMoves[]   = {10, 8, 14, 10};
-    static const short armyHP[]      = {3, 4, 5, 3};
-    static const short armySprites[] = {0, 2, 4, 6};
-    static const short armyStrength[] = {2, 3, 4, 2};
+    static const short fallMoves[]   = {10, 8, 14, 10};
+    static const short fallHP[]      = {3, 4, 5, 3};
+    static const short fallSprites[] = {0, 2, 4, 6};
+    static const short fallStr[]     = {2, 3, 4, 2};
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
+
+    /* Fill in unit data from loaded table or fallbacks */
+    {
+        short ci2;
+        for (ci2 = 0; ci2 < 4; ci2++) {
+            if (sUnitTypesLoaded && ci2 < sUnitTypeCount) {
+                unsigned char *ute = sUnitTypeTable + ci2 * UNIT_TYPE_ENTRY;
+                char *name = (char *)(ute + 2);
+                short ni2;
+                for (ni2 = 0; ni2 < 23 && name[ni2]; ni2++)
+                    dynNames[ci2][ni2] = name[ni2];
+                dynNames[ci2][ni2] = '\0';
+                armyStrength[ci2] = (short)((ute[0x16] << 8) | ute[0x17]);
+                armyMoves[ci2]    = (short)((ute[0x1C] << 8) | ute[0x1D]);
+                armyHP[ci2]       = (short)((ute[0x1E] << 8) | ute[0x1F]);
+                armySprites[ci2]  = (short)((ute[0x24] << 8) | ute[0x25]);
+                if (armyHP[ci2] <= 0) armyHP[ci2] = fallHP[ci2];
+            } else {
+                short ni2;
+                for (ni2 = 0; fallbackNames[ci2][ni2]; ni2++)
+                    dynNames[ci2][ni2] = fallbackNames[ci2][ni2];
+                dynNames[ci2][ni2] = '\0';
+                armyMoves[ci2]    = fallMoves[ci2];
+                armyHP[ci2]       = fallHP[ci2];
+                armySprites[ci2]  = fallSprites[ci2];
+                armyStrength[ci2] = fallStr[ci2];
+            }
+        }
+    }
 
     SetRect(&winRect, 0, 0, winW, winH);
     OffsetRect(&winRect,
         (screenRect.right - winW) / 2,
         (screenRect.bottom - winH) / 2);
 
-    selWin = NewCWindow(NULL, &winRect, "\pArmy Selection", true,
+    selWin = NewCWindow(NULL, &winRect, "\pArmy Selection", false,
                          movableDBoxProc, (WindowPtr)-1L, false, 0);
     if (selWin == NULL) return;
     SetPort(selWin);
 
+    {
+        Rect obounds;
+        SetRect(&obounds, 0, 0, winW, winH);
+        NewGWorld(&selOffGW, 0, &obounds, NULL, NULL, 0);
+    }
+
     while (!done) {
         EventRecord evt;
-        Rect contentR = selWin->portRect;
+        Rect contentR;
         short ci;
+        SetRect(&contentR, 0, 0, winW, winH);
 
         /* Draw dialog content matching original screenshot */
         {
+            CGrafPtr savedSelPort;
+            GDHandle savedSelGD;
+
+            if (selOffGW != NULL) {
+                GetGWorld(&savedSelPort, &savedSelGD);
+                SetGWorld(selOffGW, NULL);
+                LockPixels(GetGWorldPixMap(selOffGW));
+            }
             RGBColor black   = {0x0000, 0x0000, 0x0000};
             RGBColor white   = {0xFFFF, 0xFFFF, 0xFFFF};
             RGBColor yellow  = {0xFFFF, 0xDD00, 0x0000};
@@ -13534,34 +17598,38 @@ static void ShowArmySelection(short playerIdx)
                     LineTo(slotR.right - 1, slotR.bottom - 1);
                 }
 
-                /* Draw army sprite from sprite sheet if available */
-                if (sArmyLoaded && sArmyGW[0] != NULL) {
-                    short sprCol = armySprites[ci] % 16;
-                    short sprRow = armySprites[ci] / 16;
-                    Rect srcRect, dstRect;
-                    short srcX = sprCol * 32;
-                    short srcY = sprRow * 32;
-                    SetRect(&srcRect, srcX, srcY, srcX + 29, srcY + 32);
-                    /* Center sprite (29x32) in slot (40x36) */
-                    SetRect(&dstRect,
-                            slotR.left + (slotW - 29) / 2,
-                            slotR.top + (slotH - 32) / 2,
-                            slotR.left + (slotW - 29) / 2 + 29,
-                            slotR.top + (slotH - 32) / 2 + 32);
-                    LockPixels(GetGWorldPixMap(sArmyGW[0]));
-                    {
-                        RGBColor savedBg;
-                        GrafPtr curPort;
-                        GetPort(&curPort);
-                        GetBackColor(&savedBg);
-                        RGBBackColor(&sArmyBgColor[0]);
-                        CopyBits((BitMap *)*GetGWorldPixMap(sArmyGW[0]),
-                                 &curPort->portBits,
-                                 &srcRect, &dstRect,
-                                 36, NULL);
-                        RGBBackColor(&savedBg);
+                /* Draw army sprite (use player's faction sheet) */
+                {
+                    short sSheet = (playerIdx >= 0 && playerIdx < ARMY_SHEETS) ? playerIdx : 0;
+                    GWorldPtr sGW = sArmyGW[sSheet] ? sArmyGW[sSheet] : sArmyGW[0];
+                    if (sArmyLoaded && sGW != NULL) {
+                        short sprCol = armySprites[ci] % 16;
+                        short sprRow = armySprites[ci] / 16;
+                        Rect srcRect, dstRect;
+                        short srcX = sprCol * 32;
+                        short srcY = sprRow * 30;
+                        SetRect(&srcRect, srcX, srcY, srcX + 29, srcY + 32);
+                        /* Center sprite (29x32) in slot (40x36) */
+                        SetRect(&dstRect,
+                                slotR.left + (slotW - 29) / 2,
+                                slotR.top + (slotH - 32) / 2,
+                                slotR.left + (slotW - 29) / 2 + 29,
+                                slotR.top + (slotH - 32) / 2 + 32);
+                        LockPixels(GetGWorldPixMap(sGW));
+                        {
+                            RGBColor savedBg;
+                            GrafPtr curPort;
+                            GetPort(&curPort);
+                            GetBackColor(&savedBg);
+                            RGBBackColor(&sArmyBgColor[sSheet]);
+                            CopyBits((BitMap *)*GetGWorldPixMap(sGW),
+                                     &curPort->portBits,
+                                     &srcRect, &dstRect,
+                                     36, NULL);
+                            RGBBackColor(&savedBg);
+                        }
+                        UnlockPixels(GetGWorldPixMap(sGW));
                     }
-                    UnlockPixels(GetGWorldPixMap(sArmyGW[0]));
                 }
             }
 
@@ -13569,7 +17637,7 @@ static void ShowArmySelection(short playerIdx)
             TextFont(3); TextSize(9); TextFace(0);
             for (ci = 0; ci < numChoices; ci++) {
                 Str255 lbl;
-                char *n = (char *)armyChoiceNames[ci];
+                char *n = dynNames[ci];
                 short ni, tw;
                 for (ni = 0; n[ni]; ni++) lbl[ni + 1] = n[ni];
                 lbl[0] = ni;
@@ -13663,6 +17731,23 @@ static void ShowArmySelection(short playerIdx)
                 }
                 TextFace(0);
             }
+
+            /* Blit offscreen to window */
+            if (selOffGW != NULL) {
+                UnlockPixels(GetGWorldPixMap(selOffGW));
+                SetGWorld(savedSelPort, savedSelGD);
+                SetPort(selWin);
+                CopyBits((BitMap *)*GetGWorldPixMap(selOffGW),
+                         &((GrafPtr)selWin)->portBits,
+                         &contentR, &selWin->portRect,
+                         srcCopy, NULL);
+            }
+
+            /* Show window after first blit to avoid white flash */
+            if (!selShown) {
+                ShowWindow(selWin);
+                selShown = true;
+            }
         }
 
         WaitNextEvent(everyEvent, &evt, 10, NULL);
@@ -13746,16 +17831,18 @@ static void ShowArmySelection(short playerIdx)
                 army[0x1f] = (unsigned char)armyHP[selected];
                 army[0x20] = 0;
                 army[0x21] = 0;
-                *(short *)(army + 0x2a) = armyHP[selected] * 2;
+                RecalcArmyStrength(army);
                 army[0x2c] = (unsigned char)selected;
                 break;  /* only modify first army for this player */
             }
         }
     }
 
+    if (selOffGW != NULL) DisposeGWorld(selOffGW);
     DisposeWindow(selWin);
     InvalidateAllGameWindows();
 }
+#endif  /* REMOVED: fabricated ShowArmySelection */
 
 
 /* Built-in hero name pool (subset of classic Warlords II names) */
@@ -13783,6 +17870,18 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
     short      heroStrength, heroMovement, heroCommand, heroCost;
     short      heroNameIdx;
     short      playerGold;
+    Boolean    isFemaleHero;
+    short      heroX, heroY;  /* spawn location for minimap */
+
+    /* Female hero name indices (Brynhild=1, Thundra=4, Silvara=9, Ravenna=14, Elandra=17) */
+    static const short sFemaleIndices[] = {1, 4, 9, 14, 17};
+    static const short sMaleIndices[] = {0, 2, 3, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 18, 19};
+    #define NUM_FEMALE_HEROES 5
+    #define NUM_MALE_HEROES 15
+
+    /* Dialog layout constants matching original View 3200 */
+    #define HIRE_WIN_W 400
+    #define HIRE_WIN_H 380
 
     if (*gGameState == 0)
         return false;
@@ -13790,31 +17889,77 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 
     playerGold = *(short *)(gs + 0x186 + playerIdx * 0x14);
 
-    /* Initial offer at game start is always shown (hero is free).
-     * Subsequent offers require gold >= 400 (original logic). */
-    if (!initialOffer && playerGold < 400)
-        return false;
-
-    /* Generate hero stats */
+    /* Count heroes for cap check and cost calculation (68k CODE_103) */
     {
-        unsigned long ticks = TickCount();
-        heroNameIdx  = (short)(ticks % NUM_HERO_NAMES);
-        heroStrength = 4 + (short)((ticks / 7) % 4);    /* 4-7 */
-        heroMovement = 12 + (short)((ticks / 13) % 9);  /* 12-20 */
-        heroCommand  = 1 + (short)((ticks / 17) % 3);   /* 1-3 */
-        if (initialOffer) {
-            heroCost = 0;  /* Initial hero at game start is free */
-        } else {
-            heroCost = 200 + heroStrength * 50 + heroCommand * 30;
-            if (heroCost > playerGold)
-                heroCost = playerGold;
+        short armyCount = *(short *)(gs + 0x1602);
+        short totalHeroes = 0, myHeroes = 0;
+        short ai;
+        if (armyCount > 100) armyCount = 100;
+        for (ai = 0; ai < armyCount; ai++) {
+            unsigned char *a = gs + 0x1604 + ai * 0x42;
+            if ((unsigned char)a[0x16] == 0x1C) {
+                totalHeroes++;
+                if ((short)(unsigned char)a[0x15] == playerIdx)
+                    myHeroes++;
+            }
+        }
+
+        /* Hero cap: max 40 total, 5-6 per player (68k CODE_103 FUN_000000be).
+         * 68k scales cap to 6 if THIS PLAYER owns > 39 cities (not total sites). */
+        {
+            short heroCap = 5;
+            short myCityCap = 0, ci2;
+            short siteCount2 = *(short *)(gs + 0x810);
+            if (siteCount2 > 40) siteCount2 = 40;
+            for (ci2 = 0; ci2 < siteCount2; ci2++) {
+                unsigned char *c2 = gs + 0x812 + ci2 * 0x20;
+                if ((unsigned char)c2[0x18] == 0 && *(short *)(c2 + 0x04) == playerIdx)
+                    myCityCap++;
+            }
+            if (myCityCap > 39) heroCap = 6;
+            if (!initialOffer && (totalHeroes >= 40 || myHeroes >= heroCap))
+                return false;
+        }
+
+        /* Initial offer at game start is always shown (hero is free).
+         * Subsequent offers (68k CODE_103 FUN_000000be):
+         *   1. Generate cost: random(400) if no heroes, random(600) if owned
+         *   2. Gold check: player must have >= cost gold
+         *   3. Random 23% chance: random(30) < 7 */
+        if (!initialOffer) {
+            /* 68k: cost generated first, used as gold threshold */
+            if (myHeroes == 0)
+                heroCost = (short)((unsigned short)Random() % 400);
+            else
+                heroCost = (short)((unsigned short)Random() % 600);
+            if (playerGold < heroCost)
+                return false;
+            if ((short)((unsigned short)Random() % 30) >= 7)
+                return false;
+        }
+
+        /* Hero check passed — play voice AFTER probability gate (68k CODE_064) */
+        PlayVoice(SND_VHERO00);
+
+        /* Generate hero stats (68k: uses Random(), not TickCount()) */
+        {
+            heroStrength = 4 + (short)((unsigned short)Random() % 4);    /* 4-7 */
+            heroMovement = 12 + (short)((unsigned short)Random() % 9);   /* 12-20 */
+            heroCommand  = 1 + (short)((unsigned short)Random() % 3);    /* 1-3 */
+
+            /* Pick name from available pool */
+            heroNameIdx = sMaleIndices[(short)((unsigned short)Random() % NUM_MALE_HEROES)];
+            if (initialOffer) {
+                heroCost = 0;
+            }
+            /* heroCost already set above for non-initial offers */
         }
     }
 
-    /* Determine hero gender from name (Pascal string: length at [0], chars at [1]+) */
-    Boolean isFemaleHero = false;
+    /* Determine gender from name */
     {
         const unsigned char *hn = sHeroNames[heroNameIdx];
+        isFemaleHero = false;
         if (hn[1] == 'B' && hn[2] == 'r') isFemaleHero = true;       /* Brynhild */
         else if (hn[1] == 'T' && hn[2] == 'h') isFemaleHero = true;  /* Thundra */
         else if (hn[1] == 'S' && hn[2] == 'i') isFemaleHero = true;  /* Silvara */
@@ -13822,17 +17967,65 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
         else if (hn[1] == 'E' && hn[2] == 'l') isFemaleHero = true;  /* Elandra */
     }
 
-    /* Load hero portrait: PICT 3200 (male) or PICT 3201 (female) — matches original */
+    /* Find spawn location (68k CODE_103):
+     * Turn 1 (initialOffer): always capital coords (gs+0x186+player*0x14+0x04/0x06).
+     * Later: random army owned by player. */
+    heroX = 2; heroY = 2;
+    if (initialOffer) {
+        /* 68k: turn 1 hero spawns at capital */
+        heroX = *(short *)(gs + 0x186 + playerIdx * 0x14 + 0x04);
+        heroY = *(short *)(gs + 0x186 + playerIdx * 0x14 + 0x06);
+    } else {
+        short armyCount2 = *(short *)(gs + 0x1602);
+        short cityCount = *(short *)(gs + 0x810);
+        short myArmyCount = 0, targetN, foundIdx = -1, ci;
+        if (armyCount2 > 100) armyCount2 = 100;
+        if (cityCount > 40) cityCount = 40;
+        /* Count player's cities (68k uses cityCount as random range) */
+        { short myCities = 0;
+          for (ci = 0; ci < cityCount; ci++) {
+              unsigned char *c2 = gs + 0x812 + ci * 0x20;
+              short st2 = (short)(unsigned char)c2[0x18];
+              if ((st2 == 0 || st2 == 1) && *(short *)(c2 + 0x04) == playerIdx)
+                  myCities++;
+          }
+          targetN = (myCities > 0) ? (short)((unsigned short)Random() % myCities) + 1 : 1;
+        }
+        for (ci = 0; ci < armyCount2; ci++) {
+            unsigned char *a2 = gs + 0x1604 + ci * 0x42;
+            if ((short)(unsigned char)a2[0x15] == playerIdx && a2[0x16] != 0xFF) {
+                foundIdx = ci;
+                myArmyCount++;
+                if (myArmyCount == targetN) break;
+            }
+        }
+        if (foundIdx >= 0) {
+            unsigned char *spawnArmy = gs + 0x1604 + foundIdx * 0x42;
+            heroX = *(short *)(spawnArmy + 0x00);
+            heroY = *(short *)(spawnArmy + 0x02);
+        } else {
+            /* Fallback: first city */
+            for (ci = 0; ci < cityCount; ci++) {
+                unsigned char *city = gs + 0x812 + ci * 0x20;
+                if (*(short *)(city + 0x04) == playerIdx) {
+                    heroX = *(short *)(city + 0x00);
+                    heroY = *(short *)(city + 0x02);
+                    break;
+                }
+            }
+        }
+    }
+
     heroPict = GetPicture(isFemaleHero ? 3201 : 3200);
 
-    /* Center 310x380 window */
+    /* Center window */
     SetRect(&winRect,
-        (screenRect.right - 310) / 2,
-        (screenRect.bottom - 380) / 2,
-        (screenRect.right - 310) / 2 + 310,
-        (screenRect.bottom - 380) / 2 + 380);
+        (screenRect.right - HIRE_WIN_W) / 2,
+        (screenRect.bottom - HIRE_WIN_H) / 2,
+        (screenRect.right - HIRE_WIN_W) / 2 + HIRE_WIN_W,
+        (screenRect.bottom - HIRE_WIN_H) / 2 + HIRE_WIN_H);
 
-    hireWin = NewCWindow(NULL, &winRect, "\p", true,
+    hireWin = NewCWindow(NULL, &winRect, "\p", false,
                           plainDBox, (WindowPtr)-1L, false, 0);
     if (hireWin == NULL)
         return false;
@@ -13841,7 +18034,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 
     {
         Rect obounds;
-        SetRect(&obounds, 0, 0, 310, 380);
+        SetRect(&obounds, 0, 0, HIRE_WIN_W, HIRE_WIN_H);
         NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
     }
 
@@ -13849,7 +18042,15 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 
     {
         Boolean needsRedraw = true;
+        Boolean hireShown = false;
         unsigned long startTick = TickCount();
+
+        /* Button hit rects */
+        Rect hireBtnR, dontBtnR, maleRadioR, femaleRadioR;
+        SetRect(&hireBtnR,   50, 342, 170, 366);
+        SetRect(&dontBtnR,   230, 342, 350, 366);
+        SetRect(&maleRadioR, 270, 218, 340, 236);
+        SetRect(&femaleRadioR, 270, 238, 340, 256);
 
         while (!done) {
             EventRecord evt;
@@ -13858,7 +18059,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                 Rect r;
                 CGrafPtr savedPort;
                 GDHandle savedDevice;
-                SetRect(&r, 0, 0, 310, 380);
+                SetRect(&r, 0, 0, HIRE_WIN_W, HIRE_WIN_H);
 
                 if (offscreen != NULL) {
                     GetGWorld(&savedPort, &savedDevice);
@@ -13866,115 +18067,152 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                     LockPixels(GetGWorldPixMap(offscreen));
                 }
 
-                /* Dark background */
-                {
-                    DrawMarbleBackground(&r);
-                }
+                /* Background: marble tile */
+                DrawMarbleBackground(&r);
 
-                /* Gold border */
+                /* Border */
                 {
-                    RGBColor gold = {0xCCCC, 0x9999, 0x3333};
-                    RGBForeColor(&gold);
-                    PenSize(3, 3);
+                    RGBColor border = {0x6666, 0x6666, 0x9999};
+                    RGBForeColor(&border);
+                    PenSize(2, 2);
                     FrameRect(&r);
                     PenSize(1, 1);
                 }
 
-                /* Title: "A Hero!" / "A Heroine!" */
+                /* ---- Left side: Hero portrait (PICT 3200/3201, 224x170) ---- */
+                {
+                    Rect pictRect;
+                    SetRect(&pictRect, 12, 10, 236, 180);
+                    if (heroPict != NULL) {
+                        DrawPicture(heroPict, &pictRect);
+                    } else {
+                        RGBForeColor(&sPlayerColors[playerIdx + 1]);
+                        PaintRect(&pictRect);
+                    }
+                    {
+                        RGBColor frame = {0x3333, 0x3333, 0x3333};
+                        RGBForeColor(&frame);
+                        FrameRect(&pictRect);
+                    }
+                }
+
+                /* ---- Right side: Minimap (120x100) showing hero location ---- */
+                {
+                    Rect mmRect;
+                    SetRect(&mmRect, 254, 10, 386, 130);
+                    DrawMinimapInRect(&mmRect, heroX, heroY);
+                }
+
+                /* ---- Right side: Male/Female radio toggle ---- */
+                {
+                    RGBColor black = {0, 0, 0};
+                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                    RGBColor activeBg = {0x4444, 0x4444, 0x8888};
+                    RGBColor inactiveBg = {0x2222, 0x2222, 0x3333};
+                    Rect mR, fR;
+
+                    TextFont(3); TextSize(10); TextFace(0);
+                    SetRect(&mR, 270, 218, 340, 236);
+                    SetRect(&fR, 270, 238, 340, 256);
+
+                    /* Male radio */
+                    RGBForeColor(isFemaleHero ? &inactiveBg : &activeBg);
+                    PaintRoundRect(&mR, 6, 6);
+                    RGBForeColor(&black);
+                    FrameRoundRect(&mR, 6, 6);
+                    RGBForeColor(&white);
+                    MoveTo(mR.left + 8, mR.bottom - 5);
+                    DrawString("\pMale");
+
+                    /* Female radio */
+                    RGBForeColor(isFemaleHero ? &activeBg : &inactiveBg);
+                    PaintRoundRect(&fR, 6, 6);
+                    RGBForeColor(&black);
+                    FrameRoundRect(&fR, 6, 6);
+                    RGBForeColor(&white);
+                    MoveTo(fR.left + 4, fR.bottom - 5);
+                    DrawString("\pFemale");
+
+                    /* Radio indicator dots */
+                    {
+                        Rect mDot, fDot;
+                        SetRect(&mDot, mR.left + 52, mR.top + 5, mR.left + 62, mR.top + 13);
+                        SetRect(&fDot, fR.left + 52, fR.top + 5, fR.left + 62, fR.top + 13);
+                        RGBForeColor(&white);
+                        FrameOval(&mDot);
+                        FrameOval(&fDot);
+                        if (!isFemaleHero) {
+                            InsetRect(&mDot, 2, 2);
+                            PaintOval(&mDot);
+                        } else {
+                            InsetRect(&fDot, 2, 2);
+                            PaintOval(&fDot);
+                        }
+                    }
+                }
+
+                /* ---- Hero name and title ---- */
                 {
                     RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
-                    RGBForeColor(&gold);
-                    TextFont(2);
-                    TextSize(18);
-                    TextFace(bold);
-                    if (isFemaleHero) {
-                        MoveTo(88, 28);
-                        DrawString("\pA Heroine!");
-                    } else {
-                        MoveTo(105, 28);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 12, "\pA Hero!"));
-                    }
-                }
-
-                /* Hero portrait (PICT 3200) */
-                if (heroPict != NULL) {
-                    Rect pictRect;
-                    SetRect(&pictRect, 55, 38, 255, 198);
-                    DrawPicture(heroPict, &pictRect);
-                } else {
-                    /* Fallback: colored rectangle with player shield color */
-                    Rect placeholderRect;
-                    SetRect(&placeholderRect, 55, 38, 255, 198);
-                    RGBForeColor(&sPlayerColors[playerIdx + 1]);
-                    PaintRect(&placeholderRect);
-                    {
-                        RGBColor black = {0, 0, 0};
-                        RGBForeColor(&black);
-                        FrameRect(&placeholderRect);
-                    }
-                }
-
-                /* Hero name */
-                {
                     RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    RGBForeColor(&white);
-                    TextFont(2);
-                    TextSize(14);
-                    TextFace(bold);
-                    MoveTo(20, 220);
+                    RGBForeColor(&gold);
+                    TextFont(2); TextSize(14); TextFace(bold);
+                    MoveTo(20, 200);
                     DrawString(sHeroNames[heroNameIdx]);
+                    RGBForeColor(&white);
+                    TextFace(0);
                     if (isFemaleHero)
                         DrawString("\p offers her service!");
                     else
                         DrawString(GetCachedString(STR_HERO_DIPLO, 13, "\p offers service!"));
                 }
 
-                /* Stats */
+                /* ---- Stats (4 text strings matching original str1..str4) ---- */
                 {
-                    RGBColor valueColor = {0xCCCC, 0xDDDD, 0xFFFF};
-                    RGBColor labelColor = {0xAAAA, 0xAAAA, 0xAAAA};
+                    RGBColor labelColor = {0xBBBB, 0xBBBB, 0xBBBB};
+                    RGBColor valueColor = {0xFFFF, 0xFFFF, 0xFFFF};
                     Str255 numStr;
-                    short yBase = 244;
+                    short yBase = 226;
 
-                    TextFont(3);
-                    TextSize(10);
-                    TextFace(0);
+                    TextFont(3); TextSize(10); TextFace(0);
 
-                    /* Strength */
+                    /* str1: Strength */
                     RGBForeColor(&labelColor);
-                    MoveTo(30, yBase);
+                    MoveTo(20, yBase);
                     DrawString(GetCachedString(STR_HERO_DIPLO, 14, "\pStrength:"));
                     RGBForeColor(&valueColor);
-                    MoveTo(130, yBase);
+                    MoveTo(110, yBase);
                     NumToString((long)heroStrength, numStr);
                     DrawString(numStr);
 
-                    /* Movement */
+                    /* str2: Movement */
                     RGBForeColor(&labelColor);
-                    MoveTo(30, yBase + 18);
+                    MoveTo(20, yBase + 18);
                     DrawString(GetCachedString(STR_HERO_DIPLO, 15, "\pMovement:"));
                     RGBForeColor(&valueColor);
-                    MoveTo(130, yBase + 18);
+                    MoveTo(110, yBase + 18);
                     NumToString((long)heroMovement, numStr);
                     DrawString(numStr);
 
-                    /* Command */
+                    /* str3: Command */
                     RGBForeColor(&labelColor);
-                    MoveTo(30, yBase + 36);
+                    MoveTo(20, yBase + 36);
                     DrawString(GetCachedString(STR_HERO_DIPLO, 16, "\pCommand:"));
                     RGBForeColor(&valueColor);
-                    MoveTo(130, yBase + 36);
+                    MoveTo(110, yBase + 36);
                     DrawString("\p+");
                     NumToString((long)heroCommand, numStr);
                     DrawString(numStr);
 
-                    /* Cost */
+                    /* str4: Cost and Near */
                     RGBForeColor(&labelColor);
-                    MoveTo(30, yBase + 54);
+                    MoveTo(20, yBase + 54);
                     DrawString(GetCachedString(STR_HERO_DIPLO, 17, "\pCost:"));
                     RGBForeColor(&valueColor);
-                    MoveTo(130, yBase + 54);
+                    MoveTo(110, yBase + 54);
                     if (heroCost == 0) {
+                        RGBColor greenC = {0x3333, 0xFFFF, 0x3333};
+                        RGBForeColor(&greenC);
                         DrawString(GetCachedString(STR_HERO_DIPLO, 18, "\pFree!"));
                     } else {
                         NumToString((long)heroCost, numStr);
@@ -13982,59 +18220,82 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                         DrawString(GetCachedString(STR_HERO_DIPLO, 19, "\p gp"));
                     }
 
-                    /* Near: (first city owned by this player) */
+                    /* Near: city name */
                     RGBForeColor(&labelColor);
-                    MoveTo(180, yBase);
+                    MoveTo(200, yBase);
                     DrawString(GetCachedString(STR_HERO_DIPLO, 20, "\pNear:"));
                     RGBForeColor(&valueColor);
-                    MoveTo(180, yBase + 18);
+                    MoveTo(200, yBase + 18);
                     {
-                        /* Show faction name as location */
-                        Str255 pName;
-                        unsigned char *namePtr = gs + playerIdx * 20;
-                        short nlen = 0;
-                        while (nlen < 20 && namePtr[nlen] != 0)
-                            nlen++;
-                        pName[0] = (unsigned char)nlen;
-                        BlockMoveData(namePtr, pName + 1, nlen);
-                        DrawString(pName);
+                        /* Show first owned city name from city record */
+                        short cityCount = *(short *)(gs + 0x810);
+                        short ci;
+                        Boolean foundCity = false;
+                        if (cityCount > 40) cityCount = 40;
+                        for (ci = 0; ci < cityCount; ci++) {
+                            unsigned char *city = gs + 0x812 + ci * 0x20;
+                            if (*(short *)(city + 0x04) == playerIdx) {
+                                /* City name is at city + 0x0A, up to 14 chars */
+                                unsigned char *cname = city + 0x0A;
+                                Str255 pName;
+                                short nlen = 0;
+                                while (nlen < 14 && cname[nlen] != 0) nlen++;
+                                pName[0] = (unsigned char)nlen;
+                                BlockMoveData(cname, pName + 1, nlen);
+                                DrawString(pName);
+                                foundCity = true;
+                                break;
+                            }
+                        }
+                        if (!foundCity) {
+                            /* Fallback: faction name */
+                            Str255 pName;
+                            unsigned char *namePtr = gs + playerIdx * 20;
+                            short nlen = 0;
+                            while (nlen < 20 && namePtr[nlen] != 0) nlen++;
+                            pName[0] = (unsigned char)nlen;
+                            BlockMoveData(namePtr, pName + 1, nlen);
+                            DrawString(pName);
+                        }
                     }
                 }
 
-                /* Buttons: Hire and Don't Hire */
+                /* ---- Separator line ---- */
+                {
+                    RGBColor sep = {0x6666, 0x6666, 0x8888};
+                    RGBForeColor(&sep);
+                    MoveTo(20, 328);
+                    LineTo(380, 328);
+                }
+
+                /* ---- Buttons: Hire and Don't Hire ---- */
                 {
                     RGBColor black = {0, 0, 0};
                     RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    RGBColor greenBg = {0x3333, 0x9999, 0x3333};
-                    RGBColor redBg = {0x9999, 0x3333, 0x3333};
-                    Rect hireBtn, dontBtn;
+                    RGBColor greenBg = {0x3333, 0x7777, 0x3333};
+                    RGBColor redBg = {0x7777, 0x3333, 0x3333};
 
-                    SetRect(&hireBtn, 30, 345, 140, 368);
-                    SetRect(&dontBtn, 170, 345, 280, 368);
-
-                    /* "Hire" button (green tint) */
+                    /* "Hire" button */
                     RGBForeColor(&greenBg);
-                    PaintRoundRect(&hireBtn, 8, 8);
+                    PaintRoundRect(&hireBtnR, 8, 8);
                     RGBForeColor(&black);
-                    FrameRoundRect(&hireBtn, 8, 8);
+                    FrameRoundRect(&hireBtnR, 8, 8);
                     PenSize(2, 2);
-                    FrameRoundRect(&hireBtn, 8, 8);
+                    FrameRoundRect(&hireBtnR, 8, 8);
                     PenSize(1, 1);
                     RGBForeColor(&white);
-                    TextFont(3);
-                    TextSize(10);
-                    TextFace(bold);
-                    MoveTo(hireBtn.left + 34, hireBtn.bottom - 6);
+                    TextFont(3); TextSize(10); TextFace(bold);
+                    MoveTo(hireBtnR.left + 38, hireBtnR.bottom - 6);
                     DrawString(GetCachedString(STR_HERO_DIPLO, 21, "\pHire"));
 
-                    /* "Don't Hire" button (red tint) */
+                    /* "Don't Hire" button */
                     RGBForeColor(&redBg);
-                    PaintRoundRect(&dontBtn, 8, 8);
+                    PaintRoundRect(&dontBtnR, 8, 8);
                     RGBForeColor(&black);
-                    FrameRoundRect(&dontBtn, 8, 8);
+                    FrameRoundRect(&dontBtnR, 8, 8);
                     RGBForeColor(&white);
                     TextFace(0);
-                    MoveTo(dontBtn.left + 18, dontBtn.bottom - 6);
+                    MoveTo(dontBtnR.left + 22, dontBtnR.bottom - 6);
                     DrawString(GetCachedString(STR_HERO_DIPLO, 22, "\pDon't Hire"));
                 }
 
@@ -14049,6 +18310,12 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                              srcCopy, NULL);
                 }
 
+                /* Show window after first blit to avoid white flash */
+                if (!hireShown) {
+                    ShowWindow(hireWin);
+                    hireShown = true;
+                }
+
                 needsRedraw = false;
             }
 
@@ -14060,23 +18327,32 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                 GlobalToLocal(&localPt);
 
                 /* "Hire" button */
-                {
-                    Rect hireBtn;
-                    SetRect(&hireBtn, 30, 345, 140, 368);
-                    if (PtInRect(localPt, &hireBtn)) {
-                        done = true;
-                        hired = true;
-                    }
+                if (PtInRect(localPt, &hireBtnR)) {
+                    done = true;
+                    hired = true;
                 }
-
                 /* "Don't Hire" button */
-                {
-                    Rect dontBtn;
-                    SetRect(&dontBtn, 170, 345, 280, 368);
-                    if (PtInRect(localPt, &dontBtn)) {
-                        done = true;
-                        hired = false;
-                    }
+                else if (PtInRect(localPt, &dontBtnR)) {
+                    done = true;
+                    hired = false;
+                }
+                /* Male radio */
+                else if (PtInRect(localPt, &maleRadioR) && isFemaleHero) {
+                    isFemaleHero = false;
+                    /* Pick a male name */
+                    heroNameIdx = sMaleIndices[(unsigned short)Random() % NUM_MALE_HEROES];
+                    if (heroPict != NULL) ReleaseResource((Handle)heroPict);
+                    heroPict = GetPicture(3200);
+                    needsRedraw = true;
+                }
+                /* Female radio */
+                else if (PtInRect(localPt, &femaleRadioR) && !isFemaleHero) {
+                    isFemaleHero = true;
+                    /* Pick a female name */
+                    heroNameIdx = sFemaleIndices[(unsigned short)Random() % NUM_FEMALE_HEROES];
+                    if (heroPict != NULL) ReleaseResource((Handle)heroPict);
+                    heroPict = GetPicture(3201);
+                    needsRedraw = true;
                 }
             }
             else if (evt.what == keyDown) {
@@ -14084,12 +18360,10 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                 if ((TickCount() - startTick) < 30)
                     continue;
                 if (key == 0x0D || key == 0x03) {
-                    /* Return/Enter = Hire */
                     done = true;
                     hired = true;
                 }
                 else if (key == 0x1B) {
-                    /* Escape = Don't Hire */
                     done = true;
                     hired = false;
                 }
@@ -14107,86 +18381,56 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 
     /* Process hire: deduct gold and create army record */
     if (hired && *gGameState != 0) {
-        /* Deduct gold */
         *(short *)(gs + 0x186 + playerIdx * 0x14) -= heroCost;
 
-        /* Create hero army record at next available slot */
         {
             short armyCount = *(short *)(gs + 0x1602);
             unsigned char *armyBase = gs + 0x1604 + armyCount * 0x42;
+            short b;
 
-            /* Zero out the new record */
-            {
-                short b;
-                for (b = 0; b < 0x42; b++)
-                    armyBase[b] = 0;
-            }
+            for (b = 0; b < 0x42; b++)
+                armyBase[b] = 0;
 
-            /* Place hero at first city owned by this player */
-            {
-                short cityCount = *(short *)(gs + 0x810);
-                short ci, heroX = 2, heroY = 2;
-                if (cityCount > 40) cityCount = 40;
-                for (ci = 0; ci < cityCount; ci++) {
-                    unsigned char *city = gs + 0x812 + ci * 0x20;
-                    if (*(short *)(city + 0x04) == playerIdx) {
-                        heroX = *(short *)(city + 0x00);
-                        heroY = *(short *)(city + 0x02);
-                        break;
-                    }
-                }
-                *(short *)(armyBase + 0x00) = heroX;
-                *(short *)(armyBase + 0x02) = heroY;
-            }
+            /* Place at spawn city */
+            *(short *)(armyBase + 0x00) = heroX;
+            *(short *)(armyBase + 0x02) = heroY;
 
             /* Hero name */
             {
                 const unsigned char *name = sHeroNames[heroNameIdx];
                 short nlen = name[0];
-                short b;
                 for (b = 0; b < 16; b++)
                     armyBase[0x04 + b] = 0;
                 for (b = 0; b < nlen && b < 15; b++)
                     armyBase[0x04 + b] = name[b + 1];
             }
 
-            /* Sprite index: hero uses type 0x1C (28) */
-            armyBase[0x14] = 0x1C;
-
-            /* Owner */
+            armyBase[0x14] = 0x1C;  /* sprite: hero */
             armyBase[0x15] = (unsigned char)playerIdx;
 
-            /* Unit type slot 0 = hero (type 0x1C); rest empty */
-            armyBase[0x16] = 0x1C;
+            armyBase[0x16] = 0x1C;  /* unit slot 0 = hero */
             armyBase[0x17] = 0xFF;
             armyBase[0x18] = 0xFF;
             armyBase[0x19] = 0xFF;
 
-            /* Movement */
             armyBase[0x1a] = (unsigned char)heroMovement;
             armyBase[0x1b] = 0;
             armyBase[0x1c] = 0;
             armyBase[0x1d] = 0;
 
-            /* Hit points */
             armyBase[0x1e] = (unsigned char)heroStrength;
             armyBase[0x1f] = 0;
             armyBase[0x20] = 0;
             armyBase[0x21] = 0;
 
-            /* Combat bonus (command) */
             armyBase[0x22] = (unsigned char)heroCommand;
             armyBase[0x23] = 0;
             armyBase[0x24] = 0;
             armyBase[0x25] = 0;
 
-            /* Strength display */
-            *(short *)(armyBase + 0x2a) = heroStrength;
-
-            /* Initial movement points */
+            RecalcArmyStrength(armyBase);
             armyBase[0x2e] = (unsigned char)(heroMovement);
 
-            /* Increment army count */
             *(short *)(gs + 0x1602) = armyCount + 1;
         }
 
@@ -14195,7 +18439,6 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             short heroSlot;
             for (heroSlot = 0; heroSlot < 40; heroSlot++) {
                 if (*(gs + 0x544 + heroSlot * 2) == 0) {
-                    /* Found inactive hero slot */
                     const unsigned char *name = sHeroNames[heroNameIdx];
                     short nlen = name[0];
                     short b;
@@ -14203,10 +18446,57 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                         *(gs + 0x224 + heroSlot * 20 + b) = 0;
                     for (b = 0; b < nlen && b < 19; b++)
                         *(gs + 0x224 + heroSlot * 20 + b) = name[b + 1];
-                    *(short *)(gs + 0x544 + heroSlot * 2) = 1;  /* active */
+                    *(short *)(gs + 0x544 + heroSlot * 2) = 1;
                     break;
                 }
             }
+        }
+
+        /* Write per-player hero instance record at gs+0x1422+player*0x2C */
+        {
+            short armyCount2 = *(short *)(gs + 0x1602) - 1;  /* just incremented above */
+            unsigned char *heroRec = gs + 0x1422 + playerIdx * 0x2C;
+            const unsigned char *name = sHeroNames[heroNameIdx];
+            short nlen = name[0];
+            short b;
+            heroRec[0x00] = 1;  /* active */
+            heroRec[0x01] = 0;
+            heroRec[0x02] = 0;
+            heroRec[0x03] = (unsigned char)(TickCount() & 0xFF);  /* random seed */
+            *(short *)(heroRec + 0x04) = armyCount2;  /* hero army index */
+            for (b = 0; b < 20; b++)
+                heroRec[0x06 + b] = 0;
+            for (b = 0; b < nlen && b < 19; b++)
+                heroRec[0x06 + b] = name[b + 1];
+        }
+
+        /* 68k CODE_064 FUN_00000100: allied units join hired hero.
+         * Not on initial (free) offer. Random: <70%→1, <95%→2, ≥95%→3 allies.
+         * Each ally fills an empty unit slot in the hero's army. */
+        if (!initialOffer) {
+            short armyCount3 = *(short *)(gs + 0x1602);
+            unsigned char *heroArmy = gs + 0x1604 + (armyCount3 - 1) * 0x42;
+            short r100 = (short)((unsigned short)Random() % 100);
+            short allyN = (r100 < 70) ? 1 : (r100 < 95) ? 2 : 3;
+            short spawned = 0, ai2;
+            static const unsigned char allyHPTbl[] = {3, 4, 5, 3};
+            static const unsigned char allyMvTbl[] = {10, 8, 14, 10};
+            for (ai2 = 0; ai2 < allyN; ai2++) {
+                short slot2;
+                for (slot2 = 1; slot2 < 4; slot2++) {  /* skip slot 0 (hero) */
+                    if ((unsigned char)heroArmy[0x16 + slot2] == 0xFF) {
+                        short at = (short)((unsigned short)Random() % 4);
+                        heroArmy[0x16 + slot2] = (unsigned char)at;
+                        heroArmy[0x1a + slot2] = allyMvTbl[at];
+                        heroArmy[0x1e + slot2] = allyHPTbl[at];
+                        heroArmy[0x22 + slot2] = 0;
+                        heroArmy[0x26 + slot2] = 0;
+                        spawned++;
+                        break;
+                    }
+                }
+            }
+            if (spawned > 0) RecalcArmyStrength(heroArmy);
         }
     }
 
@@ -14223,8 +18513,8 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 /* ===================================================================
  * CheckVictoryConditions — Check if any player has won or lost
  *
- * Victory: a single player owns all cities
- * Defeat: current human player has no cities AND no armies
+ * Victory: a single player owns all cities, or dominant player has sufficient margin
+ * Defeat: current human player has no cities (68k: no cities → eliminated)
  * Returns: 0=no result, 1=victory, -1=defeat
  * =================================================================== */
 static short CheckVictoryConditions(void)
@@ -14251,7 +18541,10 @@ static short CheckVictoryConditions(void)
     }
 
     for (ci = 0; ci < cityCount; ci++) {
-        short owner = *(short *)(gs + 0x812 + ci * 0x20 + 0x04);
+        unsigned char *vc = gs + 0x812 + ci * 0x20;
+        short owner = *(short *)(vc + 0x04);
+        short vst = (short)(unsigned char)vc[0x18];
+        if (vst != 0 && vst != 1) continue;  /* only cities + capitals */
         if (owner >= 0 && owner < 8) playerCities[owner]++;
     }
     for (ai = 0; ai < armyCount; ai++) {
@@ -14260,8 +18553,7 @@ static short CheckVictoryConditions(void)
     }
 
     for (pi = 0; pi < 8; pi++) {
-        if (*(short *)(gs + 0x138 + pi * 2) != 0 &&
-            (playerCities[pi] > 0 || playerArmies[pi] > 0)) {
+        if (*(short *)(gs + 0x138 + pi * 2) != 0 && playerCities[pi] > 0) {
             alivePlayers++;
             lastAlive = pi;
         }
@@ -14271,28 +18563,64 @@ static short CheckVictoryConditions(void)
     if (alivePlayers == 1 && lastAlive >= 0)
         return (lastAlive == curPlayer) ? 1 : -1;
 
-    /* Allied victory: if diplomacy enabled and all alive players are at peace */
-    if (sOptDiplomacy && alivePlayers >= 2) {
-        Boolean allAllied = true;
-        short pa, pb;
-        for (pa = 0; pa < 8 && allAllied; pa++) {
-            if (*(short *)(gs + 0x138 + pa * 2) == 0 ||
-                (playerCities[pa] == 0 && playerArmies[pa] == 0)) continue;
-            for (pb = pa + 1; pb < 8 && allAllied; pb++) {
-                if (*(short *)(gs + 0x138 + pb * 2) == 0 ||
-                    (playerCities[pb] == 0 && playerArmies[pb] == 0)) continue;
-                if (*(short *)(gs + 0x1582 + (pa * 8 + pb) * 2) < 0x1000)
-                    allAllied = false;
+    /* Dominant player victory (68k CODE_130 FUN_000006d2):
+     * Uses ARMY counts (not cities). Conditions:
+     * dominant player has > totalArmies/2 AND
+     * dominant player has > secondBest + totalArmies/8.
+     * Both conditions must be met (margin over second place). */
+    {
+        short totalArmies = 0;
+        short maxArmies = 0, secondMax = 0;
+        short dominant = -1;
+        for (pi = 0; pi < 8; pi++) {
+            if (*(short *)(gs + 0x138 + pi * 2) == 0) continue;
+            totalArmies += playerArmies[pi];
+            if (playerArmies[pi] > maxArmies) {
+                secondMax = maxArmies;
+                maxArmies = playerArmies[pi];
+                dominant = pi;
+            } else if (playerArmies[pi] > secondMax) {
+                secondMax = playerArmies[pi];
             }
         }
-        if (allAllied) {
-            /* All alive players are allied — current player wins (shared victory) */
-            return (playerCities[curPlayer] > 0 || playerArmies[curPlayer] > 0) ? 1 : -1;
+        /* 68k CODE_130: set endgame flag at gs+0x15e when a player
+         * has >50% of armies. This suppresses hero offers (CODE_103). */
+        if (totalArmies > 0 && maxArmies > totalArmies / 2) {
+            *(short *)(gs + 0x15e) = 1;
+        }
+        if (totalArmies > 0 && alivePlayers >= 2 &&
+            maxArmies > totalArmies / 2 &&
+            maxArmies > secondMax + totalArmies / 8) {
+            /* Dominant player wins with sufficient margin */
+            return (dominant == curPlayer) ? 1 : -1;
         }
     }
 
-    /* Current player has nothing = defeat */
-    if (playerCities[curPlayer] == 0 && playerArmies[curPlayer] == 0)
+    /* NOTE: Allied victory was removed — the 68k has NO "all players allied = victory"
+     * condition. With diplomacy enabled, players start at peace, and this would
+     * falsely trigger shared victory at game start. Conquest/dominant are the only
+     * victory paths in the original game. */
+
+    /* Turn limit: 68k CODE_130 FUN_00000122 — game stops at turn 201 (0xC9).
+     * Player with most cities at that point wins. */
+    {
+        short turnCount = *(short *)(gs + 0x136);
+        if (turnCount > 201) {
+            /* Find player with most cities */
+            short bestPi = -1;
+            short bestCi = 0;
+            for (pi = 0; pi < 8; pi++) {
+                if (playerCities[pi] > bestCi) {
+                    bestCi = playerCities[pi];
+                    bestPi = pi;
+                }
+            }
+            return (bestPi == curPlayer) ? 1 : -1;
+        }
+    }
+
+    /* Current player has no cities = defeat (68k: no cities → dead) */
+    if (playerCities[curPlayer] == 0)
         return -1;
 
     return 0;
@@ -14529,10 +18857,24 @@ static void ShowCityProductionDialog(short cityIndex)
     /* Only allow production changes for owned cities */
     if (*(short *)(city + 0x04) != *(short *)(gs + 0x110)) return;
 
-    /* Build type list from loaded unit type table */
-    numTypes = sUnitTypesLoaded ? sUnitTypeCount : 6;
-    for (typeCount = 0; typeCount < numTypes && typeCount < MAX_UNIT_TYPES; typeCount++)
-        typeList[typeCount] = typeCount;
+    /* Build type list from city's available production slots (extCity+0x06..0x0D) */
+    {
+        unsigned char *ext2 = (unsigned char *)*gExtState;
+        unsigned char *extCity2 = ext2 + 0x24c + cityIndex * 0x5c;
+        short pi4;
+        typeCount = 0;
+        for (pi4 = 0; pi4 < 4; pi4++) {
+            short pType = *(short *)(extCity2 + 0x06 + pi4 * 2);
+            if (pType >= 0 && pType < MAX_UNIT_TYPES)
+                typeList[typeCount++] = pType;
+        }
+        if (typeCount == 0) {
+            /* Fallback: offer all types if city has no specific slots */
+            numTypes = sUnitTypesLoaded ? sUnitTypeCount : 6;
+            for (typeCount = 0; typeCount < numTypes && typeCount < MAX_UNIT_TYPES; typeCount++)
+                typeList[typeCount] = typeCount;
+        }
+    }
 
     /* Read current producing type and find its row */
     {
@@ -14627,31 +18969,27 @@ static void ShowCityProductionDialog(short cityIndex)
             {
                 short ut;
                 RGBColor black = {0, 0, 0};
+                RGBColor gray = {0x8888, 0x8888, 0x8888};
                 RGBColor hilite = {0xAAAA, 0xAAAA, 0xFFFF};
                 Str255 numStr, typeName;
                 short rowH = 18;
+                short playerGold = *(short *)(gs + 0x186 +
+                    *(short *)(gs + 0x110) * 0x14);
 
                 for (ut = 0; ut < typeCount; ut++) {
                     short yp = 54 + ut * rowH;
                     Rect rowRect;
                     short typeId = typeList[ut];
                     short str, mov, cost, turns;
+                    Boolean canAfford;
 
                     SetRect(&rowRect, 10, yp, ww - 10, yp + rowH - 2);
-
-                    if (ut == selectedRow) {
-                        RGBForeColor(&hilite);
-                        PaintRect(&rowRect);
-                    }
-
-                    RGBForeColor(&black);
-                    FrameRect(&rowRect);
 
                     /* Get stats from DAT table or fallback */
                     if (sUnitTypesLoaded && typeId < sUnitTypeCount) {
                         str   = GetUnitTypeStat(typeId, 0);
                         turns = GetUnitTypeStat(typeId, 1);
-                        cost  = GetUnitTypeStat(typeId, 2);
+                        cost  = GetUnitTypeStat(typeId, 4);
                         mov   = GetUnitTypeStat(typeId, 3);
                     } else {
                         static const short fStr[] = {3,4,5,3,6,4};
@@ -14662,6 +19000,17 @@ static void ShowCityProductionDialog(short cityIndex)
                         turns = (typeId < 6) ? fTrn[typeId] : 4;
                         cost  = 0;
                     }
+
+                    /* 68k CODE_047: gray out if cost > 0 and player can't afford */
+                    canAfford = (cost == 0 || playerGold >= cost);
+
+                    if (ut == selectedRow && canAfford) {
+                        RGBForeColor(&hilite);
+                        PaintRect(&rowRect);
+                    }
+
+                    RGBForeColor(canAfford ? &black : &gray);
+                    FrameRect(&rowRect);
 
                     GetUnitTypeName(typeId, typeName);
                     TextSize(9);
@@ -14680,6 +19029,9 @@ static void ShowCityProductionDialog(short cityIndex)
                         MoveTo(255, yp + rowH - 5);
                         NumToString((long)cost, numStr);
                         DrawString(numStr);
+                    } else {
+                        MoveTo(255, yp + rowH - 5);
+                        DrawString("\pFree");
                     }
 
                     MoveTo(295, yp + rowH - 5);
@@ -14732,15 +19084,21 @@ static void ShowCityProductionDialog(short cityIndex)
                 /* Check unit type rows */
                 {
                     short ut;
+                    short playerGold2 = *(short *)(gs + 0x186 +
+                        *(short *)(gs + 0x110) * 0x14);
                     for (ut = 0; ut < typeCount; ut++) {
                         short yp = 54 + ut * rowH;
                         short ww = gwRect.right - gwRect.left;
                         Rect rowRect;
                         SetRect(&rowRect, 10, yp, ww - 10, yp + rowH - 2);
                         if (PtInRect(lp, &rowRect)) {
-                            selectedRow = ut;
-                            selectedType = typeList[ut];
-                            redraw = 1;
+                            /* Only allow selecting affordable units */
+                            short rowCost = GetUnitTypeStat(typeList[ut], 4);
+                            if (rowCost == 0 || playerGold2 >= rowCost) {
+                                selectedRow = ut;
+                                selectedType = typeList[ut];
+                                redraw = 1;
+                            }
                             break;
                         }
                     }
@@ -14753,6 +19111,16 @@ static void ShowCityProductionDialog(short cityIndex)
                     if (PtInRect(lp, &okRect)) {
                         unsigned char *ext = (unsigned char *)*gExtState;
                         unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
+                        /* 68k CODE_047/072: deduct gold immediately when production is SET.
+                         * Gold is NOT deducted again at spawn time. */
+                        {
+                            short setCost = GetUnitTypeStat(selectedType, 4);
+                            if (setCost > 0) {
+                                short *pgold = (short *)(gs + 0x186 +
+                                    *(short *)(gs + 0x110) * 0x14);
+                                *pgold = *pgold - setCost;
+                            }
+                        }
                         *(short *)(extCity + 0x02) = selectedType;
                         *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
                         prodDone = true;
@@ -14843,16 +19211,29 @@ static void ExecuteAITurn(short aiPlayer)
         short totalUpkeep = 0;
         for (ci = 0; ci < cityCount; ci++) {
             unsigned char *city = gs + 0x812 + ci * 0x20;
-            if (*(short *)(city + 0x04) == aiPlayer)
-                cityIncome += *(short *)(city + 0x08);
+            short st3 = (short)(unsigned char)city[0x18];
+            if (st3 != 0 && st3 != 1) continue;  /* cities + capitals only */
+            if (*(short *)(city + 0x04) == aiPlayer) {
+                short inc = *(short *)(city + 0x08);
+                if (inc < 0) inc = 0;
+                if (inc > 100) inc = 100;
+                cityIncome += inc;
+            }
         }
-        /* Army upkeep: 2 gold per unit */
+        /* Army upkeep: 2 gold per unit (heroes exempt) */
         for (ai = 0; ai < armyCount; ai++) {
             unsigned char *army = gs + 0x1604 + ai * 0x42;
             if ((short)(unsigned char)army[0x15] == aiPlayer) {
                 short u;
-                for (u = 0; u < 4; u++)
-                    if ((unsigned char)army[0x16 + u] != 0xFF) totalUpkeep += 2;
+                for (u = 0; u < 4; u++) {
+                    short ut = (unsigned char)army[0x16 + u];
+                    if (ut != 0xFF && ut != 0x1C) {
+                        /* 68k CODE_042: per-unit upkeep = stat[2] / 2, min 1 */
+                        short upk = GetUnitTypeStat(ut, 2) / 2;
+                        if (upk < 1) upk = 1;
+                        totalUpkeep += upk;
+                    }
+                }
             }
         }
         /* Hero gold item bonus */
@@ -14863,18 +19244,29 @@ static void ExecuteAITurn(short aiPlayer)
             short ci2;
             for (ci2 = 0; ci2 < cityCount; ci2++) {
                 unsigned char *city = gs + 0x812 + ci2 * 0x20;
+                short ais = (short)(unsigned char)city[0x18];
+                if (ais != 0 && ais != 1) continue;
                 if (*(short *)(city + 0x04) == aiPlayer) aiCityCount++;
             }
-            /* Check each army for hero gold items */
+            /* Check each army for hero gold items (only first hero counts,
+             * matching human player logic at ProcessStartOfTurn) */
             for (ai = 0; ai < armyCount; ai++) {
                 unsigned char *army = gs + 0x1604 + ai * 0x42;
                 if ((short)(unsigned char)army[0x15] == aiPlayer) {
                     GetHeroItemBonus(ai, &bB, &cB, &gB, &fB, &mB);
-                    if (gB > 0) cityIncome += gB * aiCityCount;
+                    if (gB > 0) {
+                        cityIncome += gB * aiCityCount;
+                        break;  /* only count gold item bonus once */
+                    }
                 }
             }
         }
-        *(short *)(gs + 0x186 + aiPlayer * 0x14) += (cityIncome - totalUpkeep);
+        {
+            short *aig = (short *)(gs + 0x186 + aiPlayer * 0x14);
+            *aig = *aig + (cityIncome - totalUpkeep);
+            if (*aig > 30000) *aig = 30000; /* 68k gold cap */
+            if (*aig < 0) *aig = 0;         /* 68k gold floor */
+        }
     }
 
     /* Process production for AI */
@@ -14887,23 +19279,127 @@ static void ExecuteAITurn(short aiPlayer)
             {
                 short producing = *(short *)(extCity + 0x02);
                 short prodTurns = *(short *)(extCity + 0x58);
-                if (producing < 0) continue;
+                /* Auto-set production for idle AI cities (e.g. newly captured).
+                 * 68k AI always produces — use first available unit type. */
+                if (producing < 0) {
+                    short sType = (short)(unsigned char)city[0x18];
+                    if (sType == 0 || sType == 1) {
+                        short firstProd = *(short *)(extCity + 0x06);
+                        short setProd;
+                        if (firstProd >= 0 && firstProd < MAX_UNIT_TYPES) {
+                            setProd = firstProd;
+                        } else {
+                            setProd = 0;
+                        }
+                        *(short *)(extCity + 0x02) = setProd;
+                        *(short *)(extCity + 0x58) = GetProductionTurns(setProd);
+                        /* 68k: deduct gold when production is SET */
+                        {
+                            short setCost = GetUnitTypeStat(setProd, 4);
+                            if (setCost > 0) {
+                                short *pgold = (short *)(gs + 0x186 + aiPlayer * 0x14);
+                                *pgold = *pgold - setCost;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                if (prodTurns <= 0) continue;  /* stalled: skip (matching human) */
                 prodTurns--;
                 *(short *)(extCity + 0x58) = prodTurns;
                 if (prodTurns <= 0) {
+                    /* Gold check (matching human player ProcessStartOfTurn) */
+                    short aiGold = *(short *)(gs + 0x186 + aiPlayer * 0x14);
+                    if (aiGold < 1) {
+                        *(short *)(extCity + 0x58) = 0;  /* stall permanently */
+                        continue;
+                    }
                     short ac = *(short *)(gs + 0x1602);
-                    if (ac < 100) {
+                    short aiCX = *(short *)(city + 0x00);
+                    short aiCY = *(short *)(city + 0x02);
+                    short aiMerge = -1;
+                    short aim;
+
+                    /* Try to merge into existing friendly army at city */
+                    if (ac > 100) ac = 100;
+                    for (aim = 0; aim < ac; aim++) {
+                        unsigned char *ma = gs + 0x1604 + aim * 0x42;
+                        if (*(short *)(ma + 0x00) == aiCX &&
+                            *(short *)(ma + 0x02) == aiCY &&
+                            (short)(unsigned char)ma[0x15] == aiPlayer) {
+                            short ms;
+                            for (ms = 0; ms < 4; ms++) {
+                                if (ma[0x16 + ms] == 0xFF) {
+                                    aiMerge = aim;
+                                    break;
+                                }
+                            }
+                            if (aiMerge >= 0) break;
+                        }
+                    }
+
+                    if (aiMerge >= 0) {
+                        /* Merge into existing army's empty slot */
+                        unsigned char *ma = gs + 0x1604 + aiMerge * 0x42;
+                        short ms;
+                        for (ms = 0; ms < 4; ms++) {
+                            if (ma[0x16 + ms] == 0xFF) {
+                                ma[0x16 + ms] = (unsigned char)producing;
+                                if (sUnitTypesLoaded && producing < sUnitTypeCount) {
+                                    /* Fix: use GetUnitTypeStat (reads high byte from correct stat offset) */
+                                    ma[0x1a + ms] = (unsigned char)GetUnitTypeStat(producing, 3); /* movement */
+                                    ma[0x1e + ms] = (unsigned char)GetUnitTypeStat(producing, 0); /* HP */
+                                } else {
+                                    ma[0x1a + ms] = 8;
+                                    ma[0x1e + ms] = 3;
+                                }
+                                ma[0x22 + ms] = 0;
+                                ma[0x26 + ms] = 0;
+                                /* Tech upgrade bonus (68k CODE_080 FUN_00001858) */
+                                if (*(short *)(gs + 0xf0 + aiPlayer * 2) != 0) {
+                                    short hp2 = (short)ma[0x1e + ms] + 2;
+                                    if (hp2 > 9) hp2 = 9;
+                                    ma[0x1e + ms] = (unsigned char)hp2;
+                                }
+                                RecalcArmyStrength(ma);
+                                break;
+                            }
+                        }
+                    } else if (ac < 100) {
                         unsigned char *newArmy = gs + 0x1604 + ac * 0x42;
                         short j;
                         for (j = 0; j < 0x42; j++) newArmy[j] = 0;
-                        *(short *)(newArmy + 0x00) = *(short *)(city + 0x00);
-                        *(short *)(newArmy + 0x02) = *(short *)(city + 0x02);
-                        newArmy[0x04] = 'A'; newArmy[0x05] = 'I';
+                        *(short *)(newArmy + 0x00) = aiCX;
+                        *(short *)(newArmy + 0x02) = aiCY;
+                        /* Name from unit type table */
+                        {
+                            Str255 uname;
+                            short nl2;
+                            GetUnitTypeName(producing, uname);
+                            nl2 = uname[0];
+                            if (nl2 > 16) nl2 = 16;
+                            BlockMoveData(uname + 1, newArmy + 0x04, nl2);
+                            newArmy[0x04 + nl2] = 0;
+                        }
                         newArmy[0x15] = (unsigned char)aiPlayer;
+                        newArmy[0x2f] = (unsigned char)aiPlayer;
                         newArmy[0x16] = (unsigned char)producing;
                         newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
-                        {
-                            /* Sprite index per unit type: LtInf=0, HvInf=2, Cav=4, Arch=6, Siege=8, Naval=10 */
+                        /* Use unit type table for sprite, HP, and movement */
+                        if (sUnitTypesLoaded && producing < sUnitTypeCount) {
+                            /* Fix: use GetUnitTypeStat (reads high byte from correct stat offset) */
+                            newArmy[0x14] = (unsigned char)(producing * 2); /* sprite sheet row */
+                            newArmy[0x1a] = (unsigned char)GetUnitTypeStat(producing, 3); /* movement */
+                            newArmy[0x1e] = (unsigned char)GetUnitTypeStat(producing, 0); /* HP */
+                            /* Tech upgrade bonus (68k CODE_080 FUN_00001858) */
+                            if (*(short *)(gs + 0xf0 + aiPlayer * 2) != 0) {
+                                short hp2 = (short)newArmy[0x1e] + 2;
+                                if (hp2 > 9) hp2 = 9;
+                                newArmy[0x1e] = (unsigned char)hp2;
+                            }
+                            RecalcArmyStrength(newArmy);
+                            newArmy[0x2e] = newArmy[0x1a] / 2; /* half movement on spawn */
+                        } else {
                             static unsigned char spriteIdx[] = {0, 2, 4, 6, 8, 10};
                             static unsigned char unitHP2[]  = {3, 4, 5, 3, 6, 4};
                             static unsigned char unitMov2[] = {10, 8, 14, 10, 6, 12};
@@ -14912,75 +19408,95 @@ static void ExecuteAITurn(short aiPlayer)
                             newArmy[0x14] = spriteIdx[uidx];
                             newArmy[0x1a] = unitMov2[uidx];
                             newArmy[0x1e] = unitHP2[uidx];
-                            *(short *)(newArmy + 0x2a) = (short)unitHP2[uidx];
-                            newArmy[0x2e] = (unsigned char)(unitMov2[uidx]); /* move pts */
+                            RecalcArmyStrength(newArmy);
+                            newArmy[0x2e] = unitMov2[uidx] / 2; /* half movement on spawn */
                         }
                         *(short *)(gs + 0x1602) = ac + 1;
                     }
+                    /* 68k: gold was already deducted when AI set production.
+                     * Do NOT deduct again at spawn time. */
                     *(short *)(extCity + 0x58) = GetProductionTurns(producing);
                 }
             }
         }
     }
 
-    /* HP recovery for AI armies at friendly cities */
+    /* NOTE: 68k has NO per-turn HP healing — removed fabricated AI healing. */
+
+    /* Reset movement points for all AI armies (68k: same formula as human) */
     armyCount = *(short *)(gs + 0x1602);
     if (armyCount > 100) armyCount = 100;
+    /* Pass 1: basic reset (baseMov + leftover, cap leftover at 2) */
     for (ai = 0; ai < armyCount; ai++) {
         unsigned char *army = gs + 0x1604 + ai * 0x42;
         if ((short)(unsigned char)army[0x15] != aiPlayer) continue;
-        if (army[0x2d] == 0) continue;  /* only heal if fortified */
+        if (army[0x16] == 0xFF) continue;  /* skip empty armies */
         {
-            short ax = *(short *)(army + 0x00);
-            short ay = *(short *)(army + 0x02);
-            short cj;
-            for (cj = 0; cj < cityCount; cj++) {
-                unsigned char *city = gs + 0x812 + cj * 0x20;
-                short sType = (short)(unsigned char)city[0x18];
-                if (sType == 2 || sType == 5 || sType == 6) continue;
-                if (*(short *)(city + 0x04) == aiPlayer &&
-                    *(short *)(city + 0x00) == ax &&
-                    *(short *)(city + 0x02) == ay) {
-                    short u;
-                    static const unsigned char maxHP2[] = {3, 4, 5, 3, 6, 4};
-                    for (u = 0; u < 4; u++) {
-                        short ut = (short)(unsigned char)army[0x16 + u];
-                        short hp = (short)(unsigned char)army[0x1e + u];
-                        short mhp;
-                        if (ut == 0xFF || hp <= 0) continue;
-                        if (ut == 0x1C) mhp = 9;
-                        else if (ut <= 5) mhp = maxHP2[ut];
-                        else mhp = 5;
-                        if (hp < mhp) army[0x1e + u] = (unsigned char)(hp + 1);
-                    }
-                    {
-                        short str = 0;
-                        for (u = 0; u < 4; u++)
-                            if ((unsigned char)army[0x16 + u] != 0xFF)
-                                str += (short)(unsigned char)army[0x1e + u];
-                        *(short *)(army + 0x2a) = str;
-                    }
-                    break;
-                }
+            short baseMov2 = (short)(unsigned char)army[0x1a];
+            short curMov2 = (short)(unsigned char)army[0x2e];
+            short newMov2;
+            /* 68k has no defensive default — 0 base means 0+leftover only */
+            if (curMov2 > 2) curMov2 = 2;  /* cap leftover at 2 */
+            if (army[0x2d] != 0) {
+                newMov2 = curMov2 + 20;  /* garrison: leftover + 20 */
+            } else {
+                newMov2 = baseMov2 + curMov2;  /* normal: base + leftover */
             }
+            if (newMov2 > 99) newMov2 = 99;
+            army[0x2e] = (unsigned char)newMov2;
+            army[0x30] = 0;  /* clear has-moved flag */
+            *(short *)(army + 0x2c) &= ~0x0240;  /* clear group selection bits */
+        }
+    }
+    /* Pass 2: hero movement item bonus (group-wide, matching human player) */
+    for (ai = 0; ai < armyCount; ai++) {
+        unsigned char *army = gs + 0x1604 + ai * 0x42;
+        if ((short)(unsigned char)army[0x15] != aiPlayer) continue;
+        if (army[0x16] == 0xFF) continue;
+        { short ui, hasHero = 0;
+          for (ui = 0; ui < 4; ui++) {
+              if ((unsigned char)army[0x16 + ui] == 0x1C) { hasHero = 1; break; }
+          }
+          if (!hasHero) continue;
+        }
+        if (!ArmyHasDoubleMoveItem(ai)) continue;
+        { short ax = *(short *)(army + 0x00);
+          short ay = *(short *)(army + 0x02);
+          short j;
+          for (j = 0; j < armyCount; j++) {
+              unsigned char *ga = gs + 0x1604 + j * 0x42;
+              if ((short)(unsigned char)ga[0x15] != aiPlayer) continue;
+              if (ga[0x16] == 0xFF) continue;
+              if (*(short *)(ga + 0x00) == ax && *(short *)(ga + 0x02) == ay) {
+                  short bm = (short)(unsigned char)ga[0x1a];
+                  short cm = (short)(unsigned char)ga[0x2e];
+                  short nm = bm + cm;
+                  if (nm > 99) nm = 99;
+                  ga[0x2e] = (unsigned char)nm;
+              }
+          }
         }
     }
 
-    /* Reset movement points for all AI armies */
-    armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
-    for (ai = 0; ai < armyCount; ai++) {
-        unsigned char *army = gs + 0x1604 + ai * 0x42;
-        if ((short)(unsigned char)army[0x15] == aiPlayer) {
-            short maxMov = (short)(unsigned char)army[0x1a];
-            if (maxMov <= 0) maxMov = 10;
-            {
-                short bB, cB, gB;
-                Boolean fB, mB;
-                GetHeroItemBonus(ai, &bB, &cB, &gB, &fB, &mB);
-                if (mB) maxMov *= 2;
-            }
-            army[0x2e] = (unsigned char)maxMov;
+    /* Disband single-member groups (matching human ProcessStartOfTurn) */
+    {
+        unsigned char tagCount[9];
+        short t;
+        for (t = 0; t < 9; t++) tagCount[t] = 0;
+        for (ai = 0; ai < armyCount; ai++) {
+            unsigned char *army = gs + 0x1604 + ai * 0x42;
+            if ((short)(unsigned char)army[0x15] != aiPlayer) continue;
+            if (army[0x16] == 0xFF) continue;
+            { unsigned char tag = army[0x11];
+              if (tag >= 1 && tag <= 8) tagCount[tag]++; }
+        }
+        for (ai = 0; ai < armyCount; ai++) {
+            unsigned char *army = gs + 0x1604 + ai * 0x42;
+            if ((short)(unsigned char)army[0x15] != aiPlayer) continue;
+            if (army[0x16] == 0xFF) continue;
+            { unsigned char tag = army[0x11];
+              if (tag >= 1 && tag <= 8 && tagCount[tag] <= 1)
+                  army[0x11] = 0; }
         }
     }
 
@@ -14994,6 +19510,39 @@ static void ExecuteAITurn(short aiPlayer)
                 ext[0x182 + ai] = 0;
             }
         }
+    }
+
+    /* 68k CODE_082: Select ONE primary enemy for this AI turn.
+     * Pick the alive non-allied player with the most cities. This focuses
+     * all AI armies on one opponent instead of spreading attacks. */
+    short primaryEnemy = -1;
+    {
+        short bestEnemyCities = 0;
+        short pi2;
+        for (pi2 = 0; pi2 < 8; pi2++) {
+            if (pi2 == aiPlayer) continue;
+            if (*(short *)(gs + 0x138 + pi2 * 2) == 0) continue;  /* dead */
+            /* Check diplomacy: must be at war (or neutral/0x0F) */
+            if (pi2 < 8) {
+                unsigned char dip = *(gs + 0x1582 + aiPlayer * 8 + pi2);
+                short dipState = DIPLO_GET_STATE(dip);
+                if (dipState != DIPLO_WAR) continue;  /* not at war: skip */
+            }
+            /* Count this player's cities */
+            short pc = 0;
+            short pci;
+            for (pci = 0; pci < cityCount; pci++) {
+                unsigned char *pcity = gs + 0x812 + pci * 0x20;
+                short sType = (short)(unsigned char)pcity[0x18];
+                if (sType >= 2 && sType <= 5) continue;
+                if (*(short *)(pcity + 0x04) == pi2) pc++;
+            }
+            if (pc > bestEnemyCities) {
+                bestEnemyCities = pc;
+                primaryEnemy = pi2;
+            }
+        }
+        /* If no war enemies, fall back to targeting neutrals (owner 0x0F) */
     }
 
     /* Count own armies per city (for defense assessment) */
@@ -15053,7 +19602,7 @@ static void ExecuteAITurn(short aiPlayer)
                     for (ci = 0; ci < cityCount; ci++) {
                         unsigned char *site = gs + 0x812 + ci * 0x20;
                         short sType = (short)(unsigned char)site[0x18];
-                        if (sType == 2 || sType == 5 || sType == 6) {
+                        if (sType >= 2 && sType <= 5) {
                             short rx = *(short *)(site + 0x00);
                             short ry = *(short *)(site + 0x02);
                             long rdx = (long)(rx - ax);
@@ -15125,7 +19674,7 @@ static void ExecuteAITurn(short aiPlayer)
                     short eOwner = (short)(unsigned char)ea[0x15];
                     if (eOwner != aiPlayer && eOwner >= 0 && eOwner < 8 &&
                         *(short *)(gs + 0x138 + eOwner * 2) != 0 &&
-                        *(short *)(gs + 0x1582 + (aiPlayer * 8 + eOwner) * 2) < 0x1000) {
+                        DIPLO_GET_STATE(*(gs + 0x1582 + aiPlayer * 8 + eOwner)) == DIPLO_WAR) {
                         long edx = (long)(*(short *)(ea + 0x00) - ax);
                         long edy = (long)(*(short *)(ea + 0x02) - ay);
                         if (edx * edx + edy * edy <= 4) { /* within 2 tiles */
@@ -15156,17 +19705,24 @@ static void ExecuteAITurn(short aiPlayer)
                 }
 
                 if (tgtX < 0) {
-                    /* Prioritize neutral cities early game (easy captures) */
+                    /* 68k CODE_082: prefer primary enemy's cities.
+                     * Pass 1: only consider primaryEnemy's cities.
+                     * Pass 2 (fallback): any enemy/neutral city. */
                     short turn = *(short *)(gs + 0x136);
+                    short pass;
+                    for (pass = 0; pass < 2 && tgtX < 0; pass++) {
+                    bestDist = 999999L;
                     for (ci = 0; ci < cityCount; ci++) {
                         unsigned char *city = gs + 0x812 + ci * 0x20;
                         short cOwner = *(short *)(city + 0x04);
                         short sType = (short)(unsigned char)city[0x18];
-                        if (sType == 2 || sType == 5 || sType == 6) continue;
+                        if (sType >= 2 && sType <= 5) continue;
                         if (cOwner == aiPlayer) continue;
-                        /* Respect diplomacy: skip cities of players at peace */
+                        /* Pass 0: only primary enemy. Pass 1: any valid target. */
+                        if (pass == 0 && primaryEnemy >= 0 && cOwner != primaryEnemy) continue;
+                        /* Respect diplomacy: skip cities of non-war players (68k: state != 2) */
                         if (cOwner >= 0 && cOwner < 8 &&
-                            *(short *)(gs + 0x1582 + (aiPlayer * 8 + cOwner) * 2) >= 0x1000) continue;
+                            DIPLO_GET_STATE(*(gs + 0x1582 + aiPlayer * 8 + cOwner)) != DIPLO_WAR) continue;
 
                         {
                             short cx = *(short *)(city + 0x00);
@@ -15205,6 +19761,7 @@ static void ExecuteAITurn(short aiPlayer)
                             }
                         }
                     }
+                    } /* end pass loop */
                 }
             }
 
@@ -15215,147 +19772,70 @@ static void ExecuteAITurn(short aiPlayer)
             *(short *)(army + 0x34) = tgtX;
             *(short *)(army + 0x36) = tgtY;
 
-            /* Execute movement steps using movement points.
-             * Terrain-aware pathfinding: when preferred direction is blocked,
-             * search all 8 neighbors and pick the passable one closest to target.
-             * Track previous position to prevent oscillation. */
+            /* Execute movement via wavefront pathfinder (68k CODE_115) */
             {
-                short prevX = -1, prevY = -1;  /* Anti-oscillation */
-                static const short sDirX[8] = {1, -1, 0, 0, 1, -1, 1, -1};
-                static const short sDirY[8] = {0, 0, 1, -1, 1, 1, -1, -1};
-
-                for (steps = 0; steps < 10; steps++) {
-                    short curX, curY, dx, dy, stepX = 0, stepY = 0, newX, newY;
-                    short movePts, unitClass, cost;
-
-                    /* Re-read army pointer (may have shifted due to combat) */
-                    armyCount = *(short *)(gs + 0x1602);
-                    if (armyCount > 100) armyCount = 100;
-                    if (ai >= armyCount) break;
-                    army = gs + 0x1604 + ai * 0x42;
-                    if ((short)(unsigned char)army[0x15] != aiPlayer) break;
-
-                    movePts = (short)(unsigned char)army[0x2e];
-                    if (movePts <= 0) break;
-
-                    curX = *(short *)(army + 0x00);
-                    curY = *(short *)(army + 0x02);
-                    dx = tgtX - curX;
-                    dy = tgtY - curY;
-
-                    if (dx > 0) stepX = 1;
-                    else if (dx < 0) stepX = -1;
-                    if (dy > 0) stepY = 1;
-                    else if (dy < 0) stepY = -1;
-
-                    if (stepX == 0 && stepY == 0) {
-                        *(short *)(army + 0x32) = 0;
-                        break;
-                    }
-
-                    newX = curX + stepX;
-                    newY = curY + stepY;
-
-                    /* Check terrain cost for preferred direction */
-                    unitClass = (short)(unsigned char)army[0x16];
-                    cost = GetMovementCost(newX, newY, unitClass);
-
-                    /* Also reject if this would move us back to previous position */
-                    if (cost > 0 && newX == prevX && newY == prevY)
-                        cost = 0;  /* treat as blocked to avoid oscillation */
-
-                    if (cost == 0) {
-                        /* Preferred direction blocked: search all 8 neighbors.
-                         * Pick the passable neighbor closest to target. */
-                        long bestAltDist = 999999L;
-                        short bestAltCost = 0;
-                        short bestAltX = -1, bestAltY = -1;
-                        short d;
-
-                        for (d = 0; d < 8; d++) {
-                            short nx = curX + sDirX[d];
-                            short ny = curY + sDirY[d];
-                            short nc;
-                            long ndx, ndy, ndist;
-
-                            if (nx < 0 || nx >= sMapWidth ||
-                                ny < 0 || ny >= sMapHeight) continue;
-                            /* Skip going back to previous position */
-                            if (nx == prevX && ny == prevY) continue;
-
-                            nc = GetMovementCost(nx, ny, unitClass);
-                            if (nc <= 0 || nc > movePts) continue;
-
-                            ndx = (long)(tgtX - nx);
-                            ndy = (long)(tgtY - ny);
-                            ndist = ndx * ndx + ndy * ndy;
-                            /* Prefer lower cost tiles (roads etc) */
-                            ndist += nc * 2;
-                            if (ndist < bestAltDist) {
-                                bestAltDist = ndist;
-                                bestAltCost = nc;
-                                bestAltX = nx;
-                                bestAltY = ny;
-                            }
-                        }
-
-                        if (bestAltX < 0) break;  /* Truly stuck */
-                        newX = bestAltX;
-                        newY = bestAltY;
-                        cost = bestAltCost;
-                    }
-                    if (movePts < cost) break;
-
-                    prevX = curX;
-                    prevY = curY;
-
-                    if (newX >= 0 && newX < sMapWidth &&
-                        newY >= 0 && newY < sMapHeight) {
-                        *(short *)(army + 0x00) = newX;
-                        *(short *)(army + 0x02) = newY;
+                short curX = *(short *)(army + 0x00);
+                short curY = *(short *)(army + 0x02);
+                short unitClass = GetEffectiveUnitClass(ai);
+                short pathLen = ComputeWavefrontPath(curX, curY, tgtX, tgtY, unitClass);
+                if (pathLen > 0) {
+                    for (steps = 0; steps < pathLen && sPathDirBuffer[steps] != 0xFF; steps++) {
+                        short dir, movePts, nx, ny, cost;
+                        armyCount = *(short *)(gs + 0x1602);
+                        if (armyCount > 100) armyCount = 100;
+                        if (ai >= armyCount) break;
+                        army = gs + 0x1604 + ai * 0x42;
+                        if ((short)(unsigned char)army[0x15] != aiPlayer) break;
+                        movePts = (short)(unsigned char)army[0x2e];
+                        if (movePts <= 0) break;
+                        dir = (short)sPathDirBuffer[steps];
+                        if (dir < 0 || dir > 7) break;
+                        nx = *(short *)(army + 0x00) + sPathDX[dir];
+                        ny = *(short *)(army + 0x02) + sPathDY[dir];
+                        if (nx < 0 || nx >= sMapWidth || ny < 0 || ny >= sMapHeight) break;
+                        cost = GetMovementCost(nx, ny, unitClass);
+                        if (cost <= 0 || movePts < cost) break;
+                        *(short *)(army + 0x00) = nx;
+                        *(short *)(army + 0x02) = ny;
                         army[0x2e] = (unsigned char)(movePts - cost);
-
-                        /* Update fog of war */
-                        if (sOptHiddenMap)
-                            FogReveal(aiPlayer, newX, newY);
-
-                        /* Check for combat */
+                        army[0x2d] = 0;
+                        if (sOptHiddenMap) FogRevealUnit(aiPlayer, nx, ny, unitClass == 0x0E);
                         if (CheckAndResolveCombat(ai)) {
                             armyCount = *(short *)(gs + 0x1602);
                             if (armyCount > 100) armyCount = 100;
                             break;
                         }
-                    } else break;
-
-                    /* AI hero auto-search ruins at current location */
-                    {
-                        short ru;
-                        Boolean armyHasHero = false;
-                        for (ru = 0; ru < 4; ru++)
-                            if ((unsigned char)army[0x16 + ru] == 0x1C) { armyHasHero = true; break; }
-                        if (armyHasHero) {
-                            for (ru = 0; ru < cityCount; ru++) {
-                                unsigned char *rsite = gs + 0x812 + ru * 0x20;
-                                short rsType = (short)(unsigned char)rsite[0x18];
-                                if ((rsType == 2 || rsType == 5 || rsType == 6) &&
-                                    *(short *)(rsite + 0x00) == newX &&
-                                    *(short *)(rsite + 0x02) == newY) {
-                                    /* Search the ruin: give gold reward */
-                                    short gold = (short)(TickCount() % 300) + 200;
-                                    *(short *)(gs + 0x186 + aiPlayer * 0x14) += gold;
-                                    rsite[0x18] = 0;  /* mark as searched */
-                                    break;
-                                }
-                            }
+                        /* AI hero auto-search ruins */
+                        { short ru; Boolean hasHero = false;
+                          for (ru = 0; ru < 4; ru++)
+                              if ((unsigned char)army[0x16 + ru] == 0x1C) { hasHero = true; break; }
+                          if (hasHero) {
+                              for (ru = 0; ru < cityCount; ru++) {
+                                  unsigned char *rsite = gs + 0x812 + ru * 0x20;
+                                  short rsT = (short)(unsigned char)rsite[0x18];
+                                  if ((rsT == 2 || rsT == 5 || rsT == 6) &&
+                                      *(short *)(rsite + 0x1c) != 0 &&
+                                      *(short *)(rsite + 0x00) == nx &&
+                                      *(short *)(rsite + 0x02) == ny) {
+                                      short gold = (short)((unsigned short)Random() % 300) + 200;
+                                      { short *aig2 = (short *)(gs + 0x186 + aiPlayer * 0x14);
+                                        *aig2 = *aig2 + gold;
+                                        if (*aig2 > 30000) *aig2 = 30000; /* 68k gold cap */
+                                      }
+                                      *(short *)(rsite + 0x1c) = 0;
+                                      break;
+                                  }
+                              }
+                          }
+                        }
+                        if (*(short *)(army + 0x00) == tgtX &&
+                            *(short *)(army + 0x02) == tgtY) {
+                            *(short *)(army + 0x32) = 0;
+                            break;
                         }
                     }
-
-                    /* Check if reached target */
-                    if (*(short *)(army + 0x00) == tgtX &&
-                        *(short *)(army + 0x02) == tgtY) {
-                        *(short *)(army + 0x32) = 0;
-                        break;
-                    }
+                } else {
+                    *(short *)(army + 0x32) = 0;  /* unreachable: cancel */
                 }
             }
         }
@@ -15409,7 +19889,7 @@ static void ExecuteAITurn(short aiPlayer)
             unsigned char *extCity = ext + 0x24c + ci * 0x5c;
             short sType = (short)(unsigned char)city[0x18];
             if (*(short *)(city + 0x04) != aiPlayer) continue;
-            if (sType == 2 || sType == 5 || sType == 6) continue;
+            if (sType >= 2 && sType <= 5) continue;
 
             /* If producing nothing, choose unit type based on needs */
             if (*(short *)(extCity + 0x02) < 0) {
@@ -15454,6 +19934,8 @@ static void ExecuteAITurn(short aiPlayer)
         /* Count AI's cities and armies */
         for (ci = 0; ci < cityCount; ci++) {
             unsigned char *city = gs + 0x812 + ci * 0x20;
+            short ds = (short)(unsigned char)city[0x18];
+            if (ds != 0 && ds != 1) continue;
             if (*(short *)(city + 0x04) == aiPlayer) aiCities++;
         }
         for (ai = 0; ai < armyCount; ai++) {
@@ -15480,16 +19962,19 @@ static void ExecuteAITurn(short aiPlayer)
             }
 
             {
-                short curRelation = *(short *)(gs + 0x1582 + (aiPlayer * 8 + pj) * 2);
+                unsigned char curRelation = *(gs + 0x1582 + aiPlayer * 8 + pj);
                 short turnNum = *(short *)(gs + 0x136);
-                short rng = (short)(((unsigned short)TickCount()) % 100);
+                short rng = (short)((unsigned short)Random() % 100);
 
-                if (curRelation < 0x1000) {
+                if (DIPLO_GET_STATE(curRelation) == DIPLO_WAR) {
                     /* Currently at war: consider proposing peace if weaker */
                     if (aiArmies < pjArmies && aiCities <= pjCities + 1 && rng < 25) {
-                        /* Propose peace */
-                        *(short *)(gs + 0x1582 + (aiPlayer * 8 + pj) * 2) = 0x2800;
-                        *(short *)(gs + 0x1582 + (pj * 8 + aiPlayer) * 2) = 0x2800;
+                        /* Propose peace: set state to 0 (68k CODE_082: & 0xf3) */
+                        { unsigned char v = DIPLO_SET_STATE(curRelation, DIPLO_PEACE);
+                          v = (v & 0xFC) | DIPLO_PEACE;
+                          *(gs + 0x1582 + aiPlayer * 8 + pj) = v;
+                          *(gs + 0x1582 + pj * 8 + aiPlayer) = v;
+                        }
                         RecordEvent(turnNum, HIST_EVT_DIPLOMACY, aiPlayer,
                             "Peace negotiated");
 
@@ -15497,6 +19982,7 @@ static void ExecuteAITurn(short aiPlayer)
                         if (pjType == 0) {
                             WindowPtr pwWin;
                             Rect pwR;
+                            PlaySound(SND_CHORD);
                             SetRect(&pwR, 0, 0, 300, 80);
                             OffsetRect(&pwR, 170, 220);
                             pwWin = NewCWindow(NULL, &pwR, "\p", true,
@@ -15536,11 +20022,14 @@ static void ExecuteAITurn(short aiPlayer)
                         }
                     }
                 } else {
-                    /* Currently at peace: consider declaring war if stronger */
+                    /* Currently at peace or alliance: consider declaring war if stronger */
                     if (aiArmies > pjArmies * 2 && aiCities > pjCities && rng < 15) {
-                        /* Declare war */
-                        *(short *)(gs + 0x1582 + (aiPlayer * 8 + pj) * 2) = 0;
-                        *(short *)(gs + 0x1582 + (pj * 8 + aiPlayer) * 2) = 0;
+                        /* Declare war: set state to 2 (68k CODE_082: | 0x08) */
+                        { unsigned char v2 = DIPLO_SET_STATE(curRelation, DIPLO_WAR);
+                          v2 = (v2 & 0xFC) | DIPLO_WAR;
+                          *(gs + 0x1582 + aiPlayer * 8 + pj) = v2;
+                          *(gs + 0x1582 + pj * 8 + aiPlayer) = v2;
+                        }
                         RecordEvent(turnNum, HIST_EVT_DIPLOMACY, aiPlayer,
                             "War declared");
 
@@ -15548,6 +20037,7 @@ static void ExecuteAITurn(short aiPlayer)
                         if (pjType == 0) {
                             WindowPtr wwWin;
                             Rect wwR;
+                            PlaySound(SND_DRAMATIC);
                             SetRect(&wwR, 0, 0, 300, 80);
                             OffsetRect(&wwR, 170, 220);
                             wwWin = NewCWindow(NULL, &wwR, "\p", true,
@@ -15591,12 +20081,44 @@ static void ExecuteAITurn(short aiPlayer)
         }
     }
 
-    /* === AI Hero Generation === */
-    /* ~25% chance per turn to spawn a hero at a random owned city */
-    if (sOptQuests && (TickCount() % 4) == 0) {
+    /* === AI Hero Generation (68k CODE_103) === */
+    /* ~23% chance per turn (random(30) < 7), with hero cap */
+    if (sOptQuests && ((unsigned short)Random() % 30) < 7) {
         short aiGold = *(short *)(gs + 0x186 + aiPlayer * 0x14);
-        short heroCost = 100 + (short)(TickCount() % 150);
-        if (aiGold >= heroCost) {
+        /* Count heroes for cap check */
+        short totalH = 0, myH = 0;
+        {
+            short ac2 = *(short *)(gs + 0x1602);
+            short ai2;
+            if (ac2 > 100) ac2 = 100;
+            for (ai2 = 0; ai2 < ac2; ai2++) {
+                unsigned char *a2 = gs + 0x1604 + ai2 * 0x42;
+                if ((unsigned char)a2[0x16] == 0x1C) {
+                    totalH++;
+                    if ((short)(unsigned char)a2[0x15] == aiPlayer)
+                        myH++;
+                }
+            }
+        }
+        /* 68k cost: random(400) or random(600) depending on hero count */
+        short heroCost = (myH == 0) ? (short)((unsigned short)Random() % 400)
+                                     : (short)((unsigned short)Random() % 600);
+        {
+            short heroCap = 5;
+            /* 68k: cap based on THIS player's city count, not total sites */
+            short aiCities = 0, cci;
+            short cc = *(short *)(gs + 0x810);
+            if (cc > 40) cc = 40;
+            for (cci = 0; cci < cc; cci++) {
+                unsigned char *cc2 = gs + 0x812 + cci * 0x20;
+                if ((unsigned char)cc2[0x18] == 0 && *(short *)(cc2 + 0x04) == aiPlayer)
+                    aiCities++;
+            }
+            if (aiCities > 39) heroCap = 6;
+            if (aiGold < heroCost || totalH >= 40 || myH >= heroCap)
+                heroCost = 32000; /* block hiring */
+        }
+        if (aiGold >= heroCost && totalH < 40) {
             /* Find a random owned city to spawn the hero */
             short ownedCities[40];
             short ownedCount = 0;
@@ -15609,7 +20131,7 @@ static void ExecuteAITurn(short aiPlayer)
                 }
             }
             if (ownedCount > 0) {
-                short pickCity = ownedCities[TickCount() % ownedCount];
+                short pickCity = ownedCities[(unsigned short)Random() % ownedCount];
                 unsigned char *city = gs + 0x812 + pickCity * 0x20;
                 short cx = *(short *)(city + 0x00);
                 short cy = *(short *)(city + 0x02);
@@ -15624,11 +20146,14 @@ static void ExecuteAITurn(short aiPlayer)
                     newHero[0x14] = 12;  /* hero sprite */
                     newHero[0x16] = 0x1C; /* hero unit type */
                     newHero[0x17] = 0xFF; newHero[0x18] = 0xFF; newHero[0x19] = 0xFF;
-                    newHero[0x1a] = 14;  /* movement */
-                    newHero[0x1e] = 5 + (unsigned char)(TickCount() % 4);  /* HP 5-8 */
-                    newHero[0x22] = 1 + (unsigned char)(TickCount() % 3);  /* command 1-3 */
-                    *(short *)(newHero + 0x2a) = (short)newHero[0x1e]; /* strength */
-                    newHero[0x2e] = (unsigned char)(14); /* move pts */
+                    {
+                        short hMov = 12 + (short)((unsigned short)Random() % 9);
+                        newHero[0x1a] = (unsigned char)hMov;
+                        newHero[0x1e] = 4 + (unsigned char)((unsigned short)Random() % 4);
+                        newHero[0x22] = 1 + (unsigned char)((unsigned short)Random() % 3);
+                        RecalcArmyStrength(newHero);
+                        newHero[0x2e] = (unsigned char)hMov;
+                    }
                     *(short *)(gs + 0x1602) = armyCount + 1;
                     *(short *)(gs + 0x186 + aiPlayer * 0x14) -= heroCost;
                 }
@@ -15767,7 +20292,9 @@ static void DoAutosave(void);  /* forward declaration */
  * ShowTurnSplash — Castle gate turn announcement (PICT 3100)
  *
  * Displays the castle gate scene with faction name and turn number.
- * Waits for click or ~2 seconds before dismissing.
+ * Matches original View 3100 layout: PICT background, faction name
+ * centered in the gate archway, shield below, turn number at bottom.
+ * Plays SND_SPLASH on display. Waits for click or ~2.5 seconds.
  * =================================================================== */
 static void ShowTurnSplash(short playerIdx)
 {
@@ -15779,41 +20306,54 @@ static void ShowTurnSplash(short playerIdx)
     short      turn;
     EventRecord dummyEvt;
     unsigned long endTick;
+    short      colorIdx;
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
     turn = *(short *)(gs + 0x136);
+    colorIdx = (playerIdx >= 0 && playerIdx < 8) ? playerIdx + 1 : 0;
 
     SetRect(&winRect, 0, 0, winW, winH);
     OffsetRect(&winRect,
         (qd.screenBits.bounds.right - winW) / 2,
         (qd.screenBits.bounds.bottom - winH) / 2);
 
-    splashWin = NewCWindow(NULL, &winRect, "\p", true,
+    splashWin = NewCWindow(NULL, &winRect, "\p", false,
                             plainDBox, (WindowPtr)-1L, false, 0);
     if (splashWin == NULL) return;
     SetPort(splashWin);
 
-    /* Draw castle gate background (PICT 3100) */
+    PlaySound(SND_SPLASH);
+
+    /* Draw castle gate background (PICT 3100, 320x312) */
     gatePict = GetPicture(3100);
     if (gatePict != NULL) {
         Rect dstR;
         SetRect(&dstR, 0, 0, winW, winH);
         DrawPicture(gatePict, &dstR);
     } else {
-        /* Fallback: dark background */
-        RGBColor bg = {0x2222, 0x2222, 0x3333};
+        /* Fallback: dark stone-colored background */
+        RGBColor bg = {0x3333, 0x2222, 0x1111};
         RGBForeColor(&bg);
         PaintRect(&splashWin->portRect);
     }
 
-    /* Draw faction name */
+    /* Draw faction shield — centered in the gate archway (~middle of image) */
+    {
+        Rect shR;
+        short shY = 110;  /* archway center area */
+        SetRect(&shR, winW / 2 - BIG_SHIELD_W / 2, shY,
+                       winW / 2 + BIG_SHIELD_W / 2, shY + BIG_SHIELD_H);
+        DrawBigShield(playerIdx, &shR);
+    }
+
+    /* Draw faction name — large Illuria font, centered above shield in archway */
     {
         unsigned char *fname = gs + playerIdx * FACTION_NAME_LEN;
         Str255 pname;
         short len = 0;
-        short colorIdx = (playerIdx >= 0 && playerIdx < 8) ? playerIdx + 1 : 0;
         RGBColor shadow = {0x0000, 0x0000, 0x0000};
+        short textY = 100;  /* positioned in the upper archway area */
 
         while (len < 14 && fname[len] != 0) len++;
         pname[0] = (unsigned char)len;
@@ -15821,30 +20361,22 @@ static void ShowTurnSplash(short playerIdx)
 
         TextFont(1602); TextSize(36); TextFace(0);  /* Illuria 36pt */
 
-        /* Shadow */
+        /* Shadow (offset +2,+2) */
         RGBForeColor(&shadow);
-        MoveTo(winW / 2 - StringWidth(pname) / 2 + 2, 52);
+        MoveTo(winW / 2 - StringWidth(pname) / 2 + 2, textY + 2);
         DrawString(pname);
 
-        /* Colored text */
+        /* Player-colored text */
         RGBForeColor(&sPlayerColors[colorIdx]);
-        MoveTo(winW / 2 - StringWidth(pname) / 2, 50);
+        MoveTo(winW / 2 - StringWidth(pname) / 2, textY);
         DrawString(pname);
     }
 
-    /* Draw faction shield centered below name */
-    {
-        Rect shR;
-        SetRect(&shR, winW / 2 - BIG_SHIELD_W / 2, 58,
-                       winW / 2 + BIG_SHIELD_W / 2, 58 + BIG_SHIELD_H);
-        DrawBigShield(playerIdx, &shR);
-    }
-
-    /* Draw "Turn N" */
+    /* Draw "Turn N" — below the shield, in the lower archway */
     {
         Str255 turnLabel, turnNum;
-        short colorIdx = (playerIdx >= 0 && playerIdx < 8) ? playerIdx + 1 : 0;
         RGBColor shadow = {0x0000, 0x0000, 0x0000};
+        short turnY = 110 + BIG_SHIELD_H + 30;  /* below shield */
 
         BlockMoveData("\pTurn ", turnLabel, 6);
         NumToString((long)turn, turnNum);
@@ -15858,19 +20390,74 @@ static void ShowTurnSplash(short playerIdx)
 
         /* Shadow */
         RGBForeColor(&shadow);
-        MoveTo(winW / 2 - StringWidth(turnLabel) / 2 + 2, 92);
+        MoveTo(winW / 2 - StringWidth(turnLabel) / 2 + 2, turnY + 2);
         DrawString(turnLabel);
 
         /* Colored text */
         RGBForeColor(&sPlayerColors[colorIdx]);
-        MoveTo(winW / 2 - StringWidth(turnLabel) / 2, 90);
+        MoveTo(winW / 2 - StringWidth(turnLabel) / 2, turnY);
         DrawString(turnLabel);
+    }
+
+    /* Status line: gold, cities, armies */
+    {
+        short playerGold = *(short *)(gs + 0x186 + playerIdx * 0x14);
+        short playerCities = 0, playerArmies = 0, playerIncome = 0;
+        short si;
+        short cc = *(short *)(gs + 0x810);
+        short ac = *(short *)(gs + 0x1602);
+        Str255 statLine;
+        short sl = 0;
+        RGBColor statCol = {0xCCCC, 0xBBBB, 0x8888};
+        RGBColor shadow = {0x0000, 0x0000, 0x0000};
+        if (cc > 40) cc = 40;
+        if (ac > 100) ac = 100;
+        for (si = 0; si < cc; si++) {
+            unsigned char *c = gs + 0x812 + si * 0x20;
+            short st = (short)(unsigned char)c[0x18];
+            if ((st == 0 || st == 1) && *(short *)(c + 0x04) == playerIdx) {
+                playerCities++;
+                playerIncome += *(short *)(c + 0x08);
+            }
+        }
+        for (si = 0; si < ac; si++) {
+            unsigned char *a = gs + 0x1604 + si * 0x42;
+            if ((short)(unsigned char)a[0x15] == playerIdx && a[0x16] != 0xFF)
+                playerArmies++;
+        }
+        /* Build status: "Gold: N  Cities: N  Armies: N" */
+        {
+            const char *parts[] = {"Gold:", " Cities:", " Armies:"};
+            short vals[] = {playerGold, playerCities, playerArmies};
+            short pi2;
+            for (pi2 = 0; pi2 < 3; pi2++) {
+                const char *p = parts[pi2];
+                Str255 vs;
+                short vi;
+                while (*p && sl < 200) statLine[++sl] = *p++;
+                NumToString((long)vals[pi2], vs);
+                for (vi = 1; vi <= vs[0] && sl < 200; vi++)
+                    statLine[++sl] = vs[vi];
+            }
+            statLine[0] = (unsigned char)sl;
+        }
+
+        TextFont(3); TextSize(9); TextFace(0);
+        RGBForeColor(&shadow);
+        MoveTo(winW / 2 - StringWidth(statLine) / 2 + 1, winH - 19);
+        DrawString(statLine);
+        RGBForeColor(&statCol);
+        MoveTo(winW / 2 - StringWidth(statLine) / 2, winH - 20);
+        DrawString(statLine);
     }
 
     TextFace(0); TextFont(3); TextSize(9);
 
-    /* Wait for click or ~2 seconds */
-    endTick = TickCount() + 120;
+    /* Show window after all drawing to avoid white flash */
+    ShowWindow(splashWin);
+
+    /* Wait for click or ~2.5 seconds */
+    endTick = TickCount() + 150;
     while (TickCount() < endTick) {
         if (WaitNextEvent(mDownMask | keyDownMask, &dummyEvt, 5, NULL))
             break;
@@ -15910,7 +20497,7 @@ static void ProcessNeutralCities(void)
 
         /* Only process neutral cities (owner < 0 or unowned) */
         if (owner >= 0 && owner < 8) continue;
-        if (sType == 2 || sType == 5 || sType == 6) continue; /* skip ruins */
+        if (sType >= 2 && sType <= 5) continue; /* skip ruins */
 
         cx = *(short *)(city + 0x00);
         cy = *(short *)(city + 0x02);
@@ -15935,11 +20522,11 @@ static void ProcessNeutralCities(void)
                 if (garrisonStr < maxStr && armyCount < 100) {
                     /* ~50% chance to produce per turn (Strong), 75% for Active */
                     short chance = (sNeutralCities >= 2) ? 4 : 2;
-                    if ((short)(TickCount() % chance) == 0) {
+                    if ((short)((unsigned short)Random() % chance) == 0) {
                         unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
                         short j;
                         /* Pick unit type: Heavy Infantry for Strong, mix for Active */
-                        short unitType = (sNeutralCities >= 2 && (TickCount() & 1)) ? 2 : 1;
+                        short unitType = (sNeutralCities >= 2 && ((unsigned short)Random() & 1)) ? 2 : 1;
                         static const unsigned char neutralSpr[] = {0, 2, 4, 6, 8, 10};
                         static const unsigned char neutralHP[]  = {3, 4, 5, 3, 6, 4};
                         static const unsigned char neutralMov[] = {10, 8, 14, 10, 6, 12};
@@ -15955,7 +20542,7 @@ static void ProcessNeutralCities(void)
                         newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
                         newArmy[0x1a] = neutralMov[idx];
                         newArmy[0x1e] = neutralHP[idx];
-                        *(short *)(newArmy + 0x2a) = (short)neutralHP[idx];
+                        RecalcArmyStrength(newArmy);
                         newArmy[0x2e] = (unsigned char)(neutralMov[idx]);
                         newArmy[0x2d] = 3; /* fortified */
                         *(short *)(gs + 0x1602) = armyCount + 1;
@@ -16009,6 +20596,575 @@ static void ProcessNeutralCities(void)
             }
         }
     }
+}
+
+/* ===================================================================
+ * ProcessStartOfTurn — Income, production, and movement reset
+ *
+ * Called at the start of each player's turn (both human and AI).
+ * Based on decompiled 68k CODE_080 (a2StartOfTurn) behavior:
+ *   1. Collect income from owned cities
+ *   2. Decrement production timers; spawn armies when complete
+ *   3. Reset movement points for all owned armies
+ *   4. Update fog of war
+ * =================================================================== */
+static void ProcessStartOfTurn(short player)
+{
+    unsigned char *gs;
+    unsigned char *ext;
+    short cityCount, armyCount;
+    short i;
+
+    if (*gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+    ext = (*gExtState != 0) ? (unsigned char *)*gExtState : NULL;
+
+    cityCount = *(short *)(gs + 0x810);
+    armyCount = *(short *)(gs + 0x1602);
+    if (cityCount > 40) cityCount = 40;
+    if (armyCount > 100) armyCount = 100;
+
+    /* --- 0. Capital recalculation (68k CODE_080 FUN_00000714) ---
+     * If a player's home city was captured, reassign capital to nearest friendly city. */
+    {
+        short homeX = *(short *)(gs + 0x186 + player * 0x14 + 0x0E);  /* home city X (fixed) */
+        short homeY = *(short *)(gs + 0x186 + player * 0x14 + 0x10);  /* home city Y (fixed) */
+        short capX  = *(short *)(gs + 0x186 + player * 0x14 + 0x04);  /* current capital X */
+        short capY  = *(short *)(gs + 0x186 + player * 0x14 + 0x06);  /* current capital Y */
+        /* Check if home city is still owned by this player */
+        short homeOwned = 0;
+        for (i = 0; i < cityCount; i++) {
+            unsigned char *city = gs + 0x812 + i * 0x20;
+            if (*(short *)(city + 0x00) == homeX && *(short *)(city + 0x02) == homeY &&
+                *(short *)(city + 0x04) == player) {
+                homeOwned = 1;
+                break;
+            }
+        }
+        if (homeOwned) {
+            /* Home city still ours: capital stays at home */
+            *(short *)(gs + 0x186 + player * 0x14 + 0x04) = homeX;
+            *(short *)(gs + 0x186 + player * 0x14 + 0x06) = homeY;
+        } else {
+            /* Home captured: find nearest friendly city to current capital */
+            long bestDist = 99999;
+            short bestX = capX, bestY = capY;
+            short found = 0;
+            for (i = 0; i < cityCount; i++) {
+                unsigned char *city = gs + 0x812 + i * 0x20;
+                short sType = (short)(unsigned char)city[0x18];
+                if (sType != 0 && sType != 1) continue;
+                if (*(short *)(city + 0x04) == player) {
+                    short cx = *(short *)(city + 0x00);
+                    short cy = *(short *)(city + 0x02);
+                    long dx = (long)(cx - capX);
+                    long dy = (long)(cy - capY);
+                    long dist = dx * dx + dy * dy;
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestX = cx;
+                        bestY = cy;
+                        found = 1;
+                    }
+                }
+            }
+            if (found) {
+                *(short *)(gs + 0x186 + player * 0x14 + 0x04) = bestX;
+                *(short *)(gs + 0x186 + player * 0x14 + 0x06) = bestY;
+            }
+        }
+    }
+
+    /* --- 0b. Diplomacy convergence (68k CODE_080 FUN_000002d0) ---
+     * Proposed state (bits 2-3) becomes displayed state (bits 0-1) after 1 turn.
+     * Both sides' entries are updated symmetrically. */
+    {
+        short p2;
+        for (p2 = 0; p2 < 8; p2++) {
+            if (p2 == player) continue;
+            {
+                unsigned char *dp = gs + 0x1582 + player * 8 + p2;
+                short displayed = *dp & 3;           /* bits 0-1 */
+                short actual = DIPLO_GET_STATE(*dp);  /* bits 2-3 */
+                if (displayed != actual) {
+                    /* Converge: set displayed = actual (1-turn delay) */
+                    *dp = (*dp & 0xFC) | (actual & 3);
+                    /* Mirror to other side */
+                    {
+                        unsigned char *dp2 = gs + 0x1582 + p2 * 8 + player;
+                        *dp2 = (*dp2 & 0xFC) | (actual & 3);
+                        /* Also update their actual state to match if needed */
+                        *dp2 = DIPLO_SET_STATE(*dp2, actual);
+                    }
+                }
+            }
+        }
+    }
+
+    /* --- 1. Collect income and deduct upkeep (68k CODE_080 FUN_00002bc4) ---
+     * Net gold = current + cityIncome - armyUpkeep, clamped [0, 30000] */
+    {
+        short totalIncome = 0;
+        short totalUpkeep = 0;
+        for (i = 0; i < cityCount; i++) {
+            unsigned char *city = gs + 0x812 + i * 0x20;
+            short sType = (short)(unsigned char)city[0x18];
+            /* Cities (sType 0) and capitals (sType 1) provide income */
+            if (sType != 0 && sType != 1) continue;
+            if (*(short *)(city + 0x04) == player) {
+                short income = *(short *)(city + 0x08);
+                if (income < 0) income = 0;
+                if (income > 100) income = 100;
+                totalIncome += income;
+            }
+        }
+        /* Calculate army upkeep: sum upkeep for all units owned by player */
+        for (i = 0; i < armyCount; i++) {
+            unsigned char *army = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)army[0x15] != player) continue;
+            if (army[0x16] == 0xFF) continue;
+            {
+                short u;
+                for (u = 0; u < 4; u++) {
+                    short ut = (short)(unsigned char)army[0x16 + u];
+                    if (ut == 0xFF) continue;
+                    /* 68k CODE_042: per-unit upkeep = stat[2] / 2.
+                     * Heroes (type 0x1C) have no upkeep. */
+                    if (ut != 0x1C) {
+                        short upk = GetUnitTypeStat(ut, 2) / 2;
+                        if (upk < 1) upk = 1;
+                        totalUpkeep += upk;
+                    }
+                }
+            }
+        }
+        /* Gold item bonus: heroes with gold items add +value per owned city */
+        {
+            short goldItemBonus = 0;
+            for (i = 0; i < armyCount; i++) {
+                unsigned char *army = gs + 0x1604 + i * 0x42;
+                if ((short)(unsigned char)army[0x15] != player) continue;
+                {
+                    short battle, command, goldB;
+                    Boolean flying, dblMove;
+                    GetHeroItemBonus(i, &battle, &command, &goldB, &flying, &dblMove);
+                    if (goldB > 0) {
+                        short playerCities = 0, ci;
+                        for (ci = 0; ci < cityCount; ci++) {
+                            unsigned char *c2 = gs + 0x812 + ci * 0x20;
+                            short st = (short)(unsigned char)c2[0x18];
+                            if ((st == 0 || st == 1) && *(short *)(c2 + 0x04) == player)
+                                playerCities++;
+                        }
+                        goldItemBonus += goldB * playerCities;
+                        break;  /* only count gold item bonus once */
+                    }
+                }
+            }
+            totalIncome += goldItemBonus;
+        }
+
+        /* Apply net income */
+        {
+            long curGold = (long)*(short *)(gs + 0x186 + player * 0x14);
+            curGold += totalIncome - totalUpkeep;
+            if (curGold < 0) curGold = 0;
+            if (curGold > 30000) curGold = 30000;
+            *(short *)(gs + 0x186 + player * 0x14) = (short)curGold;
+        }
+    }
+
+    /* --- 2. Production processing --- */
+    if (ext != NULL) {
+        for (i = 0; i < cityCount; i++) {
+            unsigned char *city = gs + 0x812 + i * 0x20;
+            unsigned char *extCity = ext + 0x24c + i * 0x5c;
+            short sType = (short)(unsigned char)city[0x18];
+            short owner = *(short *)(city + 0x04);
+            short prodType;
+
+            if (sType != 0 && sType != 1) continue;  /* cities + capitals produce */
+            if (owner != player) continue;
+
+            prodType = *(short *)(extCity + 0x02);
+            if (prodType < 0) continue;  /* not producing anything */
+
+            /* Decrement production timer (68k CODE_080 line 660-694) */
+            {
+                short timer = *(short *)(extCity + 0x58);
+                if (timer <= 0) continue;  /* 68k guard: stalled production stays stalled */
+                timer--;
+                if (timer <= 0) {
+                    /* Production complete! Check if player has gold (68k CODE_080
+                     * line 669: gold < 1 → stall permanently). 68k only checks
+                     * gold >= 1, NOT whether gold covers full unit cost. Units can
+                     * push gold negative. */
+                    short playerGold3 = *(short *)(gs + 0x186 + player * 0x14);
+                    if (playerGold3 < 1) {
+                        /* No gold: stall permanently (68k CODE_080 line 668-670).
+                         * Timer stays at 0; outer guard skips on future turns.
+                         * Player must change production in city dialog to restart. */
+                        timer = 0;
+                        *(short *)(extCity + 0x58) = timer;
+                        /* Notify human player of production stall (68k shows message) */
+                        if (*(short *)(gs + 0xd0 + player * 2) == 0) {
+                            ShowBriefMessage("\pProduction stalled: no gold!");
+                        }
+                        continue;
+                    }
+
+                    /* Try to spawn a new army at this city. */
+                    short cx = *(short *)(city + 0x00);
+                    short cy = *(short *)(city + 0x02);
+
+                    /* Look for an existing army at this city to merge into */
+                    short mergeIdx = -1;
+                    short newIdx = -1;
+                    short ai;
+                    for (ai = 0; ai < armyCount; ai++) {
+                        unsigned char *a = gs + 0x1604 + ai * 0x42;
+                        if (*(short *)(a + 0x00) == cx && *(short *)(a + 0x02) == cy &&
+                            (short)(unsigned char)a[0x15] == player) {
+                            /* Check if there's an empty unit slot */
+                            short slot;
+                            for (slot = 0; slot < 4; slot++) {
+                                if (a[0x16 + slot] == 0xFF) {
+                                    mergeIdx = ai;
+                                    break;
+                                }
+                            }
+                            if (mergeIdx >= 0) break;
+                        }
+                    }
+
+                    if (mergeIdx >= 0) {
+                        /* Merge into existing army's empty slot */
+                        unsigned char *a = gs + 0x1604 + mergeIdx * 0x42;
+                        short slot;
+                        for (slot = 0; slot < 4; slot++) {
+                            if (a[0x16 + slot] == 0xFF) {
+                                a[0x16 + slot] = (unsigned char)prodType;
+                                /* Set movement and HP from unit type table */
+                                if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
+                                    /* Fix: use GetUnitTypeStat (reads high byte from correct stat offset) */
+                                    a[0x1a + slot] = (unsigned char)GetUnitTypeStat(prodType, 3); /* movement */
+                                    a[0x1e + slot] = (unsigned char)GetUnitTypeStat(prodType, 0); /* HP */
+                                } else {
+                                    a[0x1a + slot] = 8;
+                                    a[0x1e + slot] = 3;
+                                }
+                                a[0x22 + slot] = 0;  /* defense bonus: fresh unit */
+                                a[0x26 + slot] = 0;  /* experience: fresh unit */
+                                /* Tech upgrade bonus (68k CODE_080 FUN_00001858):
+                                 * If player's tech flag at gs+0xf0+player*2 is nonzero,
+                                 * newly produced units get +2 HP, capped at 9. */
+                                if (*(short *)(gs + 0xf0 + player * 2) != 0) {
+                                    short hp = (short)a[0x1e + slot] + 2;
+                                    if (hp > 9) hp = 9;
+                                    a[0x1e + slot] = (unsigned char)hp;
+                                }
+                                /* Recalculate stack strength */
+                                RecalcArmyStrength(a);
+                                break;
+                            }
+                        }
+                    } else if (armyCount < 100) {
+                        /* Create new army at city */
+                        unsigned char *a = gs + 0x1604 + armyCount * 0x42;
+                        short j2;
+
+                        /* Clear the record */
+                        for (j2 = 0; j2 < 0x42; j2++)
+                            ((unsigned char *)a)[j2] = 0;
+
+                        *(short *)(a + 0x00) = cx;
+                        *(short *)(a + 0x02) = cy;
+
+                        /* Name: use unit type name */
+                        {
+                            Str255 uname;
+                            short nl;
+                            GetUnitTypeName(prodType, uname);
+                            nl = uname[0];
+                            if (nl > 16) nl = 16;
+                            BlockMoveData(uname + 1, a + 0x04, nl);
+                            a[0x04 + nl] = 0;
+                        }
+
+                        /* Sprite from unit type index (each type = 2 sprite rows) */
+                        a[0x14] = (unsigned char)(prodType * 2);
+
+                        a[0x15] = (unsigned char)player;
+                        a[0x16] = (unsigned char)prodType;
+                        a[0x17] = 0xFF; a[0x18] = 0xFF; a[0x19] = 0xFF;
+
+                        /* Movement and HP from unit type table */
+                        if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
+                            /* Fix: use GetUnitTypeStat (reads high byte from correct stat offset) */
+                            a[0x1a] = (unsigned char)GetUnitTypeStat(prodType, 3); /* movement */
+                            a[0x1e] = (unsigned char)GetUnitTypeStat(prodType, 0); /* HP */
+                        } else {
+                            a[0x1a] = 8;
+                            a[0x1e] = 3;
+                        }
+                        a[0x1b] = 0; a[0x1c] = 0; a[0x1d] = 0;
+                        a[0x1f] = 0; a[0x20] = 0; a[0x21] = 0;
+
+                        /* Tech upgrade bonus (68k CODE_080 FUN_00001858) */
+                        if (*(short *)(gs + 0xf0 + player * 2) != 0) {
+                            short hp = (short)a[0x1e] + 2;
+                            if (hp > 9) hp = 9;
+                            a[0x1e] = (unsigned char)hp;
+                        }
+
+                        RecalcArmyStrength(a);
+                        a[0x2f] = (unsigned char)player;
+
+                        /* Set current MP (68k CODE_080: newly produced = half movement) */
+                        a[0x2e] = a[0x1a] / 2;
+
+                        armyCount++;
+                        *(short *)(gs + 0x1602) = armyCount;
+
+                        newIdx = armyCount - 1;
+                    }
+
+                    /* 68k: gold was already deducted when production was SET in dialog.
+                     * Do NOT deduct again at spawn time. The gold < 1 check above
+                     * guards against the player spending all gold after setting prod. */
+
+                    /* Check vectoring: if city has a vector target, set army orders */
+                    if (ext != NULL && (mergeIdx >= 0 || newIdx >= 0)) {
+                        short vecTarget = *(short *)(extCity + 0x3e);
+                        if (vecTarget >= 0 && vecTarget < cityCount) {
+                            unsigned char *tgtCity = gs + 0x812 + vecTarget * 0x20;
+                            short idx = (newIdx >= 0) ? newIdx : mergeIdx;
+                            unsigned char *a = gs + 0x1604 + idx * 0x42;
+                            *(short *)(a + 0x32) = 1;
+                            *(short *)(a + 0x34) = *(short *)(tgtCity + 0x00);
+                            *(short *)(a + 0x36) = *(short *)(tgtCity + 0x02);
+                        }
+                    }
+
+                    /* Notify human player of completed production */
+                    if (*(short *)(gs + 0xd0 + player * 2) == 0 &&
+                        (mergeIdx >= 0 || newIdx >= 0)) {
+                        Str255 prodMsg;
+                        Str255 unitName;
+                        short ml = 0;
+                        GetUnitTypeName(prodType, unitName);
+                        /* Build message: "CityName produced UnitName" */
+                        if (i < sCityNameCount && sCityNames[i][0] != '\0') {
+                            char *cn = sCityNames[i];
+                            short ci2;
+                            for (ci2 = 0; cn[ci2] && ml < 200; ci2++)
+                                prodMsg[1 + ml++] = cn[ci2];
+                        } else {
+                            const char *def = "City";
+                            short ci2;
+                            for (ci2 = 0; def[ci2] && ml < 200; ci2++)
+                                prodMsg[1 + ml++] = def[ci2];
+                        }
+                        { const char *mid = " produced ";
+                          short mi;
+                          for (mi = 0; mid[mi] && ml < 200; mi++)
+                              prodMsg[1 + ml++] = mid[mi]; }
+                        { short ui;
+                          for (ui = 1; ui <= unitName[0] && ml < 200; ui++)
+                              prodMsg[1 + ml++] = unitName[ui]; }
+                        prodMsg[0] = (unsigned char)ml;
+                        PlaySound(SND_DING);
+                        ShowBriefMessage(prodMsg);
+                    }
+
+                    /* Reset timer: if spawn succeeded, restart production.
+                     * If spawn failed (all slots full + army cap), retry next turn
+                     * instead of losing the unit (68k keeps 'f' status and retries). */
+                    if (mergeIdx >= 0 || newIdx >= 0) {
+                        timer = GetProductionTurns(prodType);
+                    } else {
+                        timer = 1;  /* will decrement to 0 next turn, triggering retry */
+                    }
+                }
+                *(short *)(extCity + 0x58) = timer;
+            }
+        }
+    }
+
+    /* --- 2b. Cleanup empty army records (68k CODE_080 FUN_00000098) ---
+     * Remove armies with no living units (all slots 0xFF). */
+    for (i = 0; i < armyCount; i++) {
+        unsigned char *army = gs + 0x1604 + i * 0x42;
+        if ((short)(unsigned char)army[0x15] != player) continue;
+        if (army[0x16] == 0xFF) continue;
+        {
+            short ui, liveUnits = 0;
+            for (ui = 0; ui < 4; ui++) {
+                if ((unsigned char)army[0x16 + ui] != 0xFF &&
+                    (unsigned char)army[0x1e + ui] > 0)
+                    liveUnits++;
+            }
+            if (liveUnits == 0) {
+                /* Dead army — clear record */
+                army[0x16] = 0xFF; army[0x17] = 0xFF;
+                army[0x18] = 0xFF; army[0x19] = 0xFF;
+                army[0x15] = 0x0F;
+            }
+        }
+    }
+
+    /* --- 2c. Disband single-member groups (68k CODE_080 FUN_00000098) ---
+     * Groups with only 1 army should have their group tag cleared. */
+    {
+        unsigned char tagCount[9];  /* count of armies per group tag 1-8 */
+        short t;
+        for (t = 0; t < 9; t++) tagCount[t] = 0;
+        /* Count armies per group tag for this player */
+        for (i = 0; i < armyCount; i++) {
+            unsigned char *army = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)army[0x15] != player) continue;
+            if (army[0x16] == 0xFF) continue;
+            {
+                unsigned char tag = army[0x11];
+                if (tag >= 1 && tag <= 8) tagCount[tag]++;
+            }
+        }
+        /* Clear tags where only 1 member in group */
+        for (i = 0; i < armyCount; i++) {
+            unsigned char *army = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)army[0x15] != player) continue;
+            if (army[0x16] == 0xFF) continue;
+            {
+                unsigned char tag = army[0x11];
+                if (tag >= 1 && tag <= 8 && tagCount[tag] <= 1)
+                    army[0x11] = 0;
+            }
+        }
+    }
+
+    /* --- 3. Reset movement points (68k CODE_080 FUN_000029ba) ---
+     * - Base MP from lead unit's base move (army[0x1a])
+     * - Leftover from last turn capped at 2
+     * - Garrisoned armies (flag 0x2d set) get +20
+     * - Max 99 */
+    for (i = 0; i < armyCount; i++) {
+        unsigned char *army = gs + 0x1604 + i * 0x42;
+        short baseMov, curMov;
+        if ((short)(unsigned char)army[0x15] != player) continue;
+        if (army[0x16] == 0xFF) continue;
+
+        /* Base move from lead unit */
+        baseMov = (short)(unsigned char)army[0x1a];
+        /* Leftover from last turn, capped at 2 */
+        curMov = (short)(unsigned char)army[0x2e];
+        if (curMov > 2) curMov = 2;
+
+        /* NOTE: Movement item doubling is NOT applied here.
+         * 68k CODE_080 FUN_000029ba Pass 2 handles movement item bonus
+         * as a separate group-wide pass after basic reset. */
+
+        if (army[0x2d] != 0) {
+            /* Fortified/garrisoned: 68k gives leftover + 20 (NOT base + 20) */
+            army[0x2e] = (unsigned char)((curMov + 20 > 99) ? 99 : curMov + 20);
+        } else {
+            /* Normal: base + leftover */
+            short newMov = baseMov + curMov;
+            if (newMov > 99) newMov = 99;
+            army[0x2e] = (unsigned char)newMov;
+        }
+        /* Clear has-moved flag and group selection bits */
+        army[0x30] = 0;
+        *(short *)(army + 0x2c) &= ~0x0240;
+
+        /* Clear goto waypoint if already at destination */
+        if (*(short *)(army + 0x34) == *(short *)(army + 0x00) &&
+            *(short *)(army + 0x36) == *(short *)(army + 0x02)) {
+            *(short *)(army + 0x34) = -1;
+            *(short *)(army + 0x36) = -1;
+            *(short *)(army + 0x32) = 0;
+        }
+    }
+
+    /* --- 3b. Hero movement item bonus (68k CODE_080 FUN_000029ba 2nd pass) ---
+     * For heroes carrying a movement item (type 6): add baseMov to curMov
+     * for ALL co-located armies (including hero's own), effectively doubling
+     * their MP. 68k: iterates heroes, calls FUN_00000d7a to count movement
+     * items, builds group at position, curMov += baseMov for each. */
+    for (i = 0; i < armyCount; i++) {
+        unsigned char *army = gs + 0x1604 + i * 0x42;
+        short ax, ay;
+        if ((short)(unsigned char)army[0x15] != player) continue;
+        if (army[0x16] == 0xFF) continue;
+        /* Check if army contains a hero */
+        { short ui, hasHero = 0;
+          for (ui = 0; ui < 4; ui++) {
+              if ((unsigned char)army[0x16 + ui] == 0x1C) { hasHero = 1; break; }
+          }
+          if (!hasHero) continue;
+        }
+        /* Check if hero has a movement item (68k FUN_00000d7a: item type 6) */
+        if (!ArmyHasDoubleMoveItem(i)) continue;
+        ax = *(short *)(army + 0x00);
+        ay = *(short *)(army + 0x02);
+        /* Apply bonus to ALL armies at this tile (68k group mechanism) */
+        { short j;
+          for (j = 0; j < armyCount; j++) {
+              unsigned char *ga = gs + 0x1604 + j * 0x42;
+              if ((short)(unsigned char)ga[0x15] != player) continue;
+              if (ga[0x16] == 0xFF) continue;
+              if (*(short *)(ga + 0x00) == ax && *(short *)(ga + 0x02) == ay) {
+                  short bm = (short)(unsigned char)ga[0x1a];
+                  short cm = (short)(unsigned char)ga[0x2e];
+                  short nm = bm + cm;
+                  if (nm > 99) nm = 99;
+                  ga[0x2e] = (unsigned char)nm;
+              }
+          }
+        }
+    }
+
+    /* --- 3a. Auto-detect war from army collisions (from CODE_080 FUN_000002d0) ---
+     * If any of this player's armies shares a tile with an enemy army
+     * and no alliance exists, auto-declare war in the diplomacy matrix. */
+    if (sOptDiplomacy) {
+        for (i = 0; i < armyCount; i++) {
+            unsigned char *army = gs + 0x1604 + i * 0x42;
+            short aOwner = (short)(unsigned char)army[0x15];
+            if (aOwner != player) continue;
+            if (army[0x16] == 0xFF) continue;
+            {
+                short ax = *(short *)(army + 0x00);
+                short ay = *(short *)(army + 0x02);
+                short j;
+                for (j = 0; j < armyCount; j++) {
+                    unsigned char *other = gs + 0x1604 + j * 0x42;
+                    short oOwner = (short)(unsigned char)other[0x15];
+                    if (oOwner == player || oOwner == 0x0F || oOwner < 0 || oOwner >= 8) continue;
+                    if (*(short *)(other + 0x00) == ax && *(short *)(other + 0x02) == ay) {
+                        unsigned char dipVal = *(gs + 0x1582 + player * 8 + oOwner);
+                        /* If not already at war, auto-declare war (68k CODE_080) */
+                        if (DIPLO_GET_STATE(dipVal) != DIPLO_WAR) {
+                            unsigned char wv = DIPLO_SET_STATE(dipVal, DIPLO_WAR);
+                            wv = (wv & 0xFC) | DIPLO_WAR;
+                            *(gs + 0x1582 + player * 8 + oOwner) = wv;
+                            *(gs + 0x1582 + oOwner * 8 + player) = wv;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* NOTE: 68k CODE_080 has NO per-turn HP healing. Units retain their
+     * post-combat HP permanently. Healing code was removed (was fabricated). */
+
+    /* NOTE: 68k CODE_080 FUN_000008b8 checks hero level-up at turn start,
+     * but our code computes level from XP on the fly (GetHeroLevel), so
+     * there's no stored level field that could get stale. Not needed. */
+
+    /* --- 4. Update fog of war --- */
+    if (player >= 0 && player < 8)
+        FogUpdatePlayer(player);
 }
 
 static void AdvanceToNextPlayer(void)
@@ -16112,7 +21268,7 @@ static void AdvanceToNextPlayer(void)
                         for (ci2 = 0; ci2 < cityCount; ci2++) {
                             unsigned char *c = gs + 0x812 + ci2 * 0x20;
                             short sType = (short)(unsigned char)c[0x18];
-                            if (sType == 2 || sType == 5 || sType == 6) continue;
+                            if (sType >= 2 && sType <= 5) continue;
                             if (*(short *)(c + 0x04) == pi) yCities++;
                         }
                         for (ai2 = 0; ai2 < armyCount; ai2++) {
@@ -16176,13 +21332,14 @@ static void AdvanceToNextPlayer(void)
             /* Reset turn order */
             for (i = 0; i < 8; i++)
                 *(short *)(gs + 0x164 + i * 2) = i;
-            /* Random turn order: shuffle via 20 random swaps (matches original) */
+            /* Random turn order: shuffle via 20 random swaps (68k CODE_130).
+             * 68k does NOT skip self-swaps — they're harmless no-ops. */
             if (sOptRandomTurns) {
                 short sw;
                 for (sw = 0; sw < 20; sw++) {
                     short a = (short)((unsigned short)Random() % 8);
                     short b = (short)((unsigned short)Random() % 8);
-                    if (a != b) {
+                    {
                         short tmp = *(short *)(gs + 0x164 + a * 2);
                         *(short *)(gs + 0x164 + a * 2) = *(short *)(gs + 0x164 + b * 2);
                         *(short *)(gs + 0x164 + b * 2) = tmp;
@@ -16193,29 +21350,33 @@ static void AdvanceToNextPlayer(void)
             *(short *)(gs + 0x118) = 0;
         }
 
-        /* Check player elimination: mark dead if no cities and no armies */
+        /* Check player elimination (68k CODE_080): no cities → dead.
+         * Unlike PPC which requires no cities AND no armies, the 68k
+         * eliminates players as soon as they lose all cities. */
         {
             short pi;
             for (pi = 0; pi < 8; pi++) {
                 if (*(short *)(gs + 0x138 + pi * 2) == 0) continue; /* already dead */
                 {
-                    short hasCities = 0, hasArmies = 0;
-                    short ci, ai2;
+                    short hasCities = 0;
+                    short ci;
                     short cc = *(short *)(gs + 0x810);
-                    short ac2 = *(short *)(gs + 0x1602);
                     if (cc > 40) cc = 40;
-                    if (ac2 > 100) ac2 = 100;
                     for (ci = 0; ci < cc; ci++) {
                         unsigned char *city = gs + 0x812 + ci * 0x20;
+                        short est = (short)(unsigned char)city[0x18];
+                        if (est != 0 && est != 1) continue;  /* only cities + capitals */
                         if (*(short *)(city + 0x04) == pi) { hasCities = 1; break; }
                     }
-                    for (ai2 = 0; ai2 < ac2; ai2++) {
-                        unsigned char *army = gs + 0x1604 + ai2 * 0x42;
-                        if ((short)(unsigned char)army[0x15] == pi) { hasArmies = 1; break; }
-                    }
-                    if (!hasCities && !hasArmies) {
+                    if (!hasCities) {
+                        short curP = *(short *)(gs + 0x110);
+                        /* 68k CODE_130: convert to AI, keep armies as remnants */
                         *(short *)(gs + 0x138 + pi * 2) = 0;
                         *(short *)(gs + 0x148 + pi * 2) = 0;
+                        *(short *)(gs + 0xd0 + pi * 2) = 1; /* convert to AI */
+                        /* Notify human player of elimination (68k shows this) */
+                        if (*(short *)(gs + 0xd0 + curP * 2) == 0)
+                            ShowEliminationNotification(pi, curP);
                     }
                 }
             }
@@ -16233,15 +21394,50 @@ static void AdvanceToNextPlayer(void)
 
         /* Check if alive */
         if (*(short *)(gs + 0x138 + nextPlayer * 2) != 0) {
+            /* Process start-of-turn for this player: income, production, movement reset */
+            ProcessStartOfTurn(nextPlayer);
+
             if (*(short *)(gs + 0xd0 + nextPlayer * 2) == 0) {
-                /* Human player: center viewport on their capital */
+                /* Human player: center viewport (68k CODE_080 logic)
+                 * Priority: 1) capital city, 2) first owned army */
                 {
                     unsigned char *ps = gs + 0x186 + nextPlayer * 0x14;
                     short cx2 = *(short *)(ps + 0x04);
                     short cy2 = *(short *)(ps + 0x06);
+                    Boolean centered = false;
+
+                    /* Check if capital is still owned by this player */
                     if (cx2 > 0 || cy2 > 0) {
-                        sViewportX = cx2 - 7;
-                        sViewportY = cy2 - 5;
+                        short cci;
+                        short ccc = *(short *)(gs + 0x810);
+                        if (ccc > 40) ccc = 40;
+                        for (cci = 0; cci < ccc; cci++) {
+                            unsigned char *city = gs + 0x812 + cci * 0x20;
+                            if (*(short *)(city + 0x00) == cx2 &&
+                                *(short *)(city + 0x02) == cy2 &&
+                                *(short *)(city + 0x04) == nextPlayer) {
+                                sViewportX = cx2 - 7;
+                                sViewportY = cy2 - 5;
+                                centered = true;
+                                break;
+                            }
+                        }
+                    }
+                    /* Fallback: center on first owned army */
+                    if (!centered) {
+                        short aai;
+                        short aac = *(short *)(gs + 0x1602);
+                        if (aac > 100) aac = 100;
+                        for (aai = 0; aai < aac; aai++) {
+                            unsigned char *a = gs + 0x1604 + aai * 0x42;
+                            if ((short)(unsigned char)a[0x15] == nextPlayer &&
+                                a[0x16] != 0xFF) {
+                                sViewportX = *(short *)(a + 0x00) - 7;
+                                sViewportY = *(short *)(a + 0x02) - 5;
+                                centered = true;
+                                break;
+                            }
+                        }
                     }
                     if (sViewportX < 0) sViewportX = 0;
                     if (sViewportY < 0) sViewportY = 0;
@@ -16376,8 +21572,10 @@ static void AdvanceToNextPlayer(void)
             SetWTitle(mw, wTitle);
         }
 
-        /* Random turn events */
-        if (sOptRandomTurns && *(short *)(gs + 0x136) > 1) {
+        /* Random turn events: DISABLED (not in original 68k game).
+         * The original Warlords II has no per-turn random events.
+         * Quest encounters happen via hero exploration, not turn triggers. */
+        if (0 && sOptRandomTurns && *(short *)(gs + 0x136) > 1) {
             short rEvt = (short)((unsigned short)Random() % 100);
             if (rEvt < 12) {
                 /* ~12% chance of random event per turn */
@@ -16510,82 +21708,11 @@ static void AdvanceToNextPlayer(void)
             }
         }
 
-        /* HP recovery: armies resting at friendly cities heal 1 HP per turn */
-        {
-            short armyCount = *(short *)(gs + 0x1602);
-            short cityCount2 = *(short *)(gs + 0x810);
-            short ai;
-            if (armyCount > 100) armyCount = 100;
-            if (cityCount2 > 40) cityCount2 = 40;
-            for (ai = 0; ai < armyCount; ai++) {
-                unsigned char *army = gs + 0x1604 + ai * 0x42;
-                if ((short)(unsigned char)army[0x15] != curPlayer) continue;
-                /* Only heal if army didn't move (full movement remaining) */
-                if ((short)(unsigned char)army[0x2e] < (short)(unsigned char)army[0x1a]) continue;
-                /* Check if at a friendly city */
-                {
-                    short ax = *(short *)(army + 0x00);
-                    short ay = *(short *)(army + 0x02);
-                    short ci;
-                    for (ci = 0; ci < cityCount2; ci++) {
-                        unsigned char *city = gs + 0x812 + ci * 0x20;
-                        short sType = (short)(unsigned char)city[0x18];
-                        if (sType == 2 || sType == 5 || sType == 6) continue;
-                        if (*(short *)(city + 0x04) == curPlayer &&
-                            *(short *)(city + 0x00) == ax &&
-                            *(short *)(city + 0x02) == ay) {
-                            /* Heal each unit by 1 HP (up to starting HP) */
-                            short u;
-                            static const unsigned char maxHP[] = {3, 4, 5, 3, 6, 4};
-                            for (u = 0; u < 4; u++) {
-                                short ut = (short)(unsigned char)army[0x16 + u];
-                                short hp = (short)(unsigned char)army[0x1e + u];
-                                short mhp;
-                                if (ut == 0xFF || hp <= 0) continue;
-                                if (ut == 0x1C) mhp = 9; /* hero max HP */
-                                else if (ut <= 5) mhp = maxHP[ut];
-                                else mhp = 5;
-                                if (hp < mhp) {
-                                    army[0x1e + u] = (unsigned char)(hp + 1);
-                                }
-                            }
-                            /* Recalculate army strength */
-                            {
-                                short str = 0;
-                                for (u = 0; u < 4; u++)
-                                    if ((unsigned char)army[0x16 + u] != 0xFF)
-                                        str += (short)(unsigned char)army[0x1e + u];
-                                *(short *)(army + 0x2a) = str;
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        /* HP recovery: handled by ProcessStartOfTurn() (line 20495).
+         * Removed duplicate healing loop that was causing 2 HP/turn. */
 
-        /* Reset movement points for all of this player's armies */
-        {
-            short armyCount = *(short *)(gs + 0x1602);
-            short ai;
-            if (armyCount > 100) armyCount = 100;
-            for (ai = 0; ai < armyCount; ai++) {
-                unsigned char *army = gs + 0x1604 + ai * 0x42;
-                if ((short)(unsigned char)army[0x15] == curPlayer) {
-                    /* Movement points = max movement of primary unit */
-                    short maxMov = (short)(unsigned char)army[0x1a];
-                    if (maxMov <= 0) maxMov = 10;  /* default */
-                    /* Item bonus: movement items double the stack's move pts */
-                    {
-                        short bB, cB, gB;
-                        Boolean fB, mB;
-                        GetHeroItemBonus(ai, &bB, &cB, &gB, &fB, &mB);
-                        if (mB) maxMov *= 2;
-                    }
-                    army[0x2e] = (unsigned char)(maxMov);
-                }
-            }
-        }
+        /* NOTE: Movement reset already handled by ProcessStartOfTurn() called above
+         * (including hero stronghold bonus). Do NOT re-reset here. */
 
         /* Reset extended state army flags for this player's armies */
         if (*gExtState != 0) {
@@ -16649,7 +21776,7 @@ static void AdvanceToNextPlayer(void)
 
                         nX = curX + stX;
                         nY = curY + stY;
-                        unitClass = (short)(unsigned char)army[0x16];
+                        unitClass = GetEffectiveUnitClass(ai);
                         cost = GetMovementCost(nX, nY, unitClass);
 
                         /* Anti-oscillation */
@@ -16686,9 +21813,10 @@ static void AdvanceToNextPlayer(void)
                         *(short *)(army + 0x00) = nX;
                         *(short *)(army + 0x02) = nY;
                         army[0x2e] = (unsigned char)(movePts - cost);
+                        army[0x2d] = 0;  /* clear fortification on move */
 
                         if (sOptHiddenMap)
-                            FogReveal(curPlayer, nX, nY);
+                            FogRevealUnit(curPlayer, nX, nY, unitClass == 0x0E);
 
                         if (CheckAndResolveCombat(ai)) {
                             armyCount = *(short *)(gs + 0x1602);
@@ -16706,7 +21834,8 @@ static void AdvanceToNextPlayer(void)
             }
         }
 
-        /* Calculate income from owned cities */
+        /* Calculate income/upkeep for DISPLAY only.
+         * Actual gold was already applied by ProcessStartOfTurn() above. */
         {
             short cityCount = *(short *)(gs + 0x810);
             short ci, cityIncome = 0, totalUpkeep = 0;
@@ -16715,6 +21844,8 @@ static void AdvanceToNextPlayer(void)
             for (ci = 0; ci < cityCount; ci++) {
                 unsigned char *city = gs + 0x812 + ci * 0x20;
                 short cityOwner = *(short *)(city + 0x04);
+                short st4 = (short)(unsigned char)city[0x18];
+                if (st4 != 0 && st4 != 1) continue;  /* cities + capitals only */
                 if (cityOwner == curPlayer) {
                     cityIncome += *(short *)(city + 0x08);
                 }
@@ -16726,9 +21857,10 @@ static void AdvanceToNextPlayer(void)
                 short ai2;
                 short ownedCities = 0;
                 if (armyCount2 > 100) armyCount2 = 100;
-                /* Count player's cities for gold item bonus */
                 for (ci = 0; ci < cityCount; ci++) {
                     unsigned char *ct = gs + 0x812 + ci * 0x20;
+                    short ost = (short)(unsigned char)ct[0x18];
+                    if (ost != 0 && ost != 1) continue;
                     if (*(short *)(ct + 0x04) == curPlayer) ownedCities++;
                 }
                 for (ai2 = 0; ai2 < armyCount2; ai2++) {
@@ -16736,10 +21868,13 @@ static void AdvanceToNextPlayer(void)
                     if ((short)(unsigned char)a[0x15] == curPlayer) {
                         short slot;
                         for (slot = 0; slot < 4; slot++) {
-                            if ((unsigned char)a[0x16 + slot] != 0xFF)
-                                totalUpkeep += 2;
+                            short ut = (unsigned char)a[0x16 + slot];
+                            if (ut != 0xFF && ut != 0x1C) {
+                                short upk = GetUnitTypeStat(ut, 2) / 2;
+                                if (upk < 1) upk = 1;
+                                totalUpkeep += upk;
+                            }
                         }
-                        /* Gold item bonus */
                         {
                             short bB, cB, gB;
                             Boolean fB, mB;
@@ -16751,12 +21886,11 @@ static void AdvanceToNextPlayer(void)
                 }
             }
 
-            /* Add net income to gold */
+            /* Show income summary for human players (gold already applied) */
             {
                 short netIncome = cityIncome - totalUpkeep;
-                *(short *)(gs + 0x186 + curPlayer * 0x14) += netIncome;
+                /* NOTE: Do NOT re-apply income here — ProcessStartOfTurn already did. */
 
-                /* Show income summary for human players */
                 if (*(short *)(gs + 0xd0 + curPlayer * 2) == 0) {
                     short newGold = *(short *)(gs + 0x186 + curPlayer * 0x14);
                     ShowIncomeSummary(cityIncome, totalUpkeep, newGold);
@@ -16891,157 +22025,89 @@ static void AdvanceToNextPlayer(void)
             }
         }
 
-        /* Process city production */
-        if (*gExtState != 0) {
-            unsigned char *ext = (unsigned char *)*gExtState;
-            short cityCount = *(short *)(gs + 0x810);
-            short ci;
-            if (cityCount > 40) cityCount = 40;
+        /* NOTE: City production is now handled by ProcessStartOfTurn()
+         * which is called above at line 19664. No need to duplicate here. */
 
-            for (ci = 0; ci < cityCount; ci++) {
-                unsigned char *city = gs + 0x812 + ci * 0x20;
-                unsigned char *extCity = ext + 0x24c + ci * 0x5c;
-                short cityOwner = *(short *)(city + 0x04);
-                short producing = *(short *)(extCity + 0x02);
-                short prodTurns = *(short *)(extCity + 0x58);
+        /* Offer hero hire (original: FUN_1000d1a4).
+         * 68k CODE_103: blocked when gs+0x15e (endgame flag) is set.
+         * Endgame = a player has >50% of all armies AND leads by armies/8. */
+        if (*(short *)(gs + 0x15e) == 0) {
+            ShowHeroHire(curPlayer, false);
+        }
 
-                if (cityOwner != curPlayer || producing < 0)
-                    continue;
-
-                /* Decrement production turns */
-                prodTurns--;
-                *(short *)(extCity + 0x58) = prodTurns;
-
-                if (prodTurns <= 0) {
-                    /* Production complete: create new army at city */
-                    short armyCount = *(short *)(gs + 0x1602);
-                    PlaySound(SND_DING);  /* notification for production complete */
-                    if (armyCount < 100) {
-                        unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
-                        short j;
-
-                        /* Zero out the new army record */
-                        for (j = 0; j < 0x42; j++)
-                            newArmy[j] = 0;
-
-                        /* Place at city location */
-                        *(short *)(newArmy + 0x00) = *(short *)(city + 0x00);
-                        *(short *)(newArmy + 0x02) = *(short *)(city + 0x02);
-
-                        /* Name: "Unit" + type number */
-                        newArmy[0x04] = 'U';
-                        newArmy[0x05] = 'n';
-                        newArmy[0x06] = 'i';
-                        newArmy[0x07] = 't';
-
-                        /* Owner */
-                        newArmy[0x15] = (unsigned char)curPlayer;
-
-                        /* Unit type in slot 0 */
-                        newArmy[0x16] = (unsigned char)producing;
-                        newArmy[0x17] = 0xFF;
-                        newArmy[0x18] = 0xFF;
-                        newArmy[0x19] = 0xFF;
-
-                        /* Type-specific stats: [LtInf, HvInf, Cav, Archers, Siege, Naval] */
-                        {
-                            /* Sprite index per unit type: LtInf=0, HvInf=2, Cav=4, Arch=6, Siege=8, Naval=10 */
-                            static unsigned char spriteIdx[] = {0, 2, 4, 6, 8, 10};
-                            static unsigned char unitHP[]  = {3, 4, 5, 3, 6, 4};
-                            static unsigned char unitMov[] = {10, 8, 14, 10, 6, 12};
-                            short idx = producing;
-                            if (idx < 0 || idx > 5) idx = 0;
-                            newArmy[0x14] = spriteIdx[idx]; /* sprite index */
-                            newArmy[0x1a] = unitMov[idx]; /* movement */
-                            newArmy[0x1e] = unitHP[idx];  /* hits */
-                            newArmy[0x22] = 0;            /* bonus */
-                            newArmy[0x26] = 0;            /* experience */
-                            *(short *)(newArmy + 0x2a) = (short)unitHP[idx];
-                            newArmy[0x2e] = (unsigned char)(unitMov[idx]); /* move pts */
+        /* Quest auto-generation and progress check (68k CODE_135):
+         * At turn start, if quests enabled, check for completion and
+         * auto-generate new quests for players without active ones. */
+        {
+            short questEnabled = *(short *)(gs + 0x11a);
+            if (questEnabled) {
+                QuestState *q = &sPlayerQuests[curPlayer];
+                /* Check progress first (may complete quest) */
+                if (q->active && !q->completed)
+                    CheckQuestProgress(curPlayer);
+                /* Show quest completion popup for human players */
+                if (q->completed && *(short *)(gs + 0xd0 + curPlayer * 2) == 0) {
+                    WindowPtr qcWin;
+                    Rect qcR;
+                    EventRecord qcEvt;
+                    unsigned long qcTk;
+                    SetRect(&qcR, 0, 0, 300, 80);
+                    OffsetRect(&qcR, (640 - 300) / 2, 40);
+                    qcWin = NewCWindow(NULL, &qcR, "\p", true,
+                                       plainDBox, (WindowPtr)-1, false, 0);
+                    if (qcWin) {
+                        RGBColor qcBg = {0x1200, 0x2200, 0x1200};
+                        RGBColor qcGold = {0xFFFF, 0xDDDD, 0x3333};
+                        RGBColor qcWh = {0xFFFF, 0xFFFF, 0xFFFF};
+                        SetPort(qcWin);
+                        RGBForeColor(&qcBg);
+                        PaintRect(&qcWin->portRect);
+                        RGBForeColor(&qcGold);
+                        PenSize(2, 2);
+                        FrameRect(&qcWin->portRect);
+                        PenNormal();
+                        TextFont(2); TextSize(14); TextFace(bold);
+                        RGBForeColor(&qcGold);
+                        MoveTo(70, 26);
+                        DrawString(GetCachedString(STR_QUEST, 3, "\pQuest Complete!"));
+                        TextFace(0); TextFont(3); TextSize(10);
+                        RGBForeColor(&qcWh);
+                        if (q->reward > 0) {
+                            Str255 rStr;
+                            MoveTo(30, 48);
+                            DrawString(GetCachedString(STR_QUEST, 5, "\pGold: +"));
+                            NumToString((long)q->reward, rStr);
+                            DrawString(rStr);
                         }
-
-                        /* Apply vectoring: if target city set, give army move orders */
-                        {
-                            short vecDest = *(short *)(extCity + 0x3e);
-                            if (vecDest >= 0 && vecDest < cityCount) {
-                                unsigned char *destCity = gs + 0x812 + vecDest * 0x20;
-                                *(short *)(newArmy + 0x34) = *(short *)(destCity + 0x00);
-                                *(short *)(newArmy + 0x36) = *(short *)(destCity + 0x02);
-                                *(short *)(newArmy + 0x32) = 1;  /* has_orders = true */
-                            }
-                        }
-
-                        *(short *)(gs + 0x1602) = armyCount + 1;
-
-                        /* Record production event */
-                        RecordEvent(*(short *)(gs + 0x136), HIST_EVT_PRODUCED,
-                                    curPlayer, "Army produced");
-
-                        /* Show production notification for human players */
-                        if (*(short *)(gs + 0xd0 + curPlayer * 2) == 0) {
-                            PlaySound(SND_CHORD);
-                            Str255 unitName;
-                            GetUnitTypeName(producing, unitName);
+                        if (q->rewardItem > 0 && q->rewardItem <= MAX_ITEMS) {
+                            MoveTo(30, 64);
+                            DrawString(GetCachedString(STR_QUEST, 6, "\pArtifact: "));
                             {
-                                WindowPtr pnWin;
-                                Rect pnR;
-                                SetRect(&pnR, 0, 0, 250, 50);
-                                OffsetRect(&pnR, 10, 40);
-                                pnWin = NewCWindow(NULL, &pnR, "\p", true,
-                                                   plainDBox, (WindowPtr)-1, false, 0);
-                                if (pnWin) {
-                                    RGBColor bg = {0x1800, 0x2000, 0x1800};
-                                    RGBColor gold = {0xFFFF, 0xDDDD, 0x3333};
-                                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                                    EventRecord pnEvt;
-                                    unsigned long pnTicks;
-                                    SetPort(pnWin);
-                                    RGBForeColor(&bg);
-                                    PaintRect(&pnWin->portRect);
-                                    RGBForeColor(&gold);
-                                    PenSize(2, 2);
-                                    FrameRect(&pnWin->portRect);
-                                    PenNormal();
-                                    TextFont(3); TextSize(10); TextFace(bold);
-                                    RGBForeColor(&white);
-                                    MoveTo(10, 18);
-                                    DrawString(GetCachedString(STR_CITY_DIALOG, 29, "\pProduction Complete!"));
-                                    TextFace(0); TextSize(9);
-                                    RGBForeColor(&gold);
-                                    MoveTo(10, 36);
-                                    DrawString(unitName);
-                                    DrawString(GetCachedString(STR_CITY_DIALOG, 30, "\p at "));
-                                    if (ci < sCityNameCount && sCityNames[ci][0] != '\0') {
-                                        Str255 cn;
-                                        char *s = sCityNames[ci];
-                                        short nl = 0;
-                                        while (nl < MAX_CITY_NAME - 1 && s[nl]) nl++;
-                                        cn[0] = (unsigned char)nl;
-                                        BlockMoveData(s, cn + 1, nl);
-                                        DrawString(cn);
-                                    } else {
-                                        DrawString(GetCachedString(STR_CITY_DIALOG, 31, "\pcity"));
-                                    }
-                                    pnTicks = TickCount() + SpeedTicks(90);
-                                    while (TickCount() < pnTicks) {
-                                        if (WaitNextEvent(mDownMask | keyDownMask, &pnEvt, 5, NULL))
-                                            break;
-                                    }
-                                    DisposeWindow(pnWin);
-                                }
+                                const ItemDef *itm = &sItemTable[q->rewardItem - 1];
+                                Str255 iname;
+                                short nl = 0;
+                                while (nl < 19 && itm->name[nl]) nl++;
+                                iname[0] = (unsigned char)nl;
+                                BlockMoveData(itm->name, iname + 1, nl);
+                                DrawString(iname);
                             }
                         }
+                        PlaySound(SND_ORCH);
+                        qcTk = TickCount() + SpeedTicks(180);
+                        while (TickCount() < qcTk) {
+                            if (WaitNextEvent(mDownMask | keyDownMask, &qcEvt, 5, NULL)) break;
+                        }
+                        DisposeWindow(qcWin);
                     }
-
-                    /* Reset production: start producing the same type again */
-                    *(short *)(extCity + 0x58) = GetProductionTurns(producing);
+                }
+                /* Auto-generate if no active quest */
+                if (!q->active || q->completed) {
+                    if (q->completed)
+                        q->active = false;
+                    GenerateQuest(curPlayer);
                 }
             }
         }
-
-        /* Offer hero hire (original: FUN_1000d1a4) */
-        PlayVoice(SND_VHERO00);
-        ShowHeroHire(curPlayer, false);
 
         /* Check victory/defeat conditions */
         {
@@ -17096,7 +22162,7 @@ static void AdvanceToNextPlayer(void)
  *         viewport/selection state (20B)
  * =================================================================== */
 #define SAVE_MAGIC  0x574C3253   /* 'WL2S' */
-#define SAVE_VERSION 3
+#define SAVE_VERSION 5
 
 static FSSpec sSaveFileSpec;
 static Boolean sSaveFileValid = false;
@@ -17242,6 +22308,18 @@ static Boolean SaveGameToFile(FSSpec *spec)
         FSWrite(refNum, &count, sFogVisible);
     }
 
+    /* v4: Quest state */
+    {
+        count = sizeof(sPlayerQuests);
+        FSWrite(refNum, &count, sPlayerQuests);
+    }
+
+    /* v5: Movement cost table (separated from fight order at gs+0x60C) */
+    {
+        count = sizeof(sMoveCostTable);
+        FSWrite(refNum, &count, sMoveCostTable);
+    }
+
     FSClose(refNum);
     return true;
 }
@@ -17381,6 +22459,53 @@ static Boolean LoadGameFromFile(FSSpec *spec)
         FSRead(refNum, &count, sFogExplored);
         count = sizeof(sFogVisible);
         FSRead(refNum, &count, sFogVisible);
+    }
+
+    /* v4: Quest state */
+    if (version >= 4) {
+        count = sizeof(sPlayerQuests);
+        FSRead(refNum, &count, sPlayerQuests);
+    } else {
+        /* Pre-v4 saves: clear quest state */
+        short qi;
+        for (qi = 0; qi < 8; qi++) {
+            sPlayerQuests[qi].active = false;
+            sPlayerQuests[qi].completed = false;
+        }
+    }
+
+    /* v5: Movement cost table */
+    if (version >= 5) {
+        count = sizeof(sMoveCostTable);
+        FSRead(refNum, &count, sMoveCostTable);
+    } else {
+        /* Pre-v5 saves: rebuild from defaults since gs+0x60C has fight order */
+        static const unsigned char defCosts[9] = {2, 3, 4, 3, 6, 2, 2, 2, 0};
+        short ut2, tt2;
+        for (ut2 = 0; ut2 < 29; ut2++) {
+            short isNav = 0;
+            if (sUnitTypesLoaded && ut2 < sUnitTypeCount) {
+                short tCl = *(short *)(sUnitTypeTable + ut2 * UNIT_TYPE_ENTRY);
+                if (tCl == 5) isNav = 1;
+            }
+            for (tt2 = 0; tt2 < 9; tt2++) {
+                if (isNav) {
+                    sMoveCostTable[tt2 * 29 + ut2] = (tt2 == 8 || tt2 == 5) ? 2 : 0;
+                } else {
+                    sMoveCostTable[tt2 * 29 + ut2] = defCosts[tt2];
+                    if (tt2 == 4 && ut2 != 0x1C) sMoveCostTable[tt2 * 29 + ut2] = 0;
+                }
+            }
+        }
+    }
+
+    /* Restore map dimensions from game state */
+    {
+        unsigned char *gs2 = (unsigned char *)*gGameState;
+        sMapWidth  = *(short *)(gs2 + 0x17c);
+        sMapHeight = *(short *)(gs2 + 0x17a);
+        if (sMapWidth <= 0 || sMapWidth > 112)  sMapWidth = 112;
+        if (sMapHeight <= 0 || sMapHeight > 156) sMapHeight = 156;
     }
 
     FSClose(refNum);
@@ -17795,6 +22920,7 @@ static void HandleMenuChoice(long menuResult)
                 *(short *)(army + 0x00) = sUndoFromX;
                 *(short *)(army + 0x02) = sUndoFromY;
                 army[0x2e] = (unsigned char)(sUndoMovePts);
+                army[0x2d] = (unsigned char)sUndoFortify;  /* restore fortification */
                 *(short *)(army + 0x32) = 0;  /* clear pending orders */
                 sSelectedArmy = sUndoArmyIdx;
                 sUndoArmyIdx = -1;  /* can only undo once */
@@ -17880,7 +23006,7 @@ static void HandleMenuChoice(long menuResult)
                     if (other[0x16] == 0xFF && other[0x17] == 0xFF &&
                         other[0x18] == 0xFF && other[0x19] == 0xFF) {
                         RemoveArmy(ai);
-                        if (ai < sSelectedArmy) sSelectedArmy--;
+                        /* Note: RemoveArmy already adjusts sSelectedArmy */
                         armyCount = *(short *)(gs + 0x1602);
                         if (armyCount > 100) armyCount = 100;
                         ai--;  /* re-check this index */
@@ -17889,12 +23015,7 @@ static void HandleMenuChoice(long menuResult)
 
                 /* Recalculate strength display */
                 if (merged) {
-                    short totalHP = 0, s;
-                    for (s = 0; s < 4; s++) {
-                        if (army[0x16 + s] != 0xFF)
-                            totalHP += (short)(unsigned char)army[0x1e + s];
-                    }
-                    *(short *)(army + 0x2a) = totalHP;
+                    RecalcArmyStrength(army);
                 }
 
                 if (*gMainGameWindow != 0) {
@@ -17944,15 +23065,40 @@ static void HandleMenuChoice(long menuResult)
                     newArmy[0x26] = army[0x26 + lastSlot];
                     newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
 
-                    /* Set new army sprite to match the transferred unit type */
+                    /* Hero leaving: transfer name and items (all 4 slots) */
+                    if (newArmy[0x16] == 0x1C) {
+                        short hni;
+                        for (hni = 0; hni < 16; hni++)
+                            newArmy[0x04 + hni] = army[0x04 + hni];
+                        { short itm;
+                          for (itm = 0; itm < ITEM_SLOTS; itm++) {
+                            *(short *)(newArmy + 0x3A + itm * 2) = *(short *)(army + 0x3A + itm * 2);
+                            *(short *)(army + 0x3A + itm * 2) = 0;
+                          }
+                        }
+                        /* Update hero instance record */
+                        { short hOwner = (short)(unsigned char)army[0x15];
+                          if (hOwner >= 0 && hOwner < 8) {
+                            unsigned char *hr = gs + 0x1422 + hOwner * 0x2C;
+                            if (hr[0x00] != 0)
+                                *(short *)(hr + 0x04) = armyCount;
+                          }
+                        }
+                    }
+
+                    /* Set new army sprite from unit type table (offset 0x24) */
                     {
-                        static unsigned char sprIdx[] = {0, 2, 4, 6, 8, 10};
                         short ut = (short)(unsigned char)newArmy[0x16];
-                        if (ut >= 0 && ut <= 5) newArmy[0x14] = sprIdx[ut];
+                        if (sUnitTypesLoaded && ut >= 0 && ut < sUnitTypeCount) {
+                            unsigned char *ute = sUnitTypeTable + ut * UNIT_TYPE_ENTRY;
+                            newArmy[0x14] = (unsigned char)(*(short *)(ute + 0x24) & 0xFF);
+                        } else {
+                            newArmy[0x14] = army[0x14]; /* copy from source */
+                        }
                     }
 
                     /* Set new army strength and movement */
-                    *(short *)(newArmy + 0x2a) = (short)(unsigned char)newArmy[0x1e];
+                    RecalcArmyStrength(newArmy);
                     newArmy[0x2e] = (unsigned char)(newArmy[0x1a]);
 
                     /* Remove unit from original army */
@@ -17963,14 +23109,7 @@ static void HandleMenuChoice(long menuResult)
                     army[0x26 + lastSlot] = 0;
 
                     /* Recalculate original army strength */
-                    {
-                        short totalHP = 0;
-                        for (slot = 0; slot < 4; slot++) {
-                            if (army[0x16 + slot] != 0xFF)
-                                totalHP += (short)(unsigned char)army[0x1e + slot];
-                        }
-                        *(short *)(army + 0x2a) = totalHP;
-                    }
+                    RecalcArmyStrength(army);
 
                     *(short *)(gs + 0x1602) = armyCount + 1;
 
@@ -18084,7 +23223,14 @@ static void HandleMenuChoice(long menuResult)
                                     }
                                     RGBForeColor(&white);
                                     MoveTo(32, yp + 10);
-                                    GetUnitTypeName(ut, typeName);
+                                    if (ut == 0x1C) {
+                                        unsigned char *hn = army + 0x04; short nl = 0;
+                                        while (nl < 15 && hn[nl]) nl++;
+                                        typeName[0] = (unsigned char)nl;
+                                        BlockMoveData(hn, typeName + 1, nl);
+                                    } else {
+                                        GetUnitTypeName(ut, typeName);
+                                    }
                                     DrawString(typeName);
                                     DrawString(GetCachedString(STR_STACK_INFO, 14, "\p  HP:"));
                                     NumToString((long)hp, ns); DrawString(ns);
@@ -18134,7 +23280,7 @@ static void HandleMenuChoice(long menuResult)
                                             newArmy[0x15] = army[0x15]; /* same owner */
                                             newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
                                             {
-                                                short newSlot = 0, str = 0;
+                                                short newSlot = 0;
                                                 for (ui = 0; ui < 4; ui++) {
                                                     if (!leaving[ui]) continue;
                                                     if (army[0x16 + ui] == 0xFF) continue;
@@ -18142,11 +23288,32 @@ static void HandleMenuChoice(long menuResult)
                                                     newArmy[0x1e + newSlot] = army[0x1e + ui];
                                                     newArmy[0x22 + newSlot] = army[0x22 + ui];
                                                     newArmy[0x26 + newSlot] = army[0x26 + ui];
-                                                    str += (short)(unsigned char)army[0x1e + ui];
                                                     /* Copy sprite + movement from first unit */
                                                     if (newSlot == 0) {
                                                         newArmy[0x14] = army[0x14];
                                                         newArmy[0x1a] = army[0x1a + ui];
+                                                    }
+                                                    /* Hero leaving: transfer name and items (all 4 slots) */
+                                                    if (army[0x16 + ui] == 0x1C) {
+                                                        /* Copy hero name (army+0x04, 16 bytes) */
+                                                        short hni;
+                                                        for (hni = 0; hni < 16; hni++)
+                                                            newArmy[0x04 + hni] = army[0x04 + hni];
+                                                        /* Transfer all item slots */
+                                                        { short itm;
+                                                          for (itm = 0; itm < ITEM_SLOTS; itm++) {
+                                                            *(short *)(newArmy + 0x3A + itm * 2) = *(short *)(army + 0x3A + itm * 2);
+                                                            *(short *)(army + 0x3A + itm * 2) = 0;
+                                                          }
+                                                        }
+                                                        /* Update hero instance record */
+                                                        { short hO = (short)(unsigned char)army[0x15];
+                                                          if (hO >= 0 && hO < 8) {
+                                                            unsigned char *hr = gs + 0x1422 + hO * 0x2C;
+                                                            if (hr[0x00] != 0)
+                                                                *(short *)(hr + 0x04) = armyCount;
+                                                          }
+                                                        }
                                                     }
                                                     /* Clear from original */
                                                     army[0x16 + ui] = 0xFF;
@@ -18158,7 +23325,7 @@ static void HandleMenuChoice(long menuResult)
                                                 /* Fill remaining slots in new army */
                                                 for (j = newSlot; j < 4; j++)
                                                     newArmy[0x16 + j] = 0xFF;
-                                                *(short *)(newArmy + 0x2a) = str;
+                                                RecalcArmyStrength(newArmy);
                                                 newArmy[0x2e] = (unsigned char)(newArmy[0x1a]);
                                                 if ((short)(unsigned char)newArmy[0x2e] <= 0)
                                                     newArmy[0x2e] = (unsigned char)(10);
@@ -18189,13 +23356,7 @@ static void HandleMenuChoice(long menuResult)
                                                     army[0x26 + j] = 0;
                                                 }
                                                 /* Recalculate original army strength */
-                                                {
-                                                    short str2 = 0;
-                                                    for (j = 0; j < 4; j++)
-                                                        if (army[0x16 + j] != 0xFF)
-                                                            str2 += (short)(unsigned char)army[0x1e + j];
-                                                    *(short *)(army + 0x2a) = str2;
-                                                }
+                                                RecalcArmyStrength(army);
                                             }
                                             *(short *)(gs + 0x1602) = armyCount + 1;
                                             sSelectedArmy = armyCount; /* select new army */
@@ -18285,12 +23446,28 @@ static void HandleMenuChoice(long menuResult)
                 }
             }
             break;
-        case 16: /* Fight Order... (cmd 0x583) — reorder unit slots */
-            if (sSelectedArmy >= 0)
-                ShowFightOrder(sSelectedArmy);
+        case 16: /* Fight Order... (cmd 0x583) — per-player fight order */
+            ShowFightOrder(sSelectedArmy);
             break;
         case 17: /* Disband Group (cmd 0x584) — remove selected army */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
+                /* 68k: Prevent disbanding if army contains a hero with non-hero units.
+                 * Use Leave Group to separate the hero first. */
+                {
+                    unsigned char *gs2 = (unsigned char *)*gGameState;
+                    unsigned char *a2 = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                    short hasHero2 = 0, nonHero2 = 0, ui2;
+                    for (ui2 = 0; ui2 < 4; ui2++) {
+                        if (a2[0x16 + ui2] == 0xFF || a2[0x1e + ui2] <= 0) continue;
+                        if (a2[0x16 + ui2] == 0x1C) hasHero2++; else nonHero2++;
+                    }
+                    if (hasHero2 > 0 && nonHero2 > 0) {
+                        PlaySound(SND_DING);
+                        ShowBriefMessage(GetCachedString(STR_MISC, 70,
+                            "\pCannot disband: split hero first!"));
+                        break;
+                    }
+                }
                 /* Confirmation dialog */
                 WindowPtr dbWin;
                 Rect dbR;
@@ -18516,44 +23693,66 @@ static void HandleMenuChoice(long menuResult)
                     if (*(short *)(site + 0x00) == ax &&
                         *(short *)(site + 0x02) == ay) {
                         short siteType = (short)(unsigned char)site[0x18];
-                        if (siteType == 2 || siteType == 5 || siteType == 6) {
+                        if (siteType >= 2 && siteType <= 5 &&
+                            *(short *)(site + 0x1c) != 0) {
                             short curPlayer = *(short *)(gs + 0x110);
+                            /* 68k CODE_074: per-player visited bitmask at site+0x1E.
+                             * Each player can search the same site once. Skip if
+                             * this player's bit is already set. */
+                            if (curPlayer >= 0 && curPlayer < 8 &&
+                                (site[0x1E] & (1 << curPlayer)) != 0) {
+                                ShowBriefMessage("\pAlready searched!");
+                                break;
+                            }
                             short gold = 0;
-                            short rewardType;  /* 0=gold, 1=item, 2=ally */
+                            short rewardType;  /* 0=gold, 1=item, 2=ally, 3=sage/map, 4=gold+dir, 5=multi-ally */
                             short foundItemId = 0;
+                            short allyTypeUsed = 0;
                             Boolean gotAlly = false;
                             WindowPtr rwWin;
                             GWorldPtr rwGW = NULL;
                             Rect rwR, rwGR;
-                            const unsigned char *siteTypeName;
-                            long rndSeed = (long)TickCount();
+                            const unsigned char *siteTypeName = "\pRuin";
 
-                            if (siteType == 2)      siteTypeName = "\pTemple";
-                            else if (siteType == 6)  siteTypeName = "\pLibrary";
-                            else                     siteTypeName = "\pRuin";
-
-                            /* Determine reward type:
-                             * Ruin: 40% item, 25% ally, 35% gold
-                             * Temple: 20% item, 10% ally, 70% gold (more gold)
-                             * Library: 50% item, 10% ally, 40% gold (more items) */
-                            {
-                                short r100 = (short)(rndSeed % 100);
-                                if (siteType == 5) {  /* ruin */
-                                    rewardType = (r100 < 40) ? 1 : (r100 < 65) ? 2 : 0;
-                                } else if (siteType == 6) {  /* library */
-                                    rewardType = (r100 < 50) ? 1 : (r100 < 60) ? 2 : 0;
-                                } else {  /* temple */
-                                    rewardType = (r100 < 20) ? 1 : (r100 < 30) ? 2 : 0;
-                                }
+                            /* 68k CODE_074: deterministic reward based on site type.
+                             * Type 2 = item site, Type 3 = defended (gold+combat),
+                             * Type 4 = gold/treasure, Type 5 = ally recruitment.
+                             * The 68k has NO probability tables — type directly determines reward. */
+                            switch (siteType) {
+                                case 2: rewardType = 1; break;  /* item */
+                                case 3: rewardType = 0; break;  /* defended: gold (combat TODO) */
+                                case 4: rewardType = 0; break;  /* gold/treasure */
+                                case 5: rewardType = 5; break;  /* ally recruitment */
+                                default: rewardType = 0; break;
                             }
 
                             if (rewardType == 1) {
-                                /* Item reward: pick a random item */
-                                foundItemId = (short)((rndSeed / 7) % MAX_ITEMS) + 1;
-                                if (!GiveItemToHero(sSelectedArmy, foundItemId)) {
-                                    /* Slots full — fall back to gold */
+                                /* Item reward: check for pre-placed item at this ruin (68k FUN_00000f68).
+                                 * Search gs+0xD12 for an item with status=1 (in ruin) at this location. */
+                                short ii;
+                                foundItemId = 0;
+                                for (ii = 0; ii < 22; ii++) {
+                                    unsigned char *ir = gs + 0xD12 + ii * 0x1E;
+                                    if (ir[0x16] == 1 &&
+                                        *(short *)(ir + 0x1A) == ax &&
+                                        *(short *)(ir + 0x1C) == ay) {
+                                        foundItemId = ii + 1;  /* 1-based */
+                                        break;
+                                    }
+                                }
+                                if (foundItemId == 0) {
+                                    /* 68k: type 2 sites always have pre-placed items.
+                                     * If not found, fall back to gold instead of
+                                     * generating random (invalid) item IDs. */
+                                    rewardType = 0;
+                                } else if (!GiveItemToHero(sSelectedArmy, foundItemId)) {
+                                    /* Hero slots full — fall back to gold */
                                     rewardType = 0;
                                     foundItemId = 0;
+                                } else {
+                                    /* 68k CODE_074: clear site type after item taken so
+                                     * it can't be searched again */
+                                    site[0x18] = 0;
                                 }
                             }
 
@@ -18564,7 +23763,7 @@ static void HandleMenuChoice(long menuResult)
                                 for (slot = 0; slot < 4; slot++) {
                                     if ((unsigned char)army[0x16 + slot] == 0xFF) {
                                         /* Pick ally type: 0=LtInf,1=HvInf,2=Cav,3=Arch */
-                                        short allyType = (short)((rndSeed / 13) % 4);
+                                        short allyType = (short)((unsigned short)Random() % 4);
                                         static const unsigned char allyHP[] = {3, 4, 5, 3};
                                         static const unsigned char allyMv[] = {10, 8, 14, 10};
                                         army[0x16 + slot] = (unsigned char)allyType;
@@ -18572,8 +23771,9 @@ static void HandleMenuChoice(long menuResult)
                                         army[0x1a + slot] = allyMv[allyType];
                                         army[0x22 + slot] = 0;
                                         army[0x26 + slot] = 0;
+                                        allyTypeUsed = allyType;
                                         /* Update army strength */
-                                        *(short *)(army + 0x2a) += allyHP[allyType];
+                                        RecalcArmyStrength(army);
                                         gotAlly = true;
                                         break;
                                     }
@@ -18583,20 +23783,96 @@ static void HandleMenuChoice(long menuResult)
                                 }
                             }
 
-                            if (rewardType == 0) {
-                                /* Gold reward */
-                                if (siteType == 2)
-                                    gold = (short)(rndSeed % 400) + 300;
-                                else if (siteType == 6)
-                                    gold = (short)(rndSeed % 350) + 250;
-                                else
-                                    gold = (short)(rndSeed % 300) + 200;
-                                *(short *)(gs + 0x186 + curPlayer * 0x14) += gold;
+                            if (rewardType == 3) {
+                                /* Sage/map reveal (68k CODE_066 FUN_0000082e):
+                                 * Reveals a random rectangle offset from hero position.
+                                 * Origin: (heroX - Random(5), heroY - Random(5))
+                                 * Size: (Random(10), Random(10))
+                                 * Clamped to map bounds (112x156). */
+                                short rx, ry;
+                                short revX = ax - (short)((unsigned short)Random() % 6);
+                                short revY = ay - (short)((unsigned short)Random() % 6);
+                                short revW = (short)((unsigned short)Random() % 11);
+                                short revH = (short)((unsigned short)Random() % 11);
+                                if (revX < 0) revX = 0;
+                                if (revY < 0) revY = 0;
+                                if (revX + revW > sMapWidth - 1) revW = sMapWidth - 1 - revX;
+                                if (revY + revH > sMapHeight - 1) revH = sMapHeight - 1 - revY;
+                                for (ry = revY; ry < revY + revH; ry++) {
+                                    for (rx = revX; rx < revX + revW; rx++) {
+                                        FogSetBit(sFogExplored[curPlayer], rx, ry);
+                                        FogSetBit(sFogVisible[curPlayer], rx, ry);
+                                    }
+                                }
                             }
 
-                            site[0x18] = 0;  /* mark as searched */
+                            if (rewardType == 0 || rewardType == 4) {
+                                /* Gold reward (68k CODE_074 type 4).
+                                 * 68k uses site+0x1C: nonzero = rich site (Random(1000)),
+                                 * zero = basic (Random(500)). */
+                                /* 68k: site+0x1C != 0 means rich site (1000 range) */
+                                if (*(short *)(site + 0x1C) != 0)
+                                    gold = (short)((unsigned short)Random() % 1000);
+                                else
+                                    gold = (short)((unsigned short)Random() % 500);
+                                {
+                                    short *pg = (short *)(gs + 0x186 + curPlayer * 0x14);
+                                    *pg = *pg + gold;
+                                    if (*pg > 30000) *pg = 30000; /* 68k gold cap */
+                                }
+                            }
+
+                            if (rewardType == 5) {
+                                /* Ally recruitment (68k CODE_074 type 5):
+                                 * allyCount = Random(2), +2 if site+0x1C nonzero.
+                                 * Result: 0-1 allies (basic) or 2-3 allies (special). */
+                                short allyCount;
+                                short spawned = 0;
+                                short hs2;
+                                allyCount = (short)((unsigned short)Random() % 2);
+                                if (*(short *)(site + 0x1C) != 0) allyCount += 2;
+                                for (hs2 = 0; hs2 < allyCount; hs2++) {
+                                    short slot;
+                                    for (slot = 0; slot < 4; slot++) {
+                                        if ((unsigned char)army[0x16 + slot] == 0xFF) {
+                                            short at = (short)((unsigned short)Random() % 4);
+                                            static const unsigned char spawnHP[] = {3, 4, 5, 3};
+                                            static const unsigned char spawnMv[] = {10, 8, 14, 10};
+                                            army[0x16 + slot] = (unsigned char)at;
+                                            army[0x1e + slot] = spawnHP[at];
+                                            army[0x1a + slot] = spawnMv[at];
+                                            army[0x22 + slot] = 0;
+                                            army[0x26 + slot] = 0;
+                                            allyTypeUsed = at;
+                                            spawned++;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (spawned > 0) {
+                                    RecalcArmyStrength(army);
+                                    gotAlly = true;
+                                } else {
+                                    /* No empty slots — fall back to gold */
+                                    rewardType = 0;
+                                    gold = (short)((unsigned short)Random() % 500);
+                                    {
+                                        short *pg2 = (short *)(gs + 0x186 + curPlayer * 0x14);
+                                        *pg2 = *pg2 + gold;
+                                        if (*pg2 > 30000) *pg2 = 30000;
+                                    }
+                                }
+                            }
+
+                            /* 68k CODE_074: set player's bit in visited bitmask.
+                             * Active flag stays set — other players can still search. */
+                            if (curPlayer >= 0 && curPlayer < 8)
+                                site[0x1E] |= (unsigned char)(1 << curPlayer);
                             foundRuin = true;
                             PlaySound(SND_ORCH);  /* fanfare for ruin discovery */
+
+                            /* NOTE: 68k CODE_074 gives NO XP from ruin search.
+                             * Hero XP only comes from combat. Removed fabricated +2 XP. */
 
                             /* Update quest progress for explore quests */
                             if (sPlayerQuests[curPlayer].active &&
@@ -18610,6 +23886,9 @@ static void HandleMenuChoice(long menuResult)
                                         curPlayer,
                                         rewardType == 1 ? "Found artifact in ruins" :
                                         rewardType == 2 ? "Recruited ally in ruins" :
+                                        rewardType == 3 ? "Sage revealed the map" :
+                                        rewardType == 4 ? "Found treasure with clues" :
+                                        rewardType == 5 ? "Recruited allies in ruins" :
                                         "Found treasure in ruins");
 
                             /* Show reward dialog */
@@ -18710,13 +23989,20 @@ static void HandleMenuChoice(long menuResult)
                                                 { Str255 vs; NumToString((long)itm->value, vs); DrawString(vs); }
                                                 DrawString(GetCachedString(STR_SEARCH_TEMPLE, 10, "\p per city per turn"));
                                                 break;
+                                            case ITEM_TYPE_FLAT_PLUS:
+                                                DrawString("\pCommand bonus: +1 to all units");
+                                                break;
                                         }
+                                    } else if (rewardType == 3) {
+                                        MoveTo(30, 60);
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 16, "\pA wise sage speaks to your hero!"));
+                                        MoveTo(30, 82);
+                                        {
+                                            RGBColor cyan = {0x6666, 0xFFFF, 0xFFFF};
+                                            RGBForeColor(&cyan);
+                                        }
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 17, "\pThe surrounding lands are revealed!"));
                                     } else if (rewardType == 2 && gotAlly) {
-                                        static const unsigned char *allyNames[] = {
-                                            "\pLight Infantry", "\pHeavy Infantry",
-                                            "\pCavalry", "\pArchers"
-                                        };
-                                        short allyT = (short)((rndSeed / 13) % 4);
                                         MoveTo(30, 60);
                                         DrawString(GetCachedString(STR_SEARCH_TEMPLE, 11, "\pA warrior emerges from the shadows!"));
                                         MoveTo(30, 82);
@@ -18725,9 +24011,82 @@ static void HandleMenuChoice(long menuResult)
                                             RGBForeColor(&green);
                                         }
                                         DrawString(GetCachedString(STR_SEARCH_TEMPLE, 12, "\pAllied: "));
-                                        DrawString(allyNames[allyT]);
+                                        {
+                                            Str255 allyName;
+                                            GetUnitTypeName(allyTypeUsed, allyName);
+                                            DrawString(allyName);
+                                        }
                                         DrawString(GetCachedString(STR_SEARCH_TEMPLE, 13, "\p joins your army!"));
+                                    } else if (rewardType == 4) {
+                                        /* Gold + direction hint (68k type 3) */
+                                        Str255 numStr;
+                                        MoveTo(30, 60);
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 14, "\pYour hero discovers treasure!"));
+                                        MoveTo(30, 82);
+                                        DrawString(GetCachedString(STR_MISC, 4, "\pReward: "));
+                                        NumToString((long)gold, numStr);
+                                        DrawString(numStr);
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 15, "\p gold pieces"));
+                                        /* Find nearest unsearched ruin and show direction */
+                                        {
+                                            short bestDist = 32000, bestDx = 0, bestDy = 0;
+                                            short si2;
+                                            short sc2 = *(short *)(gs + 0x810);
+                                            if (sc2 > 40) sc2 = 40;
+                                            for (si2 = 0; si2 < sc2; si2++) {
+                                                unsigned char *s2 = gs + 0x812 + si2 * 0x20;
+                                                short st2 = (short)(unsigned char)s2[0x18];
+                                                if (st2 >= 2 && st2 <= 5) {
+                                                    short dx = *(short *)(s2 + 0x00) - ax;
+                                                    short dy = *(short *)(s2 + 0x02) - ay;
+                                                    short dist = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+                                                    if (dist > 0 && dist < bestDist) {
+                                                        bestDist = dist;
+                                                        bestDx = dx;
+                                                        bestDy = dy;
+                                                    }
+                                                }
+                                            }
+                                            if (bestDist < 32000) {
+                                                const unsigned char *dir;
+                                                if (bestDy < 0 && (bestDx > -bestDy/2 && bestDx < bestDy/-2 + 1))
+                                                    dir = "\pNorth";
+                                                else if (bestDy > 0 && (bestDx > -bestDy/2 && bestDx < bestDy/2 + 1))
+                                                    dir = "\pSouth";
+                                                else if (bestDx > 0 && (bestDy > -bestDx/2 && bestDy < bestDx/2 + 1))
+                                                    dir = "\pEast";
+                                                else if (bestDx < 0 && (bestDy > bestDx/2 && bestDy < -bestDx/2 + 1))
+                                                    dir = "\pWest";
+                                                else if (bestDx > 0 && bestDy < 0)
+                                                    dir = "\pNortheast";
+                                                else if (bestDx < 0 && bestDy < 0)
+                                                    dir = "\pNorthwest";
+                                                else if (bestDx > 0 && bestDy > 0)
+                                                    dir = "\pSoutheast";
+                                                else
+                                                    dir = "\pSouthwest";
+                                                MoveTo(30, 104);
+                                                {
+                                                    RGBColor cyan = {0x6666, 0xFFFF, 0xFFFF};
+                                                    RGBForeColor(&cyan);
+                                                }
+                                                DrawString("\pMore treasure lies to the ");
+                                                DrawString(dir);
+                                                DrawString("\p!");
+                                            }
+                                        }
+                                    } else if (rewardType == 5 && gotAlly) {
+                                        /* Multi-ally recruitment (68k type 5) */
+                                        MoveTo(30, 60);
+                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 11, "\pA warrior emerges from the shadows!"));
+                                        MoveTo(30, 82);
+                                        {
+                                            RGBColor green = {0x4444, 0xFFFF, 0x4444};
+                                            RGBForeColor(&green);
+                                        }
+                                        DrawString("\pAllied warriors join your cause!");
                                     } else {
+                                        /* Plain gold reward */
                                         Str255 numStr;
                                         MoveTo(30, 60);
                                         DrawString(GetCachedString(STR_SEARCH_TEMPLE, 14, "\pYour hero discovers treasure!"));
@@ -18827,7 +24186,7 @@ static void HandleMenuChoice(long menuResult)
                     for (bci = 0; bci < cc; bci++) {
                         unsigned char *c = gs + 0x812 + bci * 0x20;
                         short sType = (short)(unsigned char)c[0x18];
-                        if (sType == 2 || sType == 5 || sType == 6) continue;
+                        if (sType >= 2 && sType <= 5) continue;
                         if (*(short *)(c + 0x00) == ax && *(short *)(c + 0x02) == ay &&
                             *(short *)(c + 0x04) == curP) {
                             ShowCityProductionDialog(bci);
@@ -19104,7 +24463,8 @@ static void TryAutoSearchRuin(short armyIdx)
             short siteType = (short)(unsigned char)site[0x18];
             if (*(short *)(site + 0x00) == ax &&
                 *(short *)(site + 0x02) == ay &&
-                (siteType == 2 || siteType == 5 || siteType == 6)) {
+                (siteType >= 2 && siteType <= 5) &&
+                *(short *)(site + 0x1c) != 0) {
                 /* Auto-search: dispatch to Heroes > Search handler */
                 HandleMenuChoice((6L << 16) | 4);
                 return;
@@ -19148,31 +24508,51 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
         return false;
 
     movePts = (short)(unsigned char)selArmy[0x2e];
-    unitCls = (short)(unsigned char)selArmy[0x16];
+    unitCls = GetEffectiveUnitClass(sSelectedArmy);
     cost = GetMovementCost(newX, newY, unitCls);
 
     if (cost <= 0 || movePts < cost)
         return false;
+
+    /* 68k CODE_115: tile stack limit of 8 armies */
+    {
+        short tileOccupants = 0, ti;
+        for (ti = 0; ti < armyCount; ti++) {
+            unsigned char *ta = gs + 0x1604 + ti * 0x42;
+            if (ta[0x16] == 0xFF) continue;
+            if (*(short *)(ta + 0x00) == newX && *(short *)(ta + 0x02) == newY)
+                tileOccupants++;
+        }
+        if (tileOccupants >= 8) return false;
+    }
 
     /* Save undo state */
     sUndoArmyIdx = sSelectedArmy;
     sUndoFromX = curX;
     sUndoFromY = curY;
     sUndoMovePts = movePts;
+    sUndoFortify = (short)(unsigned char)selArmy[0x2d];
 
     /* Move the army */
     *(short *)(selArmy + 0x00) = newX;
     *(short *)(selArmy + 0x02) = newY;
     selArmy[0x2e] = (unsigned char)(movePts - cost);
+    selArmy[0x2d] = 0;  /* clear fortification on move (68k: movement cancels defend) */
 
-    /* Fog of war reveal */
+    /* Fog of war reveal (68k CODE_067: flying=5x5, normal=3x3) */
     if (sOptHiddenMap) {
-        FogReveal((short)(unsigned char)selArmy[0x15], newX, newY);
+        FogRevealUnit((short)(unsigned char)selArmy[0x15], newX, newY, unitCls == 0x0E);
     }
 
     /* Check for combat — invalidates undo if combat occurs */
-    if (CheckAndResolveCombat(sSelectedArmy))
+    if (CheckAndResolveCombat(sSelectedArmy)) {
         sUndoArmyIdx = -1;
+        /* If attacker was destroyed, auto-advance to next army */
+        if (sSelectedArmy < 0) {
+            SelectNextArmy();
+            return true;
+        }
+    }
 
     /* Try merging with friendly army at destination */
     if (sSelectedArmy >= 0) {
@@ -19184,7 +24564,7 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
     if (sSelectedArmy >= 0)
         TryAutoSearchRuin(sSelectedArmy);
 
-    /* Auto-select next army if this one exhausted */
+    /* Auto-select next army if this one exhausted or has no more movement */
     if (sSelectedArmy >= 0) {
         armyCount = *(short *)(gs + 0x1602);
         if (sSelectedArmy < armyCount) {
@@ -19194,6 +24574,9 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
                 SelectNextArmy();
             }
         }
+    } else {
+        /* Army was merged away, advance to next */
+        SelectNextArmy();
     }
 
     return true;
@@ -19248,10 +24631,9 @@ static void HandleMouseDown(EventRecord *event)
                                     p.bottom - p.top - SCROLLBAR_H + 1);
                     }
                     if (sHScrollBar != NULL) {
-                        short hLeft = p.left + SHIELD_AREA_W + 50;
+                        short hLeft = p.left + 48 + SHIELD_STRIP_W + 4;
                         MoveControl(sHScrollBar, hLeft, p.bottom - SCROLLBAR_H);
-                        SizeControl(sHScrollBar,
-                                    p.right - SCROLLBAR_W - hLeft + 1, SCROLLBAR_H);
+                        SizeControl(sHScrollBar, p.right - SCROLLBAR_W - hLeft + 1, SCROLLBAR_H);
                     }
                 }
                 InvalRect(&whichWindow->portRect);
@@ -19276,7 +24658,7 @@ static void HandleMouseDown(EventRecord *event)
                 SizeControl(sVScrollBar, SCROLLBAR_W, p.bottom - p.top - SCROLLBAR_H + 1);
             }
             if (sHScrollBar != NULL) {
-                short hLeft = p.left + SHIELD_AREA_W + 50;
+                short hLeft = p.left + 48 + SHIELD_STRIP_W + 4;
                 MoveControl(sHScrollBar, hLeft, p.bottom - SCROLLBAR_H);
                 SizeControl(sHScrollBar, p.right - SCROLLBAR_W - hLeft + 1, SCROLLBAR_H);
             }
@@ -19312,7 +24694,7 @@ static void HandleMouseDown(EventRecord *event)
                 Point dragPt;
 
                 SetPort(whichWindow);
-                scale = (sMinimapZoom >= 1) ? 2 : 1;
+                scale = 2;  /* always 2px/tile (drawing always uses 2) */
                 tilesWide = (((WindowPtr)*gMainGameWindow)->portRect.right -
                              ((WindowPtr)*gMainGameWindow)->portRect.left - SCROLLBAR_W)
                             / TERRAIN_TILE_W;
@@ -19528,7 +24910,7 @@ static void HandleMouseDown(EventRecord *event)
                                 short ac2 = *(short *)(gs + 0x1602);
                                 if (sSelectedArmy < ac2) {
                                     unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
-                                    short uCls = (short)(unsigned char)sa[0x16];
+                                    short uCls = GetEffectiveUnitClass(sSelectedArmy);
                                     short mvCost = GetMovementCost(clickTileX, clickTileY, uCls);
                                     RGBColor costCol = {0x0000, 0x0000, 0x8888};
                                     RGBForeColor(&costCol);
@@ -19587,17 +24969,31 @@ static void HandleMouseDown(EventRecord *event)
                                         *(short *)(a + 0x02) == clickTileY) {
                                         short aOwn = (short)(unsigned char)a[0x15];
                                         short cidx = (aOwn >= 0 && aOwn < 8) ? aOwn + 1 : 0;
-                                        /* Hide enemy army details when View Enemies off */
-                                        if (!sOptViewEnemies && aOwn != currentPlayer) {
-                                            enemyCount++;
-                                            continue;
+                                        /* Hide enemy army details: fog of war or View Enemies off */
+                                        if (aOwn != currentPlayer) {
+                                            Boolean hideArmy = false;
+                                            if (!sOptViewEnemies) hideArmy = true;
+                                            if (!hideArmy && *(short *)(gs + 0x116) != 0) {
+                                                short curP = *(short *)(gs + 0x110);
+                                                if (curP >= 0 && curP < 8 &&
+                                                    !FogGetBit(sFogVisible[curP], clickTileX, clickTileY))
+                                                    hideArmy = true;
+                                            }
+                                            if (hideArmy) { enemyCount++; continue; }
                                         }
                                         {
                                             short aStr = *(short *)(a + 0x2a);
                                             Str255 uName;
                                             RGBForeColor(&sPlayerColors[cidx]);
                                             MoveTo(10, yy);
-                                            GetUnitTypeName((short)(unsigned char)a[0x16], uName);
+                                            if ((unsigned char)a[0x16] == 0x1C) {
+                                                unsigned char *hn = a + 0x04; short nl = 0;
+                                                while (nl < 15 && hn[nl]) nl++;
+                                                uName[0] = (unsigned char)nl;
+                                                BlockMoveData(hn, uName + 1, nl);
+                                            } else {
+                                                GetUnitTypeName((short)(unsigned char)a[0x16], uName);
+                                            }
                                             DrawString(uName);
                                             DrawString(GetCachedString(STR_MISC, 66, "\p str:"));
                                             NumToString((long)aStr, numStr);
@@ -19640,7 +25036,7 @@ static void HandleMouseDown(EventRecord *event)
                         }
                     }
 
-                    /* Double-click detection: city info on double-click with no army */
+                    /* Double-click detection: city info on double-click */
                     {
                         unsigned long now = TickCount();
                         Boolean isDoubleClick = (now - sLastMapClickTick < 30 &&
@@ -19650,8 +25046,8 @@ static void HandleMouseDown(EventRecord *event)
                         sLastMapClickX = clickTileX;
                         sLastMapClickY = clickTileY;
 
-                        if (isDoubleClick && clickedArmy < 0) {
-                            /* Double-click on empty tile: check for city */
+                        if (isDoubleClick) {
+                            /* Double-click: check for city (even if army present) */
                             short cCount = *(short *)(gs + 0x810);
                             short ci;
                             if (cCount > 40) cCount = 40;
@@ -19659,7 +25055,15 @@ static void HandleMouseDown(EventRecord *event)
                                 unsigned char *c = gs + 0x812 + ci * 0x20;
                                 if (*(short *)(c + 0x00) == clickTileX &&
                                     *(short *)(c + 0x02) == clickTileY) {
-                                    ShowCityInfo(ci);
+                                    short sType = (short)(unsigned char)c[0x18];
+                                    if (sType == 0) {
+                                        if (*(short *)(c + 0x04) == currentPlayer)
+                                            ShowCityProductionDialog(ci);
+                                        else
+                                            ShowCityInfo(ci);
+                                    } else {
+                                        ShowCityInfo(ci);
+                                    }
                                     SetPort(whichWindow);
                                     InvalRect(&port);
                                     goto doneMapClick;
@@ -19670,12 +25074,33 @@ static void HandleMouseDown(EventRecord *event)
 
                     if (clickedArmy >= 0) {
                         if (clickedArmy == sSelectedArmy) {
-                            /* Re-clicked already selected army: inspect it */
-                            ShowArmyInspect(clickedArmy);
+                            /* Re-clicked already selected army: check for city first */
+                            short cCount = *(short *)(gs + 0x810);
+                            short ci;
+                            Boolean foundCityHere = false;
+                            if (cCount > 40) cCount = 40;
+                            for (ci = 0; ci < cCount; ci++) {
+                                unsigned char *c = gs + 0x812 + ci * 0x20;
+                                if (*(short *)(c + 0x00) == clickTileX &&
+                                    *(short *)(c + 0x02) == clickTileY) {
+                                    short sType = (short)(unsigned char)c[0x18];
+                                    if (sType == 0 && *(short *)(c + 0x04) == currentPlayer) {
+                                        ShowCityProductionDialog(ci);
+                                    } else {
+                                        ShowCityInfo(ci);
+                                    }
+                                    foundCityHere = true;
+                                    break;
+                                }
+                            }
+                            if (!foundCityHere) {
+                                ShowArmyInspect(clickedArmy);
+                            }
                             SetPort(whichWindow);
                         } else {
                             /* Clicked a different army: select it */
                             sSelectedArmy = clickedArmy;
+                            BuildStackArrays(clickedArmy);
                             PlaySound(SND_ARMY);
                         }
                         InvalRect(&port);
@@ -19694,44 +25119,93 @@ static void HandleMouseDown(EventRecord *event)
                             short isAdjacent = (absDx <= 1 && absDy <= 1 && (absDx + absDy) > 0);
 
                             if (isAdjacent) {
-                                /* Adjacent tile: move directly, no waypoint */
-                                short movePts = (short)(unsigned char)selArmy[0x2e];
-                                short unitCls = (short)(unsigned char)selArmy[0x16];
-                                short cost = GetMovementCost(clickTileX, clickTileY, unitCls);
+                                /* Adjacent tile: move directly, no waypoint.
+                                 * Group movement: move ALL selected stack members.
+                                 * Cost = max cost among group; only move if all can afford it. */
+                                short maxCost = 0;
+                                short minMove = 9999;
+                                Boolean canMoveGroup = true;
+                                short gi;
 
-                                if (cost > 0 && movePts >= cost &&
+                                /* Calculate max cost and min movement for the group */
+                                if (sStackCount > 0) {
+                                    for (gi = 0; gi < sStackCount; gi++) {
+                                        if (sStackSelected[gi] && sStackArmyIdx[gi] >= 0) {
+                                            unsigned char *ga = gs + 0x1604 + sStackArmyIdx[gi] * 0x42;
+                                            short gUnitCls = (short)(unsigned char)ga[0x16];
+                                            short gCost = GetMovementCost(clickTileX, clickTileY, gUnitCls);
+                                            short gMove = (short)(unsigned char)ga[0x2e];
+                                            if (gCost == 0) { canMoveGroup = false; break; }
+                                            if (gCost > maxCost) maxCost = gCost;
+                                            if (gMove < minMove) minMove = gMove;
+                                        }
+                                    }
+                                } else {
+                                    /* Fallback: single army, no stack */
+                                    short unitCls = GetEffectiveUnitClass(sSelectedArmy);
+                                    maxCost = GetMovementCost(clickTileX, clickTileY, unitCls);
+                                    minMove = (short)(unsigned char)selArmy[0x2e];
+                                    if (maxCost == 0) canMoveGroup = false;
+                                }
+
+                                if (canMoveGroup && maxCost > 0 && minMove >= maxCost &&
                                     clickTileX >= 0 && clickTileX < sMapWidth &&
                                     clickTileY >= 0 && clickTileY < sMapHeight) {
-                                    /* Brief movement animation: flash army
-                                     * at old pos (to show it leaving) then
-                                     * update and redraw at new pos */
-                                    {
-                                        /* Quick visual: redraw map (army blinks away) */
-                                        long dummy;
+
+                                    /* Move ALL selected group members */
+                                    if (sStackCount > 0) {
+                                        for (gi = 0; gi < sStackCount; gi++) {
+                                            if (sStackSelected[gi] && sStackArmyIdx[gi] >= 0) {
+                                                unsigned char *ga = gs + 0x1604 + sStackArmyIdx[gi] * 0x42;
+                                                short gUnitCls = (short)(unsigned char)ga[0x16];
+                                                short gCost = GetMovementCost(clickTileX, clickTileY, gUnitCls);
+                                                short gMove = (short)(unsigned char)ga[0x2e];
+                                                *(short *)(ga + 0x00) = clickTileX;
+                                                *(short *)(ga + 0x02) = clickTileY;
+                                                ga[0x2e] = (unsigned char)(gMove - gCost);
+                                            }
+                                        }
+                                    } else {
+                                        /* Single army fallback */
                                         *(short *)(selArmy + 0x00) = clickTileX;
                                         *(short *)(selArmy + 0x02) = clickTileY;
+                                        selArmy[0x2e] = (unsigned char)((short)(unsigned char)selArmy[0x2e] - maxCost);
+                                    }
+
+                                    /* Brief movement animation */
+                                    {
+                                        long dummy;
                                         DrawMapInWindow(whichWindow);
                                         SetPort(whichWindow);
-                                        Delay(4, &dummy);  /* ~66ms pause */
+                                        Delay(4, &dummy);
                                     }
-                                    selArmy[0x2e] = (unsigned char)(movePts - cost);
 
                                     if (sOptHiddenMap) {
                                         short armyOwner = (short)(unsigned char)selArmy[0x15];
-                                        FogReveal(armyOwner, clickTileX, clickTileY);
+                                        short uCls2 = GetEffectiveUnitClass(sSelectedArmy);
+                                        FogRevealUnit(armyOwner, clickTileX, clickTileY, uCls2 == 0x0E);
                                     }
-                                    CheckAndResolveCombat(sSelectedArmy);
+                                    if (CheckAndResolveCombat(sSelectedArmy)) {
+                                        /* If attacker destroyed, auto-advance */
+                                        if (sSelectedArmy < 0)
+                                            SelectNextArmy();
+                                    }
 
                                     /* Try merging with friendly army at destination */
                                     if (sSelectedArmy >= 0) {
                                         if (TryMergeArmies(sSelectedArmy)) {
                                             sSelectedArmy = -1;
+                                            SelectNextArmy();
                                         }
                                     }
 
                                     /* Auto-search ruins if hero on ruin */
                                     if (sSelectedArmy >= 0)
                                         TryAutoSearchRuin(sSelectedArmy);
+
+                                    /* Rebuild stack arrays at new position */
+                                    if (sSelectedArmy >= 0)
+                                        BuildStackArrays(sSelectedArmy);
 
                                     /* Auto-select next army if this one exhausted */
                                     if (sSelectedArmy >= 0) {
@@ -19746,49 +25220,51 @@ static void HandleMouseDown(EventRecord *event)
                                     }
                                 }
                             } else {
-                                /* Distant tile: set movement target */
-                                short stepX = 0, stepY = 0;
+                                /* Distant tile: set movement target for all selected group members */
                                 short movePts = (short)(unsigned char)selArmy[0x2e];
                                 *(short *)(selArmy + 0x32) = 1;
                                 *(short *)(selArmy + 0x34) = clickTileX;
                                 *(short *)(selArmy + 0x36) = clickTileY;
-
-                                /* Execute one movement step immediately */
-                                if (dx > 0) stepX = 1;
-                                else if (dx < 0) stepX = -1;
-                                if (dy > 0) stepY = 1;
-                                else if (dy < 0) stepY = -1;
-
-                                if ((stepX != 0 || stepY != 0) && movePts > 0) {
-                                    short newX = curX + stepX;
-                                    short newY = curY + stepY;
-                                    short unitCls = (short)(unsigned char)selArmy[0x16];
-                                    short cost = GetMovementCost(newX, newY, unitCls);
-
-                                    if (cost > 0 && movePts >= cost &&
-                                        newX >= 0 && newX < sMapWidth &&
-                                        newY >= 0 && newY < sMapHeight) {
-                                        sUndoArmyIdx = sSelectedArmy;
-                                        sUndoFromX = curX;
-                                        sUndoFromY = curY;
-                                        sUndoMovePts = movePts;
-
-                                        *(short *)(selArmy + 0x00) = newX;
-                                        *(short *)(selArmy + 0x02) = newY;
-                                        selArmy[0x2e] = (unsigned char)(movePts - cost);
-
-                                        if (sOptHiddenMap) {
-                                            short armyOwner = (short)(unsigned char)selArmy[0x15];
-                                            FogReveal(armyOwner, newX, newY);
+                                selArmy[0x2d] = 0;  /* clear fortification when given orders */
+                                /* Also set target for other selected group members */
+                                { short gi2;
+                                    for (gi2 = 0; gi2 < sStackCount; gi2++) {
+                                        if (sStackSelected[gi2] && sStackArmyIdx[gi2] >= 0 &&
+                                            sStackArmyIdx[gi2] != sSelectedArmy) {
+                                            unsigned char *ga2 = gs + 0x1604 + sStackArmyIdx[gi2] * 0x42;
+                                            *(short *)(ga2 + 0x32) = 1;
+                                            *(short *)(ga2 + 0x34) = clickTileX;
+                                            *(short *)(ga2 + 0x36) = clickTileY;
+                                            ga2[0x2d] = 0;  /* clear fortification */
                                         }
-                                        if (CheckAndResolveCombat(sSelectedArmy))
-                                            sUndoArmyIdx = -1;
+                                    }
+                                }
 
-                                        /* Auto-search ruins if hero on ruin */
-                                        if (sSelectedArmy >= 0)
-                                            TryAutoSearchRuin(sSelectedArmy);
-                                    } else if (cost == 0) {
+                                /* Execute movement via wavefront pathfinder
+                                 * (68k CODE_115 FUN_000012c6) */
+                                if (movePts > 0) {
+                                    short unitCls = GetEffectiveUnitClass(sSelectedArmy);
+                                    short pathLen = ComputeWavefrontPath(curX, curY,
+                                                                         clickTileX, clickTileY,
+                                                                         unitCls);
+                                    if (pathLen > 0) {
+                                        short took = ExecutePathSteps(sSelectedArmy);
+                                        (void)took;
+                                        /* Combat may have removed the army */
+                                        if (sSelectedArmy < 0)
+                                            SelectNextArmy();
+                                    } else if (pathLen < 0) {
+                                        /* Unreachable: cancel orders */
                                         *(short *)(selArmy + 0x32) = 0;
+                                        { short gi3;
+                                            for (gi3 = 0; gi3 < sStackCount; gi3++) {
+                                                if (sStackSelected[gi3] && sStackArmyIdx[gi3] >= 0 &&
+                                                    sStackArmyIdx[gi3] != sSelectedArmy) {
+                                                    unsigned char *ga3 = gs + 0x1604 + sStackArmyIdx[gi3] * 0x42;
+                                                    *(short *)(ga3 + 0x32) = 0;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
@@ -19856,8 +25332,46 @@ static void HandleMouseDown(EventRecord *event)
             lx = localPt.h - port.left;
             ly = localPt.v - port.top;
 
+            /* Top row: 5 command buttons (y=10, 22x22 at 32px stride from left+7) */
+            if (ly >= 10 && ly < 32 && lx >= INFO_LEFT_PAD && lx < INFO_LEFT_PAD + 5 * 32) {
+                short btnIdx = (lx - INFO_LEFT_PAD) / 32;
+                if (btnIdx >= 0 && btnIdx < 5 && (lx - INFO_LEFT_PAD) % 32 < 22) {
+                    /* Flash */
+                    Rect flashR;
+                    SetRect(&flashR, INFO_LEFT_PAD + btnIdx * 32, 10,
+                            INFO_LEFT_PAD + btnIdx * 32 + 22, 32);
+                    InvertRect(&flashR);
+                    /* Command order: move, next, leave, guard, deselect */
+                    switch (btnIdx) {
+                    case 0: HandleMenuChoice((4L << 16) | 4);  break;  /* Move (step) */
+                    case 1: HandleMenuChoice((4L << 16) | 8);  break;  /* Next Group */
+                    case 2: HandleMenuChoice((4L << 16) | 9);  break;  /* Leave Group */
+                    case 3: HandleMenuChoice((4L << 16) | 10); break;  /* Defend */
+                    case 4: HandleMenuChoice((4L << 16) | 11); break;  /* Deselect */
+                    }
+                }
+            }
+            /* Middle row: Cancel Path (y=41, x=7..63), diamond (x=67..89), Disband (x=94..150) */
+            else if (ly >= 41 && ly < 64) {
+                if (lx >= INFO_LEFT_PAD && lx < INFO_LEFT_PAD + 56) {
+                    /* Cancel Path */
+                    Rect flashR;
+                    SetRect(&flashR, INFO_LEFT_PAD, 41, INFO_LEFT_PAD + 56, 64);
+                    InvertRect(&flashR);
+                    HandleMenuChoice((4L << 16) | 6);
+                } else if (lx >= INFO_LEFT_PAD + 60 && lx < INFO_LEFT_PAD + 83) {
+                    /* Diamond: Diplomacy */
+                    HandleMenuChoice((5L << 16) | 9);
+                } else if (lx >= INFO_LEFT_PAD + 87 && lx < INFO_LEFT_PAD + 87 + 56) {
+                    /* Disband */
+                    Rect flashR;
+                    SetRect(&flashR, INFO_LEFT_PAD + 87, 41, INFO_LEFT_PAD + 87 + 56, 64);
+                    InvertRect(&flashR);
+                    HandleMenuChoice((4L << 16) | 17);
+                }
+            }
             /* 3x3 scroll directional pad (right-aligned, matches drawing code) */
-            if (lx >= (port.right - port.left) - 62 &&
+            else if (lx >= (port.right - port.left) - 62 &&
                 lx < (port.right - port.left) - 62 + 54 &&
                 ly >= 10 && ly < 64) {
                 short padX = (port.right - port.left) - 62;
@@ -19882,23 +25396,46 @@ static void HandleMouseDown(EventRecord *event)
                     }
                 }
             }
-            /* Bottom shortcut slots (y=84, 4 buttons at 37px each) */
-            else if (ly >= 84 && ly < 119 && lx >= 3 && lx < 3 + 4 * 37) {
-                short slotIdx = (lx - 3) / 37;
+            /* Bottom shortcut slots (y=76, 4 buttons 35x35 at 39px stride) */
+            else if (ly >= 76 && ly < 111 && lx >= INFO_LEFT_PAD && lx < INFO_LEFT_PAD + 4 * 39) {
+                short slotIdx = (lx - INFO_LEFT_PAD) / 39;
                 if (slotIdx >= 0 && slotIdx < NUM_SHORTCUT_SLOTS) {
                     short cmdIdx = sShortcutSlot[slotIdx];
                     unsigned short cmd = sButtonCommands[cmdIdx];
                     /* Flash */
                     Rect flashR;
-                    SetRect(&flashR, 3 + slotIdx * 37, 84,
-                            3 + slotIdx * 37 + 35, 119);
+                    SetRect(&flashR, INFO_LEFT_PAD + slotIdx * 39, 76,
+                            INFO_LEFT_PAD + slotIdx * 39 + 35, 111);
                     InvertRect(&flashR);
-                    /* Dispatch */
-                    if (cmd == 0x076C)      HandleMenuChoice((9L << 16) | 1);
-                    else if (cmd == 0x0773) HandleMenuChoice((9L << 16) | 2);
-                    else if (cmd == 0x057B) HandleMenuChoice((4L << 16) | 5);
-                    else if (cmd == 0x0643) HandleMenuChoice((6L << 16) | 4);
+                    /* Dispatch: map command codes to menu IDs */
+                    if (cmd == 0x076C)      HandleMenuChoice((9L << 16) | 1);  /* End Turn */
+                    else if (cmd == 0x0773) HandleMenuChoice((9L << 16) | 2);  /* Save+End Turn */
+                    else if (cmd == 0x057B) HandleMenuChoice((4L << 16) | 5);  /* Move All */
+                    else if (cmd == 0x0643) HandleMenuChoice((6L << 16) | 4);  /* Search */
+                    else if (cmd == 0x0640) HandleMenuChoice((6L << 16) | 1);  /* Inspect Heroes */
+                    else if (cmd == 0x0641) HandleMenuChoice((6L << 16) | 2);  /* Plant Flag */
+                    else if (cmd == 0x0642) HandleMenuChoice((6L << 16) | 3);  /* Hero Levels */
+                    else if (cmd == 0x0584) HandleMenuChoice((4L << 16) | 17); /* Disband */
+                    else if (cmd == 0x057C) HandleMenuChoice((4L << 16) | 6);  /* Cancel Path */
+                    else if (cmd == 0x057D) HandleMenuChoice((4L << 16) | 8);  /* Next Group */
+                    else if (cmd == 0x057F) HandleMenuChoice((4L << 16) | 10); /* Defend */
+                    else if (cmd == 0x0580) HandleMenuChoice((4L << 16) | 11); /* Deselect */
+                    else if (cmd == 0x05DD) HandleMenuChoice((5L << 16) | 8);  /* Army Report */
+                    else if (cmd == 0x05DE) HandleMenuChoice((5L << 16) | 9);  /* City Report */
+                    else if (cmd == 0x05DF) HandleMenuChoice((5L << 16) | 10); /* Gold Report */
                     else SysBeep(1);
+                }
+            }
+            /* Bottom-right: crossed swords button (fight order) */
+            else {
+                short btnSz = 54;
+                short sbx = (port.right - port.left) - 5 - btnSz;
+                short sby = 114 - 5 - btnSz;
+                if (lx >= sbx && lx < sbx + btnSz && ly >= sby && ly < sby + btnSz) {
+                    Rect flashR;
+                    SetRect(&flashR, sbx, sby, sbx + btnSz, sby + btnSz);
+                    InvertRect(&flashR);
+                    HandleMenuChoice((4L << 16) | 15);  /* Fight Order */
                 }
             }
         }
@@ -19931,6 +25468,8 @@ static void HandleUpdate(EventRecord *event)
         /* Minimap: DrawOverviewInWindow fills background */
     } else if (gInfoWindow != NULL && win == (WindowPtr)*gInfoWindow) {
         /* Info panel: PaintRect fills entire background */
+    } else if (gStatusWindow != NULL && win == (WindowPtr)*gStatusWindow) {
+        /* Status bar: DrawMarbleBackground covers all pixels */
     } else {
         EraseRect(&r);
     }
@@ -19979,7 +25518,6 @@ static void HandleUpdate(EventRecord *event)
 
         /* Shared button face color and corner radius for rounded 3D buttons */
         #define BTN_ROUND 6
-        #define INFO_LEFT_PAD 7
 
         /* --- Row 1: 5 command buttons (22x22 each, 10px gap) --- */
         /* All top buttons shifted down 7px */
@@ -20176,8 +25714,6 @@ static void HandleUpdate(EventRecord *event)
     else if (gStatusWindow != NULL &&
              win == (WindowPtr)*gStatusWindow) {
         /* Status window: current player gold/cities/armies on marble */
-
-        /* Tile MARBLE background (PICT 1001) */
         DrawMarbleBackground(&r);
 
         if (*gGameState != 0) {
@@ -20202,19 +25738,19 @@ static void HandleUpdate(EventRecord *event)
 
                 gold = *(short *)(gs + 0x186 + curPlayer * 0x14);
 
-                /* Count cities (site_type == 0 only) and estimate income */
+                /* Count cities (site_type == 0 only) and sum actual income */
                 for (ci = 0; ci < cityTotal; ci++) {
                     unsigned char *city = gs + 0x812 + ci * 0x20;
                     unsigned char siteType = city[0x18];
                     if (siteType == 0 && *(short *)(city + 0x04) == curPlayer) {
                         myCities++;
-                        myIncome += 10;  /* base income per city */
+                        myIncome += *(short *)(city + 0x08);  /* read city's actual income */
                     }
                 }
 
                 /* Count armies (owner byte at army+0x15) */
                 armyCount = *(short *)(gs + 0x1602);
-                if (armyCount > 200) armyCount = 200;
+                if (armyCount > 100) armyCount = 100;
                 for (ci = 0; ci < armyCount; ci++) {
                     unsigned char *army = gs + 0x1604 + ci * 0x42;
                     if ((short)(unsigned char)army[0x15] == curPlayer)
@@ -20305,9 +25841,13 @@ int main(void)
     FlushEvents(everyEvent, 0);
     InitCursor();
 
+    /* Seed RNG from system tick count (used by Random() for combat, etc.) */
+    qd.randSeed = TickCount();
+
     /* Initialize sound system early so first sound plays without delay */
     InitSoundSystem();
-    InitMusicSystem();
+    /* Music system initialized after EnterMovies() below — TunePlayer
+     * component requires QuickTime to be active first. */
 
     /* Pre-load resource data tables */
     LoadDATMasterStrings();
@@ -20389,6 +25929,9 @@ int main(void)
         }
     }
 
+    /* Initialize music system now that QuickTime is active (EnterMovies above) */
+    InitMusicSystem();
+
     /* Title music */
     LoadAndPlayMusic(MUSIC_STATE_TITLE);
 
@@ -20426,15 +25969,38 @@ int main(void)
         }
     }
 
-    /* === 256-Color Switch === */
-    /* Force 256-color (8-bit) mode for correct palette-quantized rendering.
-       PlotCIcon maps cicn CLUT colors to nearest palette entries at 8-bit,
-       producing the authentic look. At higher depths, raw CLUT colors are used. */
+    /* === Load marble background BEFORE depth switch (needed by dialogs).
+     * Load at 16-bit depth so warm marble tones aren't lost to 8-bit
+     * palette quantization when screen is at 256 colors. === */
+    {
+        PicHandle mPic = GetResource('PICT', 1001);
+        if (mPic != NULL) {
+            Rect mFrame = (**mPic).picFrame;
+            short mW = mFrame.right - mFrame.left;
+            short mH = mFrame.bottom - mFrame.top;
+            Rect mBounds;
+            CGrafPtr mSP; GDHandle mSD;
+            SetRect(&mBounds, 0, 0, mW, mH);
+            if (NewGWorld(&sMarbleGW, 16, &mBounds, NULL, NULL, 0) == noErr && sMarbleGW != NULL) {
+                GetGWorld(&mSP, &mSD);
+                SetGWorld(sMarbleGW, NULL);
+                LockPixels(GetGWorldPixMap(sMarbleGW));
+                EraseRect(&mBounds);
+                DrawPicture(mPic, &mBounds);
+                UnlockPixels(GetGWorldPixMap(sMarbleGW));
+                SetGWorld(mSP, mSD);
+            }
+            ReleaseResource((Handle)mPic);
+        }
+    }
+
+    /* === 256-Color Switch with Standard Alert (ALRT 256) === */
     {
         GDHandle mainGD = GetMainDevice();
         short curDepth = (**((**mainGD).gdPMap)).pixelSize;
-        if (curDepth != 8) {
-            if (HasDepth(mainGD, 8, 0, 0)) {
+        if (curDepth != 8 && HasDepth(mainGD, 8, 0, 0)) {
+            short itemHit = Alert(256, NULL);
+            if (itemHit == 1) {  /* "Switch" button */
                 sOriginalDepth = curDepth;
                 SetDepth(mainGD, 8, 0, 0);
             }
@@ -20444,9 +26010,6 @@ int main(void)
     /* Allocate game data buffers before scenario selection */
     *gGameState = (pint)NewPtrClear(0x2FCC);
     *gMapTiles  = (pint)NewPtrClear(0x8880);
-
-    /* === Load marble background early (needed by dialogs) === */
-    sMarbleGW = LoadPICTIntoGWorld(1001);
 
     /* === Build menus early so File > Quit is available from scenario selection === */
     {
@@ -20483,9 +26046,20 @@ int main(void)
     /* Scan for available army sets before showing game setup */
     ScanArmySets();
 
+    /* Load terrain sprites and shields BEFORE game setup so they're
+     * available for display in the setup dialog. Terrain/shields only
+     * depend on the loaded scenario, not on game setup choices. */
+    LoadTerrainSprites();
+    LoadShieldIcons();
+
     /* === Game Setup Dialog === */
     if (sMapLoaded) {
         ShowGameSetup();
+
+        /* Re-center viewport on the selected player's capital.
+         * ShowGameSetup changes gs+0x110 (current player) but GameInit
+         * already centered the viewport before that change happened. */
+        CenterViewportOnPlayer();
     }
 
     /* === Create windows and menus === */
@@ -20546,7 +26120,8 @@ int main(void)
         if (*gMainGameWindow != 0) {
             Rect port = ((WindowPtr)*gMainGameWindow)->portRect;
             Rect vsbRect, hsbRect;
-            short hLeft = port.left + SHIELD_AREA_W + 50;
+            /* Layout: [Turn N (48px)] [shields (8*16=128px)] [h-scrollbar] [v-scrollbar] */
+            short hLeft = port.left + 48 + SHIELD_STRIP_W + 4;
 
             SetRect(&vsbRect, port.right - SCROLLBAR_W, port.top,
                     port.right, port.bottom - SCROLLBAR_H + 1);
@@ -20601,6 +26176,13 @@ int main(void)
                 NULL, &statusRect,
                 "\pStatus", true,
                 48, (WindowPtr)-1L, true, 0);
+            /* Set dark background to prevent white flash before first paint */
+            if (*gStatusWindow != 0) {
+                RGBColor darkBg = {0x4444, 0x4444, 0x4444};
+                SetPort((WindowPtr)*gStatusWindow);
+                RGBBackColor(&darkBg);
+                EraseRect(&((WindowPtr)*gStatusWindow)->portRect);
+            }
         }
     }
 
@@ -20666,6 +26248,9 @@ int main(void)
     LoadButtonIcons();
     LoadDialogIcons();
 
+    /* Load minimap ocean background (PICT 1012, 224x312) from app resources */
+    sMinimapOceanGW = LoadPICTIntoGWorld(1012);
+
     /* Load minimap crosshair cursor (crsr 1001, hotspot 5,7) */
     sDefaultCursor = GetCCursor(1000);
     sMinimapCursor = GetCCursor(1001);
@@ -20682,26 +26267,32 @@ int main(void)
         DrawOverviewInWindow((WindowPtr)*gOverviewWindow);
     }
 
-    /* === First turn: turn splash, hero hire, army selection === */
+    /* === First turn: income, turn splash, hero hire === */
     if (sMapLoaded && *gGameState != 0) {
         unsigned char *gs = (unsigned char *)*gGameState;
         short startPlayer = *(short *)(gs + 0x110);
 
+        /* Process start-of-turn for the first human player:
+         * calculates income, applies production, resets movement points.
+         * Without this, gold shows as 0 (raw SCN value) on turn 1. */
+        ProcessStartOfTurn(startPlayer);
+
         /* "Let the war begin!" voice after game setup completes */
         PlayVoice(SND_VBEGIN);
 
-        /* Turn 1 announcement splash (castle gate with faction name) */
-        PlaySound(SND_CHORD);
+        /* Turn 1 announcement splash (castle gate with faction name).
+         * Play SND_TURN first to match normal turn flow (line ~19171). */
+        PlaySound(SND_TURN);
         ShowTurnSplash(startPlayer);
 
-        /* Hero offer then army selection */
+        /* Hero offer — original game (68k CODE_117) has no army selection
+         * dialog; starting armies are determined by scenario data. */
         ShowHeroHire(startPlayer, true);
-        ShowArmySelection(startPlayer);
     }
 
     /* Force-redraw all game windows before entering event loop.
-     * Modal dialogs (turn splash, hero hire, army selection) leave
-     * windows exposed but not yet painted. */
+     * Modal dialogs (turn splash, hero hire) leave windows exposed
+     * but not yet painted. */
     InvalidateAllGameWindows();
     {
         EventRecord flushEvt;
@@ -20828,7 +26419,21 @@ int main(void)
                         /* Show tooltip after ~0.5 sec hover */
                         unsigned char *gs = (unsigned char *)*gGameState;
                         unsigned char *mapData = (unsigned char *)*gMapTiles;
-                        short terrainIdx = (short)(unsigned char)mapData[(tileY * sMapWidth + tileX) * 2];
+                        short terrainIdx;
+                        Boolean fogHide = false;
+
+                        /* Fog of war: no tooltip for unexplored tiles */
+                        if (*(short *)(gs + 0x116) != 0) {
+                            short curP = *(short *)(gs + 0x110);
+                            if (curP >= 0 && curP < 8 &&
+                                !FogGetBit(sFogExplored[curP], tileX, tileY))
+                                fogHide = true;
+                        }
+                        if (fogHide) {
+                            sTooltipHoverStart = TickCount(); /* keep suppressing */
+                        } else {
+
+                        terrainIdx = (short)(unsigned char)mapData[(tileY * sMapWidth + tileX) * 2];
                         short terrainType = (short)(unsigned char)gs[terrainIdx + 0x711];
                         short moveCost = 0;
                         const unsigned char *tName;
@@ -20888,6 +26493,7 @@ int main(void)
                                 DrawString(GetCachedString(STR_MISC, 63, "\pImpassable"));
                             }
                         }
+                    } /* else fogHide */
                     }
                 }
             }
@@ -21052,24 +26658,10 @@ int main(void)
                 }
 
                 /* --- Non-movement keys --- */
-                if (key == ' ') {
-                    /* Space = center on selected army (original behavior) */
-                    if (sSelectedArmy >= 0 && *gGameState != 0) {
-                        unsigned char *gs = (unsigned char *)*gGameState;
-                        short ac = *(short *)(gs + 0x1602);
-                        if (sSelectedArmy < ac) {
-                            unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
-                            short tw = 10, th = 10;
-                            if (*gMainGameWindow != 0) {
-                                Rect wp = ((WindowPtr)*gMainGameWindow)->portRect;
-                                tw = (wp.right - wp.left - SCROLLBAR_W) / TERRAIN_TILE_W;
-                                th = (wp.bottom - wp.top - SCROLLBAR_H) / TERRAIN_TILE_H;
-                            }
-                            sViewportX = *(short *)(sa + 0x00) - tw / 2;
-                            sViewportY = *(short *)(sa + 0x02) - th / 2;
-                            scrolled = true;
-                        }
-                    }
+                if (key == ' ' || key == 'n' || key == 'N') {
+                    /* Space/N = Next Army (68k CODE_023: keycode 0x20 → next army) */
+                    SelectNextArmy();
+                    scrolled = true;
                 } else if (key == '\t') {
                     /* Tab = End Turn (original alias) */
                     HandleMenuChoice((9L << 16) | 1);
@@ -21097,6 +26689,60 @@ int main(void)
                             *(short *)(army + 0x36) = -1;
                         } else {
                             sSelectedArmy = -1;
+                        }
+                        scrolled = true;
+                    }
+                } else if (key == 'f' || key == 'F' || key == ';') {
+                    /* F/; = Defend/Fortify/Sentry toggle (68k CODE_115 FUN_000001de).
+                     * Sets all selected group members. Heroes excluded from sentry
+                     * unless they're the only unit (68k: hero check at lines 83-97). */
+                    if (sSelectedArmy >= 0 && *gGameState != 0) {
+                        unsigned char *gs = (unsigned char *)*gGameState;
+                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char newState = (army[0x2d] > 0) ? 0 : 3;
+                        short gi;
+                        /* Apply to lead army */
+                        if (newState == 0 || (unsigned char)army[0x16] != 0x1C) {
+                            army[0x2d] = newState;
+                            if (newState > 0) army[0x2e] = 0;  /* zero MP on sentry set */
+                        }
+                        *(short *)(army + 0x32) = 0;
+                        /* Apply to selected group members */
+                        for (gi = 0; gi < sStackCount; gi++) {
+                            if (sStackSelected[gi] && sStackArmyIdx[gi] >= 0 &&
+                                sStackArmyIdx[gi] != sSelectedArmy) {
+                                unsigned char *ga = gs + 0x1604 + sStackArmyIdx[gi] * 0x42;
+                                /* Heroes excluded from sentry (68k: bVar5=false) */
+                                if (newState > 0 && (unsigned char)ga[0x16] == 0x1C) continue;
+                                ga[0x2d] = newState;
+                                if (newState > 0) ga[0x2e] = 0;
+                                *(short *)(ga + 0x32) = 0;
+                            }
+                        }
+                        SelectNextArmy();
+                        scrolled = true;
+                    }
+                } else if (key == 'i' || key == 'I') {
+                    /* I = Inspect selected army */
+                    if (sSelectedArmy >= 0)
+                        ShowArmyInspect(sSelectedArmy);
+                } else if (key == 'p' || key == 'P') {
+                    /* P = Production / City Info for selected army's city */
+                    if (sSelectedArmy >= 0 && *gGameState != 0) {
+                        unsigned char *gs = (unsigned char *)*gGameState;
+                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        short ax = *(short *)(army + 0x00);
+                        short ay = *(short *)(army + 0x02);
+                        short cc = *(short *)(gs + 0x810);
+                        short ci;
+                        if (cc > 40) cc = 40;
+                        for (ci = 0; ci < cc; ci++) {
+                            unsigned char *city = gs + 0x812 + ci * 0x20;
+                            if (*(short *)(city + 0x00) == ax &&
+                                *(short *)(city + 0x02) == ay) {
+                                ShowCityInfo(ci);
+                                break;
+                            }
                         }
                         scrolled = true;
                     }
@@ -21131,6 +26777,8 @@ int main(void)
             WindowPtr win = (WindowPtr)event.message;
             if (event.modifiers & activeFlag) {
                 SelectWindow(win);
+                /* 68k CODE_068: on activate, invalidate all windows to force redraw */
+                InvalidateAllGameWindows();
             }
             break;
         }

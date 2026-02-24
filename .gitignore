@@ -2,9 +2,9 @@
 *.o
 *.zip
 *.pef
-warlords2
-warlords2_ppc
-warlords2_solo
+#warlords2
+#warlords2_ppc
+#warlords2_solo
 __pycache__/
 src/Warlords II
 test_app/test_ppc
