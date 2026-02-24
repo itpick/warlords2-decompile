@@ -163,8 +163,9 @@ for pct, color, label in bar_data:
 ax_bar.set_xlim(0, 100)
 ax_bar.set_ylim(-0.6, 0.6)
 ax_bar.set_xlabel("% of total PPC functions", color="#8b949e", fontsize=9)
+_verified_str = f"{pct_verified:.2f}%" if pct_verified < 1 else f"{pct_verified:.1f}%"
 ax_bar.set_title(
-    f"Byte-verified: {pct_verified:.1f}%  |  "
+    f"Byte-verified: {_verified_str}  |  "
     f"Implemented: {pct_total_impl:.1f}%  |  "
     f"{total_impl}/{total_ppc} functions  |  "
     f"{total_missing} remaining",
@@ -227,7 +228,7 @@ plt.savefig(OUTPUT, dpi=150, bbox_inches="tight", facecolor="#0d1117")
 print(f"Saved: {OUTPUT}")
 print(f"\nStats:")
 print(f"  Total PPC functions    : {total_ppc}")
-print(f"  Byte-Verified          : {byte_verified} ({pct_verified:.1f}%)")
+print(f"  Byte-Verified          : {byte_verified} ({_verified_str})")
 print(f"  Hand-Reconstructed     : {totals['DONE']} ({totals['DONE']/total_ppc*100:.1f}%)")
 print(f"  In Progress (Agent)    : {totals['AGENT']} ({pct_agent:.1f}%)")
 print(f"  Auto-Reconstructed     : {auto_stubs} ({pct_auto:.1f}%)")
