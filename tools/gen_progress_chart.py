@@ -140,7 +140,7 @@ for ax in [ax_bar, ax_donut, ax_subs]:
     for spine in ax.spines.values():
         spine.set_edgecolor("#30363d")
 
-# ── 3a. Top: overall stacked bar ─────────────────────────────────────────────
+# ── 3a. Top: two stacked bars — coverage + byte-for-byte ─────────────────────
 bar_data = [
     (pct_verified, C_VERIFIED, f"Byte-Verified {byte_verified}"),
     (pct_done,     C_DONE,     f"Hand-Reconstructed {done_unverified}"),
@@ -150,26 +150,35 @@ bar_data = [
     (pct_missing,  C_MISSING,  f"Not Implemented {total_missing}"),
 ]
 
+# Row 0 (y=0.3): source coverage bar
 left = 0
 for pct, color, label in bar_data:
     if pct > 0:
-        ax_bar.barh(0, pct, left=left, color=color, height=0.5)
+        ax_bar.barh(0.3, pct, left=left, color=color, height=0.35)
         if pct > 4:
-            ax_bar.text(left + pct / 2, 0, f"{pct:.1f}%",
+            ax_bar.text(left + pct / 2, 0.3, f"{pct:.1f}%",
                         ha="center", va="center", color="white",
                         fontsize=9, fontweight="bold")
         left += pct
+ax_bar.text(-0.8, 0.3, "Source\nCoverage", ha="right", va="center",
+            color="#8b949e", fontsize=7)
+
+# Row 1 (y=-0.3): byte-for-byte replica bar
+pct_bfb_remaining = 100 - pct_verified
+ax_bar.barh(-0.3, pct_verified,       left=0,            color=C_VERIFIED, height=0.35)
+ax_bar.barh(-0.3, pct_bfb_remaining,  left=pct_verified, color=C_MISSING,  height=0.35)
+_verified_str = f"{pct_verified:.2f}%" if pct_verified < 1 else f"{pct_verified:.1f}%"
+ax_bar.text(pct_verified + pct_bfb_remaining / 2, -0.3,
+            f"{byte_verified} / {total_ppc} functions  ({_verified_str})",
+            ha="center", va="center", color="#8b949e", fontsize=9)
+ax_bar.text(-0.8, -0.3, "Byte-for-\nByte", ha="right", va="center",
+            color="#8b949e", fontsize=7)
 
 ax_bar.set_xlim(0, 100)
-ax_bar.set_ylim(-0.6, 0.6)
+ax_bar.set_ylim(-0.75, 0.75)
 ax_bar.set_xlabel("% of total PPC functions", color="#8b949e", fontsize=9)
-_verified_str = f"{pct_verified:.2f}%" if pct_verified < 1 else f"{pct_verified:.1f}%"
-ax_bar.set_title(
-    f"Byte-verified: {_verified_str}  |  "
-    f"Implemented: {pct_total_impl:.1f}%  |  "
-    f"{total_impl}/{total_ppc} functions  |  "
-    f"{total_missing} remaining",
-    color="#c9d1d9", fontsize=11, pad=8)
+ax_bar.set_title("Source coverage vs byte-for-byte replica progress",
+                 color="#c9d1d9", fontsize=11, pad=8)
 ax_bar.set_yticks([])
 ax_bar.tick_params(axis="x", colors="#8b949e")
 
