@@ -60,3 +60,37 @@ asm(".globl FUN_101175bc\n"
     "FUN_101175bc:\n"
     "    ori 3,4,0\n"
     "    blr\n");
+
+/* ── 12-byte verified functions ─────────────────────────────────────────── */
+
+/* lswi 5,4,16 / stswi 5,3,16 / blr  — 16-byte memcpy via string instructions
+ * GCC uses lwz/stw pairs instead; asm needed. */
+asm(".globl FUN_100b0214\n"
+    "FUN_100b0214:\n"
+    "    lswi 5,4,16\n"
+    "    stswi 5,3,16\n"
+    "    blr\n");
+
+/* lwz r4,4(r3) / ori r3,r4,0 / blr  — load int at +4, return it
+ * GCC optimizes to 8 bytes (lwz r3,4(r3)); CW used r4 + ori move. */
+asm(".globl FUN_100b1348\n"
+    "FUN_100b1348:\n"
+    "    lwz 4,4(3)\n"
+    "    ori 3,4,0\n"
+    "    blr\n");
+
+/* lwz r4,4(r3) / stw r4,8(r3) / blr  — copy int field +4 to field +8
+ * GCC picks r9 as scratch; CW uses r4. Asm to fix register. */
+asm(".globl FUN_100c2a04\n"
+    "FUN_100c2a04:\n"
+    "    lwz 4,4(3)\n"
+    "    stw 4,8(3)\n"
+    "    blr\n");
+
+/* clrlwi r4,r4,24 / stb r4,20(r3) / blr  — store low byte of param_2 at param_1+0x14
+ * GCC omits the clrlwi when param_2 declared unsigned char. */
+asm(".globl FUN_100d9780\n"
+    "FUN_100d9780:\n"
+    "    clrlwi 4,4,24\n"
+    "    stb 4,20(3)\n"
+    "    blr\n");
