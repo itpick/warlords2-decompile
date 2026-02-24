@@ -94,3 +94,52 @@ asm(".globl FUN_100d9780\n"
     "    clrlwi 4,4,24\n"
     "    stb 4,20(3)\n"
     "    blr\n");
+
+/* ── 16-byte verified functions ─────────────────────────────────────────── */
+
+/* extsh r4,r4 / addic r5,r4,0x5dd / stw r5,0x164(r3) / blr
+ * GCC uses addi (no carry) and skips the extsh; CW sign-extends first. */
+asm(".globl FUN_1007f094\n"
+    "FUN_1007f094:\n"
+    "    extsh 4,4\n"
+    "    addic 5,4,0x5dd\n"
+    "    stw 5,0x164(3)\n"
+    "    blr\n");
+
+/* extsh r4,r4 / addic r5,r4,0x709 / stw r5,0x168(r3) / blr */
+asm(".globl FUN_1007f0a4\n"
+    "FUN_1007f0a4:\n"
+    "    extsh 4,4\n"
+    "    addic 5,4,0x709\n"
+    "    stw 5,0x168(3)\n"
+    "    blr\n");
+
+/* lwz r5,4(r3) / stw r5,4(r4) / stw r4,4(r3) / blr
+ * Linked-list prepend: saves next ptr, sets our next, inserts us.
+ * GCC picks r9 as scratch; CW uses r5. */
+asm(".globl FUN_100b1354\n"
+    "FUN_100b1354:\n"
+    "    lwz 5,4(3)\n"
+    "    stw 5,4(4)\n"
+    "    stw 4,4(3)\n"
+    "    blr\n");
+
+/* addc r5,r3,r4 / addic r5,r5,-1 / divw r3,r5,r4 / blr
+ * Ceiling division: (a + b - 1) / b.
+ * GCC uses add+addi (no carry); CW uses addc+addic. */
+asm(".globl FUN_100efcc0\n"
+    "FUN_100efcc0:\n"
+    "    addc 5,3,4\n"
+    "    addic 5,5,-1\n"
+    "    divw 3,5,4\n"
+    "    blr\n");
+
+/* lwz r5,0x24(r3) / stw r4,0x24(r3) / ori r3,r5,0 / blr
+ * Exchange: returns old value at param_1+0x24, stores param_2 there.
+ * GCC uses mr r9,r3 then overwrites r3; CW saves to r5 and uses ori. */
+asm(".globl FUN_101159dc\n"
+    "FUN_101159dc:\n"
+    "    lwz 5,0x24(3)\n"
+    "    stw 4,0x24(3)\n"
+    "    ori 3,5,0\n"
+    "    blr\n");
