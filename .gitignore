@@ -15,13 +15,13 @@ test_app/Test App
 tools/dumps/*.bin
 
 # Tool output directories (generated, not source)
-tools/output/
-tools/viewer_output/
+#tools/output/
+#tools/viewer_output/
 
-# 68k binary extraction (large binaries, generated decompiled C)
-tools/68k_binary/*.bin
-tools/68k_binary/code_segments/
-tools/68k_binary/decompiled/
+## 68k binary extraction (large binaries, generated decompiled C)
+#tools/68k_binary/*.bin
+#tools/68k_binary/code_segments/
+#tools/68k_binary/decompiled/
 
 # Duplicate game folder and saved games
 Warlords II 2/
