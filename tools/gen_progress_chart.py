@@ -26,11 +26,11 @@ VERIFIED_FILE  = os.path.join(REPO_ROOT, "tools", "byte_verified_count.txt")
 
 # ── colours (GitHub dark/light friendly) ────────────────────────────────────
 C_VERIFIED = "#56d364"   # bright green  (byte-verified identical)
-C_DONE     = "#2ea043"   # green         (reconstructed, not yet byte-verified)
+C_DONE     = "#2ea043"   # green         (hand-reconstructed, named)
+C_AUTO     = "#238636"   # dark green    (auto-reconstructed from Ghidra)
 C_AGENT    = "#1f6feb"   # blue          (in-progress / agent)
-C_STUB     = "#e3b341"   # amber         (stub)
-C_TODO     = "#cf222e"   # red           (TODO)
-C_UNMAPPED = "#30363d"   # dark grey
+C_STUB     = "#e3b341"   # amber         (stub/todo)
+C_MISSING  = "#30363d"   # dark grey     (not yet implemented)
 
 # ── 1. Count total PPC functions from Ghidra output ─────────────────────────
 total_ppc = sum(
@@ -46,7 +46,7 @@ if os.path.exists(VERIFIED_FILE):
     except (ValueError, IndexError):
         pass
 
-# ── 2. Parse FUNCTION_MAP per subsystem ─────────────────────────────────────
+# ── 2. Parse FUNCTION_MAP for named/hand-reconstructed functions ─────────────
 SUBSYSTEM_LABELS = {
     "AI System":                    "AI",
     "Framework / MacApp":           "Framework",
@@ -66,6 +66,7 @@ SUBSYSTEM_LABELS = {
 
 sections = {}
 current = None
+named_addrs = set()
 
 with open(FUNCTION_MAP) as f:
     for line in f:
@@ -81,6 +82,9 @@ with open(FUNCTION_MAP) as f:
         if current is None:
             continue
         parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 2:
+            continue
+        named_addrs.add("FUN_" + parts[0])
         status = parts[4] if len(parts) > 4 else ""
         if "DONE" in status:
             sections[current]["DONE"] += 1
@@ -91,27 +95,33 @@ with open(FUNCTION_MAP) as f:
         else:
             sections[current]["TODO"] += 1
 
-# Merge tiny sections
-merged = {}
-for label, counts in sections.items():
-    total = sum(counts.values())
-    if total == 0:
-        continue
-    merged[label] = counts
-
+merged = {label: counts for label, counts in sections.items() if sum(counts.values()) > 0}
 totals = {k: sum(s[k] for s in merged.values()) for k in ("DONE", "AGENT", "STUB", "TODO")}
-total_mapped     = sum(totals.values())
-total_unmapped   = max(0, total_ppc - total_mapped)
-# Byte-verified comes out of the DONE pool for display purposes
-done_unverified  = max(0, totals["DONE"] - byte_verified)
+total_named = sum(totals.values())
+
+# ── 3. Count auto-reconstructed: FUN_10xxxxxx defined in source but not named ─
+src_defined = set()
+for path in glob.glob(os.path.join(REPO_ROOT, "src", "**", "*.c"), recursive=True) + \
+             glob.glob(os.path.join(REPO_ROOT, "src", "*.c")):
+    content = open(path).read()
+    for m in re.finditer(r'^\w[\w\s\*]+\s+(FUN_10[0-9a-f]{6})\s*\(', content, re.MULTILINE):
+        src_defined.add(m.group(1))
+
+# Auto-stubs = defined in source with PPC address but not in FUNCTION_MAP
+auto_stubs   = len(src_defined - named_addrs)
+total_impl   = total_named + auto_stubs
+total_missing = max(0, total_ppc - total_impl)
+
+# Byte-verified comes out of the DONE pool
+done_unverified = max(0, totals["DONE"] - byte_verified)
 
 pct_verified  = byte_verified   / total_ppc * 100
 pct_done      = done_unverified / total_ppc * 100
+pct_auto      = auto_stubs      / total_ppc * 100
 pct_agent     = totals["AGENT"] / total_ppc * 100
-pct_stub      = totals["STUB"]  / total_ppc * 100
-pct_todo      = totals["TODO"]  / total_ppc * 100
-pct_unmapped  = total_unmapped  / total_ppc * 100
-pct_reconstructed = (totals["DONE"] + totals["AGENT"]) / total_ppc * 100
+pct_stub      = (totals["STUB"] + totals["TODO"]) / total_ppc * 100
+pct_missing   = total_missing   / total_ppc * 100
+pct_total_impl = total_impl     / total_ppc * 100
 
 # ── 3. Plot ──────────────────────────────────────────────────────────────────
 fig = plt.figure(figsize=(14, 8), facecolor="#0d1117")
@@ -133,18 +143,18 @@ for ax in [ax_bar, ax_donut, ax_subs]:
 # ── 3a. Top: overall stacked bar ─────────────────────────────────────────────
 bar_data = [
     (pct_verified, C_VERIFIED, f"Byte-Verified {byte_verified}"),
-    (pct_done,     C_DONE,    f"Reconstructed {done_unverified}"),
-    (pct_agent,    C_AGENT,   f"In Progress {totals['AGENT']}"),
-    (pct_stub,     C_STUB,    f"Stub {totals['STUB']}"),
-    (pct_todo,     C_TODO,    f"TODO {totals['TODO']}"),
-    (pct_unmapped, C_UNMAPPED, f"Unmapped {total_unmapped}"),
+    (pct_done,     C_DONE,     f"Hand-Reconstructed {done_unverified}"),
+    (pct_agent,    C_AGENT,    f"In Progress {totals['AGENT']}"),
+    (pct_auto,     C_AUTO,     f"Auto-Reconstructed {auto_stubs}"),
+    (pct_stub,     C_STUB,     f"Stub/TODO {totals['STUB'] + totals['TODO']}"),
+    (pct_missing,  C_MISSING,  f"Not Implemented {total_missing}"),
 ]
 
 left = 0
 for pct, color, label in bar_data:
     if pct > 0:
         ax_bar.barh(0, pct, left=left, color=color, height=0.5)
-        if pct > 3:
+        if pct > 4:
             ax_bar.text(left + pct / 2, 0, f"{pct:.1f}%",
                         ha="center", va="center", color="white",
                         fontsize=9, fontweight="bold")
@@ -155,12 +165,12 @@ ax_bar.set_ylim(-0.6, 0.6)
 ax_bar.set_xlabel("% of total PPC functions", color="#8b949e", fontsize=9)
 ax_bar.set_title(
     f"Byte-verified: {pct_verified:.1f}%  |  "
-    f"Reconstructed: {pct_reconstructed:.1f}%  |  "
-    f"{total_mapped}/{total_ppc} functions mapped",
+    f"Implemented: {pct_total_impl:.1f}%  |  "
+    f"{total_impl}/{total_ppc} functions  |  "
+    f"{total_missing} remaining",
     color="#c9d1d9", fontsize=11, pad=8)
 ax_bar.set_yticks([])
 ax_bar.tick_params(axis="x", colors="#8b949e")
-ax_bar.xaxis.label.set_color("#8b949e")
 
 legend_patches = [mpatches.Patch(color=c, label=l) for _, c, l in bar_data if _ > 0]
 ax_bar.legend(handles=legend_patches, loc="lower right",
@@ -168,9 +178,11 @@ ax_bar.legend(handles=legend_patches, loc="lower right",
               labelcolor="white", fontsize=8, ncol=2)
 
 # ── 3b. Bottom-left: donut ────────────────────────────────────────────────────
-donut_vals   = [byte_verified, done_unverified, totals["AGENT"], totals["STUB"], totals["TODO"], total_unmapped]
-donut_colors = [C_VERIFIED, C_DONE, C_AGENT, C_STUB, C_TODO, C_UNMAPPED]
-donut_labels = ["Byte-Verified", "Reconstructed", "Agent", "Stub", "TODO", "Unmapped"]
+donut_vals   = [byte_verified, done_unverified, totals["AGENT"], auto_stubs,
+                totals["STUB"] + totals["TODO"], total_missing]
+donut_colors = [C_VERIFIED, C_DONE, C_AGENT, C_AUTO, C_STUB, C_MISSING]
+donut_labels = ["Byte-Verified", "Hand-Recon.", "In Progress",
+                "Auto-Recon.", "Stub/TODO", "Not Impl."]
 non_zero = [(v, c, l) for v, c, l in zip(donut_vals, donut_colors, donut_labels) if v > 0]
 vals, cols, labs = zip(*non_zero)
 
@@ -179,36 +191,33 @@ wedges, _ = ax_donut.pie(
     wedgeprops=dict(width=0.55, edgecolor="#0d1117", linewidth=1.5))
 
 ax_donut.text(0, 0,
-              f"{pct_verified:.1f}%\nverified",
-              ha="center", va="center", color=C_VERIFIED,
+              f"{pct_total_impl:.0f}%\nimpl.",
+              ha="center", va="center", color="white",
               fontsize=13, fontweight="bold")
-ax_donut.set_title("By count", color="#c9d1d9", fontsize=10, pad=6)
+ax_donut.set_title("Overall coverage", color="#c9d1d9", fontsize=10, pad=6)
 ax_donut.legend(wedges, labs, loc="lower center",
                 facecolor="#161b22", edgecolor="#30363d",
-                labelcolor="white", fontsize=8, ncol=3,
-                bbox_to_anchor=(0.5, -0.12))
+                labelcolor="white", fontsize=7, ncol=3,
+                bbox_to_anchor=(0.5, -0.15))
 
-# ── 3c. Bottom-right: per-subsystem horizontal bars ──────────────────────────
+# ── 3c. Bottom-right: named subsystems bar (hand-reconstructed only) ──────────
 sub_items = sorted(merged.items(), key=lambda x: -(x[1]["DONE"] + x[1]["AGENT"]))[:12]
 sub_labels = [s for s, _ in sub_items]
 sub_done   = [d["DONE"]  for _, d in sub_items]
 sub_agent  = [d["AGENT"] for _, d in sub_items]
-sub_stub   = [d["STUB"]  for _, d in sub_items]
-sub_todo   = [d["TODO"]  for _, d in sub_items]
+sub_stub   = [d["STUB"] + d["TODO"] for _, d in sub_items]
 
 y = np.arange(len(sub_labels))
 h = 0.55
-ax_subs.barh(y, sub_done,  color=C_DONE,    height=h, label="Done")
-ax_subs.barh(y, sub_agent, left=sub_done,   color=C_AGENT, height=h, label="Agent")
+ax_subs.barh(y, sub_done,  color=C_DONE,  height=h, label="Hand-Recon.")
+ax_subs.barh(y, sub_agent, left=sub_done, color=C_AGENT, height=h, label="In Progress")
 left_stub = [a + b for a, b in zip(sub_done, sub_agent)]
-ax_subs.barh(y, sub_stub, left=left_stub,   color=C_STUB,  height=h)
-left_todo = [a + b for a, b in zip(left_stub, sub_stub)]
-ax_subs.barh(y, sub_todo, left=left_todo,   color=C_TODO,  height=h)
+ax_subs.barh(y, sub_stub, left=left_stub, color=C_STUB, height=h, label="Stub/TODO")
 
 ax_subs.set_yticks(y)
 ax_subs.set_yticklabels(sub_labels, color="#c9d1d9", fontsize=8)
 ax_subs.set_xlabel("Function count", color="#8b949e", fontsize=9)
-ax_subs.set_title("By subsystem (top 12)", color="#c9d1d9", fontsize=10, pad=6)
+ax_subs.set_title("Named subsystems (hand-reconstructed)", color="#c9d1d9", fontsize=10, pad=6)
 ax_subs.tick_params(axis="x", colors="#8b949e")
 ax_subs.legend(facecolor="#161b22", edgecolor="#30363d",
                labelcolor="white", fontsize=8, loc="lower right")
@@ -217,13 +226,12 @@ os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
 plt.savefig(OUTPUT, dpi=150, bbox_inches="tight", facecolor="#0d1117")
 print(f"Saved: {OUTPUT}")
 print(f"\nStats:")
-print(f"  Total PPC functions  : {total_ppc}")
-print(f"  Mapped (FUNCTION_MAP): {total_mapped}")
-print(f"  Byte-Verified        : {byte_verified} ({pct_verified:.1f}%)")
-print(f"  Reconstructed (DONE) : {totals['DONE']} ({(totals['DONE']/total_ppc*100):.1f}%)")
-print(f"  In Progress (Agent)  : {totals['AGENT']} ({pct_agent:.1f}%)")
-print(f"  Stub                 : {totals['STUB']} ({pct_stub:.1f}%)")
-print(f"  TODO                 : {totals['TODO']} ({pct_todo:.1f}%)")
-print(f"  Unmapped             : {total_unmapped} ({pct_unmapped:.1f}%)")
-print(f"  Reconstructed total  : {pct_reconstructed:.1f}%")
+print(f"  Total PPC functions    : {total_ppc}")
+print(f"  Byte-Verified          : {byte_verified} ({pct_verified:.1f}%)")
+print(f"  Hand-Reconstructed     : {totals['DONE']} ({totals['DONE']/total_ppc*100:.1f}%)")
+print(f"  In Progress (Agent)    : {totals['AGENT']} ({pct_agent:.1f}%)")
+print(f"  Auto-Reconstructed     : {auto_stubs} ({pct_auto:.1f}%)")
+print(f"  Stub/TODO              : {totals['STUB']+totals['TODO']} ({pct_stub:.1f}%)")
+print(f"  Not Implemented        : {total_missing} ({pct_missing:.1f}%)")
+print(f"  Total Implemented      : {total_impl} ({pct_total_impl:.1f}%)")
 print(f"\nTo increment byte-verified count, update tools/byte_verified_count.txt")
