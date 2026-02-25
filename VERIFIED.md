@@ -9,7 +9,7 @@ same machine code as the original binary.
 | Architecture | Verified | Total    | % |
 |---|---|---|---|
 | PPC (main binary) | 980 | 4,717 | 20.8% |
-| 68k (original Mac binary) | 1,905 | ~18,000 | ~10.6% |
+| 68k (original Mac binary) | 1,905 | 5,068 | 37.6% |
 
 The PPC and 68k binaries were compiled from the **same source code**, so the 68k
 verified list is also a behavioral ground-truth for PPC reconstruction.
@@ -140,32 +140,76 @@ After all eight encoding fixes, 10 functions remain unverified:
 Mac 68k programs call the Toolbox ROM via A-line trap instructions (`0xAxxx`,
 always 2 bytes). `m68k-elf-objdump` does not recognise these — it decodes
 `0xAxxx` opcodes as ColdFire/68040 EMAC instructions (4 bytes), producing wrong
-byte boundaries and invalid AT&T syntax that GAS rejects.
+byte boundaries and AT&T syntax that GAS rejects entirely (`got=` empty).
 
-**What would fix it**: pre-process the raw bytes before disassembly: replace each
-`0xAxxx` word at an instruction boundary with NOP (`0x4e71`), disassemble, then
-substitute the NOP back with `.word 0xAxxx` in the output. This preserves correct
-2-byte boundaries for all surrounding instructions.
+Concrete example from `FUN_C146_0000181c`:
+```
+Original bytes (CodeWarrior):
+  ...  a8d9            ; A-trap 0xa8d9 = _BlockMove (2 bytes)
+       91c8            ; subaw %a0,%a1           (2 bytes)
+       4e5e            ; unlk %fp                (2 bytes)
+
+objdump output (decodes as ColdFire EMAC):
+  e:   a8d9 91c8       msacw %a0u,%a1u,%a1@+,%a4  (4 bytes — WRONG BOUNDARY)
+  12:  4e5e            unlk %fp
+
+GAS result: Error: syntax error -- statement 'msacw ...' ignored → got=empty
+```
+
+The `msacw` (MAC unit, Motorola 68060/ColdFire) opcode space overlaps with Mac
+A-traps in `0xA000–0xAFFF`. All 6 affected functions produce `got=` because GAS
+rejects the EMAC mnemonics or their operand syntax.
+
+**What would fix it**: before passing raw bytes to `disassemble_to_instrs`,
+replace each `0xAxxx` word with `NOP` (`0x4e71`). NOP is also 2 bytes, so
+instruction boundaries for all surrounding code remain correct. After
+disassembly, replace `nop` at the patched offsets with `.word 0xAxxx`. GAS
+handles `.word 0xa8d9` as a literal halfword → correct bytes.
+
+Risk: if a non-opcode word (e.g., an immediate or extension word) coincidentally
+falls in `0xA000–0xAFFF`, the substitution misidentifies it. However, since
+verification checks bytes exactly, a false positive here merely produces a
+verification failure rather than a wrong entry in the verified list.
 
 **B) Ghidra function-size over-count (3 functions)**
 
 `FUN_C117_00002820`, `FUN_C160_00001fbc`, `FUN_C160_00001e1e`
 
 Ghidra's reported function size includes trailing bytes that are not instructions:
-- `FUN_C117_00002820`: 14-byte reported size, 6-byte actual code + 8 zero bytes
-- `FUN_C160_00001fbc`, `FUN_C160_00001e1e`: 84/88-byte sizes include the 4-byte
-  prefix `2f3c 8206` of the *next* function
 
-**What would fix it**: nothing tractable — Ghidra's static size analysis for these
-functions includes data bytes or bleeds into the next function.
+- `FUN_C117_00002820` (reported 14 B): only 6 bytes of real instructions
+  (`cmpal %a5@,%a0` / `orl %d7,%a0@-` / `lsrl #5,%d4`) followed by 8 zero
+  bytes. `objdump` prints `...` for those zeros. GAS produces 6 bytes; exp is
+  14 — unresolvable mismatch.
+
+- `FUN_C160_00001fbc` (reported 84 B, got 80 B) and `FUN_C160_00001e1e`
+  (reported 88 B, got 84 B): both have `exp` ending in `2f3c 8206`. That 4-byte
+  sequence is the first word-pair of a `movel #0x82060000,-(sp)` instruction
+  in the *following* function. Ghidra attributed it to this function, so the
+  assembled output is 4 bytes shorter than the expected slice.
+
+**What would fix it**: nothing tractable — Ghidra's static analysis included data
+or bled into the neighbouring function. Re-analysing in Ghidra with tighter
+function-end detection is the only real option.
 
 **C) 68020 full extension word (1 function)**
 
 `FUN_C010_000014a8`
 
-Contains `SUBA.L` with a 68020 full extension word (`@(base_disp)@(outer_disp)`
-AT&T syntax). The multi-displacement encoding is not correctly reproduced by GAS
-for this specific byte sequence.
+Contains `SUBAL` with a 68020 *full extension word* — the 68020 extended
+addressing mode that adds separate base and outer displacements. `objdump` shows
+these as `@(base_disp)@(outer_disp)` in AT&T syntax. GAS produces different
+bytes for this form than the original CodeWarrior output:
+
+```
+Original:  9d f2 93f2 9487 9984 8f83 8f83  (12 bytes for this instruction)
+GAS gets:  9d f0 01f3 0000 0000 0000 0000  (12 bytes, wrong extension words)
+```
+
+The high-byte difference `f2`→`f0` in the extension word changes the addressing
+mode bits, and the subsequent displacement words are wrong. This is likely a GAS
+encoding quirk for the specific combination of base-register suppression and
+outer-displacement size flags used here.
 
 ### 68k — 2,751 functions blocked by `bsr`/`jsr` calls
 

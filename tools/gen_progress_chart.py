@@ -17,12 +17,14 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 
-REPO_ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FUNCTION_MAP   = os.path.join(REPO_ROOT, "src", "FUNCTION_MAP.txt")
-PPC_DECOMPILED = os.path.join(REPO_ROOT, "tools", "ppc_decompiled")
-OUTPUT         = os.path.join(REPO_ROOT, "docs", "progress_chart.png")
+REPO_ROOT         = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FUNCTION_MAP      = os.path.join(REPO_ROOT, "src", "FUNCTION_MAP.txt")
+PPC_DECOMPILED    = os.path.join(REPO_ROOT, "tools", "ppc_decompiled")
+OUTPUT            = os.path.join(REPO_ROOT, "docs", "progress_chart.png")
 # Optional override file: one number on the first line = byte-verified count
-VERIFIED_FILE  = os.path.join(REPO_ROOT, "tools", "byte_verified_count.txt")
+VERIFIED_FILE     = os.path.join(REPO_ROOT, "tools", "byte_verified_count.txt")
+K68_VERIFIED_FILE = os.path.join(REPO_ROOT, "tools", "68k_verified_count.txt")
+K68_DEC_GLOB      = os.path.join(REPO_ROOT, "tools", "68k_binary", "decompiled", "CODE_*.c")
 
 # ── colours (GitHub dark/light friendly) ────────────────────────────────────
 C_VERIFIED = "#56d364"   # bright green  (byte-verified identical)
@@ -43,6 +45,18 @@ byte_verified = 0
 if os.path.exists(VERIFIED_FILE):
     try:
         byte_verified = int(open(VERIFIED_FILE).read().strip().splitlines()[0])
+    except (ValueError, IndexError):
+        pass
+
+# ── 1b. Count 68k functions and verified ─────────────────────────────────────
+total_68k = sum(
+    open(f).read().count("// Function:")
+    for f in glob.glob(K68_DEC_GLOB)
+)
+k68_verified = 0
+if os.path.exists(K68_VERIFIED_FILE):
+    try:
+        k68_verified = int(open(K68_VERIFIED_FILE).read().strip().splitlines()[0])
     except (ValueError, IndexError):
         pass
 
@@ -163,21 +177,34 @@ for pct, color, label in bar_data:
 ax_bar.text(-0.8, 0.3, "Source\nCoverage", ha="right", va="center",
             color="#8b949e", fontsize=7)
 
-# Row 1 (y=-0.3): byte-for-byte replica bar
+# Row 1 (y=-0.3): PPC byte-for-byte replica bar
 pct_bfb_remaining = 100 - pct_verified
 ax_bar.barh(-0.3, pct_verified,       left=0,            color=C_VERIFIED, height=0.35)
 ax_bar.barh(-0.3, pct_bfb_remaining,  left=pct_verified, color=C_MISSING,  height=0.35)
 _verified_str = f"{pct_verified:.2f}%" if pct_verified < 1 else f"{pct_verified:.1f}%"
 ax_bar.text(pct_verified + pct_bfb_remaining / 2, -0.3,
-            f"{byte_verified} / {total_ppc} functions  ({_verified_str})",
+            f"{byte_verified} / {total_ppc} fns  ({_verified_str})",
             ha="center", va="center", color="#8b949e", fontsize=9)
-ax_bar.text(-0.8, -0.3, "Byte-for-\nByte", ha="right", va="center",
+ax_bar.text(-0.8, -0.3, "PPC\nB-f-B", ha="right", va="center",
             color="#8b949e", fontsize=7)
 
+# Row 2 (y=-0.9): 68k byte-for-byte bar (separate binary, same source)
+if total_68k > 0:
+    pct_68k_verified  = k68_verified  / total_68k * 100
+    pct_68k_remaining = 100 - pct_68k_verified
+    ax_bar.barh(-0.9, pct_68k_verified,  left=0,               color=C_VERIFIED, height=0.35)
+    ax_bar.barh(-0.9, pct_68k_remaining, left=pct_68k_verified, color=C_MISSING,  height=0.35)
+    _68k_str = f"{pct_68k_verified:.2f}%" if pct_68k_verified < 1 else f"{pct_68k_verified:.1f}%"
+    ax_bar.text(pct_68k_verified + pct_68k_remaining / 2, -0.9,
+                f"{k68_verified} / {total_68k} fns  ({_68k_str})",
+                ha="center", va="center", color="#8b949e", fontsize=9)
+    ax_bar.text(-0.8, -0.9, "68k\nB-f-B", ha="right", va="center",
+                color="#8b949e", fontsize=7)
+
 ax_bar.set_xlim(0, 102)   # 2% right padding so the last bar segment isn't clipped
-ax_bar.set_ylim(-0.75, 0.75)
-ax_bar.set_xlabel("% of total PPC functions", color="#8b949e", fontsize=9)
-ax_bar.set_title("Source coverage vs byte-for-byte replica progress",
+ax_bar.set_ylim(-1.25, 0.75)
+ax_bar.set_xlabel("% of total functions per architecture", color="#8b949e", fontsize=9)
+ax_bar.set_title("Source coverage (PPC) and byte-for-byte replica progress (PPC + 68k)",
                  color="#c9d1d9", fontsize=11, pad=8)
 ax_bar.set_yticks([])
 ax_bar.tick_params(axis="x", colors="#8b949e")
@@ -245,3 +272,7 @@ print(f"  Stub/TODO              : {totals['STUB']+totals['TODO']} ({pct_stub:.1
 print(f"  Not Implemented        : {total_missing} ({pct_missing:.1f}%)")
 print(f"  Total Implemented      : {total_impl} ({pct_total_impl:.1f}%)")
 print(f"\nTo increment byte-verified count, update tools/byte_verified_count.txt")
+if total_68k > 0:
+    print(f"\n68k stats:")
+    print(f"  Total 68k functions    : {total_68k}")
+    print(f"  68k Byte-Verified      : {k68_verified} ({k68_verified/total_68k*100:.1f}%)")
