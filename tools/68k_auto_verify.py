@@ -171,7 +171,75 @@ def has_pc_relative(instrs):
     return False
 
 
-def build_asm_lines(instrs, size=0):
+def _opcode_word(raw, off):
+    """Return the 16-bit opcode word at byte offset `off` in `raw`, or 0."""
+    if off + 1 < len(raw):
+        return (raw[off] << 8) | raw[off + 1]
+    return 0
+
+
+# 68k absolute-long (abs.L) EA detection.
+#
+# In 68k encoding, EA mode=7 reg=1 means "absolute long (32-bit) address".
+# This appears in two positions in an opcode word:
+#
+#   SOURCE EA  (bits 5:0 = 111001 = 0x39) — applies to all instructions:
+#     pea, jmp, jsr, lea, moveal, movel/movew/moveb with abs.L source,
+#     clrl/negl/notl/tstl/negxl/moveml with abs.L operand, etc.
+#
+#   DESTINATION EA in MOVE (bits 11:6) — MOVE has unusual encoding where
+#     destination mode is in bits [8:6] and destination register in bits [11:9]:
+#     mode=111 [8:6] and reg=001 [11:9] → abs.L destination
+#     Combined mask: (word & 0xC000)==0 (top 2 bits = 00 = MOVE)
+#                AND (word & 0x0FC0)==0x03C0 (dst_mode=111, dst_reg=001)
+#
+# GAS silently shortens abs.L to abs.W when the address fits in a sign-extended
+# 16-bit value (range [0xFFFF8000..0xFFFF] or [0x0000..0x7FFF]).
+# Appending ':l' to the address operand forces abs.L form.
+
+def _is_abs_long_opcode(word):
+    """True if opcode word `word` has an abs.L EA that GAS might shorten.
+
+    Covers source abs.L (bits 5:0 = 0x39) and MOVE destination abs.L
+    (bits 11:6 encode mode=7, reg=1 in the MOVE-specific layout).
+    """
+    # Source abs.L: EA bits [5:0] = mode 7 (111) + reg 1 (001) = 0x39
+    # Applies to all instructions with source EA: pea, jmp, lea, move, clr, etc.
+    if (word & 0x3F) == 0x39:
+        return True
+    # Destination abs.L in MOVE instructions (unusual bit layout):
+    # Bits 15:14 = 00 (MOVE prefix), bits 8:6 = 111 (dst_mode=7), bits 11:9 = 001 (dst_reg=1)
+    if (word & 0xC000) == 0 and (word & 0x0FC0) == 0x03C0:
+        return True
+    return False
+
+
+# Byte-size immediate instructions.
+# In the 68k binary the immediate is stored in a 16-bit word where the high byte
+# is architecturally ignored ("junk").  CodeWarrior left whatever was in that
+# high byte; GAS zero-pads (imm < 0x80) or sign-extends (imm >= 0x80), producing
+# a different encoding when the junk differs.
+# Fix: emit raw .word directives for the entire instruction to preserve the original
+# junk byte exactly.
+#
+# Covers:
+#   orib, andib, subib, addib, eorib, cmpib  — group instructions with B size
+#   moveb #imm, ...  — MOVE.B with immediate source (detected by '#' in text)
+_BYTE_IMM_GRP = re.compile(r'^(ori|andi|subi|addi|eori|cmpi)b\b')
+
+
+def _is_byte_imm(instr):
+    """True if this instruction has a byte-size immediate with potential junk."""
+    s = instr.strip()
+    if _BYTE_IMM_GRP.match(s):
+        return True
+    # moveb #imm, dest  — MOVE.B with immediate source operand
+    if s.startswith('moveb') and '#' in s:
+        return True
+    return False
+
+
+def build_asm_lines(instrs, size=0, raw=b""):
     """Convert (offset, instr) list to asm lines with numeric local branch labels.
 
     For branches with targets outside [0, size) — external tail calls — emit
@@ -179,6 +247,28 @@ def build_asm_lines(instrs, size=0):
     for branch displacement is instruction_start + 2 (after the opcode word),
     so the displacement encoded is (N - 2), which means N = target_off - off.
     size=0 disables external-branch detection (all targets get local labels).
+
+    When `raw` is supplied two additional passes apply:
+
+    1. Abs.L shortening fix: for any instruction whose original opcode word has
+       an abs.L EA (mode=7 reg=1), append ':l' to hex address tokens so GAS
+       doesn't silently shorten to abs.W for addresses that fit in a signed
+       16-bit value.  Applies to pea, jmp, lea, moveal, movel/movew/moveb,
+       clrl, negl, etc.
+
+    2. Indexed-addressing displacement fix: in AT&T @(d8,Rn:size) form objdump
+       shows the 8-bit displacement as bare hex without a 0x prefix (e.g.
+       @(4e,%d4:w) for 0x4e, or @(ffffffffffffff8e,%a3:w) for -114).  GAS
+       interprets bare numerics as decimal (4e causes a syntax error; 56 becomes
+       decimal 56 = 0x38 instead of hex 0x56).  Fix: prepend 0x to all bare
+       hex displacements in @(HEX,...) contexts.
+
+    3. Byte-immediate junk fix: for byte-size immediate instructions (orib,
+       andib, subib, addib, eorib, cmpib) the immediate is stored in a 16-bit
+       word where the high byte is junk left by CodeWarrior.  GAS always
+       normalises this (zero-pads for imm < 0x80, sign-extends for imm >= 0x80)
+       so the bytes differ.  Fix: emit raw .word directives from the original
+       bytes to preserve the junk byte exactly.
     """
     label_map = {}
     label_counter = [0]
@@ -238,9 +328,45 @@ def build_asm_lines(instrs, size=0):
 
     # Second pass: emit with labels inserted
     lines = []
-    for off, instr in fixed:
+    for idx, (off, instr) in enumerate(fixed):
         if off in label_map:
             lines.append(f'{label_map[off]}:')
+
+        if raw and size > 0:
+            # Instruction byte count: distance to next instruction (or end of function)
+            next_off = fixed[idx + 1][0] if idx + 1 < len(fixed) else size
+            n_bytes  = next_off - off
+
+            # Byte-immediate junk fix: emit the entire instruction as raw .word
+            # directives so the original junk byte in the immediate word is
+            # preserved exactly.  GAS would zero-pad or sign-extend it instead.
+            # Applies to orib/andib/subib/addib/eorib/cmpib (objdump AT&T names).
+            if n_bytes >= 4 and off + n_bytes <= len(raw) and _is_byte_imm(instr):
+                words = [f'0x{raw[off+i]:02x}{raw[off+i+1]:02x}'
+                         for i in range(0, n_bytes, 2)]
+                lines.append('    ' + '; '.join(f'.word {w}' for w in words))
+                continue
+
+        # Indexed addressing displacement fix:
+        # In 68k AT&T syntax, @(d8,Rn:size) brief-extension-word addressing shows
+        # the 8-bit displacement as bare hex WITHOUT a 0x prefix (e.g. @(4e,%d4:w)
+        # for disp=0x4e, or @(ffffffffffffff8e,%a3:w) for disp=-114 sign-extended).
+        # GAS interprets bare numeric strings as decimal, so @(56,...) becomes
+        # displacement 56 decimal (=0x38) instead of hex 0x56 (=86 decimal).
+        # For values with letters (e.g. 4e) GAS generates a syntax error.
+        # Fix: add 0x prefix to all bare hex displacements in @(HEX,...) contexts.
+        # The lookbehind in the abs.L fix treats '(' as excluded, so these
+        # 0x-prefixed displacements will NOT incorrectly gain :l suffixes.
+        if '@(' in instr:
+            instr = re.sub(r'@\(([0-9a-f]+),', lambda m: f'@(0x{m.group(1)},', instr)
+
+        # Abs.L shortening fix: append ':l' to hex addresses so GAS doesn't
+        # silently shorten abs.L to abs.W for small addresses.
+        # Targets hex tokens NOT preceded by '#' (immediate) or '(' (d16 offset).
+        if raw:
+            word = _opcode_word(raw, off)
+            if _is_abs_long_opcode(word):
+                instr = re.sub(r'(?<![#(])(0x[0-9a-f]+)', r'\1:l', instr)
         lines.append(f'    {instr}')
     return lines
 
@@ -259,6 +385,13 @@ def _extract_bytes(func_name, obj_path, max_bytes):
     68k objdump uses tab-delimited columns and word-grouped hex (e.g. '4e75'
     or '4e56 fffc'), not byte-separated hex. Capture the hex column between
     the first and second tab, strip spaces, then convert.
+
+    For instructions wider than 6 bytes (e.g. movel abs.L,(d16,An)) objdump
+    splits the hex across two display lines:
+        4:  2d79 0002 97f4    movel 0x297f4,%fp@(-4)
+        a:  fffc
+    The continuation line has only one tab (no mnemonic column).  Both lines
+    must be captured to reconstruct the full instruction bytes.
     """
     dasm = subprocess.run([M68K_OBJDUMP, '-d', obj_path],
                           capture_output=True, text=True)
@@ -270,8 +403,16 @@ def _extract_bytes(func_name, obj_path, max_bytes):
         if cur:
             if not line.strip() and got:
                 break
-            # Match: ADDR:\tHEXBYTES\tMNEMONIC
+            # Match regular instruction line: ADDR:\tHEXBYTES\tMNEMONIC
             m = re.match(r'\s+[0-9a-f]+:\t([0-9a-f][0-9a-f ]+)\t', line)
+            if m:
+                got += bytes.fromhex(m.group(1).replace(' ', ''))
+                if len(got) >= max_bytes:
+                    break
+                continue
+            # Also match continuation lines (no mnemonic column):
+            #   ADDR:\tHEXBYTES
+            m = re.match(r'\s+[0-9a-f]+:\t([0-9a-f][0-9a-f ]*)\s*$', line)
             if m:
                 got += bytes.fromhex(m.group(1).replace(' ', ''))
                 if len(got) >= max_bytes:
@@ -405,7 +546,7 @@ def main():
             if has_pc_relative(instrs):
                 n_skip_pcrel += 1; size_skip += 1; continue
 
-            asm_lines = build_asm_lines(instrs, size)
+            asm_lines = build_asm_lines(instrs, size, expected)
             ok, got   = verify_asm(unique_name, asm_lines, expected)
 
             if not ok:

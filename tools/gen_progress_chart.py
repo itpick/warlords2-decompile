@@ -174,7 +174,7 @@ ax_bar.text(pct_verified + pct_bfb_remaining / 2, -0.3,
 ax_bar.text(-0.8, -0.3, "Byte-for-\nByte", ha="right", va="center",
             color="#8b949e", fontsize=7)
 
-ax_bar.set_xlim(0, 100)
+ax_bar.set_xlim(0, 102)   # 2% right padding so the last bar segment isn't clipped
 ax_bar.set_ylim(-0.75, 0.75)
 ax_bar.set_xlabel("% of total PPC functions", color="#8b949e", fontsize=9)
 ax_bar.set_title("Source coverage vs byte-for-byte replica progress",
