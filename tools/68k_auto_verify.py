@@ -314,6 +314,8 @@ def main():
                     help='Stop after N verified functions (0=unlimited)')
     ap.add_argument('--hours',      type=float, default=0,
                     help='Stop after N hours (0=unlimited)')
+    ap.add_argument('--include-warned', action='store_true',
+                    help='Also try functions Ghidra marked WARNING (raw bytes still valid)')
     args = ap.parse_args()
 
     deadline  = time.time() + args.hours * 3600 if args.hours else float('inf')
@@ -353,7 +355,8 @@ def main():
             if unique_name in done:
                 n_skip_done += 1; size_skip += 1; continue
             if '/* WARNING' in body:
-                n_skip_warn += 1; size_skip += 1; continue
+                if not args.include_warned:
+                    n_skip_warn += 1; size_skip += 1; continue
 
             expected = seg_bytes(seg_num, addr, size)
             if len(expected) < size:

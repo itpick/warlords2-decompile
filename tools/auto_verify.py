@@ -300,6 +300,8 @@ def main():
                     help="Stop after N verified functions (0=unlimited)")
     ap.add_argument("--hours",      type=float, default=0,
                     help="Stop after N hours (0=unlimited)")
+    ap.add_argument("--include-warned", action="store_true",
+                    help="Also try functions Ghidra marked WARNING (raw bytes still valid)")
     args = ap.parse_args()
 
     deadline  = time.time() + args.hours * 3600 if args.hours else float("inf")
@@ -344,28 +346,31 @@ def main():
 
             # Skip: Ghidra warnings
             if "/* WARNING" in body:
-                n_skip_warn += 1; size_skip += 1; continue
+                if not args.include_warned:
+                    n_skip_warn += 1; size_skip += 1; continue
 
             # Get PEF bytes
             expected = pef_bytes(pef, addr, size)
             if len(expected) < size:
                 n_fail += 1; size_fail += 1; continue
 
-            # Skip: TOC-relative
-            if is_toc_relative(expected):
-                n_skip_toc += 1; size_skip += 1; continue
-
             # Skip: contains bl (function calls with PC-relative offset)
             if has_bl(expected):
                 n_skip_bl += 1; size_skip += 1; continue
 
-            # --- Try direct C compilation ---
+            # --- Try direct C compilation (skip if TOC-relative: compiler assigns
+            #     different offsets than the original binary) ---
             method = "asm"
-            got_c = try_c_compile(name, body, size)
-            if got_c and got_c == expected:
-                method = "C"
+            if not is_toc_relative(expected):
+                got_c = try_c_compile(name, body, size)
+                if got_c and got_c == expected:
+                    method = "C"
+            else:
+                n_skip_toc += 1  # track but don't skip — asm path uses literal offsets
 
             # --- Build asm from disassembly (always, for guaranteed match) ---
+            # For TOC-relative functions the disassembler emits literal lwz rN,X(r2)
+            # with the exact displacement from the binary, so GAS round-trips them.
             instrs    = disassemble_to_instrs(expected)
             asm_lines = build_asm_lines(instrs)
             ok, got   = verify_asm(name, asm_lines, expected)

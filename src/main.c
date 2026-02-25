@@ -592,6 +592,80 @@ static void GetDATString(short index, Str255 outStr, const char *fallback)
     }
 }
 
+/* ===== DAT 1000 Terrain Descriptions ===== */
+/* The terrain name/description block in DAT 1000 starts with 10 terrain names
+ * (Road, Bridge, Water, Shore, Forest, Hills, Mountains, Plain, Marsh, Tower)
+ * followed immediately by 10 matching descriptions.
+ * We locate the block by searching for the anchor "Road\0Bridge\0" and then
+ * map each DAT terrain index to our internal terrain-type numbering. */
+
+#define TERRAIN_DESC_COUNT 10
+static char sTerrainDesc[TERRAIN_DESC_COUNT][64];
+static Boolean sTerrainDescLoaded = false;
+
+/* Maps our terrain type (0-9) to the DAT terrain index (0=Road,1=Bridge,…) */
+static const short kTerrTypeToDAT[10] = {
+    7, /* 0: Plains  → Plain (DAT index 7) */
+    4, /* 1: Forest  → Forest (DAT index 4) */
+    8, /* 2: Swamp   → Marsh (DAT index 8)  */
+    5, /* 3: Hills   → Hills (DAT index 5)  */
+    6, /* 4: Mountains → Mountains (DAT index 6) */
+    3, /* 5: Shore   → Shore (DAT index 3)  */
+    1, /* 6: Bridge  → Bridge (DAT index 1) */
+    0, /* 7: Road    → Road (DAT index 0)   */
+    2, /* 8: River   → Water (DAT index 2)  */
+    2  /* 9: Sea     → Water (DAT index 2)  */
+};
+
+static void LoadTerrainDescriptions(void)
+{
+    Handle h;
+    if (sTerrainDescLoaded) return;
+    sTerrainDescLoaded = true;
+
+    h = GetResource('DAT ', DAT_MASTER_STRINGS);
+    if (h == NULL) return;
+
+    HLock(h);
+    {
+        long size = GetHandleSize(h);
+        const char *p = (const char *)*h;
+        const char *end = p + size;
+        /* Locate anchor: "Road\0Bridge\0" */
+        const char *anchor = NULL;
+        const char *scan = p;
+        while (scan + 12 < end) {
+            if (scan[0]=='R' && scan[1]=='o' && scan[2]=='a' && scan[3]=='d' &&
+                scan[4]=='\0' &&
+                scan[5]=='B' && scan[6]=='r' && scan[7]=='i' && scan[8]=='d' &&
+                scan[9]=='g' && scan[10]=='e' && scan[11]=='\0') {
+                anchor = scan;
+                break;
+            }
+            scan++;
+        }
+        if (anchor) {
+            /* Skip 10 terrain names to reach descriptions */
+            const char *cur = anchor;
+            short i;
+            for (i = 0; i < TERRAIN_DESC_COUNT && cur < end; i++) {
+                while (cur < end && *cur != '\0') cur++;
+                if (cur < end) cur++; /* skip null */
+            }
+            /* Now cur points to first description; read 10 descriptions */
+            for (i = 0; i < TERRAIN_DESC_COUNT && cur < end; i++) {
+                short len = 0;
+                while (cur + len < end && cur[len] != '\0' && len < 63) len++;
+                BlockMoveData(cur, sTerrainDesc[i], len);
+                sTerrainDesc[i][len] = '\0';
+                cur += len;
+                if (cur < end) cur++; /* skip null */
+            }
+        }
+    }
+    HUnlock(h);
+}
+
 /* ===== DAT 1011 Item Definitions ===== */
 /* Contains 39 ruin items with names, category codes, and bonus values.
  * If loaded successfully, overrides the hardcoded sItemTable names. */
@@ -1790,7 +1864,14 @@ static void GameInit(void)
             /* Create a garrison army at this city */
             {
                 unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
-                short garrisonSize = (short)((unsigned short)Random() % 3) + 1;
+                short garrisonSize;
+                /* Scale garrison to neutral cities difficulty (68k CODE_117 FUN_00000be0) */
+                if (sNeutralCities == 0)
+                    garrisonSize = 1;
+                else if (sNeutralCities == 1)
+                    garrisonSize = (short)((unsigned short)Random() % 2) + 1;  /* 1-2 */
+                else
+                    garrisonSize = (short)((unsigned short)Random() % 2) + 2;  /* 2-3 */
                 short prodType;
 
                 /* Use city's first producible unit type, else default to 0 */
@@ -26446,6 +26527,8 @@ int main(void)
                         Point globalMouse;
                         Str255 costStr;
 
+                        short terrDescIdx = -1;
+                        const char *terrDescC = NULL;
                         if (terrainType <= 9)
                             tName = terrNames[terrainType];
                         else if (terrainType == 10)
@@ -26454,6 +26537,15 @@ int main(void)
                             tName = "\pWater";
                         else
                             tName = "\pUnknown";
+
+                        /* Terrain description from DAT 1000 */
+                        if (!sTerrainDescLoaded) LoadTerrainDescriptions();
+                        if (terrainType >= 0 && terrainType <= 9)
+                            terrDescIdx = kTerrTypeToDAT[terrainType];
+                        else if (terrainType == 10) terrDescIdx = 0; /* Road */
+                        else if (terrainType == 11) terrDescIdx = 2; /* Water */
+                        if (terrDescIdx >= 0 && sTerrainDesc[terrDescIdx][0] != '\0')
+                            terrDescC = sTerrainDesc[terrDescIdx];
 
                         /* Calculate movement cost for selected army */
                         if (sSelectedArmy >= 0) {
@@ -26465,7 +26557,12 @@ int main(void)
                         /* Position tooltip near cursor */
                         GetMouse(&globalMouse);
                         LocalToGlobal(&globalMouse);
-                        SetRect(&ttR, 0, 0, 120, moveCost > 0 ? 36 : 22);
+                        {
+                            short ttH = 22;
+                            if (terrDescC) ttH += 14;
+                            if (moveCost > 0 || (moveCost == 0 && sSelectedArmy >= 0)) ttH += 14;
+                            SetRect(&ttR, 0, 0, 190, ttH);
+                        }
                         OffsetRect(&ttR, globalMouse.h + 12, globalMouse.v + 12);
 
                         sTooltipWin = NewCWindow(NULL, &ttR, "\p", true,
@@ -26473,23 +26570,36 @@ int main(void)
                         if (sTooltipWin) {
                             RGBColor bg = {0xFFFF, 0xFFFF, 0xCCCC};
                             RGBColor black = {0, 0, 0};
+                            short ttY = 12;
                             SetPort(sTooltipWin);
                             RGBForeColor(&bg);
                             PaintRect(&sTooltipWin->portRect);
                             RGBForeColor(&black);
                             FrameRect(&sTooltipWin->portRect);
                             TextFont(3); TextSize(9); TextFace(bold);
-                            MoveTo(4, 12);
+                            MoveTo(4, ttY);
                             DrawString(tName);
+                            ttY += 14;
+                            if (terrDescC) {
+                                Str255 descPStr;
+                                short dlen = 0;
+                                while (dlen < 254 && terrDescC[dlen] != '\0') dlen++;
+                                descPStr[0] = (unsigned char)dlen;
+                                BlockMoveData(terrDescC, descPStr + 1, dlen);
+                                TextFace(0);
+                                MoveTo(4, ttY);
+                                DrawString(descPStr);
+                                ttY += 14;
+                            }
                             if (moveCost > 0) {
                                 TextFace(0);
-                                MoveTo(4, 26);
+                                MoveTo(4, ttY);
                                 DrawString(GetCachedString(STR_MISC, 72, "\pMove: "));
                                 NumToString((long)moveCost, costStr);
                                 DrawString(costStr);
                             } else if (moveCost == 0 && sSelectedArmy >= 0) {
                                 TextFace(0);
-                                MoveTo(4, 26);
+                                MoveTo(4, ttY);
                                 DrawString(GetCachedString(STR_MISC, 63, "\pImpassable"));
                             }
                         }
