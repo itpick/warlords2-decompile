@@ -49,6 +49,33 @@ The deploy script does the following:
 
 Launch SheepShaver and run "Warlords II" from the shared folder.
 
+## Original Compiler
+
+Warlords II was compiled with **Metrowerks CodeWarrior** (approximately CW Gold 7–9,
+circa 1995–1996). The retail binary is a **fat binary** containing both 68k and
+PowerPC (CFM) code from the same C++ source.
+
+Key compiler characteristics relevant to this reconstruction:
+
+| Property | CodeWarrior 68k | MPW / GCC / Retro68 |
+|---|---|---|
+| Default `int` size | **2 bytes** | 4 bytes |
+| Pointer return register | **A0** | D0 |
+| Struct alignment | mac68k (2-byte default) | varies |
+| Inter-segment calls | `JSR offset(A5)` (jump table) | same |
+
+**PPC**: Code Fragment Manager (CFM) format, stored in the data fork. RTOC (R2) is
+the global data pointer (equivalent to A5 for 68k). Standard PowerPC ABI with
+R3–R10 for arguments, R3 for return value, 16-byte stack alignment.
+
+**68k**: Resource fork CODE resources with a jump table at `CODE 0`. A5 world for
+globals. A6 = frame pointer (LINK/UNLK). Return values: integers in D0, pointers
+in A0 (CodeWarrior convention).
+
+See [`docs/CODEWARRIOR.md`](docs/CODEWARRIOR.md) for a full technical reference
+covering the 68k and PPC ABIs, struct alignment pragmas, inter-segment call
+mechanics, Mixed Mode interop, and key differences from MPW/GCC.
+
 ## Project Structure
 
 - `src/main.c` — Main game source (single-file reconstruction)
@@ -57,4 +84,5 @@ Launch SheepShaver and run "Warlords II" from the shared folder.
 - `src/deploy.sh` — Build, assemble, and deploy script
 - `src/sound/` — Sound/music reference code (original decompiled QTMA routines)
 - `docs/` — Research notes, resource catalogs, architecture docs
+- `docs/CODEWARRIOR.md` — Original compiler technical reference
 - `tools/` — Analysis and extraction scripts
