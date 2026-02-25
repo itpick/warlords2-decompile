@@ -1,7 +1,5 @@
 # Warlords II — PowerPC Reconstruction
 
-![Current Progress](docs/screenshot_progress.png)
-
 ## Byte-for-Byte Replica Progress
 
 ![Replica Progress](docs/progress_chart.png)
