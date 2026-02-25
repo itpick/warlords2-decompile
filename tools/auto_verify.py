@@ -249,10 +249,16 @@ def build_asm_lines(instrs, size=0, raw=b""):
     for off, instr in fixed:
         if off in label_map:
             lines.append(f"{label_map[off]}:")
+        raw_word = int.from_bytes(raw[off:off+4], "big") if raw and off + 4 <= len(raw) else None
         # FPU instructions: emit as .long (Retro68 GAS rejects f0-f31 names)
-        if raw and _FPU_MNE.match(instr.strip()):
-            word = int.from_bytes(raw[off:off+4], "big")
-            lines.append(f"    .long 0x{word:08x}")
+        # bl (opcode=18, LK=1, AA=0): emit as .long — the 26-bit PC-relative
+        # callee offset is position-dependent in a standalone object; emitting
+        # the original 4 bytes preserves the exact encoding regardless of address.
+        if raw_word is not None and (
+            _FPU_MNE.match(instr.strip()) or
+            ((raw_word >> 26) == 18 and (raw_word & 3) == 1)
+        ):
+            lines.append(f"    .long 0x{raw_word:08x}")
         else:
             lines.append(f"    {_strip_r(instr)}")
     return lines
@@ -354,7 +360,6 @@ def main():
     n_c_match        = 0
     n_asm_match      = 0
     n_skip_toc       = 0
-    n_skip_bl        = 0
     n_skip_done      = 0
     n_skip_warn      = 0
     n_fail           = 0
@@ -390,10 +395,6 @@ def main():
             expected = pef_bytes(pef, addr, size)
             if len(expected) < size:
                 n_fail += 1; size_fail += 1; continue
-
-            # Skip: contains bl (function calls with PC-relative offset)
-            if has_bl(expected):
-                n_skip_bl += 1; size_skip += 1; continue
 
             # --- Try direct C compilation (skip if TOC-relative: compiler assigns
             #     different offsets than the original binary) ---
@@ -456,7 +457,6 @@ def main():
     print(f"  Verified this run : {n_verified}  (C={n_c_match}, asm={n_asm_match})")
     print(f"  Failed            : {n_fail}")
     print(f"  Skipped (TOC)     : {n_skip_toc}")
-    print(f"  Skipped (bl calls): {n_skip_bl}")
     print(f"  Skipped (done)    : {n_skip_done}")
     print(f"  Skipped (warn)    : {n_skip_warn}")
     print(f"  New total count   : {final_count}")

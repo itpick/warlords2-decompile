@@ -8,7 +8,7 @@ same machine code as the original binary.
 
 | Architecture | Verified | Total    | % |
 |---|---|---|---|
-| PPC (main binary) | 980 | 4,717 | 20.8% |
+| PPC (main binary) | 4,710 | 4,717 | 99.9% |
 | 68k (original Mac binary) | 4,116 | 5,068 | 81.2% |
 
 The PPC and 68k binaries were compiled from the **same source code**, so the 68k
@@ -141,7 +141,14 @@ original CodeWarrior compiler output and what modern GNU assemblers produce:
     `FUN_C117_00002820`, `FUN_C125_00000402`, `FUN_C160_00001fbc`,
     `FUN_C160_00001e1e`.
 
-12. **68k call instruction raw-byte emission** — `BSR` (all sizes) and `JSR`
+12. **PPC `bl` raw-byte emission** — `bl` (branch-and-link, opcode=18, LK=1,
+    AA=0) encodes a 26-bit PC-relative offset to the callee. In a standalone
+    object the callee doesn't exist at the original address. Fix: detect `bl`
+    in `build_asm_lines` by raw opcode bits (`(word >> 26) == 18 and (word & 3)
+    == 1`) and emit as `.long 0x{word:08x}` — identical to the FPU `.long` fix.
+    Unlocked **+3,730 PPC functions** (980 → 4,710; 99.9% of all 4,717 PPC functions).
+
+13. **68k call instruction raw-byte emission** — `BSR` (all sizes) and `JSR`
     with absolute/PC-relative addressing encode position-dependent offsets.
     Previously the tool skipped all such functions (~2,751). Fix: detect call
     instructions by opcode word (`BSR`: top byte `0x61`; `JSR abs.W/abs.L/(PC)`:
@@ -155,21 +162,12 @@ original CodeWarrior compiler output and what modern GNU assemblers produce:
 
 The remaining unverified functions are blocked by the following hard limits:
 
-### PPC — 3,730 functions (~1 MB) blocked by `bl`
+### PPC — 7 functions remaining
 
-Every remaining unverified PPC function contains at least one `bl` instruction
-(branch-and-link = function call). The `bl` opcode encodes a 26-bit signed
-PC-relative offset to the callee. In a standalone object file the callee doesn't
-exist, so any assembled `bl` encodes a wrong offset.
-
-**What would fix it**: link each function as a relocatable object placed at its
-original PEF address (`0x10000000 + offset`) with linker-script stubs for every
-called function. The stubs would sit at exactly the original callee addresses so
-the `bl` offset matches. This is a full linker-script approach.
-
-Alternative shortcut: emit `bl` instructions as `.long 0x4BXXXXXX` using the
-original bytes directly (same as the FPU `.long` fix). The bytes would be
-identical; the tradeoff is that the asm is less readable.
+After the `bl` raw-byte fix, only 7 PPC functions remain unverified (out of
+4,717 total). These are likely blocked by unusual encoding patterns not yet
+characterised — the 1,895 TOC-relative functions were all verified via the asm
+path using literal displacements.
 
 ### 68k — 1 function remaining (hard blocker)
 
@@ -217,13 +215,13 @@ encoding differences not yet characterised).
 
 | Fix | Effort | Unlocks |
 |---|---|---|
-| Emit `bl` as `.long` in PPC asm path | Low — same as BSR/JSR raw-byte fix | ~3,730 PPC functions |
+| Investigate PPC 7-failure patterns | Low — analyse FAIL output | Up to 7 PPC functions |
 | Investigate 68k 80-failure patterns | Medium — analyse FAIL output | Up to 80 68k functions |
 | Linker-script approach for 68k external branches | High — full build system change | 675 68k functions |
 
-All tractable 68k encoding fixes for call instructions are now implemented
-(fix 12: emit BSR/JSR-abs as raw `.word` directives). The 1 hard-blocked function
-(`FUN_C010_000014a8`, 68020 full extension word GAS quirk) is not worth pursuing.
+Both tools are now exhausted with `--include-warned`. All tractable encoding fixes
+are implemented. The 1 hard-blocked 68k function (`FUN_C010_000014a8`, 68020 full
+extension word GAS quirk) is not worth pursuing.
 
 ## Cross-Architecture Usage
 
