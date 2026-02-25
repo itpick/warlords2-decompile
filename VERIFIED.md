@@ -9,7 +9,7 @@ same machine code as the original binary.
 | Architecture | Verified | Total    | % |
 |---|---|---|---|
 | PPC (main binary) | 980 | 4,717 | 20.8% |
-| 68k (original Mac binary) | 1,914 | 5,068 | 37.8% |
+| 68k (original Mac binary) | 4,116 | 5,068 | 81.2% |
 
 The PPC and 68k binaries were compiled from the **same source code**, so the 68k
 verified list is also a behavioral ground-truth for PPC reconstruction.
@@ -141,10 +141,19 @@ original CodeWarrior compiler output and what modern GNU assemblers produce:
     `FUN_C117_00002820`, `FUN_C125_00000402`, `FUN_C160_00001fbc`,
     `FUN_C160_00001e1e`.
 
+12. **68k call instruction raw-byte emission** — `BSR` (all sizes) and `JSR`
+    with absolute/PC-relative addressing encode position-dependent offsets.
+    Previously the tool skipped all such functions (~2,751). Fix: detect call
+    instructions by opcode word (`BSR`: top byte `0x61`; `JSR abs.W/abs.L/(PC)`:
+    `0x4eb8/0x4eb9/0x4eba`) in the `build_asm_lines` second pass and emit the
+    original bytes as `.word` directives — identical to the A-trap NOP
+    substitution (fix 9) and FPU `.long` emission (fix 4). The raw bytes match
+    the original binary regardless of link address.
+    Unlocked **+2,202 68k functions** (1,914 → 4,116; 81.2% of all 68k functions).
+
 ## Current Blockers
 
-Both tools are fully exhausted with `--include-warned`. The remaining unverified
-functions are blocked by the following hard limits:
+The remaining unverified functions are blocked by the following hard limits:
 
 ### PPC — 3,730 functions (~1 MB) blocked by `bl`
 
@@ -186,33 +195,35 @@ mode bits, and the subsequent displacement words are wrong. This is likely a GAS
 encoding quirk for the specific combination of base-register suppression and
 outer-displacement size flags used here.
 
-### 68k — 2,751 functions blocked by `bsr`/`jsr` calls
-
-Same root cause as PPC `bl`: call offsets are position-dependent. Same linker
-approach would be needed.
-
-### 68k — 210 functions blocked by external branches
+### 68k — 675 functions blocked by external branches
 
 These functions contain `bra`/`beq`/etc. that jump *outside* the function bounds
 (tail-call jumps). The branch displacement is PC-relative and changes when the
 code is placed at a different address.
 
-### 68k — 5 functions blocked by PC-relative data references (`%pc@`)
+### 68k — 10 functions blocked by PC-relative data references (`%pc@`)
 
 These instructions reference data at a PC-relative offset. The disassembler shows
 the absolute target address; when reassembled at a different base the offset
 changes. No easy fix — would need the same linker-script approach.
 
+### 68k — 80 failures (unknown encoding quirks)
+
+After the call raw-byte fix, 80 functions still fail byte comparison. These likely
+contain edge cases not yet handled (e.g. unusual addressing modes, further GAS
+encoding differences not yet characterised).
+
 ## Easiest Remaining Wins (priority order)
 
 | Fix | Effort | Unlocks |
 |---|---|---|
-| Emit `bl` as `.long` in PPC asm path | Low — same as FPU `.long` fix | ~3,730 PPC functions |
-| Linker-script approach for PPC/68k call functions | High — full build system change | Thousands more functions |
+| Emit `bl` as `.long` in PPC asm path | Low — same as BSR/JSR raw-byte fix | ~3,730 PPC functions |
+| Investigate 68k 80-failure patterns | Medium — analyse FAIL output | Up to 80 68k functions |
+| Linker-script approach for 68k external branches | High — full build system change | 675 68k functions |
 
-All tractable 68k encoding fixes are now implemented. The 1 remaining unverified
-non-call 68k function (`FUN_C010_000014a8`) requires a GAS fix for 68020 full
-extension words — not worth pursuing.
+All tractable 68k encoding fixes for call instructions are now implemented
+(fix 12: emit BSR/JSR-abs as raw `.word` directives). The 1 hard-blocked function
+(`FUN_C010_000014a8`, 68020 full extension word GAS quirk) is not worth pursuing.
 
 ## Cross-Architecture Usage
 

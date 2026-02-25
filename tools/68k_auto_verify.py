@@ -2,10 +2,10 @@
 """
 68k_auto_verify.py — Scan all 68k decompiled functions, try to match bytes.
 
-For each non-call, non-WARNING function not already in blr_verified_68k.c:
+For each non-WARNING function not already in blr_verified_68k.c:
   1. Get expected bytes from tools/68k_binary/code_segments/CODE_*.bin
-  2. Skip if function contains bsr/jsr-absolute (position-dependent calls)
-  3. Disassemble with m68k-elf-objdump, build labeled asm
+  2. Disassemble with m68k-elf-objdump, build labeled asm
+  3. BSR/JSR-absolute: emit as raw .word directives (same trick as A-traps)
   4. Compile with m68k-elf-gcc -m68020 and compare bytes
   5. If match → append to src/stubs/blr_verified_68k.c
   6. Update 68k_verified_count.txt every 10 verifications
@@ -47,23 +47,27 @@ def seg_bytes(seg_num, addr, size):
     return data[addr:addr + size]
 
 
-def has_calls(raw):
-    """True if function contains bsr or jsr with absolute/PC-relative addressing.
-    These encode position-dependent addresses that can't be reproduced in a
-    standalone object.
+def _is_call_opcode(word):
+    """True if opcode word is a position-dependent call: BSR (any size) or
+    JSR with abs.W / abs.L / PC-relative addressing.
 
-    Scans every 2-byte aligned word (68k is always 16-bit aligned):
-      bsr (any size): top byte = 0x61
-      jsr abs.w     : word = 0x4eb8
-      jsr abs.l     : word = 0x4eb9
-      jsr (pc)      : word = 0x4eba
+    These instructions encode a callee address as either a PC-relative
+    displacement (BSR, JSR PC) or an absolute address (JSR abs.W/abs.L).
+    In a standalone object the callee doesn't exist at the original address,
+    so the assembled instruction would encode the wrong offset/address.
+
+    Fix: emit as raw .word directives using the original bytes directly
+    (same approach as A-trap NOP substitution and FPU .long emission).
+
+      bsr.s / bsr.w / bsr.l : top byte = 0x61
+      jsr abs.w             : word = 0x4eb8
+      jsr abs.l             : word = 0x4eb9
+      jsr (pc)              : word = 0x4eba
     """
-    for i in range(0, len(raw) - 1, 2):
-        w = int.from_bytes(raw[i:i+2], 'big')
-        if w >> 8 == 0x61:                   # bsr.s / bsr.w / bsr.l
-            return True
-        if w in (0x4eb8, 0x4eb9, 0x4eba):   # jsr abs.w / abs.l / (pc)
-            return True
+    if word >> 8 == 0x61:                    # BSR.S / BSR.W / BSR.L
+        return True
+    if word in (0x4eb8, 0x4eb9, 0x4eba):    # JSR abs.W / abs.L / (PC)
+        return True
     return False
 
 
@@ -306,6 +310,20 @@ def _instr_byte_size(off, instr, raw):
     # LINK An: opcode word + 16-bit displacement = 4 bytes
     if (word & 0xFFF8) == 0x4E50:
         return 4
+    # BSR.W (0x6100): opcode word + 16-bit displacement = 4 bytes
+    if word == 0x6100:
+        return 4
+    # BSR.L (0x61FF): opcode word + 32-bit displacement = 6 bytes
+    if word == 0x61ff:
+        return 6
+    # JSR abs.L (0x4eb9): opcode word + 32-bit address = 6 bytes
+    if word == 0x4eb9:
+        return 6
+    # JSR abs.W (0x4eb8) / JSR (PC) (0x4eba): opcode word + 16-bit = 4 bytes
+    if word in (0x4eb8, 0x4eba):
+        return 4
+    # BSR.S (0x61XX where XX != 0x00 and != 0xFF): opcode word only = 2 bytes
+    # (falls through to default)
     # Default: minimum 68k instruction size
     return 2
 
@@ -423,6 +441,23 @@ def build_asm_lines(instrs, size=0, raw=b""):
                          for i in range(0, n_bytes, 2)]
                 lines.append('    ' + '; '.join(f'.word {w}' for w in words))
                 continue
+
+            # Call instruction raw-byte fix: BSR and JSR-absolute encode a
+            # PC-relative displacement or absolute callee address that is
+            # position-dependent.  In a standalone object the callee doesn't
+            # exist at the original address, so an assembled BSR/JSR would
+            # encode the wrong offset.  Fix: emit raw .word directives using
+            # the original bytes directly — the bytes are identical to the
+            # original binary regardless of link address.
+            # Same approach as A-trap NOP substitution (fix 9) and FPU .long
+            # emission (fix 4).
+            if n_bytes >= 2 and off + n_bytes <= len(raw):
+                word = _opcode_word(raw, off)
+                if _is_call_opcode(word):
+                    words = [f'0x{raw[off+i]:02x}{raw[off+i+1]:02x}'
+                             for i in range(0, n_bytes, 2)]
+                    lines.append('    ' + '; '.join(f'.word {w}' for w in words))
+                    continue
 
         # Indexed addressing displacement fix:
         # In 68k AT&T syntax, @(d8,Rn:size) brief-extension-word addressing shows
@@ -605,7 +640,6 @@ def main():
     base_count      = read_count()
     n_verified      = 0
     n_fail          = 0
-    n_skip_calls    = 0
     n_skip_extbr    = 0
     n_skip_pcrel    = 0
     n_skip_done     = 0
@@ -637,9 +671,6 @@ def main():
             expected = seg_bytes(seg_num, addr, size)
             if len(expected) < size:
                 n_fail += 1; size_fail += 1; continue
-
-            if has_calls(expected):
-                n_skip_calls += 1; size_skip += 1; continue
 
             instrs = disassemble_to_instrs(expected)
 
@@ -687,7 +718,6 @@ def main():
     print('=' * 60)
     print(f'  Verified this run : {n_verified}')
     print(f'  Failed            : {n_fail}')
-    print(f'  Skipped (calls)   : {n_skip_calls}')
     print(f'  Skipped (ext br)  : {n_skip_extbr}')
     print(f'  Skipped (pcrel)   : {n_skip_pcrel}')
     print(f'  Skipped (done)    : {n_skip_done}')
