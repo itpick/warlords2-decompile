@@ -126,16 +126,19 @@ auto_stubs   = len(src_defined - named_addrs)
 total_impl   = total_named + auto_stubs
 total_missing = max(0, total_ppc - total_impl)
 
-# Byte-verified comes out of the DONE pool
-done_unverified = max(0, totals["DONE"] - byte_verified)
+# Byte-verified functions live in both the DONE pool and the auto_stubs pool.
+# Subtract them to avoid double-counting in the source-coverage bar.
+# Priority: consume from DONE first, then from auto_stubs.
+done_unverified       = max(0, totals["DONE"] - byte_verified)
+auto_stubs_unverified = max(0, auto_stubs - max(0, byte_verified - totals["DONE"]))
 
-pct_verified  = byte_verified   / total_ppc * 100
-pct_done      = done_unverified / total_ppc * 100
-pct_auto      = auto_stubs      / total_ppc * 100
-pct_agent     = totals["AGENT"] / total_ppc * 100
+pct_verified  = byte_verified          / total_ppc * 100
+pct_done      = done_unverified        / total_ppc * 100
+pct_auto      = auto_stubs_unverified  / total_ppc * 100
+pct_agent     = totals["AGENT"]        / total_ppc * 100
 pct_stub      = (totals["STUB"] + totals["TODO"]) / total_ppc * 100
-pct_missing   = total_missing   / total_ppc * 100
-pct_total_impl = total_impl     / total_ppc * 100
+pct_missing   = total_missing          / total_ppc * 100
+pct_total_impl = total_impl            / total_ppc * 100
 
 # ── 3. Plot ──────────────────────────────────────────────────────────────────
 fig = plt.figure(figsize=(14, 8), facecolor="#0d1117")
