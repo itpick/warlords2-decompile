@@ -8,7 +8,7 @@ the exact same machine code as the original binary.
 
 | Architecture | Verified | Total    | % |
 |---|---|---|---|
-| PPC (main binary) | 969 | 4,717 | 20.5% |
+| PPC (main binary) | 980 | 4,717 | 20.8% |
 | 68k (original Mac binary) | 1,753 | ~18,000 | ~9.7% |
 
 The PPC and 68k binaries were compiled from the **same source code**, so the 68k

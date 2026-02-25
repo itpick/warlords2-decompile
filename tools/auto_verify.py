@@ -179,11 +179,26 @@ def _strip_r(s):
     return re.sub(r"\br([0-9]+)\b", r"\1", s)
 
 
-def build_asm_lines(instrs):
+# FPU mnemonics: the Retro68 GAS for Mac PPC doesn't accept f0-f31 register
+# names in standalone asm.  Emit these instructions as .long directives instead.
+_FPU_MNE = re.compile(
+    r"^(f[a-z]+|lfd|stfd|lfdu|stfdu|lfs|stfs|lfsu|stfsu|lfsx|stfsx|lfdx|stfdx)\b"
+)
+
+
+def build_asm_lines(instrs, size=0, raw=b""):
     """
     Convert (offset, instr_str) list to asm lines.
     Assigns unique numeric local labels to branch targets so multiple
     branches in one function each get their own label.
+
+    For branches whose target falls outside [0, size) — external tail calls —
+    emit `b . + {displacement}` instead of an unresolvable label.  This keeps
+    the exact byte encoding without requiring an external symbol.
+    size=0 disables the external-branch detection (all targets get local labels).
+
+    FPU instructions are emitted as .long because Retro68 GAS doesn't accept
+    f0-f31 register syntax in standalone assembly files.
     """
     # Map each unique branch target offset -> label number (0, 1, 2...)
     label_map = {}       # target_offset -> label_num
@@ -195,7 +210,16 @@ def build_asm_lines(instrs):
             label_counter[0] += 1
         return label_map[target_off]
 
-    # First pass: scan for branches and assign labels
+    def is_external(target_off):
+        """True if target_off is outside the function bounds."""
+        if size == 0:
+            return False
+        # Negative displacements wrap to large unsigned values
+        if target_off >= 0x80000000:
+            return True
+        return target_off >= size
+
+    # First pass: scan for branches and assign labels or .-relative forms
     # Pattern handles: b / bne / bne cr1,... / b 0x... or b ...
     BR_PAT = re.compile(
         r"(b\w*)\s+(cr\d+,\s*)?(?:0x)?([0-9a-f]+)\s*(?:<[^>]+>)?"
@@ -205,10 +229,18 @@ def build_asm_lines(instrs):
         m = BR_PAT.match(instr)
         if m:
             target_off = int(m.group(3), 16)
-            lnum = get_label(target_off)
-            direction = "f" if target_off > off else "b"
             cr_spec = m.group(2) or ""
-            fixed.append((off, f"{m.group(1)} {cr_spec}{lnum}{direction}"))
+            if is_external(target_off):
+                # Compute signed displacement from this instruction
+                if target_off >= 0x80000000:
+                    disp = target_off - 0x100000000 - off
+                else:
+                    disp = target_off - off
+                fixed.append((off, f"{m.group(1)} {cr_spec}. + {disp}"))
+            else:
+                lnum = get_label(target_off)
+                direction = "f" if target_off > off else "b"
+                fixed.append((off, f"{m.group(1)} {cr_spec}{lnum}{direction}"))
         else:
             fixed.append((off, instr))
 
@@ -217,7 +249,12 @@ def build_asm_lines(instrs):
     for off, instr in fixed:
         if off in label_map:
             lines.append(f"{label_map[off]}:")
-        lines.append(f"    {_strip_r(instr)}")
+        # FPU instructions: emit as .long (Retro68 GAS rejects f0-f31 names)
+        if raw and _FPU_MNE.match(instr.strip()):
+            word = int.from_bytes(raw[off:off+4], "big")
+            lines.append(f"    .long 0x{word:08x}")
+        else:
+            lines.append(f"    {_strip_r(instr)}")
     return lines
 
 
@@ -372,7 +409,7 @@ def main():
             # For TOC-relative functions the disassembler emits literal lwz rN,X(r2)
             # with the exact displacement from the binary, so GAS round-trips them.
             instrs    = disassemble_to_instrs(expected)
-            asm_lines = build_asm_lines(instrs)
+            asm_lines = build_asm_lines(instrs, size, expected)
             ok, got   = verify_asm(name, asm_lines, expected)
 
             if not ok:

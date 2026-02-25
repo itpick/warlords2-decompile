@@ -171,8 +171,15 @@ def has_pc_relative(instrs):
     return False
 
 
-def build_asm_lines(instrs):
-    """Convert (offset, instr) list to asm lines with numeric local branch labels."""
+def build_asm_lines(instrs, size=0):
+    """Convert (offset, instr) list to asm lines with numeric local branch labels.
+
+    For branches with targets outside [0, size) — external tail calls — emit
+    `bra.w . + {N}` instead of an unresolvable label.  In 68k GAS the PC used
+    for branch displacement is instruction_start + 2 (after the opcode word),
+    so the displacement encoded is (N - 2), which means N = target_off - off.
+    size=0 disables external-branch detection (all targets get local labels).
+    """
     label_map = {}
     label_counter = [0]
 
@@ -182,23 +189,49 @@ def build_asm_lines(instrs):
             label_counter[0] += 1
         return label_map[off]
 
-    # First pass: find all branch targets and assign labels
+    def is_external(target_off):
+        if size == 0:
+            return False
+        if target_off >= 0x80000000:
+            return True
+        return target_off >= size
+
+    # First pass: find all branch targets and assign labels or .-relative forms
     fixed = []
     for off, instr in instrs:
         m = _BR_PAT.match(instr)
         if m:
             target_off = int(m.group(2), 16)
-            lnum = get_label(target_off)
-            direction = 'f' if target_off > off else 'b'
-            fixed.append((off, f'{m.group(1)} {lnum}{direction}'))
+            if is_external(target_off):
+                # N = target_off - off (signed displacement from instruction start)
+                if target_off >= 0x80000000:
+                    N = target_off - 0x100000000 - off
+                else:
+                    N = target_off - off
+                # Preserve size suffix from mnemonic (.s/.b/.w/.l), default to .w
+                mne = m.group(1)
+                if not re.search(r'\.(s|b|w|l)$', mne):
+                    mne += '.w'
+                fixed.append((off, f'{mne} . + {N}'))
+            else:
+                lnum = get_label(target_off)
+                direction = 'f' if target_off > off else 'b'
+                fixed.append((off, f'{m.group(1)} {lnum}{direction}'))
             continue
 
         m = _DB_PAT.match(instr)
         if m:
             target_off = int(m.group(3), 16)
-            lnum = get_label(target_off)
-            direction = 'f' if target_off > off else 'b'
-            fixed.append((off, f'{m.group(1)} {m.group(2)},{lnum}{direction}'))
+            if is_external(target_off):
+                if target_off >= 0x80000000:
+                    N = target_off - 0x100000000 - off
+                else:
+                    N = target_off - off
+                fixed.append((off, f'{m.group(1)} {m.group(2)},. + {N}'))
+            else:
+                lnum = get_label(target_off)
+                direction = 'f' if target_off > off else 'b'
+                fixed.append((off, f'{m.group(1)} {m.group(2)},{lnum}{direction}'))
             continue
 
         fixed.append((off, instr))
@@ -372,7 +405,7 @@ def main():
             if has_pc_relative(instrs):
                 n_skip_pcrel += 1; size_skip += 1; continue
 
-            asm_lines = build_asm_lines(instrs)
+            asm_lines = build_asm_lines(instrs, size)
             ok, got   = verify_asm(unique_name, asm_lines, expected)
 
             if not ok:
