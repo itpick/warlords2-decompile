@@ -105,11 +105,46 @@ def already_verified_names():
 
 # ── Disassemble / compile helpers ─────────────────────────────────────────────
 
+def _patch_atraps(raw):
+    """Replace Mac OS A-line trap words (0xAxxx) with NOP (0x4e71) for disassembly.
+
+    On Mac 68k, all 0xAxxx opcodes are A-line traps — 2-byte ROM calls.
+    m68k-elf-objdump decodes these as ColdFire/68040 EMAC instructions (4 bytes),
+    producing wrong byte-count boundaries and AT&T syntax GAS can't assemble.
+
+    Strategy: replace each A-trap word with NOP before disassembly (NOP is also
+    2 bytes, so surrounding instruction boundaries are unchanged).  After
+    disassembly the NOP entries at those offsets are replaced with
+    '.word 0xAxxx' directives that GAS assembles back to the exact original bytes.
+
+    Returns (patched_bytes, atrap_map) where atrap_map maps offset → original word.
+
+    Risk: a non-opcode word (immediate or extension word) coincidentally in the
+    0xA000–0xAFFF range would be wrongly NOP'd.  In that case bytes won't match
+    and the function simply fails verification — no incorrect entries are added.
+    """
+    patched = bytearray(raw)
+    atraps = {}
+    for i in range(0, len(raw) - 1, 2):
+        word = (raw[i] << 8) | raw[i + 1]
+        if (word & 0xF000) == 0xA000:
+            patched[i]     = 0x4E
+            patched[i + 1] = 0x71
+            atraps[i] = word
+    return bytes(patched), atraps
+
+
 def disassemble_to_instrs(raw):
-    """Disassemble raw 68k bytes. Returns list of (byte_offset, instr_string)."""
+    """Disassemble raw 68k bytes. Returns list of (byte_offset, instr_string).
+
+    Mac OS A-trap words (0xAxxx) are pre-patched to NOP before disassembly so
+    that surrounding instruction boundaries are correct; the NOP entries are then
+    replaced with '.word 0xAxxx' directives (see _patch_atraps).
+    """
+    patched, atraps = _patch_atraps(raw)
     with tempfile.NamedTemporaryFile(suffix='.s', mode='w', delete=False) as f:
         f.write('.text\n')
-        for b in raw:
+        for b in patched:
             f.write(f'    .byte 0x{b:02x}\n')
         s_path = f.name
     o_path = s_path + '.o'
@@ -122,7 +157,12 @@ def disassemble_to_instrs(raw):
         for line in dasm.stdout.splitlines():
             m = re.match(r'\s+([0-9a-f]+):\s+[0-9a-f ]+\t(.+)', line)
             if m:
-                instrs.append((int(m.group(1), 16), m.group(2).strip()))
+                off   = int(m.group(1), 16)
+                instr = m.group(2).strip()
+                # Restore A-trap words that were patched to NOP
+                if off in atraps and instr == 'nop':
+                    instr = f'.word 0x{atraps[off]:04x}'
+                instrs.append((off, instr))
         return instrs
     finally:
         for p in (s_path, o_path):
@@ -239,6 +279,37 @@ def _is_byte_imm(instr):
     return False
 
 
+def _instr_byte_size(off, instr, raw):
+    """Estimate the byte size of the instruction at `off` in `raw`.
+
+    Used to detect trailing undecoded bytes between the last decoded instruction
+    and the Ghidra-reported function size boundary.
+
+    Conservative: only special-cases patterns with known fixed sizes; falls back
+    to the minimum 68k instruction size (2 bytes) for anything else.
+    """
+    s = instr.strip()
+    if s.startswith('.word '):
+        return 2
+    if s.startswith('.long '):
+        return 4
+    if off + 1 >= len(raw):
+        return 2
+    word = _opcode_word(raw, off)
+    # abs.L source EA (bits 5:0 = 0x39): opcode word + 32-bit address = 6 bytes
+    # Covers moveal/movel/movew/moveb/tstl/clrl/negl/notl/pea/jmp/jsr abs.L, etc.
+    if (word & 0x3F) == 0x39:
+        return 6
+    # MOVE with abs.L destination (bits 11:6 in MOVE layout): 6 bytes
+    if (word & 0xC000) == 0 and (word & 0x0FC0) == 0x03C0:
+        return 6
+    # LINK An: opcode word + 16-bit displacement = 4 bytes
+    if (word & 0xFFF8) == 0x4E50:
+        return 4
+    # Default: minimum 68k instruction size
+    return 2
+
+
 def build_asm_lines(instrs, size=0, raw=b""):
     """Convert (offset, instr) list to asm lines with numeric local branch labels.
 
@@ -263,7 +334,13 @@ def build_asm_lines(instrs, size=0, raw=b""):
        decimal 56 = 0x38 instead of hex 0x56).  Fix: prepend 0x to all bare
        hex displacements in @(HEX,...) contexts.
 
-    3. Byte-immediate junk fix: for byte-size immediate instructions (orib,
+    3. A-trap pass-through: A-line trap instructions (0xAxxx) arrive as
+       '.word 0xAxxx' directives from disassemble_to_instrs (they were patched
+       to NOP before disassembly and restored after).  These raw directives are
+       passed through unchanged; the abs.L and indexed-addressing fixes are
+       explicitly skipped for any instruction starting with '.'.
+
+    4. Byte-immediate junk fix: for byte-size immediate instructions (orib,
        andib, subib, addib, eorib, cmpib) the immediate is stored in a 16-bit
        word where the high byte is junk left by CodeWarrior.  GAS always
        normalises this (zero-pads for imm < 0x80, sign-extends for imm >= 0x80)
@@ -363,11 +440,48 @@ def build_asm_lines(instrs, size=0, raw=b""):
         # Abs.L shortening fix: append ':l' to hex addresses so GAS doesn't
         # silently shorten abs.L to abs.W for small addresses.
         # Targets hex tokens NOT preceded by '#' (immediate) or '(' (d16 offset).
-        if raw:
+        # Skip raw-word directives (.word/.long) — they encode exact bytes already.
+        if raw and not instr.lstrip().startswith('.'):
             word = _opcode_word(raw, off)
             if _is_abs_long_opcode(word):
                 instr = re.sub(r'(?<![#(])(0x[0-9a-f]+)', r'\1:l', instr)
         lines.append(f'    {instr}')
+
+    # Emit any orphaned labels: branch targets that fall inside [0, size) but
+    # have no instruction at that exact offset.  This happens when Ghidra truncated
+    # a function mid-instruction — the branch target is within the reported bounds
+    # but no decoded instruction starts there.  Without this, GAS emits
+    # "local label not defined" → returncode != 0 → got=b'' instead of a proper
+    # got != exp failure.  Emitting the orphaned label makes GAS succeed; the
+    # trailing-data fill below then pads out the remaining bytes.
+    emitted_offsets = {off for off, _ in fixed}
+    for tgt, lnum in sorted(label_map.items()):
+        if tgt not in emitted_offsets:
+            lines.append(f'{lnum}:')
+
+    # Trailing data fill: Ghidra sometimes reports a function size that includes
+    # bytes after the last decodable instruction — either partial extension words,
+    # trailing zeros, or the first bytes of the next function (Ghidra over-count).
+    # Since those bytes ARE present in the binary image at this function's location,
+    # we must emit them verbatim to reproduce the expected byte sequence exactly.
+    #
+    # Strategy: compute `trailing_start` = end of the last decoded instruction.
+    # Any bytes in raw[trailing_start:size] are emitted as .word directives.
+    # The byte size of the last instruction is estimated via _instr_byte_size();
+    # since that function is conservative (falls back to 2 bytes), false positives
+    # (emitting trailing bytes for a correctly-decoded function) can only happen
+    # for 2-byte instructions at the very end — and in that case trailing_start
+    # would equal size (no trailing bytes emitted), so there's no risk.
+    if raw and size > 0 and fixed:
+        last_off, last_instr = fixed[-1]
+        last_size = _instr_byte_size(last_off, last_instr, raw)
+        trailing_start = last_off + last_size
+        if trailing_start < size:
+            for i in range(trailing_start, size, 2):
+                if i + 1 < size:
+                    lines.append(f'    .word 0x{raw[i]:02x}{raw[i+1]:02x}')
+                else:
+                    lines.append(f'    .byte 0x{raw[i]:02x}')
     return lines
 
 
@@ -380,43 +494,31 @@ def build_asm_src(func_name, asm_lines):
 
 
 def _extract_bytes(func_name, obj_path, max_bytes):
-    """Extract bytes for func_name from objdump of obj_path.
+    """Extract the first `max_bytes` bytes from the .text section of obj_path.
 
-    68k objdump uses tab-delimited columns and word-grouped hex (e.g. '4e75'
-    or '4e56 fffc'), not byte-separated hex. Capture the hex column between
-    the first and second tab, strip spaces, then convert.
+    Uses `objdump -s -j .text` (raw section dump) rather than disassembly.
+    Disassembly-based extraction breaks when trailing bytes resemble incomplete
+    instructions (e.g. a partial moveal abs.L at the function boundary makes
+    objdump emit "Address N is out of bounds" instead of hex output).
 
-    For instructions wider than 6 bytes (e.g. movel abs.L,(d16,An)) objdump
-    splits the hex across two display lines:
-        4:  2d79 0002 97f4    movel 0x297f4,%fp@(-4)
-        a:  fffc
-    The continuation line has only one tab (no mnemonic column).  Both lines
-    must be captured to reconstruct the full instruction bytes.
+    The raw section dump format is:
+        AAAA HHHHHHHH HHHHHHHH HHHHHHHH HHHHHHHH  ASCII
+    We capture each group of hex words and concatenate them.
+
+    Each compiled object contains exactly one function at offset 0 of .text,
+    so taking the first max_bytes bytes of the section is always correct.
     """
-    dasm = subprocess.run([M68K_OBJDUMP, '-d', obj_path],
+    dump = subprocess.run([M68K_OBJDUMP, '-s', '-j', '.text', obj_path],
                           capture_output=True, text=True)
-    cur = None
     got = b''
-    for line in dasm.stdout.splitlines():
-        if f'<{func_name}>:' in line or f'<.{func_name}>:' in line:
-            cur = func_name; got = b''; continue
-        if cur:
-            if not line.strip() and got:
+    for line in dump.stdout.splitlines():
+        # Match content lines: optional leading space, hex address, spaces,
+        # then one or more groups of hex words (each group followed by a space).
+        m = re.match(r'\s*[0-9a-f]+\s+((?:[0-9a-f]+\s)+)', line)
+        if m:
+            got += bytes.fromhex(m.group(1).replace(' ', '').replace('\t', ''))
+            if len(got) >= max_bytes:
                 break
-            # Match regular instruction line: ADDR:\tHEXBYTES\tMNEMONIC
-            m = re.match(r'\s+[0-9a-f]+:\t([0-9a-f][0-9a-f ]+)\t', line)
-            if m:
-                got += bytes.fromhex(m.group(1).replace(' ', ''))
-                if len(got) >= max_bytes:
-                    break
-                continue
-            # Also match continuation lines (no mnemonic column):
-            #   ADDR:\tHEXBYTES
-            m = re.match(r'\s+[0-9a-f]+:\t([0-9a-f][0-9a-f ]*)\s*$', line)
-            if m:
-                got += bytes.fromhex(m.group(1).replace(' ', ''))
-                if len(got) >= max_bytes:
-                    break
     return got[:max_bytes]
 
 
