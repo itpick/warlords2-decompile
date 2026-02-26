@@ -19719,6 +19719,7 @@ static void ShowCityBuildSelection(short cityIndex)
         } else {
             /* STOP: write -1 to cancel production */
             *(short *)(extCity + 0x02) = -1;
+            *(short *)(extCity + 0x58) = -1;
         }
     }
 
