@@ -21233,9 +21233,6 @@ static void ShowTurnSplash(short playerIdx)
     if (splashWin == NULL) return;
     SetPort(splashWin);
 
-    /* Play turn bong now that the window is visible */
-    PlaySound(SND_TURN);
-
     /* Draw castle gate background (PICT 3100, 320x312) */
     gatePict = GetPicture(3100);
     if (gatePict != NULL) {
@@ -22414,7 +22411,8 @@ static void AdvanceToNextPlayer(void)
 
         /* Show turn start banner (PICT 3100 castle gate) */
         LoadAndPlayMusic(MUSIC_STATE_TURN);
-        ShowTurnSplash(curPlayer);  /* plays SND_TURN internally */
+        PlaySound(SND_TURN);  /* bong before window creation */
+        ShowTurnSplash(curPlayer);
 
         /* Voice narration: territory status (every 3 turns to avoid spam) */
         {
@@ -22942,16 +22940,13 @@ static void AdvanceToNextPlayer(void)
             ShowHeroHire(curPlayer, false);
         }
 
-        /* Prompt human player to set production:
-         * - Turn 1: always show for all owned cities (original behavior: player
-         *   must confirm/set production for every city at game start).
-         * - Later turns: only show when production is unset (extCity+0x02 < 0),
-         *   which happens after a unit completes and the city goes idle. */
+        /* Prompt human player to set production when a city goes idle
+         * (production < 0: unit just finished or city newly captured with no queue).
+         * Turn 1 is handled at game startup before the event loop begins. */
         if (*gExtState != 0) {
             unsigned char *pExt = (unsigned char *)*gExtState;
             short pCC = *(short *)(gs + 0x810);
             short pCI;
-            short pTurn = *(short *)(gs + 0x136);
             if (pCC > 40) pCC = 40;
             for (pCI = 0; pCI < pCC; pCI++) {
                 unsigned char *pCity = gs + 0x812 + pCI * 0x20;
@@ -22960,7 +22955,7 @@ static void AdvanceToNextPlayer(void)
                 if (*(short *)(pCity + 0x04) != curPlayer) continue;
                 {
                     unsigned char *pExtCity = pExt + 0x24c + pCI * 0x5c;
-                    if (pTurn <= 1 || *(short *)(pExtCity + 0x02) < 0) {
+                    if (*(short *)(pExtCity + 0x02) < 0) {
                         ShowCityBuildSelection(pCI);
                     }
                 }
@@ -27268,15 +27263,28 @@ int main(void)
         PlayVoice(SND_VBEGIN);
 
         /* Turn 1 announcement splash (castle gate with faction name). */
-        ShowTurnSplash(startPlayer);  /* plays SND_TURN internally */
+        PlaySound(SND_TURN);  /* bong before window creation so it isn't delayed */
+        ShowTurnSplash(startPlayer);
 
         /* Hero offer — original game (68k CODE_117) has no army selection
          * dialog; starting armies are determined by scenario data. */
         ShowHeroHire(startPlayer, true);
 
-        /* AdvanceTurn already handles Turn 1 city production prompts
-         * (fires for pTurn <= 1 at the start of the first in-game turn).
-         * No separate startup loop needed here. */
+        /* Turn 1: show city build selection for every owned city so the
+         * player sets production before their first turn begins.
+         * AdvanceToNextPlayer handles subsequent turns (production < 0 only). */
+        if (*gExtState != 0) {
+            unsigned char *t1Ext = (unsigned char *)*gExtState;
+            short t1CC = *(short *)(gs + 0x810);
+            short t1CI;
+            if (t1CC > 40) t1CC = 40;
+            for (t1CI = 0; t1CI < t1CC; t1CI++) {
+                unsigned char *t1City = gs + 0x812 + t1CI * 0x20;
+                if ((short)(unsigned char)t1City[0x18] >= 2) continue; /* skip ruins */
+                if (*(short *)(t1City + 0x04) != startPlayer) continue;
+                ShowCityBuildSelection(t1CI);
+            }
+        }
     }
 
     /* Force-redraw all game windows before entering event loop.
