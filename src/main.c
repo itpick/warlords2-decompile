@@ -12509,7 +12509,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                 /* Show production dialog for human player */
                                 if (mOwner >= 0 && mOwner < 8 &&
                                     *(short *)(gs + 0xd0 + mOwner * 2) == 0) {
-                                    ShowCityProductionDialog(ci);
+                                    ShowCityBuildSelection(ci);
                                 }
                             }
 
@@ -22953,7 +22953,7 @@ static void AdvanceToNextPlayer(void)
                 {
                     unsigned char *pExtCity = pExt + 0x24c + pCI * 0x5c;
                     if (*(short *)(pExtCity + 0x02) < 0) {
-                        ShowCityProductionDialog(pCI);
+                        ShowCityBuildSelection(pCI);
                     }
                 }
             }
@@ -25169,7 +25169,7 @@ static void HandleMenuChoice(long menuResult)
                         if (sType >= 2 && sType <= 5) continue;
                         if (*(short *)(c + 0x00) == ax && *(short *)(c + 0x02) == ay &&
                             *(short *)(c + 0x04) == curP) {
-                            ShowCityProductionDialog(bci);
+                            ShowCityBuildSelection(bci);
                             foundCity = true;
                             break;
                         }
@@ -25826,7 +25826,7 @@ static void HandleMouseDown(EventRecord *event)
                                     *(short *)(city + 0x04) == currentPlayer) {
                                     short sType = (short)(unsigned char)city[0x18];
                                     if (sType == 0) {
-                                        ShowCityProductionDialog(ci);
+                                        ShowCityBuildSelection(ci);
                                         SetPort(whichWindow);
                                         InvalRect(&port);
                                         goto doneMapClick;
@@ -26038,7 +26038,7 @@ static void HandleMouseDown(EventRecord *event)
                                     short sType = (short)(unsigned char)c[0x18];
                                     if (sType == 0) {
                                         if (*(short *)(c + 0x04) == currentPlayer)
-                                            ShowCityProductionDialog(ci);
+                                            ShowCityBuildSelection(ci);
                                         else
                                             ShowCityInfo(ci);
                                     } else {
@@ -26065,7 +26065,7 @@ static void HandleMouseDown(EventRecord *event)
                                     *(short *)(c + 0x02) == clickTileY) {
                                     short sType = (short)(unsigned char)c[0x18];
                                     if (sType == 0 && *(short *)(c + 0x04) == currentPlayer) {
-                                        ShowCityProductionDialog(ci);
+                                        ShowCityBuildSelection(ci);
                                     } else {
                                         ShowCityInfo(ci);
                                     }
@@ -26281,7 +26281,7 @@ static void HandleMouseDown(EventRecord *event)
                             if (cx == clickTileX && cy == clickTileY) {
                                 /* Own city: show production dialog; enemy/neutral: show info */
                                 if (*(short *)(city + 0x04) == currentPlayer)
-                                    ShowCityProductionDialog(ci);
+                                    ShowCityBuildSelection(ci);
                                 else
                                     ShowCityInfo(ci);
                                 foundCity = true;
