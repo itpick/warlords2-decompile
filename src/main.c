@@ -19155,15 +19155,17 @@ static void ShowCityBuildSelection(short cityIndex)
 
     /* --- Match main game window size/position (seamless overlay) --- */
     if (*gMainGameWindow != 0) {
-        winRect = ((WindowPtr)*gMainGameWindow)->portRect;
-        /* Convert local portRect to global screen coords */
-        {
-            GrafPtr gp = (GrafPtr)*gMainGameWindow;
-            winRect.left   += gp->portBits.bounds.left;
-            winRect.right  += gp->portBits.bounds.left;
-            winRect.top    += gp->portBits.bounds.top;
-            winRect.bottom += gp->portBits.bounds.top;
-        }
+        WindowPtr mgw = (WindowPtr)*gMainGameWindow;
+        GrafPtr savedPort2;
+        Point tl, br;
+        GetPort(&savedPort2);
+        SetPort(mgw);
+        tl.h = mgw->portRect.left;  tl.v = mgw->portRect.top;
+        br.h = mgw->portRect.right; br.v = mgw->portRect.bottom;
+        LocalToGlobal(&tl);
+        LocalToGlobal(&br);
+        SetPort(savedPort2);
+        SetRect(&winRect, tl.h, tl.v, br.h, br.v);
     } else {
         /* Fallback: centered 512×342 */
         Rect screen = qd.screenBits.bounds;
@@ -27272,20 +27274,9 @@ int main(void)
          * dialog; starting armies are determined by scenario data. */
         ShowHeroHire(startPlayer, true);
 
-        /* Turn 1: prompt player to set production for all owned cities.
-         * Always shown at game start regardless of current production. */
-        if (*gExtState != 0) {
-            unsigned char *t1Ext = (unsigned char *)*gExtState;
-            short t1CC = *(short *)(gs + 0x810);
-            short t1CI;
-            if (t1CC > 40) t1CC = 40;
-            for (t1CI = 0; t1CI < t1CC; t1CI++) {
-                unsigned char *t1City = gs + 0x812 + t1CI * 0x20;
-                if ((short)(unsigned char)t1City[0x18] >= 2) continue;
-                if (*(short *)(t1City + 0x04) != startPlayer) continue;
-                ShowCityBuildSelection(t1CI);
-            }
-        }
+        /* AdvanceTurn already handles Turn 1 city production prompts
+         * (fires for pTurn <= 1 at the start of the first in-game turn).
+         * No separate startup loop needed here. */
     }
 
     /* Force-redraw all game windows before entering event loop.
