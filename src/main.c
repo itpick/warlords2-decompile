@@ -19153,36 +19153,23 @@ static void ShowCityBuildSelection(short cityIndex)
             selectedType = -1;
     }
 
-    /* --- Match main game window size/position (seamless overlay) --- */
-    if (*gMainGameWindow != 0) {
-        WindowPtr mgw = (WindowPtr)*gMainGameWindow;
-        GrafPtr savedPort2;
-        Point tl, br;
-        GetPort(&savedPort2);
-        SetPort(mgw);
-        tl.h = mgw->portRect.left;  tl.v = mgw->portRect.top;
-        br.h = mgw->portRect.right; br.v = mgw->portRect.bottom;
-        LocalToGlobal(&tl);
-        LocalToGlobal(&br);
-        SetPort(savedPort2);
-        SetRect(&winRect, tl.h, tl.v, br.h, br.v);
-    } else {
-        /* Fallback: centered 512×342 */
+    /* --- Centered popup dialog (460×300) --- */
+    {
         Rect screen = qd.screenBits.bounds;
         short sw = screen.right - screen.left;
         short sh = screen.bottom - screen.top;
-        short dl = (sw - 512) / 2;
-        short dt = (sh - 342) / 2;
+        short dl = (sw - 460) / 2;
+        short dt = (sh - 300) / 2;
         if (dt < 20) dt = 20;
-        SetRect(&winRect, dl, dt, dl + 512, dt + 342);
+        SetRect(&winRect, dl, dt, dl + 460, dt + 300);
     }
 
-    winW   = winRect.right  - winRect.left;
-    winH   = winRect.bottom - winRect.top;
-    panelX = winW / 2;   /* left=map, right=marble */
+    winW   = 460;
+    winH   = 300;
+    panelX = winW / 2;   /* 230 — left=minimap, right=marble */
 
     bsWin = NewCWindow(NULL, &winRect, "\p", true,
-                       plainDBox, (WindowPtr)-1L, false, 0);
+                       dBoxProc, (WindowPtr)-1L, false, 0);
     if (bsWin == NULL) return;
 
     /* --- Create offscreen GWorld --- */
@@ -21232,6 +21219,7 @@ static void ShowTurnSplash(short playerIdx)
                             plainDBox, (WindowPtr)-1L, false, 0);
     if (splashWin == NULL) return;
     SetPort(splashWin);
+    PlaySound(SND_TURN);
 
     /* Draw castle gate background (PICT 3100, 320x312) */
     gatePict = GetPicture(3100);
@@ -22411,8 +22399,7 @@ static void AdvanceToNextPlayer(void)
 
         /* Show turn start banner (PICT 3100 castle gate) */
         LoadAndPlayMusic(MUSIC_STATE_TURN);
-        PlaySound(SND_TURN);  /* bong before window creation */
-        ShowTurnSplash(curPlayer);
+        ShowTurnSplash(curPlayer);  /* plays SND_TURN internally */
 
         /* Voice narration: territory status (every 3 turns to avoid spam) */
         {
@@ -27263,8 +27250,7 @@ int main(void)
         PlayVoice(SND_VBEGIN);
 
         /* Turn 1 announcement splash (castle gate with faction name). */
-        PlaySound(SND_TURN);  /* bong before window creation so it isn't delayed */
-        ShowTurnSplash(startPlayer);
+        ShowTurnSplash(startPlayer);  /* plays SND_TURN internally */
 
         /* Hero offer — original game (68k CODE_117) has no army selection
          * dialog; starting armies are determined by scenario data. */
