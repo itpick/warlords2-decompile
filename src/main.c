@@ -8306,12 +8306,13 @@ static void ShowCityInfo(short cityIndex)
     curPlayer = *(short *)(gs + 0x110);
     isOwnCity = (owner >= 0 && owner < 8 && owner == curPlayer);
 
-    /* Center window */
-    SetRect(&winRect,
-        (screenRect.right - CITY_WIN_W) / 2,
-        (screenRect.bottom - CITY_WIN_H) / 2,
-        (screenRect.right - CITY_WIN_W) / 2 + CITY_WIN_W,
-        (screenRect.bottom - CITY_WIN_H) / 2 + CITY_WIN_H);
+    /* Right-aligned window (matches original: map visible on left) */
+    {
+        short winL = screenRect.right - CITY_WIN_W - 4;
+        short winT = (screenRect.bottom - CITY_WIN_H) / 2;
+        if (winL < 0) winL = 0;
+        SetRect(&winRect, winL, winT, winL + CITY_WIN_W, winT + CITY_WIN_H);
+    }
 
     cityWin = NewCWindow(NULL, &winRect, "\p", true,
                           plainDBox, (WindowPtr)-1L, false, 0);
@@ -8434,6 +8435,29 @@ static void ShowCityInfo(short cityIndex)
                     TextFace(0);
                     MoveTo(20, 42);
                     DrawString(pName);
+                }
+
+                /* CAPITAL badge if this city is a player's capital */
+                {
+                    short pp;
+                    short factionCount = *(short *)(gs + 0x10C);
+                    if (factionCount > 8) factionCount = 8;
+                    for (pp = 0; pp < factionCount; pp++) {
+                        unsigned char *pstat = gs + 0x186 + pp * 0x14;
+                        short capX = *(short *)(pstat + 0x04);
+                        short capY = *(short *)(pstat + 0x06);
+                        if (capX == cityX && capY == cityY) {
+                            RGBColor capCol = {0xFFFF, 0xDDDD, 0x2222};
+                            RGBForeColor(&capCol);
+                            TextFont(3);
+                            TextSize(9);
+                            TextFace(bold);
+                            MoveTo(20, 54);
+                            DrawString("\pCAPITAL");
+                            TextFace(0);
+                            break;
+                        }
+                    }
                 }
 
                 /* Tab buttons with cicn icons */
@@ -8672,7 +8696,6 @@ static void ShowCityInfo(short cityIndex)
                         while (di < descLen && lineY < CITY_WIN_H - 42) {
                             short lineEnd = di;
                             short lastSpace = di;
-                            short lineWidth = CITY_WIN_W - 50;
                             /* Find break point for ~50 chars or at word boundary */
                             while (lineEnd < descLen && lineEnd - di < 52) {
                                 if (desc[lineEnd] == ' ') lastSpace = lineEnd;
@@ -25994,7 +26017,6 @@ static void HandleUpdate(EventRecord *event)
                 MoveTo(infoX, infoY + 6);
                 NumToString((long)myArmies, numStr);
                 DrawString(numStr);
-                DrawString("\pgp");
 
                 #undef DRAW_ABITS_RECT
             }
