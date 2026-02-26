@@ -84,9 +84,10 @@
 #define MOVE_CAT_NAVAL      2
 #define MOVE_CAT_FLYING     3
 
-/* Diplomacy constants */
-#define DIPLO_WAR           0
-#define DIPLO_ALLIED        2
+/* Diplomacy state constants (bits 2-3 of diplomacy byte at gs+0x1582) */
+#define DIPLO_PEACE         0
+#define DIPLO_ALLIANCE      1
+#define DIPLO_WAR           2
 
 /* Terrain types */
 #define TERRAIN_ROAD        10

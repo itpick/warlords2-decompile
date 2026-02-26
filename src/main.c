@@ -1080,7 +1080,10 @@ static short sSignpostCount = 0;
 
 /* City names — loaded from CTY resource */
 #define MAX_CITY_NAME 20
+#define MAX_CITY_DESC 100
 static char sCityNames[40][MAX_CITY_NAME];  /* up to 40 cities, 20 chars each */
+static char sCityDescs[40][MAX_CITY_DESC];  /* city descriptions from CTY resource */
+static char sSiteDescs[40][MAX_CITY_DESC];  /* site descriptions from SPC resource */
 static short sCityNameCount = 0;
 
 /* Unit type name lookup — indexed by unit type byte */
@@ -2191,70 +2194,94 @@ static void TryLoadScenario(void)
         }
     }
 
-    /* Load CTY resource (city descriptions) and extract city names */
+    /* Load CTY resource (city names + descriptions) and SPC resource (site descriptions) */
+    /* Format: #NNN|Line1 of text|Line2|Line3|\r\n
+     * Lines are word-wrapped segments joined with a space for the full description.
+     * City name is extracted from the first segment before " is " or the first "|". */
     {
-        Handle ctyHdl = Get1Resource('CTY ', 10000);
-        sCityNameCount = 0;
-        if (ctyHdl != NULL) {
-            long ctySize = GetHandleSize(ctyHdl);
-            char *ctyData;
-            long pos2 = 0;
-            HLock(ctyHdl);
-            ctyData = (char *)*ctyHdl;
+        short resPass;
+        for (resPass = 0; resPass < 2; resPass++) {
+            ResType rType = (resPass == 0) ? 'CTY ' : 'SPC ';
+            Handle hdl = Get1Resource(rType, 10000);
+            if (hdl == NULL) continue;
+            {
+                long sz = GetHandleSize(hdl);
+                char *buf;
+                long p = 0;
+                short idx = 0;
+                short maxIdx = 40;
+                HLock(hdl);
+                buf = (char *)*hdl;
 
-            /* Format: #NNN|Description text|line2|...\r\n */
-            while (pos2 < ctySize && sCityNameCount < 40) {
-                /* Find next '#' */
-                while (pos2 < ctySize && ctyData[pos2] != '#') pos2++;
-                if (pos2 >= ctySize) break;
-                pos2++;  /* skip '#' */
+                while (p < sz && idx < maxIdx) {
+                    long lineStart;
+                    short ni;
+                    char *name = (resPass == 0) ? sCityNames[idx] : NULL;
+                    char *desc = (resPass == 0) ? sCityDescs[idx] : sSiteDescs[idx];
+                    short di;
 
-                /* Skip NNN digits */
-                while (pos2 < ctySize && ctyData[pos2] >= '0' && ctyData[pos2] <= '9') pos2++;
+                    /* Find '#' */
+                    while (p < sz && buf[p] != '#') p++;
+                    if (p >= sz) break;
+                    p++;  /* skip '#' */
 
-                /* Skip '|' */
-                if (pos2 < ctySize && ctyData[pos2] == '|') pos2++;
+                    /* Skip NNN */
+                    while (p < sz && buf[p] >= '0' && buf[p] <= '9') p++;
 
-                /* Extract city name — first word(s) before " is " or " guards " etc.
-                 * Simple heuristic: take text up to first " is " or first "|" */
-                {
-                    short ni = 0;
-                    char *name = sCityNames[sCityNameCount];
+                    /* Skip '|' */
+                    if (p < sz && buf[p] == '|') p++;
 
-                    /* Look for " is " as name delimiter */
-                    while (pos2 < ctySize && ctyData[pos2] != '|' &&
-                           ctyData[pos2] != '\r' && ctyData[pos2] != '\n') {
-                        if (pos2 + 4 < ctySize &&
-                            ctyData[pos2] == ' ' && ctyData[pos2+1] == 'i' &&
-                            ctyData[pos2+2] == 's' && ctyData[pos2+3] == ' ') {
-                            break;
+                    lineStart = p;
+
+                    /* --- Extract name (CTY only) from first segment --- */
+                    if (name != NULL) {
+                        ni = 0;
+                        while (p < sz && buf[p] != '|' &&
+                               buf[p] != '\r' && buf[p] != '\n') {
+                            if (p + 4 < sz &&
+                                buf[p] == ' ' && buf[p+1] == 'i' &&
+                                buf[p+2] == 's' && buf[p+3] == ' ') {
+                                break;
+                            }
+                            if (p + 2 < sz && buf[p] == ',' && buf[p+1] == ' ') {
+                                break;
+                            }
+                            if (ni < MAX_CITY_NAME - 1)
+                                name[ni++] = buf[p];
+                            p++;
                         }
-                        if (pos2 + 3 < ctySize &&
-                            ctyData[pos2] == ',' && ctyData[pos2+1] == ' ') {
-                            break;  /* "Gwindhor, is..." */
+                        name[ni] = '\0';
+                    }
+
+                    /* --- Extract full description by joining all |-separated segments --- */
+                    p = lineStart;
+                    di = 0;
+                    while (p < sz && buf[p] != '\r' && buf[p] != '\n') {
+                        if (buf[p] == '|') {
+                            /* Replace '|' with space (unless at start or already have space) */
+                            if (di > 0 && desc[di - 1] != ' ' && di < MAX_CITY_DESC - 1)
+                                desc[di++] = ' ';
+                            p++;
+                        } else {
+                            if (di < MAX_CITY_DESC - 1)
+                                desc[di++] = buf[p];
+                            p++;
                         }
-                        if (ni < MAX_CITY_NAME - 1)
-                            name[ni++] = ctyData[pos2];
-                        pos2++;
                     }
-                    name[ni] = '\0';
+                    /* Trim trailing space */
+                    while (di > 0 && desc[di - 1] == ' ') di--;
+                    desc[di] = '\0';
 
-                    /* If name starts with "The " or "This " — try extracting proper name */
-                    if (ni > 4 && name[0] == 'T' && name[1] == 'h' &&
-                        ((name[2] == 'e' && name[3] == ' ') ||
-                         (name[2] == 'i' && name[3] == 's' && name[4] == ' '))) {
-                        /* Keep it as-is for now, it's descriptive */
-                    }
+                    if (resPass == 0) sCityNameCount++;
+                    idx++;
 
-                    sCityNameCount++;
+                    /* Skip to next line */
+                    while (p < sz && buf[p] != '\n') p++;
                 }
 
-                /* Skip to next line */
-                while (pos2 < ctySize && ctyData[pos2] != '\n') pos2++;
+                HUnlock(hdl);
+                ReleaseResource(hdl);
             }
-
-            HUnlock(ctyHdl);
-            ReleaseResource(ctyHdl);
         }
     }
 
@@ -8627,6 +8654,45 @@ static void ShowCityInfo(short cityIndex)
                             MoveTo(35, armyY);
                             DrawString("\pNone");
                         }
+                    }
+
+                    /* City description text from CTY resource */
+                    if (cityIndex < sCityNameCount && sCityDescs[cityIndex][0] != '\0') {
+                        char *desc = sCityDescs[cityIndex];
+                        short di = 0;
+                        short descLen = 0;
+                        short lineY = CITY_WIN_H - 70;  /* bottom area */
+                        RGBColor descColor = {0x9999, 0xBBBB, 0x9999};  /* muted green */
+                        while (desc[descLen]) descLen++;
+                        RGBForeColor(&descColor);
+                        TextFont(3);
+                        TextSize(9);
+                        TextFace(italic);
+                        /* Word-wrap description into ~2 lines of ~50 chars each */
+                        while (di < descLen && lineY < CITY_WIN_H - 42) {
+                            short lineEnd = di;
+                            short lastSpace = di;
+                            short lineWidth = CITY_WIN_W - 50;
+                            /* Find break point for ~50 chars or at word boundary */
+                            while (lineEnd < descLen && lineEnd - di < 52) {
+                                if (desc[lineEnd] == ' ') lastSpace = lineEnd;
+                                lineEnd++;
+                            }
+                            if (lineEnd < descLen && lastSpace > di) lineEnd = lastSpace;
+                            {
+                                Str255 lineStr;
+                                short slen = lineEnd - di;
+                                if (slen > 50) slen = 50;
+                                lineStr[0] = (unsigned char)slen;
+                                BlockMoveData(desc + di, lineStr + 1, slen);
+                                MoveTo(20, lineY);
+                                DrawString(lineStr);
+                            }
+                            di = lineEnd;
+                            if (di < descLen && desc[di] == ' ') di++;
+                            lineY += 13;
+                        }
+                        TextFace(0);
                     }
 
                 } else if (curTab == 1) {
@@ -24177,6 +24243,40 @@ static void HandleMenuChoice(long menuResult)
                                         DrawString(numStr);
                                         DrawString(GetCachedString(STR_SEARCH_TEMPLE, 15, "\p gold pieces"));
                                     }
+                                }
+                                /* Site description from SPC resource */
+                                if (ci < 40 && sSiteDescs[ci][0] != '\0') {
+                                    char *desc = sSiteDescs[ci];
+                                    short descLen = 0;
+                                    short di = 0;
+                                    short lineY = 116;
+                                    RGBColor descC = {0xAAAA, 0xDDDD, 0xAAAA};
+                                    while (desc[descLen]) descLen++;
+                                    RGBForeColor(&descC);
+                                    TextFont(3); TextSize(9); TextFace(italic);
+                                    while (di < descLen && lineY <= 127) {
+                                        short end = di + 50;
+                                        short bp;
+                                        if (end >= descLen) end = descLen;
+                                        else {
+                                            bp = end;
+                                            while (bp > di && desc[bp] != ' ') bp--;
+                                            if (bp > di) end = bp;
+                                        }
+                                        {
+                                            Str255 ls;
+                                            short ll = end - di;
+                                            if (ll > 254) ll = 254;
+                                            ls[0] = (unsigned char)ll;
+                                            BlockMoveData(desc + di, ls + 1, ll);
+                                            MoveTo(20, lineY);
+                                            DrawString(ls);
+                                        }
+                                        di = end;
+                                        if (di < descLen && desc[di] == ' ') di++;
+                                        lineY += 11;
+                                    }
+                                    TextFace(0);
                                 }
                                 /* OK button */
                                 {

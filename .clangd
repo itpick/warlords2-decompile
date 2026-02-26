@@ -1,0 +1,10 @@
+CompileFlags:
+  Add:
+    - -I/Users/lucaspick/workspace/itpick/Retro68/build/toolchain/multiversal/CIncludes
+    - -I/Users/lucaspick/workspace/itpick/Retro68/build/toolchain/powerpc-apple-macos/include
+    - -D__APPLE__
+    - -D__ppc__
+    - -Wno-unknown-pragmas
+  Remove:
+    - -march=*
+    - -mcpu=*
