@@ -19078,6 +19078,660 @@ static void ShowVictoryDialog(Boolean victory)
 
 
 /* ===================================================================
+ * ShowCityBuildSelection — Full-window city production UI
+ *
+ * Left half = live map view at current viewport.
+ * Right half = marble panel with:
+ *   faction name (gold, top), CAPITAL shield + "Current:" ring,
+ *   unit type selection rings row, STOP button, Done button.
+ *
+ * Reads production slots from extCity (+0x06..+0x0C, 4 shorts).
+ * Commits selectedType to extCity+0x02 and turns to extCity+0x58.
+ * Escape cancels (no commit). Enter/Return = Done.
+ * =================================================================== */
+static void ShowCityBuildSelection(short cityIndex)
+{
+    WindowPtr      bsWin;
+    GWorldPtr      bsGW;
+    Rect           winRect, gwRect;
+    Boolean        bsDone;
+    EventRecord    bsEvt;
+    CGrafPtr       savePort;
+    GDHandle       saveGD;
+    unsigned char *gs, *ext, *extCity, *city;
+    short          curPlayer;
+    short          selectedType = -1;
+    short          redraw = 1;
+    short          typeList[4];
+    short          typeCount = 0;
+    short          panelX, winW, winH;
+    short          cityX = 0, cityY = 0;
+
+    /* --- Validate --- */
+    if (*gGameState == 0 || *gExtState == 0) return;
+    if (cityIndex < 0 || cityIndex >= 40)    return;
+
+    gs        = (unsigned char *)*gGameState;
+    ext       = (unsigned char *)*gExtState;
+    curPlayer = *(short *)(gs + 0x110);
+    city      = gs + 0x812 + cityIndex * 0x20;
+
+    if (*(short *)(city + 0x04) != curPlayer) return;
+
+    cityX = *(short *)(city + 0x00);
+    cityY = *(short *)(city + 0x02);
+
+    /* --- Read production slots from extCity --- */
+    extCity = ext + 0x24c + cityIndex * 0x5c;
+    {
+        short pi;
+        for (pi = 0; pi < 4; pi++) {
+            short pType = *(short *)(extCity + 0x06 + pi * 2);
+            if (pType >= 0 && pType < MAX_UNIT_TYPES)
+                typeList[typeCount++] = pType;
+        }
+        if (typeCount == 0) {
+            /* Fallback: first min(sUnitTypeCount, 4) types */
+            short maxT = sUnitTypesLoaded ? sUnitTypeCount : 6;
+            if (maxT > 4) maxT = 4;
+            for (pi = 0; pi < maxT; pi++)
+                typeList[typeCount++] = pi;
+        }
+    }
+
+    /* --- Read current production type; clamp to -1 if unset --- */
+    {
+        short curProd = *(short *)(extCity + 0x02);
+        if (curProd >= 0 && curProd < MAX_UNIT_TYPES)
+            selectedType = curProd;
+        else
+            selectedType = -1;
+    }
+
+    /* --- Create full-size window matching gMainGameWindow --- */
+    {
+        Rect mwr;
+        SetRect(&mwr, 0, 0, 512, 342);
+        if (*gMainGameWindow != 0) {
+            WindowPtr mw = (WindowPtr)*gMainGameWindow;
+            Rect pr = mw->portRect;
+            Point tl, br;
+            SetPort(mw);
+            tl.h = pr.left;  tl.v = pr.top;
+            br.h = pr.right; br.v = pr.bottom;
+            LocalToGlobal(&tl);
+            LocalToGlobal(&br);
+            mwr.left   = tl.h;
+            mwr.top    = tl.v;
+            mwr.right  = br.h;
+            mwr.bottom = br.v;
+        } else {
+            /* Centered 512x342 fallback */
+            Rect screen = qd.screenBits.bounds;
+            short sw = screen.right  - screen.left;
+            short sh = screen.bottom - screen.top;
+            mwr.left   = (sw - 512) / 2;
+            mwr.top    = (sh - 342) / 2;
+            mwr.right  = mwr.left + 512;
+            mwr.bottom = mwr.top  + 342;
+        }
+        winRect = mwr;
+    }
+
+    winW   = winRect.right  - winRect.left;
+    winH   = winRect.bottom - winRect.top;
+    panelX = winW / 2;
+
+    bsWin = NewCWindow(NULL, &winRect, "\p", true,
+                       plainDBox, (WindowPtr)-1L, false, 0);
+    if (bsWin == NULL) return;
+
+    /* --- Create offscreen GWorld --- */
+    SetRect(&gwRect, 0, 0, winW, winH);
+    if (NewGWorld(&bsGW, 0, &gwRect, NULL, NULL, 0) != noErr || bsGW == NULL) {
+        DisposeWindow(bsWin);
+        return;
+    }
+
+    /* ----------------------------------------------------------------
+     * Layout constants (declared here, used throughout the loop)
+     * ---------------------------------------------------------------- */
+    {
+        short ringR2    = 18;   /* ring radius */
+        short slotW     = 44;   /* slot width (centre-to-centre) */
+        short rowStartX = panelX + 12;
+        short rowY      = 72;
+
+        /* Current-production ring centre */
+        short shieldX = panelX + 8;
+        short shieldY = 44;
+        short curCX   = shieldX + 140;
+        short curCY   = shieldY + 10;
+        short curR2   = 18;
+
+        /* STOP button */
+        short stopX = rowStartX + typeCount * slotW + 4;
+        short stopY = rowY;
+        short stopW = 36;
+        short stopH = 36;
+
+        /* Done button */
+        short btnW = 52;
+        short btnH = 28;
+        short btnX = winW - btnW - 8;
+        short btnY = winH - btnH - 8;
+
+        bsDone = false;
+        while (!bsDone) {
+
+            /* ======================================================
+             * REDRAW
+             * ====================================================== */
+            if (redraw) {
+                Rect leftR, rightR;
+
+                GetGWorld(&savePort, &saveGD);
+                SetGWorld(bsGW, NULL);
+                LockPixels(GetGWorldPixMap(bsGW));
+
+                SetRect(&leftR,  0,      0, panelX, winH);
+                SetRect(&rightR, panelX, 0, winW,   winH);
+
+                /* ---- LEFT HALF: terrain tiles ---- */
+                {
+                    unsigned char *mapData2 = NULL;
+                    unsigned char *scnData2 = (*gGameState != 0)
+                        ? (unsigned char *)*gGameState : NULL;
+                    short  tilesWide2, tilesHigh2;
+                    short  tx2, ty2;
+                    Boolean hasScn2 = (scnData2 != NULL);
+
+                    if (sMapLoaded && *gMapTiles != 0)
+                        mapData2 = (unsigned char *)*gMapTiles;
+
+                    /* Dark-green base fill */
+                    {
+                        RGBColor darkGreen = {0x2222, 0x5555, 0x2222};
+                        RGBForeColor(&darkGreen);
+                        PaintRect(&leftR);
+                    }
+
+                    if (mapData2 != NULL) {
+                        tilesWide2 = panelX / TERRAIN_TILE_W + 2;
+                        tilesHigh2 = winH   / TERRAIN_TILE_H + 2;
+
+                        if (sTerrainLoaded) {
+                            if (sTerrainGW  != NULL)
+                                LockPixels(GetGWorldPixMap(sTerrainGW));
+                            if (sTerrainGW2 != NULL)
+                                LockPixels(GetGWorldPixMap(sTerrainGW2));
+                        }
+
+                        for (ty2 = 0; ty2 < tilesHigh2; ty2++) {
+                            for (tx2 = 0; tx2 < tilesWide2; tx2++) {
+                                short mapX2 = sViewportX + tx2;
+                                short mapY2 = sViewportY + ty2;
+                                short terrIdx2, terrType2;
+                                short dL, dT, dR, dB;
+                                Rect  srcR2, dstR2;
+
+                                if (mapX2 < 0 || mapX2 >= sMapWidth  ||
+                                    mapY2 < 0 || mapY2 >= sMapHeight)
+                                    continue;
+
+                                terrIdx2 = (short)(unsigned char)
+                                    mapData2[mapY2 * 0xE0 + mapX2 * 2];
+
+                                if (hasScn2)
+                                    terrType2 = (short)(unsigned char)
+                                        scnData2[terrIdx2 + 0x711];
+                                else
+                                    terrType2 = (terrIdx2 >> 4) & 0x0F;
+
+                                if (terrType2 >= NUM_TERRAIN_COLORS)
+                                    terrType2 = 0;
+
+                                dL = tx2 * TERRAIN_TILE_W;
+                                dT = ty2 * TERRAIN_TILE_H;
+                                dR = dL + TERRAIN_TILE_W;
+                                dB = dT + TERRAIN_TILE_H;
+
+                                if (dL >= panelX) continue;
+                                if (dR > panelX) dR = panelX;
+
+                                SetRect(&dstR2, dL, dT, dR, dB);
+
+                                if (sTerrainLoaded) {
+                                    short local2 = terrIdx2 %
+                                        TERRAIN_TILES_PER_SHEET;
+                                    short sCol2  = local2 % TERRAIN_COLS;
+                                    short sRow2  = local2 / TERRAIN_COLS;
+                                    GWorldPtr sheet2 =
+                                        (terrIdx2 < TERRAIN_TILES_PER_SHEET)
+                                        ? sTerrainGW : sTerrainGW2;
+
+                                    if (sheet2 != NULL) {
+                                        PixMapHandle srcPix2 =
+                                            GetGWorldPixMap(sheet2);
+                                        SetRect(&srcR2,
+                                            sCol2 * TERRAIN_TILE_W,
+                                            sRow2 * TERRAIN_TILE_H,
+                                            (sCol2 + 1) * TERRAIN_TILE_W,
+                                            (sRow2 + 1) * TERRAIN_TILE_H);
+                                        CopyBits(
+                                            (BitMap *)*srcPix2,
+                                            (BitMap *)*GetGWorldPixMap(bsGW),
+                                            &srcR2, &dstR2,
+                                            srcCopy, NULL);
+                                        continue;
+                                    }
+                                }
+
+                                /* Fallback: flat color */
+                                RGBForeColor(&sTerrainColors[terrType2]);
+                                PaintRect(&dstR2);
+                            }
+                        }
+
+                        if (sTerrainLoaded) {
+                            if (sTerrainGW  != NULL)
+                                UnlockPixels(GetGWorldPixMap(sTerrainGW));
+                            if (sTerrainGW2 != NULL)
+                                UnlockPixels(GetGWorldPixMap(sTerrainGW2));
+                        }
+                    }
+
+                    /* Red 2px highlight on city tile */
+                    {
+                        short sx2 = (cityX - sViewportX) * TERRAIN_TILE_W;
+                        short sy2 = (cityY - sViewportY) * TERRAIN_TILE_H;
+                        if (sx2 >= 0 && sx2 < panelX && sy2 >= 0 && sy2 < winH) {
+                            Rect   capR;
+                            RGBColor red = {0xDDDD, 0x1111, 0x1111};
+                            SetRect(&capR, sx2, sy2,
+                                    sx2 + TERRAIN_TILE_W, sy2 + TERRAIN_TILE_H);
+                            if (capR.right > panelX) capR.right = panelX;
+                            RGBForeColor(&red);
+                            PenSize(2, 2);
+                            FrameRect(&capR);
+                            PenSize(1, 1);
+                        }
+                    }
+                }
+
+                /* ---- RIGHT HALF: marble panel ---- */
+                DrawMarbleBackground(&rightR);
+
+                /* Faction name: gold, font 2, size 24, bold, centred */
+                {
+                    RGBColor       gold = {0xFFFF, 0xDDDD, 0x4444};
+                    unsigned char *fname = gs + curPlayer * FACTION_NAME_LEN;
+                    Str255 pname;
+                    short  len = 0, tw;
+                    while (len < FACTION_NAME_LEN - 1 && fname[len] != 0) len++;
+                    pname[0] = (unsigned char)len;
+                    BlockMoveData(fname, pname + 1, len);
+                    RGBForeColor(&gold);
+                    TextFont(2);
+                    TextSize(24);
+                    TextFace(bold);
+                    tw = StringWidth(pname);
+                    MoveTo(panelX + ((winW - panelX) - tw) / 2, 32);
+                    DrawString(pname);
+                    TextFace(0);
+                }
+
+                /* Shield (20x20) */
+                {
+                    Rect shR;
+                    SetRect(&shR, shieldX, shieldY,
+                            shieldX + 20, shieldY + 20);
+                    DrawShieldIcon(curPlayer, &shR);
+                }
+
+                /* "CAPITAL" label (silver 7pt bold) */
+                {
+                    RGBColor silver = {0xCCCC, 0xCCCC, 0xCCCC};
+                    RGBForeColor(&silver);
+                    TextFont(0);
+                    TextSize(7);
+                    TextFace(bold);
+                    MoveTo(shieldX + 22, shieldY + 8);
+                    DrawString("\pCAPITAL");
+                    TextFace(0);
+                }
+
+                /* "Current:" label (white 9pt) */
+                {
+                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                    RGBForeColor(&white);
+                    TextFont(0);
+                    TextSize(9);
+                    MoveTo(shieldX + 70, shieldY + 14);
+                    DrawString("\pCurrent:");
+                }
+
+                /* Current-production ring */
+                {
+                    Rect curOval;
+                    SetRect(&curOval,
+                        curCX - curR2, curCY - curR2,
+                        curCX + curR2, curCY + curR2);
+
+                    if (selectedType < 0) {
+                        RGBColor grey = {0x8888, 0x8888, 0x8888};
+                        RGBForeColor(&grey);
+                        FrameOval(&curOval);
+                    } else {
+                        RGBColor purple = {0x6666, 0x5555, 0xCCCC};
+                        RGBForeColor(&purple);
+                        PaintOval(&curOval);
+
+                        if (sArmyLoaded && curPlayer < ARMY_SHEETS &&
+                            sArmyGW[curPlayer] != NULL) {
+                            short sprC = selectedType % 16;
+                            short sprR = selectedType / 16;
+                            short sX   = sprC * 32;
+                            short sY   = sprR * 30;
+                            Rect  srcR3, dstR3;
+                            SetRect(&srcR3, sX, sY, sX + 29, sY + 32);
+                            SetRect(&dstR3,
+                                curCX - 14, curCY - 16,
+                                curCX - 14 + 29, curCY - 16 + 32);
+                            LockPixels(GetGWorldPixMap(sArmyGW[curPlayer]));
+                            {
+                                RGBColor savedBg2;
+                                GetBackColor(&savedBg2);
+                                RGBBackColor(&sArmyBgColor[curPlayer]);
+                                CopyBits(
+                                    (BitMap *)*GetGWorldPixMap(sArmyGW[curPlayer]),
+                                    (BitMap *)*GetGWorldPixMap(bsGW),
+                                    &srcR3, &dstR3, 36, NULL);
+                                RGBBackColor(&savedBg2);
+                            }
+                            UnlockPixels(GetGWorldPixMap(sArmyGW[curPlayer]));
+                        }
+                    }
+                }
+
+                /* Unit type rings row */
+                {
+                    short i2;
+                    for (i2 = 0; i2 < typeCount; i2++) {
+                        short cx2 = rowStartX + i2 * slotW + ringR2;
+                        short cy2 = rowY + ringR2;
+                        Rect  ovalR2;
+                        SetRect(&ovalR2,
+                            cx2 - ringR2, cy2 - ringR2,
+                            cx2 + ringR2, cy2 + ringR2);
+
+                        if (typeList[i2] == selectedType) {
+                            RGBColor purple2 = {0x6666, 0x5555, 0xCCCC};
+                            RGBForeColor(&purple2);
+                            PaintOval(&ovalR2);
+                        } else {
+                            RGBColor grey2 = {0x8888, 0x8888, 0x8888};
+                            RGBForeColor(&grey2);
+                            PenSize(2, 2);
+                            FrameOval(&ovalR2);
+                            PenSize(1, 1);
+                        }
+
+                        /* Sprite centred on ring */
+                        if (sArmyLoaded && curPlayer < ARMY_SHEETS &&
+                            sArmyGW[curPlayer] != NULL) {
+                            short ti   = typeList[i2];
+                            short sprC = ti % 16;
+                            short sprR = ti / 16;
+                            short sxs  = sprC * 32;
+                            short sys  = sprR * 30;
+                            Rect  srcRs, dstRs;
+                            SetRect(&srcRs, sxs, sys, sxs + 29, sys + 32);
+                            SetRect(&dstRs,
+                                cx2 - 14, cy2 - 16,
+                                cx2 - 14 + 29, cy2 - 16 + 32);
+                            LockPixels(GetGWorldPixMap(sArmyGW[curPlayer]));
+                            {
+                                RGBColor savedBg3;
+                                GetBackColor(&savedBg3);
+                                RGBBackColor(&sArmyBgColor[curPlayer]);
+                                CopyBits(
+                                    (BitMap *)*GetGWorldPixMap(sArmyGW[curPlayer]),
+                                    (BitMap *)*GetGWorldPixMap(bsGW),
+                                    &srcRs, &dstRs, 36, NULL);
+                                RGBBackColor(&savedBg3);
+                            }
+                            UnlockPixels(GetGWorldPixMap(sArmyGW[curPlayer]));
+                        }
+
+                        /* Unit name below ring (white 8pt) */
+                        {
+                            Str255   utName;
+                            RGBColor white2 = {0xFFFF, 0xFFFF, 0xFFFF};
+                            short    tw2;
+                            GetUnitTypeName(typeList[i2], utName);
+                            RGBForeColor(&white2);
+                            TextFont(0);
+                            TextSize(8);
+                            tw2 = StringWidth(utName);
+                            MoveTo(cx2 - tw2 / 2, cy2 + ringR2 + 10);
+                            DrawString(utName);
+                        }
+                    }
+                }
+
+                /* STOP button */
+                {
+                    Rect stopR;
+                    SetRect(&stopR, stopX, stopY, stopX + stopW, stopY + stopH);
+
+                    {
+                        RGBColor red2 = {0xDDDD, 0x2222, 0x2222};
+                        RGBForeColor(&red2);
+                        PaintRect(&stopR);
+                    }
+                    {
+                        RGBColor white3 = {0xFFFF, 0xFFFF, 0xFFFF};
+                        RGBForeColor(&white3);
+                        PenSize(2, 2);
+                        FrameRect(&stopR);
+                        PenSize(1, 1);
+                    }
+                    {
+                        RGBColor white3 = {0xFFFF, 0xFFFF, 0xFFFF};
+                        short    tw3;
+                        RGBForeColor(&white3);
+                        TextFont(0);
+                        TextSize(8);
+                        TextFace(bold);
+                        tw3 = StringWidth("\pSTOP");
+                        MoveTo(stopX + (stopW - tw3) / 2, stopY + stopH / 2 + 4);
+                        DrawString("\pSTOP");
+                        TextFace(0);
+                    }
+                    /* Yellow outline when STOP is active */
+                    if (selectedType == -1) {
+                        RGBColor yellow = {0xFFFF, 0xFFFF, 0x0000};
+                        RGBForeColor(&yellow);
+                        PenSize(2, 2);
+                        FrameRect(&stopR);
+                        PenSize(1, 1);
+                    }
+                }
+
+                /* Done button: black rounded rect, white border+text */
+                {
+                    Rect doneR;
+                    RGBColor black2 = {0x0000, 0x0000, 0x0000};
+                    RGBColor white4 = {0xFFFF, 0xFFFF, 0xFFFF};
+                    short    tw4;
+                    SetRect(&doneR, btnX, btnY, btnX + btnW, btnY + btnH);
+                    RGBForeColor(&black2);
+                    PaintRoundRect(&doneR, 8, 8);
+                    RGBForeColor(&white4);
+                    PenSize(2, 2);
+                    FrameRoundRect(&doneR, 8, 8);
+                    PenSize(1, 1);
+                    TextFont(0);
+                    TextSize(10);
+                    TextFace(bold);
+                    tw4 = StringWidth("\pDone");
+                    MoveTo(btnX + (btnW - tw4) / 2, btnY + btnH / 2 + 4);
+                    DrawString("\pDone");
+                    TextFace(0);
+                }
+
+                /* Vertical divider between left and right panels */
+                {
+                    RGBColor divColor = {0x5555, 0x5555, 0x5555};
+                    RGBForeColor(&divColor);
+                    MoveTo(panelX, 0);
+                    LineTo(panelX, winH);
+                }
+
+                UnlockPixels(GetGWorldPixMap(bsGW));
+                SetGWorld(savePort, saveGD);
+
+                /* Blit offscreen buffer to window */
+                SetPort(bsWin);
+                {
+                    Rect dr = bsWin->portRect;
+                    LockPixels(GetGWorldPixMap(bsGW));
+                    CopyBits((BitMap *)*GetGWorldPixMap(bsGW),
+                             &((GrafPtr)bsWin)->portBits,
+                             &gwRect, &dr, srcCopy, NULL);
+                    UnlockPixels(GetGWorldPixMap(bsGW));
+                }
+                redraw = 0;
+            }
+
+            /* ======================================================
+             * EVENT LOOP
+             * ====================================================== */
+            if (WaitNextEvent(mDownMask | keyDownMask | updateMask,
+                              &bsEvt, 20, NULL)) {
+
+                if (bsEvt.what == mouseDown) {
+                    Point lp = bsEvt.where;
+                    short i3;
+
+                    SetPort(bsWin);
+                    GlobalToLocal(&lp);
+
+                    /* Unit ring hit test */
+                    for (i3 = 0; i3 < typeCount; i3++) {
+                        short cx3 = rowStartX + i3 * slotW + ringR2;
+                        short cy3 = rowY + ringR2;
+                        short dx  = lp.h - cx3;
+                        short dy  = lp.v - cy3;
+                        if (dx * dx + dy * dy <= (short)(ringR2 * ringR2)) {
+                            selectedType = typeList[i3];
+                            redraw = 1;
+                            break;
+                        }
+                    }
+
+                    /* STOP hit */
+                    if (!redraw) {
+                        Rect stopR2;
+                        SetRect(&stopR2, stopX, stopY,
+                                stopX + stopW, stopY + stopH);
+                        if (PtInRect(lp, &stopR2)) {
+                            selectedType = -1;
+                            redraw = 1;
+                        }
+                    }
+
+                    /* Done hit */
+                    if (!redraw) {
+                        Rect doneR2;
+                        SetRect(&doneR2, btnX, btnY, btnX + btnW, btnY + btnH);
+                        if (PtInRect(lp, &doneR2))
+                            bsDone = true;
+                    }
+
+                } else if (bsEvt.what == keyDown) {
+                    char  key  = (char)(bsEvt.message & charCodeMask);
+                    short code = (short)((bsEvt.message & keyCodeMask) >> 8);
+
+                    if (key == 0x0D || key == 0x03) {
+                        bsDone = true;
+                    } else if (key == 0x1B) {
+                        selectedType = -2;  /* cancel sentinel */
+                        bsDone = true;
+                    } else if (key == 28 || code == 0x7B) {
+                        /* Left arrow */
+                        if (typeCount > 0) {
+                            short cur = -1, j2;
+                            for (j2 = 0; j2 < typeCount; j2++)
+                                if (typeList[j2] == selectedType) {
+                                    cur = j2; break;
+                                }
+                            if (cur > 0) {
+                                selectedType = typeList[cur - 1];
+                                redraw = 1;
+                            } else if (cur < 0) {
+                                selectedType = typeList[0];
+                                redraw = 1;
+                            }
+                        }
+                    } else if (key == 29 || code == 0x7C) {
+                        /* Right arrow */
+                        if (typeCount > 0) {
+                            short cur2 = -1, j3;
+                            for (j3 = 0; j3 < typeCount; j3++)
+                                if (typeList[j3] == selectedType) {
+                                    cur2 = j3; break;
+                                }
+                            if (cur2 >= 0 && cur2 < typeCount - 1) {
+                                selectedType = typeList[cur2 + 1];
+                                redraw = 1;
+                            } else if (cur2 < 0) {
+                                selectedType = typeList[0];
+                                redraw = 1;
+                            }
+                        }
+                    }
+
+                } else if (bsEvt.what == updateEvt &&
+                           (WindowPtr)bsEvt.message == bsWin) {
+                    Rect dr2;
+                    BeginUpdate(bsWin);
+                    SetPort(bsWin);
+                    dr2 = bsWin->portRect;
+                    LockPixels(GetGWorldPixMap(bsGW));
+                    CopyBits((BitMap *)*GetGWorldPixMap(bsGW),
+                             &((GrafPtr)bsWin)->portBits,
+                             &gwRect, &dr2, srcCopy, NULL);
+                    UnlockPixels(GetGWorldPixMap(bsGW));
+                    EndUpdate(bsWin);
+                }
+            }
+        } /* while (!bsDone) */
+    }
+
+    /* --- Commit production --- */
+    if (selectedType != -2) {
+        extCity = (unsigned char *)*gExtState + 0x24c + cityIndex * 0x5c;
+        if (selectedType >= 0) {
+            *(short *)(extCity + 0x02) = selectedType;
+            *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
+        } else {
+            /* STOP: write -1 to cancel production */
+            *(short *)(extCity + 0x02) = -1;
+        }
+    }
+
+    /* --- Cleanup --- */
+    DisposeGWorld(bsGW);
+    DisposeWindow(bsWin);
+
+    if (*gMainGameWindow != 0)
+        InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+}
+
+
+/* ===================================================================
  * ShowCityProductionDialog — Let player choose what unit to produce
  * =================================================================== */
 static void ShowCityProductionDialog(short cityIndex)
