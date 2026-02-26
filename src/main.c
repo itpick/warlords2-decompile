@@ -9859,6 +9859,7 @@ static void GetHeroItemBonus(short armyIdx, short *outBattle, short *outCommand,
                              short *outGold, Boolean *outFlying, Boolean *outDoubleMove);
 static Boolean GiveItemToHero(short armyIdx, short itemId);
 static void ShowCityProductionDialog(short cityIndex);
+static void ShowCityBuildSelection(short cityIndex);
 static void CheckQuestProgress(short player);
 static short GetHeroLevel(short xp);
 static Boolean IsHeroFemale(short armyIdx);
@@ -20572,6 +20573,7 @@ static void ShowTurnSplash(short playerIdx)
     if (splashWin == NULL) return;
     SetPort(splashWin);
 
+    SysBeep(1);  /* bong at turn announcement */
     PlaySound(SND_SPLASH);
 
     /* Draw castle gate background (PICT 3100, 320x312) */
@@ -22279,6 +22281,27 @@ static void AdvanceToNextPlayer(void)
          * Endgame = a player has >50% of all armies AND leads by armies/8. */
         if (*(short *)(gs + 0x15e) == 0) {
             ShowHeroHire(curPlayer, false);
+        }
+
+        /* Prompt human player to set production for cities with nothing queued.
+         * 68k CODE_080: at turn start, cities with producing=-1 show dialog. */
+        if (*gExtState != 0) {
+            unsigned char *pExt = (unsigned char *)*gExtState;
+            short pCC = *(short *)(gs + 0x810);
+            short pCI;
+            if (pCC > 40) pCC = 40;
+            for (pCI = 0; pCI < pCC; pCI++) {
+                unsigned char *pCity = gs + 0x812 + pCI * 0x20;
+                short pSType = (short)(unsigned char)pCity[0x18];
+                if (pSType >= 2) continue;  /* skip ruins/temples */
+                if (*(short *)(pCity + 0x04) != curPlayer) continue;
+                {
+                    unsigned char *pExtCity = pExt + 0x24c + pCI * 0x5c;
+                    if (*(short *)(pExtCity + 0x02) < 0) {
+                        ShowCityProductionDialog(pCI);
+                    }
+                }
+            }
         }
 
         /* Quest auto-generation and progress check (68k CODE_135):
