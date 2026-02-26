@@ -21132,7 +21132,7 @@ static void ShowTurnSplash(short playerIdx)
     if (splashWin == NULL) return;
     SetPort(splashWin);
 
-    SysBeep(1);  /* bong at turn announcement */
+    PlaySound(SND_CHORD);  /* metal bong at turn announcement */
     PlaySound(SND_SPLASH);
 
     /* Draw castle gate background (PICT 3100, 320x312) */
@@ -22842,12 +22842,16 @@ static void AdvanceToNextPlayer(void)
             ShowHeroHire(curPlayer, false);
         }
 
-        /* Prompt human player to set production for cities with nothing queued.
-         * 68k CODE_080: at turn start, cities with producing=-1 show dialog. */
+        /* Prompt human player to set production:
+         * - Turn 1: always show for all owned cities (original behavior: player
+         *   must confirm/set production for every city at game start).
+         * - Later turns: only show when production is unset (extCity+0x02 < 0),
+         *   which happens after a unit completes and the city goes idle. */
         if (*gExtState != 0) {
             unsigned char *pExt = (unsigned char *)*gExtState;
             short pCC = *(short *)(gs + 0x810);
             short pCI;
+            short pTurn = *(short *)(gs + 0x136);
             if (pCC > 40) pCC = 40;
             for (pCI = 0; pCI < pCC; pCI++) {
                 unsigned char *pCity = gs + 0x812 + pCI * 0x20;
@@ -22856,7 +22860,7 @@ static void AdvanceToNextPlayer(void)
                 if (*(short *)(pCity + 0x04) != curPlayer) continue;
                 {
                     unsigned char *pExtCity = pExt + 0x24c + pCI * 0x5c;
-                    if (*(short *)(pExtCity + 0x02) < 0) {
+                    if (pTurn <= 1 || *(short *)(pExtCity + 0x02) < 0) {
                         ShowCityBuildSelection(pCI);
                     }
                 }
