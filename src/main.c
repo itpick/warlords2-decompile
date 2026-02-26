@@ -19153,20 +19153,20 @@ static void ShowCityBuildSelection(short cityIndex)
             selectedType = -1;
     }
 
-    /* --- Centered popup dialog (460×300) --- */
+    /* --- Centered popup dialog (460×340) --- */
     {
         Rect screen = qd.screenBits.bounds;
         short sw = screen.right - screen.left;
         short sh = screen.bottom - screen.top;
         short dl = (sw - 460) / 2;
-        short dt = (sh - 300) / 2;
+        short dt = (sh - 340) / 2;
         if (dt < 20) dt = 20;
-        SetRect(&winRect, dl, dt, dl + 460, dt + 300);
+        SetRect(&winRect, dl, dt, dl + 460, dt + 340);
     }
 
     winW   = 460;
-    winH   = 300;
-    panelX = winW / 2;   /* 230 — left=minimap, right=marble */
+    winH   = 340;
+    panelX = winW / 2;   /* 230 — left=minimap, right=panel */
 
     bsWin = NewCWindow(NULL, &winRect, "\p", true,
                        dBoxProc, (WindowPtr)-1L, false, 0);
@@ -19241,12 +19241,10 @@ static void ShowCityBuildSelection(short cityIndex)
                     if (sMapLoaded && *gMapTiles != 0 && sMapWidth > 0 && sMapHeight > 0) {
                         unsigned char *mapData = (unsigned char *)*gMapTiles;
                         unsigned char *scnData = (*gGameState != 0) ? (unsigned char *)*gGameState : NULL;
-                        /* Compute integer scale: largest factor where scaled map fits panel */
+                        /* Scale to fill panel width; vertical clips gracefully */
                         short scaleX = panelX / sMapWidth;
-                        short scaleY = winH   / sMapHeight;
-                        short scale  = (scaleX < scaleY) ? scaleX : scaleY;
+                        short scale  = (scaleX > 1) ? scaleX : 1;
                         short mmW, mmH, mmX, mmY, mx, my;
-                        if (scale < 1) scale = 1;
                         mmW = sMapWidth  * scale;
                         mmH = sMapHeight * scale;
                         mmX = (panelX - mmW) / 2;
@@ -19313,8 +19311,14 @@ static void ShowCityBuildSelection(short cityIndex)
                     }
                 }
 
-                /* ---- RIGHT HALF: marble panel ---- */
-                DrawMarbleBackground(&rightR);
+                /* ---- RIGHT HALF: dark stone grey panel ---- */
+                /* DrawMarbleBackground (PICT 1001) renders pink in 8-bit mode
+                 * because the game palette has no grey tones. Use RGB grey. */
+                {
+                    RGBColor stone = {0x5555, 0x5555, 0x5555};
+                    RGBForeColor(&stone);
+                    PaintRect(&rightR);
+                }
 
                 /* Faction name: gold, font 2, size 24, bold, centred */
                 {
