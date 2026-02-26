@@ -19148,42 +19148,23 @@ static void ShowCityBuildSelection(short cityIndex)
             selectedType = -1;
     }
 
-    /* --- Create full-size window matching gMainGameWindow --- */
+    /* --- Centered 504×310 dialog window (dBoxProc = thick border, clearly distinct) --- */
     {
-        Rect mwr;
-        SetRect(&mwr, 0, 0, 512, 342);
-        if (*gMainGameWindow != 0) {
-            WindowPtr mw = (WindowPtr)*gMainGameWindow;
-            Rect pr = mw->portRect;
-            Point tl, br;
-            SetPort(mw);
-            tl.h = pr.left;  tl.v = pr.top;
-            br.h = pr.right; br.v = pr.bottom;
-            LocalToGlobal(&tl);
-            LocalToGlobal(&br);
-            mwr.left   = tl.h;
-            mwr.top    = tl.v;
-            mwr.right  = br.h;
-            mwr.bottom = br.v;
-        } else {
-            /* Centered 512x342 fallback */
-            Rect screen = qd.screenBits.bounds;
-            short sw = screen.right  - screen.left;
-            short sh = screen.bottom - screen.top;
-            mwr.left   = (sw - 512) / 2;
-            mwr.top    = (sh - 342) / 2;
-            mwr.right  = mwr.left + 512;
-            mwr.bottom = mwr.top  + 342;
-        }
-        winRect = mwr;
+        Rect screen = qd.screenBits.bounds;
+        short sw = screen.right - screen.left;
+        short sh = screen.bottom - screen.top;
+        short dl = (sw - 504) / 2;
+        short dt = (sh - 310) / 2;
+        if (dt < 20) dt = 20;
+        SetRect(&winRect, dl, dt, dl + 504, dt + 310);
     }
 
-    winW   = winRect.right  - winRect.left;
-    winH   = winRect.bottom - winRect.top;
-    panelX = winW / 2;
+    winW   = 504;
+    winH   = 310;
+    panelX = winW / 2;   /* 252 — left=map, right=marble */
 
     bsWin = NewCWindow(NULL, &winRect, "\p", true,
-                       plainDBox, (WindowPtr)-1L, false, 0);
+                       dBoxProc, (WindowPtr)-1L, false, 0);
     if (bsWin == NULL) return;
 
     /* --- Create offscreen GWorld --- */
@@ -19215,11 +19196,17 @@ static void ShowCityBuildSelection(short cityIndex)
         short stopW = 36;
         short stopH = 36;
 
+        /* Bottom navigation buttons (4 tabs + Done, right panel bottom row) */
+        short navBtnW = 44, navBtnH = 24;
+        short navBtnY = winH - navBtnH - 8;
+        short navBtn0X = panelX + 6;                          /* Overview */
+        short navBtn1X = navBtn0X + navBtnW + 4;              /* Build (current) */
+        short navBtn2X = navBtn1X + navBtnW + 4;              /* Armies */
+        short navBtn3X = navBtn2X + navBtnW + 4;              /* Vector */
         /* Done button */
-        short btnW = 52;
-        short btnH = 28;
-        short btnX = winW - btnW - 8;
-        short btnY = winH - btnH - 8;
+        short btnW = 50, btnH = navBtnH;
+        short btnX = navBtn3X + navBtnW + 4;
+        short btnY = navBtnY;
 
         bsDone = false;
         while (!bsDone) {
@@ -19483,6 +19470,46 @@ static void ShowCityBuildSelection(short cityIndex)
                     MoveTo(btnX + (btnW - tw4) / 2, btnY + btnH / 2 + 4);
                     DrawString("\pDone");
                     TextFace(0);
+                }
+
+                /* Bottom navigation buttons: Overview | Build (current) | Armies | Vector */
+                {
+                    RGBColor navDark   = {0x2222, 0x2222, 0x2222};
+                    RGBColor navActive = {0x5555, 0x3333, 0x0000};  /* amber for current tab */
+                    RGBColor navWhite  = {0xFFFF, 0xFFFF, 0xFFFF};
+                    short ni;
+                    short navXs[4];
+                    navXs[0] = navBtn0X;
+                    navXs[1] = navBtn1X;
+                    navXs[2] = navBtn2X;
+                    navXs[3] = navBtn3X;
+                    for (ni = 0; ni < 4; ni++) {
+                        Rect navR;
+                        unsigned char pstr[8];
+                        short tw5;
+                        SetRect(&navR, navXs[ni], navBtnY,
+                                navXs[ni] + navBtnW, navBtnY + navBtnH);
+                        /* Background: amber for Build tab (current), dark for others */
+                        RGBForeColor(ni == 1 ? &navActive : &navDark);
+                        PaintRoundRect(&navR, 4, 4);
+                        RGBForeColor(&navWhite);
+                        PenSize(1, 1);
+                        FrameRoundRect(&navR, 4, 4);
+                        /* Label */
+                        TextFont(0);
+                        TextSize(8);
+                        TextFace(0);
+                        switch (ni) {
+                            case 0: pstr[0]=4; pstr[1]='O'; pstr[2]='v'; pstr[3]='e'; pstr[4]='r'; break;
+                            case 1: pstr[0]=5; pstr[1]='B'; pstr[2]='u'; pstr[3]='i'; pstr[4]='l'; pstr[5]='d'; break;
+                            case 2: pstr[0]=4; pstr[1]='A'; pstr[2]='r'; pstr[3]='m'; pstr[4]='y'; break;
+                            default:pstr[0]=4; pstr[1]='V'; pstr[2]='e'; pstr[3]='c'; pstr[4]='t'; break;
+                        }
+                        tw5 = StringWidth(pstr);
+                        MoveTo(navXs[ni] + (navBtnW - tw5) / 2,
+                               navBtnY + navBtnH / 2 + 4);
+                        DrawString(pstr);
+                    }
                 }
 
                 /* Vertical divider between left and right panels */
@@ -21131,8 +21158,6 @@ static void ShowTurnSplash(short playerIdx)
                             plainDBox, (WindowPtr)-1L, false, 0);
     if (splashWin == NULL) return;
     SetPort(splashWin);
-
-    PlaySound(SND_TURN);  /* turn announcement bong */
 
     /* Draw castle gate background (PICT 3100, 320x312) */
     gatePict = GetPicture(3100);
