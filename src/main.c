@@ -8538,19 +8538,7 @@ static void ShowCityInfo(short cityIndex)
                     DrawString(numStr);
                     DrawString("\p gp/turn");
 
-                    /* Location */
-                    RGBForeColor(&labelColor);
-                    MoveTo(25, yBase + 36);
-                    DrawString("\pLocation:");
-                    RGBForeColor(&valueColor);
-                    MoveTo(120, yBase + 36);
-                    NumToString((long)cityX, numStr);
-                    DrawString(numStr);
-                    DrawString("\p, ");
-                    NumToString((long)cityY, numStr);
-                    DrawString(numStr);
-
-                    /* Production status */
+                    /* Production status (compact: current unit + turns remaining) */
                     if (*gExtState != 0) {
                         unsigned char *ext = (unsigned char *)*gExtState;
                         unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
@@ -8558,125 +8546,107 @@ static void ShowCityInfo(short cityIndex)
                         short prodTurns = *(short *)(extCity + 0x58);
 
                         RGBForeColor(&labelColor);
-                        MoveTo(25, yBase + 60);
+                        MoveTo(25, yBase + 36);
                         DrawString("\pProducing:");
                         RGBForeColor(&valueColor);
-                        MoveTo(120, yBase + 60);
+                        MoveTo(120, yBase + 36);
                         if (producing >= 0) {
                             Str255 prodName;
                             short totalTurns = GetProductionTurns(producing);
-                            short prodCost = GetUnitTypeStat(producing, 4);
+                            short elapsed = totalTurns - prodTurns;
+                            short barW = CITY_WIN_W - 55;
+                            short fillW;
+                            Rect trackR2, fillR2;
+                            RGBColor trackCol = {0x3333, 0x3333, 0x3333};
+                            RGBColor fillCol = {0x3333, 0xBBBB, 0x3333};
                             GetUnitTypeName(producing, prodName);
                             DrawString(prodName);
                             DrawString("\p (");
                             NumToString((long)prodTurns, numStr);
                             DrawString(numStr);
-                            DrawString("\p turns");
-                            if (prodCost > 0) {
-                                DrawString("\p, ");
-                                NumToString((long)prodCost, numStr);
-                                DrawString(numStr);
-                                DrawString("\pgp");
-                            }
                             DrawString("\p)");
-
-                            /* Progress bar */
-                            if (totalTurns > 0) {
-                                Rect trackR2, fillR2;
-                                short elapsed = totalTurns - prodTurns;
-                                short barW = 200;
-                                short fillW;
-                                RGBColor trackCol = {0x3333, 0x3333, 0x3333};
-                                RGBColor fillCol = {0x3333, 0xBBBB, 0x3333};
-                                if (elapsed < 0) elapsed = 0;
-                                if (elapsed > totalTurns) elapsed = totalTurns;
-                                fillW = (elapsed * barW) / totalTurns;
-                                SetRect(&trackR2, 25, yBase + 68, 25 + barW, yBase + 76);
-                                RGBForeColor(&trackCol);
-                                PaintRoundRect(&trackR2, 4, 4);
-                                if (fillW > 0) {
-                                    SetRect(&fillR2, 25, yBase + 68, 25 + fillW, yBase + 76);
-                                    RGBForeColor(&fillCol);
-                                    PaintRoundRect(&fillR2, 4, 4);
-                                }
-                                {
-                                    RGBColor bdr = {0x6666, 0x6666, 0x6666};
-                                    RGBForeColor(&bdr);
-                                    FrameRoundRect(&trackR2, 4, 4);
-                                }
+                            /* Compact progress bar */
+                            if (elapsed < 0) elapsed = 0;
+                            if (elapsed > totalTurns) elapsed = totalTurns;
+                            fillW = (totalTurns > 0) ? (elapsed * barW) / totalTurns : 0;
+                            SetRect(&trackR2, 25, yBase + 42, 25 + barW, yBase + 48);
+                            RGBForeColor(&trackCol);
+                            PaintRoundRect(&trackR2, 3, 3);
+                            if (fillW > 0) {
+                                SetRect(&fillR2, 25, yBase + 42, 25 + fillW, yBase + 48);
+                                RGBForeColor(&fillCol);
+                                PaintRoundRect(&fillR2, 3, 3);
+                            }
+                            {
+                                RGBColor bdr = {0x6666, 0x6666, 0x6666};
+                                RGBForeColor(&bdr);
+                                FrameRoundRect(&trackR2, 3, 3);
                             }
                         } else {
                             DrawString("\pNothing");
                         }
 
-                        /* Vectoring */
+                        /* Available production unit icons (circular, 4 slots) */
                         {
-                            short vectorCity = *(short *)(extCity + 0x3e);
-                            if (vectorCity >= 0 && vectorCity != cityIndex) {
-                                RGBForeColor(&labelColor);
-                                MoveTo(25, yBase + 90);
-                                DrawString("\pVectoring to:");
-                                RGBForeColor(&valueColor);
-                                MoveTo(120, yBase + 90);
-                                if (vectorCity < sCityNameCount &&
-                                    sCityNames[vectorCity][0] != '\0') {
-                                    Str255 pName;
-                                    char *cn = sCityNames[vectorCity];
-                                    short nlen2 = 0;
-                                    while (nlen2 < MAX_CITY_NAME - 1 && cn[nlen2] != '\0') nlen2++;
-                                    pName[0] = (unsigned char)nlen2;
-                                    BlockMoveData(cn, pName + 1, nlen2);
-                                    DrawString(pName);
+                            short pi3, iconX = 20;
+                            short iconY = yBase + 60;
+                            short iconSz = 40;  /* circular icon diameter */
+                            short pSheet = (owner >= 0 && owner < ARMY_SHEETS) ? owner : 0;
+                            GWorldPtr pGW = sArmyGW[pSheet] ? sArmyGW[pSheet] : sArmyGW[0];
+                            for (pi3 = 0; pi3 < 4; pi3++) {
+                                short pType = *(short *)(extCity + 0x06 + pi3 * 2);
+                                Rect iconOval;
+                                SetRect(&iconOval, iconX, iconY, iconX + iconSz, iconY + iconSz);
+                                if (pType >= 0 && pType < MAX_UNIT_TYPES) {
+                                    /* Circle background */
+                                    {
+                                        RGBColor circleBg = (pType == producing) ?
+                                            (RGBColor){0x2222, 0x3333, 0x5555} :
+                                            (RGBColor){0x2222, 0x2222, 0x2222};
+                                        RGBColor circleBdr = (pType == producing) ?
+                                            (RGBColor){0x6666, 0x8888, 0xFFFF} :
+                                            (RGBColor){0x5555, 0x5555, 0x5555};
+                                        RGBForeColor(&circleBg);
+                                        PaintOval(&iconOval);
+                                        RGBForeColor(&circleBdr);
+                                        FrameOval(&iconOval);
+                                    }
+                                    /* Unit sprite centered in circle */
+                                    if (sArmyLoaded && pGW != NULL) {
+                                        short si2 = 0;
+                                        Rect srcR3, dstR3;
+                                        PixMapHandle pm3;
+                                        if (sUnitTypesLoaded && pType < sUnitTypeCount) {
+                                            unsigned char *ute2 = sUnitTypeTable + pType * UNIT_TYPE_ENTRY;
+                                            si2 = *(short *)(ute2 + 0x24);
+                                        }
+                                        SetRect(&srcR3, (si2 % 16) * 32, (si2 / 16) * 30,
+                                                (si2 % 16) * 32 + 29, (si2 / 16) * 30 + 32);
+                                        SetRect(&dstR3, iconX + 5, iconY + 4,
+                                                iconX + iconSz - 5, iconY + iconSz - 4);
+                                        pm3 = GetGWorldPixMap(pGW);
+                                        if (LockPixels(pm3)) {
+                                            RGBColor savedBg3;
+                                            GetBackColor(&savedBg3);
+                                            RGBBackColor(&sArmyBgColor[pSheet]);
+                                            CopyBits((BitMap *)*pm3,
+                                                     (BitMap *)*GetGWorldPixMap(offscreen),
+                                                     &srcR3, &dstR3, 36, &iconOval);
+                                            RGBBackColor(&savedBg3);
+                                            UnlockPixels(pm3);
+                                        }
+                                    }
                                 } else {
-                                    DrawString("\pCity #");
-                                    NumToString((long)vectorCity, numStr);
-                                    DrawString(numStr);
+                                    /* Empty slot: grey circle */
+                                    RGBColor emptyC = {0x2222, 0x2222, 0x2222};
+                                    RGBColor emptyBdr = {0x4444, 0x4444, 0x4444};
+                                    RGBForeColor(&emptyC);
+                                    PaintOval(&iconOval);
+                                    RGBForeColor(&emptyBdr);
+                                    FrameOval(&iconOval);
                                 }
+                                iconX += iconSz + 6;
                             }
-                        }
-                    }
-
-                    /* Armies at this city (brief list) */
-                    {
-                        short armyCount = *(short *)(gs + 0x1602);
-                        short ai2, armyY = yBase + 116;
-                        short armiesHere = 0;
-                        if (armyCount > 100) armyCount = 100;
-                        RGBForeColor(&labelColor);
-                        MoveTo(25, armyY);
-                        DrawString("\pArmies here:");
-                        armyY += 16;
-                        for (ai2 = 0; ai2 < armyCount && armiesHere < 6; ai2++) {
-                            unsigned char *a = gs + 0x1604 + ai2 * 0x42;
-                            short aax = *(short *)(a + 0x00);
-                            short aay = *(short *)(a + 0x02);
-                            if (a[0x16] == 0xFF) continue;
-                            if (aax == cityX && aay == cityY) {
-                                Str255 uName;
-                                if ((unsigned char)a[0x16] == 0x1C) {
-                                    unsigned char *hn = a + 0x04; short nl = 0;
-                                    while (nl < 15 && hn[nl]) nl++;
-                                    uName[0] = (unsigned char)nl;
-                                    BlockMoveData(hn, uName + 1, nl);
-                                } else {
-                                    GetUnitTypeName((short)(unsigned char)a[0x16], uName);
-                                }
-                                RGBForeColor(&valueColor);
-                                TextSize(9);
-                                MoveTo(35, armyY);
-                                DrawString(uName);
-                                DrawString("\p  str:");
-                                NumToString((long)*(short *)(a + 0x2a), numStr);
-                                DrawString(numStr);
-                                armyY += 14;
-                                armiesHere++;
-                            }
-                        }
-                        if (armiesHere == 0) {
-                            RGBForeColor(&valueColor);
-                            TextSize(9);
-                            MoveTo(35, armyY);
-                            DrawString("\pNone");
                         }
                     }
 
