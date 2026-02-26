@@ -19121,19 +19121,24 @@ static void ShowCityBuildSelection(short cityIndex)
     cityX = *(short *)(city + 0x00);
     cityY = *(short *)(city + 0x02);
 
-    /* --- Read production slots from extCity --- */
+    /* --- Read production slots from extCity, deduplicating --- */
     extCity = ext + 0x24c + cityIndex * 0x5c;
     {
         short pi;
         for (pi = 0; pi < 4; pi++) {
             short pType = *(short *)(extCity + 0x06 + pi * 2);
-            if (pType >= 0 && pType < MAX_UNIT_TYPES)
-                typeList[typeCount++] = pType;
+            if (pType >= 0 && pType < MAX_UNIT_TYPES) {
+                /* skip duplicates */
+                short j, dup = 0;
+                for (j = 0; j < typeCount; j++) if (typeList[j] == pType) { dup=1; break; }
+                if (!dup) typeList[typeCount++] = pType;
+            }
         }
-        if (typeCount == 0) {
-            /* Fallback: first min(sUnitTypeCount, 4) types */
+        /* If all slots same (or empty), fall back to first 4 available types */
+        if (typeCount < 2) {
             short maxT = sUnitTypesLoaded ? sUnitTypeCount : 6;
             if (maxT > 4) maxT = 4;
+            typeCount = 0;
             for (pi = 0; pi < maxT; pi++)
                 typeList[typeCount++] = pi;
         }
@@ -19223,31 +19228,20 @@ static void ShowCityBuildSelection(short cityIndex)
 
                 SetRect(&rightR, panelX, 0, winW, winH);
 
-                /* ---- LEFT HALF: full map render via DrawMapInWindow ----
-                 * GWorldPtr is a CGrafPtr which shares the same portRect and
-                 * portBits/portPixMap layout as a GrafPtr/WindowPtr in Classic
-                 * Mac.  Casting bsGW to WindowPtr lets DrawMapInWindow blit
-                 * terrain, roads and army sprites directly into the GWorld pixel
-                 * buffer in one call, eliminating the duplicate tile loop. The
-                 * right half is overwritten by DrawMarbleBackground below, so no
-                 * clipping to panelX is required here. */
-                DrawMapInWindow((WindowPtr)bsGW);
-
-                /* Red 2px highlight on city tile (drawn after map so it is on top) */
+                /* ---- LEFT HALF: minimap (1px per tile, city crosshair) ---- */
                 {
-                    short sx2 = (cityX - sViewportX) * TERRAIN_TILE_W;
-                    short sy2 = (cityY - sViewportY) * TERRAIN_TILE_H;
-                    if (sx2 >= 0 && sx2 < panelX && sy2 >= 0 && sy2 < winH) {
-                        Rect   capR;
-                        RGBColor red = {0xDDDD, 0x1111, 0x1111};
-                        SetRect(&capR, sx2, sy2,
-                                sx2 + TERRAIN_TILE_W, sy2 + TERRAIN_TILE_H);
-                        if (capR.right > panelX) capR.right = panelX;
-                        RGBForeColor(&red);
-                        PenSize(2, 2);
-                        FrameRect(&capR);
-                        PenSize(1, 1);
-                    }
+                    short mmW = (sMapWidth  < panelX) ? sMapWidth  : panelX - 4;
+                    short mmH = (sMapHeight < winH)   ? sMapHeight : winH   - 4;
+                    short mmX = (panelX - mmW) / 2;
+                    short mmY = (winH   - mmH) / 2;
+                    Rect mmRect;
+                    Rect leftPanel;
+                    RGBColor bg = {0x0000, 0x0000, 0x0000};
+                    SetRect(&leftPanel, 0, 0, panelX, winH);
+                    RGBForeColor(&bg);
+                    PaintRect(&leftPanel);
+                    SetRect(&mmRect, mmX, mmY, mmX + mmW, mmY + mmH);
+                    DrawMinimapInRect(&mmRect, cityX, cityY);
                 }
 
                 /* ---- RIGHT HALF: marble panel ---- */
@@ -19411,35 +19405,11 @@ static void ShowCityBuildSelection(short cityIndex)
                     }
                 }
 
-                /* STOP button */
+                /* STOP button: cicn 3304 */
                 {
                     Rect stopR;
+                    CIconHandle stopIcon;
                     SetRect(&stopR, stopX, stopY, stopX + stopW, stopY + stopH);
-
-                    {
-                        RGBColor red2 = {0xDDDD, 0x2222, 0x2222};
-                        RGBForeColor(&red2);
-                        PaintRect(&stopR);
-                    }
-                    {
-                        RGBColor white3 = {0xFFFF, 0xFFFF, 0xFFFF};
-                        RGBForeColor(&white3);
-                        PenSize(2, 2);
-                        FrameRect(&stopR);
-                        PenSize(1, 1);
-                    }
-                    {
-                        RGBColor white3 = {0xFFFF, 0xFFFF, 0xFFFF};
-                        short    tw3;
-                        RGBForeColor(&white3);
-                        TextFont(0);
-                        TextSize(8);
-                        TextFace(bold);
-                        tw3 = StringWidth("\pSTOP");
-                        MoveTo(stopX + (stopW - tw3) / 2, stopY + stopH / 2 + 4);
-                        DrawString("\pSTOP");
-                        TextFace(0);
-                    }
                     /* Yellow outline when STOP is active */
                     if (selectedType == -1) {
                         RGBColor yellow = {0xFFFF, 0xFFFF, 0x0000};
@@ -19447,6 +19417,22 @@ static void ShowCityBuildSelection(short cityIndex)
                         PenSize(2, 2);
                         FrameRect(&stopR);
                         PenSize(1, 1);
+                    }
+                    stopIcon = GetCIcon(3304);
+                    if (stopIcon != NULL) {
+                        PlotCIcon(&stopR, stopIcon);
+                        DisposeCIcon(stopIcon);
+                    } else {
+                        /* fallback: red rect with text */
+                        RGBColor red2 = {0xDDDD, 0x2222, 0x2222};
+                        RGBColor white3 = {0xFFFF, 0xFFFF, 0xFFFF};
+                        short tw3;
+                        RGBForeColor(&red2); PaintRect(&stopR);
+                        RGBForeColor(&white3);
+                        TextFont(0); TextSize(8); TextFace(bold);
+                        tw3 = StringWidth("\pSTOP");
+                        MoveTo(stopX + (stopW - tw3) / 2, stopY + stopH / 2 + 4);
+                        DrawString("\pSTOP"); TextFace(0);
                     }
                 }
 
@@ -19472,43 +19458,33 @@ static void ShowCityBuildSelection(short cityIndex)
                     TextFace(0);
                 }
 
-                /* Bottom navigation buttons: Overview | Build (current) | Armies | Vector */
+                /* Bottom navigation buttons: cicn 3300=? 3301=tower 3302=hammer 3303=arrows */
                 {
-                    RGBColor navDark   = {0x2222, 0x2222, 0x2222};
-                    RGBColor navActive = {0x5555, 0x3333, 0x0000};  /* amber for current tab */
-                    RGBColor navWhite  = {0xFFFF, 0xFFFF, 0xFFFF};
-                    short ni;
+                    short navCicnIDs[4] = {3300, 3301, 3302, 3303};
                     short navXs[4];
+                    short ni;
                     navXs[0] = navBtn0X;
                     navXs[1] = navBtn1X;
                     navXs[2] = navBtn2X;
                     navXs[3] = navBtn3X;
                     for (ni = 0; ni < 4; ni++) {
                         Rect navR;
-                        unsigned char pstr[8];
-                        short tw5;
+                        CIconHandle navIcon;
                         SetRect(&navR, navXs[ni], navBtnY,
                                 navXs[ni] + navBtnW, navBtnY + navBtnH);
-                        /* Background: amber for Build tab (current), dark for others */
-                        RGBForeColor(ni == 1 ? &navActive : &navDark);
-                        PaintRoundRect(&navR, 4, 4);
-                        RGBForeColor(&navWhite);
-                        PenSize(1, 1);
-                        FrameRoundRect(&navR, 4, 4);
-                        /* Label */
-                        TextFont(0);
-                        TextSize(8);
-                        TextFace(0);
-                        switch (ni) {
-                            case 0: pstr[0]=4; pstr[1]='O'; pstr[2]='v'; pstr[3]='e'; pstr[4]='r'; break;
-                            case 1: pstr[0]=5; pstr[1]='B'; pstr[2]='u'; pstr[3]='i'; pstr[4]='l'; pstr[5]='d'; break;
-                            case 2: pstr[0]=4; pstr[1]='A'; pstr[2]='r'; pstr[3]='m'; pstr[4]='y'; break;
-                            default:pstr[0]=4; pstr[1]='V'; pstr[2]='e'; pstr[3]='c'; pstr[4]='t'; break;
+                        /* Highlight Build tab (current) with amber border */
+                        if (ni == 1) {
+                            RGBColor amber = {0xFFFF, 0xAAAA, 0x0000};
+                            RGBForeColor(&amber);
+                            PenSize(2, 2);
+                            FrameRoundRect(&navR, 4, 4);
+                            PenSize(1, 1);
                         }
-                        tw5 = StringWidth(pstr);
-                        MoveTo(navXs[ni] + (navBtnW - tw5) / 2,
-                               navBtnY + navBtnH / 2 + 4);
-                        DrawString(pstr);
+                        navIcon = GetCIcon(navCicnIDs[ni]);
+                        if (navIcon != NULL) {
+                            PlotCIcon(&navR, navIcon);
+                            DisposeCIcon(navIcon);
+                        }
                     }
                 }
 
@@ -21159,6 +21135,9 @@ static void ShowTurnSplash(short playerIdx)
     if (splashWin == NULL) return;
     SetPort(splashWin);
 
+    /* Play turn bong now that the window is visible */
+    PlaySound(SND_TURN);
+
     /* Draw castle gate background (PICT 3100, 320x312) */
     gatePict = GetPicture(3100);
     if (gatePict != NULL) {
@@ -22336,9 +22315,8 @@ static void AdvanceToNextPlayer(void)
         DoAutosave();
 
         /* Show turn start banner (PICT 3100 castle gate) */
-        PlaySound(SND_TURN);
         LoadAndPlayMusic(MUSIC_STATE_TURN);
-        ShowTurnSplash(curPlayer);
+        ShowTurnSplash(curPlayer);  /* plays SND_TURN internally */
 
         /* Voice narration: territory status (every 3 turns to avoid spam) */
         {
@@ -27191,10 +27169,8 @@ int main(void)
         /* "Let the war begin!" voice after game setup completes */
         PlayVoice(SND_VBEGIN);
 
-        /* Turn 1 announcement splash (castle gate with faction name).
-         * Play SND_TURN first to match normal turn flow (line ~19171). */
-        PlaySound(SND_TURN);
-        ShowTurnSplash(startPlayer);
+        /* Turn 1 announcement splash (castle gate with faction name). */
+        ShowTurnSplash(startPlayer);  /* plays SND_TURN internally */
 
         /* Hero offer — original game (68k CODE_117) has no army selection
          * dialog; starting armies are determined by scenario data. */
