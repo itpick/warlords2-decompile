@@ -73,7 +73,7 @@ static short sFactionAI[MAX_FACTIONS] = {0, 1, 1, 1, 1, 1, 1, 1};
 static short sOptionsPreset    = 0;  /* 0=Beginner, 1=Intermediate, 2=Advanced */
 static short sNeutralCities    = 0;  /* 0=Average, 1=Strong, 2=Active */
 static short sRazingCities     = 0;  /* 0=Always, 1=On Capture, 2=Never */
-static Boolean sOptQuests         = true;
+static Boolean sOptQuests         = false;
 static Boolean sOptViewEnemies    = true;
 static Boolean sOptHiddenMap      = false;
 static Boolean sOptDiplomacy      = false;
@@ -1069,7 +1069,7 @@ static void FogUpdatePlayer(short player)
     }
 }
 
-/* Signpost system: up to 20 map markers with short text */
+/* Signpost system: up to 20 user-placed map markers with short text */
 #define MAX_SIGNPOSTS 20
 static struct {
     short x, y;
@@ -1077,6 +1077,15 @@ static struct {
     Boolean active;
 } sSignposts[MAX_SIGNPOSTS];
 static short sSignpostCount = 0;
+
+/* SGN signposts: scenario-defined map labels loaded from SGN resource */
+#define MAX_SGN_SIGNPOSTS 60
+static struct {
+    short x, y;
+    char text[32];
+    Boolean active;
+} sSgnSignposts[MAX_SGN_SIGNPOSTS];
+static short sSgnSignpostCount = 0;
 
 /* City names — loaded from CTY resource */
 #define MAX_CITY_NAME 20
@@ -2282,6 +2291,73 @@ static void TryLoadScenario(void)
                 HUnlock(hdl);
                 ReleaseResource(hdl);
             }
+        }
+    }
+
+    /* Load SGN resource (scenario-defined map signposts) */
+    /* Format: 2-byte LE count, then count*104-byte entries.
+     * Each entry: x(2,LE) y(2,LE) text1 at entry+4, text2 at entry+54 (continuation). */
+    {
+        Handle sgnHdl = Get1Resource('SGN ', 10000);
+        sSgnSignpostCount = 0;
+        if (sgnHdl != NULL) {
+            long sgnSz = GetHandleSize(sgnHdl);
+            char *sgnBuf;
+            short sgnCount, n;
+            HLock(sgnHdl);
+            sgnBuf = (char *)*sgnHdl;
+            if (sgnSz >= 2) {
+                sgnCount = (short)((unsigned char)sgnBuf[0] |
+                                   ((unsigned char)sgnBuf[1] << 8));
+                for (n = 0; n < sgnCount && sSgnSignpostCount < MAX_SGN_SIGNPOSTS; n++) {
+                    long eoff = 2 + (long)n * 104;
+                    short ex, ey, di;
+                    long t1len = 0, t2len = 0;
+                    char last_c;
+                    if (eoff + 104 > sgnSz) break;
+                    ex = (short)((unsigned char)sgnBuf[eoff] |
+                                 ((unsigned char)sgnBuf[eoff+1] << 8));
+                    ey = (short)((unsigned char)sgnBuf[eoff+2] |
+                                 ((unsigned char)sgnBuf[eoff+3] << 8));
+                    /* Text chunk 1 at entry+4 */
+                    while (eoff + 4 + t1len < eoff + 54) {
+                        unsigned char c = (unsigned char)sgnBuf[eoff + 4 + t1len];
+                        if (c == 0 || c < 32 || c >= 127) break;
+                        t1len++;
+                    }
+                    if (t1len == 0) continue;
+                    /* Text chunk 2 at entry+54 (if chunk1 not sentence-complete) */
+                    while (eoff + 54 + t2len < eoff + 104) {
+                        unsigned char c = (unsigned char)sgnBuf[eoff + 54 + t2len];
+                        if (c == 0 || c < 32 || c >= 127) break;
+                        t2len++;
+                    }
+                    /* Build combined text */
+                    sSgnSignposts[sSgnSignpostCount].x = ex;
+                    sSgnSignposts[sSgnSignpostCount].y = ey;
+                    di = (short)(t1len > 31 ? 31 : t1len);
+                    BlockMoveData(sgnBuf + eoff + 4,
+                                  sSgnSignposts[sSgnSignpostCount].text, di);
+                    /* Append chunk2 if chunk1 doesn't end with sentence-ending punctuation */
+                    last_c = sSgnSignposts[sSgnSignpostCount].text[di - 1];
+                    if (t2len > 0 && di < 31 &&
+                        last_c != '!' && last_c != '.' && last_c != '?') {
+                        sSgnSignposts[sSgnSignpostCount].text[di++] = ' ';
+                        if (di < 31) {
+                            short copy_len = (short)(t2len > (31 - di) ? (31 - di) : t2len);
+                            BlockMoveData(sgnBuf + eoff + 54,
+                                          sSgnSignposts[sSgnSignpostCount].text + di,
+                                          copy_len);
+                            di += copy_len;
+                        }
+                    }
+                    sSgnSignposts[sSgnSignpostCount].text[di] = '\0';
+                    sSgnSignposts[sSgnSignpostCount].active = true;
+                    sSgnSignpostCount++;
+                }
+            }
+            HUnlock(sgnHdl);
+            ReleaseResource(sgnHdl);
         }
     }
 
@@ -4784,7 +4860,7 @@ static void ApplyOptionsPreset(short preset)
     case 0: /* Beginner */
         sNeutralCities   = 0;
         sRazingCities    = 0;
-        sOptQuests       = true;
+        sOptQuests       = false;
         sOptViewEnemies  = true;
         sOptHiddenMap    = false;
         sOptDiplomacy    = false;
@@ -4797,7 +4873,7 @@ static void ApplyOptionsPreset(short preset)
     case 1: /* Intermediate */
         sNeutralCities   = 1;
         sRazingCities    = 1;
-        sOptQuests       = true;
+        sOptQuests       = false;
         sOptViewEnemies  = false;
         sOptHiddenMap    = false;
         sOptDiplomacy    = true;
@@ -4810,7 +4886,7 @@ static void ApplyOptionsPreset(short preset)
     case 2: /* Advanced */
         sNeutralCities   = 2;
         sRazingCities    = 2;
-        sOptQuests       = true;
+        sOptQuests       = false;
         sOptViewEnemies  = false;
         sOptHiddenMap    = true;
         sOptDiplomacy    = true;
@@ -7611,6 +7687,39 @@ static void DrawMapInWindow(WindowPtr win)
                     }
                 }
             }
+        }
+
+        /* --- Draw SGN scenario signposts (map place-name labels) --- */
+        {
+            RGBColor sgnColor = {0xDDDD, 0xFFFF, 0xDDDD};  /* pale green */
+            TextFont(3);
+            TextSize(9);
+            TextFace(italic);
+            for (si = 0; si < sSgnSignpostCount; si++) {
+                if (!sSgnSignposts[si].active) continue;
+                {
+                    short sx = sSgnSignposts[si].x;
+                    short sy = sSgnSignposts[si].y;
+                    short screenX = winRect.left + (sx - sViewportX) * TERRAIN_TILE_W;
+                    short screenY = winRect.top  + (sy - sViewportY) * TERRAIN_TILE_H;
+                    if (screenX >= winRect.left - TERRAIN_TILE_W &&
+                        screenX < winRect.right &&
+                        screenY >= winRect.top - TERRAIN_TILE_H &&
+                        screenY < winRect.bottom) {
+                        if (sSgnSignposts[si].text[0] != 0) {
+                            Str255 pStr;
+                            short tl;
+                            for (tl = 0; tl < 31 && sSgnSignposts[si].text[tl]; tl++)
+                                pStr[tl + 1] = sSgnSignposts[si].text[tl];
+                            pStr[0] = (unsigned char)tl;
+                            RGBForeColor(&sgnColor);
+                            MoveTo(screenX + 2, screenY + TERRAIN_TILE_H - 2);
+                            DrawString(pStr);
+                        }
+                    }
+                }
+            }
+            TextFace(0);
         }
     }
 
@@ -20458,7 +20567,7 @@ static void ShowTurnSplash(short playerIdx)
         (qd.screenBits.bounds.right - winW) / 2,
         (qd.screenBits.bounds.bottom - winH) / 2);
 
-    splashWin = NewCWindow(NULL, &winRect, "\p", false,
+    splashWin = NewCWindow(NULL, &winRect, "\p", true,
                             plainDBox, (WindowPtr)-1L, false, 0);
     if (splashWin == NULL) return;
     SetPort(splashWin);
@@ -20592,9 +20701,6 @@ static void ShowTurnSplash(short playerIdx)
     }
 
     TextFace(0); TextFont(3); TextSize(9);
-
-    /* Show window after all drawing to avoid white flash */
-    ShowWindow(splashWin);
 
     /* Wait for click or ~2.5 seconds */
     endTick = TickCount() + 150;
@@ -22302,7 +22408,7 @@ static void AdvanceToNextPlayer(void)
  *         viewport/selection state (20B)
  * =================================================================== */
 #define SAVE_MAGIC  0x574C3253   /* 'WL2S' */
-#define SAVE_VERSION 5
+#define SAVE_VERSION 6
 
 static FSSpec sSaveFileSpec;
 static Boolean sSaveFileValid = false;
@@ -22458,6 +22564,14 @@ static Boolean SaveGameToFile(FSSpec *spec)
     {
         count = sizeof(sMoveCostTable);
         FSWrite(refNum, &count, sMoveCostTable);
+    }
+
+    /* v6: Scenario signposts (loaded from SGN resource at new-game time) */
+    {
+        count = 2;
+        FSWrite(refNum, &count, &sSgnSignpostCount);
+        count = sizeof(sSgnSignposts);
+        FSWrite(refNum, &count, sSgnSignposts);
     }
 
     FSClose(refNum);
@@ -22637,6 +22751,20 @@ static Boolean LoadGameFromFile(FSSpec *spec)
                 }
             }
         }
+    }
+
+    /* v6: Scenario signposts */
+    if (version >= 6) {
+        short sc = 0;
+        count = 2;
+        if (FSRead(refNum, &count, &sc) == noErr) {
+            sSgnSignpostCount = sc;
+            if (sSgnSignpostCount > MAX_SGN_SIGNPOSTS) sSgnSignpostCount = MAX_SGN_SIGNPOSTS;
+            count = sizeof(sSgnSignposts);
+            FSRead(refNum, &count, sSgnSignposts);
+        }
+    } else {
+        sSgnSignpostCount = 0;
     }
 
     /* Restore map dimensions from game state */
