@@ -19624,7 +19624,7 @@ static void ShowCityBuildSelection(short cityIndex)
                         short cy3 = rowY + ringR2;
                         short dx  = lp.h - cx3;
                         short dy  = lp.v - cy3;
-                        if (dx * dx + dy * dy <= (short)(ringR2 * ringR2)) {
+                        if ((long)dx * dx + (long)dy * dy <= (long)ringR2 * ringR2) {
                             selectedType = typeList[i3];
                             redraw = 1;
                             break;
