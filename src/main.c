@@ -19153,23 +19153,34 @@ static void ShowCityBuildSelection(short cityIndex)
             selectedType = -1;
     }
 
-    /* --- Centered 504×310 dialog window (dBoxProc = thick border, clearly distinct) --- */
-    {
+    /* --- Match main game window size/position (seamless overlay) --- */
+    if (*gMainGameWindow != 0) {
+        winRect = ((WindowPtr)*gMainGameWindow)->portRect;
+        /* Convert local portRect to global screen coords */
+        {
+            GrafPtr gp = (GrafPtr)*gMainGameWindow;
+            winRect.left   += gp->portBits.bounds.left;
+            winRect.right  += gp->portBits.bounds.left;
+            winRect.top    += gp->portBits.bounds.top;
+            winRect.bottom += gp->portBits.bounds.top;
+        }
+    } else {
+        /* Fallback: centered 512×342 */
         Rect screen = qd.screenBits.bounds;
         short sw = screen.right - screen.left;
         short sh = screen.bottom - screen.top;
-        short dl = (sw - 504) / 2;
-        short dt = (sh - 310) / 2;
+        short dl = (sw - 512) / 2;
+        short dt = (sh - 342) / 2;
         if (dt < 20) dt = 20;
-        SetRect(&winRect, dl, dt, dl + 504, dt + 310);
+        SetRect(&winRect, dl, dt, dl + 512, dt + 342);
     }
 
-    winW   = 504;
-    winH   = 310;
-    panelX = winW / 2;   /* 252 — left=map, right=marble */
+    winW   = winRect.right  - winRect.left;
+    winH   = winRect.bottom - winRect.top;
+    panelX = winW / 2;   /* left=map, right=marble */
 
     bsWin = NewCWindow(NULL, &winRect, "\p", true,
-                       dBoxProc, (WindowPtr)-1L, false, 0);
+                       plainDBox, (WindowPtr)-1L, false, 0);
     if (bsWin == NULL) return;
 
     /* --- Create offscreen GWorld --- */
@@ -19228,20 +19239,89 @@ static void ShowCityBuildSelection(short cityIndex)
 
                 SetRect(&rightR, panelX, 0, winW, winH);
 
-                /* ---- LEFT HALF: minimap (1px per tile, city crosshair) ---- */
+                /* ---- LEFT HALF: scaled minimap fills entire left panel ---- */
                 {
-                    short mmW = (sMapWidth  < panelX) ? sMapWidth  : panelX - 4;
-                    short mmH = (sMapHeight < winH)   ? sMapHeight : winH   - 4;
-                    short mmX = (panelX - mmW) / 2;
-                    short mmY = (winH   - mmH) / 2;
-                    Rect mmRect;
                     Rect leftPanel;
-                    RGBColor bg = {0x0000, 0x0000, 0x0000};
                     SetRect(&leftPanel, 0, 0, panelX, winH);
-                    RGBForeColor(&bg);
-                    PaintRect(&leftPanel);
-                    SetRect(&mmRect, mmX, mmY, mmX + mmW, mmY + mmH);
-                    DrawMinimapInRect(&mmRect, cityX, cityY);
+                    /* Fill with dark background first */
+                    {
+                        RGBColor bg = {0x0000, 0x0000, 0x0000};
+                        RGBForeColor(&bg);
+                        PaintRect(&leftPanel);
+                    }
+                    if (sMapLoaded && *gMapTiles != 0 && sMapWidth > 0 && sMapHeight > 0) {
+                        unsigned char *mapData = (unsigned char *)*gMapTiles;
+                        unsigned char *scnData = (*gGameState != 0) ? (unsigned char *)*gGameState : NULL;
+                        /* Compute integer scale: largest factor where scaled map fits panel */
+                        short scaleX = panelX / sMapWidth;
+                        short scaleY = winH   / sMapHeight;
+                        short scale  = (scaleX < scaleY) ? scaleX : scaleY;
+                        short mmW, mmH, mmX, mmY, mx, my;
+                        if (scale < 1) scale = 1;
+                        mmW = sMapWidth  * scale;
+                        mmH = sMapHeight * scale;
+                        mmX = (panelX - mmW) / 2;
+                        mmY = (winH   - mmH) / 2;
+                        for (my = 0; my < sMapHeight; my++) {
+                            for (mx = 0; mx < sMapWidth; mx++) {
+                                unsigned short tileOffset = my * 0xE0 + mx * 2;
+                                unsigned char  terrainIdx = mapData[tileOffset];
+                                Rect tileR;
+                                SetRect(&tileR,
+                                    mmX + mx * scale, mmY + my * scale,
+                                    mmX + mx * scale + scale, mmY + my * scale + scale);
+                                if (sMapColorLoaded && terrainIdx < MAPCOLOR_SIZE) {
+                                    short colorIdx = (short)sMapColor[terrainIdx];
+                                    if (colorIdx >= MINIMAP_PAL_SIZE) colorIdx = 0;
+                                    RGBForeColor(&sMinimapPalette[colorIdx]);
+                                } else if (scnData != NULL) {
+                                    short terrainType = (short)(unsigned char)scnData[terrainIdx + 0x711];
+                                    if (terrainType >= NUM_TERRAIN_COLORS) terrainType = 0;
+                                    RGBForeColor(&sTerrainColors[terrainType]);
+                                } else {
+                                    RGBColor water = {0x0000, 0x4444, 0xAAAA};
+                                    RGBForeColor(&water);
+                                }
+                                PaintRect(&tileR);
+                            }
+                        }
+                        /* City dots (2×2 white squares) */
+                        if (*gGameState != 0) {
+                            unsigned char *gs2 = (unsigned char *)*gGameState;
+                            short cityCount = *(short *)(gs2 + 0x810);
+                            short ci;
+                            if (cityCount > 40) cityCount = 40;
+                            for (ci = 0; ci < cityCount; ci++) {
+                                unsigned char *ct = gs2 + 0x812 + ci * 0x20;
+                                short cx = *(short *)(ct + 0x00);
+                                short cy = *(short *)(ct + 0x02);
+                                short owner = (short)(unsigned char)ct[0x04];
+                                Rect dot;
+                                RGBColor dotCol;
+                                SetRect(&dot, mmX+cx*scale, mmY+cy*scale,
+                                              mmX+cx*scale+scale, mmY+cy*scale+scale);
+                                if (owner < 8) {
+                                    dotCol = sMinimapPalette[owner + 2];
+                                } else {
+                                    RGBColor w = {0xFFFF,0xFFFF,0xFFFF};
+                                    dotCol = w;
+                                }
+                                RGBForeColor(&dotCol);
+                                PaintRect(&dot);
+                            }
+                        }
+                        /* Red crosshair box around highlighted city tile */
+                        if (cityX >= 0 && cityY >= 0) {
+                            RGBColor red = {0xEEEE, 0x0000, 0x0000};
+                            Rect box;
+                            SetRect(&box, mmX+cityX*scale-1, mmY+cityY*scale-1,
+                                         mmX+cityX*scale+scale+1, mmY+cityY*scale+scale+1);
+                            RGBForeColor(&red);
+                            PenSize(2, 2);
+                            FrameRect(&box);
+                            PenSize(1, 1);
+                        }
+                    }
                 }
 
                 /* ---- RIGHT HALF: marble panel ---- */
@@ -19405,29 +19485,42 @@ static void ShowCityBuildSelection(short cityIndex)
                     }
                 }
 
-                /* STOP button: cicn 3304 */
+                /* STOP button: grey square bg (matches nav buttons) + cicn 3304 stop sign */
                 {
                     Rect stopR;
                     CIconHandle stopIcon;
+                    RGBColor navGrey = {0x9999, 0x9999, 0x9999};
+                    RGBColor navBorder = {0x4444, 0x4444, 0x4444};
                     SetRect(&stopR, stopX, stopY, stopX + stopW, stopY + stopH);
-                    /* Yellow outline when STOP is active */
+                    /* Grey background */
+                    RGBForeColor(&navGrey);
+                    PaintRect(&stopR);
+                    /* Border: bright yellow when STOP is selected, dark grey otherwise */
                     if (selectedType == -1) {
-                        RGBColor yellow = {0xFFFF, 0xFFFF, 0x0000};
+                        RGBColor yellow = {0xFFFF, 0xCC00, 0x0000};
                         RGBForeColor(&yellow);
-                        PenSize(2, 2);
-                        FrameRect(&stopR);
-                        PenSize(1, 1);
+                    } else {
+                        RGBForeColor(&navBorder);
                     }
+                    PenSize(2, 2);
+                    FrameRect(&stopR);
+                    PenSize(1, 1);
                     stopIcon = GetCIcon(3304);
                     if (stopIcon != NULL) {
                         PlotCIcon(&stopR, stopIcon);
                         DisposeCIcon(stopIcon);
                     } else {
-                        /* fallback: red rect with text */
-                        RGBColor red2 = {0xDDDD, 0x2222, 0x2222};
+                        /* fallback: red octagon outline + "STOP" text */
+                        RGBColor red2 = {0xDDDD, 0x1111, 0x1111};
                         RGBColor white3 = {0xFFFF, 0xFFFF, 0xFFFF};
                         short tw3;
-                        RGBForeColor(&red2); PaintRect(&stopR);
+                        RGBForeColor(&red2);
+                        {
+                            Rect oct;
+                            short m = 6;
+                            SetRect(&oct, stopX+m, stopY+2, stopX+stopW-m, stopY+stopH-2);
+                            PaintRoundRect(&oct, 4, 4);
+                        }
                         RGBForeColor(&white3);
                         TextFont(0); TextSize(8); TextFace(bold);
                         tw3 = StringWidth("\pSTOP");
@@ -19458,11 +19551,14 @@ static void ShowCityBuildSelection(short cityIndex)
                     TextFace(0);
                 }
 
-                /* Bottom navigation buttons: cicn 3300=? 3301=tower 3302=hammer 3303=arrows */
+                /* Bottom navigation buttons: grey bg + cicn 3300=? 3301=tower 3302=hammer 3303=arrows */
                 {
                     short navCicnIDs[4] = {3300, 3301, 3302, 3303};
                     short navXs[4];
                     short ni;
+                    RGBColor navGrey   = {0x9999, 0x9999, 0x9999};
+                    RGBColor navBorder = {0x4444, 0x4444, 0x4444};
+                    RGBColor navAmber  = {0xFFFF, 0xAA00, 0x0000};
                     navXs[0] = navBtn0X;
                     navXs[1] = navBtn1X;
                     navXs[2] = navBtn2X;
@@ -19472,14 +19568,14 @@ static void ShowCityBuildSelection(short cityIndex)
                         CIconHandle navIcon;
                         SetRect(&navR, navXs[ni], navBtnY,
                                 navXs[ni] + navBtnW, navBtnY + navBtnH);
-                        /* Highlight Build tab (current) with amber border */
-                        if (ni == 1) {
-                            RGBColor amber = {0xFFFF, 0xAAAA, 0x0000};
-                            RGBForeColor(&amber);
-                            PenSize(2, 2);
-                            FrameRoundRect(&navR, 4, 4);
-                            PenSize(1, 1);
-                        }
+                        /* Grey background */
+                        RGBForeColor(&navGrey);
+                        PaintRect(&navR);
+                        /* Border: amber for Build (current tab), dark grey otherwise */
+                        RGBForeColor(ni == 1 ? &navAmber : &navBorder);
+                        PenSize(2, 2);
+                        FrameRect(&navR);
+                        PenSize(1, 1);
                         navIcon = GetCIcon(navCicnIDs[ni]);
                         if (navIcon != NULL) {
                             PlotCIcon(&navR, navIcon);
