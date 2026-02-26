@@ -19228,134 +19228,38 @@ static void ShowCityBuildSelection(short cityIndex)
              * REDRAW
              * ====================================================== */
             if (redraw) {
-                Rect leftR, rightR;
+                Rect rightR;
 
                 GetGWorld(&savePort, &saveGD);
                 SetGWorld(bsGW, NULL);
                 LockPixels(GetGWorldPixMap(bsGW));
 
-                SetRect(&leftR,  0,      0, panelX, winH);
-                SetRect(&rightR, panelX, 0, winW,   winH);
+                SetRect(&rightR, panelX, 0, winW, winH);
 
-                /* ---- LEFT HALF: terrain tiles ---- */
+                /* ---- LEFT HALF: full map render via DrawMapInWindow ----
+                 * GWorldPtr is a CGrafPtr which shares the same portRect and
+                 * portBits/portPixMap layout as a GrafPtr/WindowPtr in Classic
+                 * Mac.  Casting bsGW to WindowPtr lets DrawMapInWindow blit
+                 * terrain, roads and army sprites directly into the GWorld pixel
+                 * buffer in one call, eliminating the duplicate tile loop. The
+                 * right half is overwritten by DrawMarbleBackground below, so no
+                 * clipping to panelX is required here. */
+                DrawMapInWindow((WindowPtr)bsGW);
+
+                /* Red 2px highlight on city tile (drawn after map so it is on top) */
                 {
-                    unsigned char *mapData2 = NULL;
-                    unsigned char *scnData2 = (*gGameState != 0)
-                        ? (unsigned char *)*gGameState : NULL;
-                    short  tilesWide2, tilesHigh2;
-                    short  tx2, ty2;
-                    Boolean hasScn2 = (scnData2 != NULL);
-
-                    if (sMapLoaded && *gMapTiles != 0)
-                        mapData2 = (unsigned char *)*gMapTiles;
-
-                    /* Dark-green base fill */
-                    {
-                        RGBColor darkGreen = {0x2222, 0x5555, 0x2222};
-                        RGBForeColor(&darkGreen);
-                        PaintRect(&leftR);
-                    }
-
-                    if (mapData2 != NULL) {
-                        tilesWide2 = panelX / TERRAIN_TILE_W + 2;
-                        tilesHigh2 = winH   / TERRAIN_TILE_H + 2;
-
-                        if (sTerrainLoaded) {
-                            if (sTerrainGW  != NULL)
-                                LockPixels(GetGWorldPixMap(sTerrainGW));
-                            if (sTerrainGW2 != NULL)
-                                LockPixels(GetGWorldPixMap(sTerrainGW2));
-                        }
-
-                        for (ty2 = 0; ty2 < tilesHigh2; ty2++) {
-                            for (tx2 = 0; tx2 < tilesWide2; tx2++) {
-                                short mapX2 = sViewportX + tx2;
-                                short mapY2 = sViewportY + ty2;
-                                short terrIdx2, terrType2;
-                                short dL, dT, dR, dB;
-                                Rect  srcR2, dstR2;
-
-                                if (mapX2 < 0 || mapX2 >= sMapWidth  ||
-                                    mapY2 < 0 || mapY2 >= sMapHeight)
-                                    continue;
-
-                                terrIdx2 = (short)(unsigned char)
-                                    mapData2[mapY2 * 0xE0 + mapX2 * 2];
-
-                                if (hasScn2)
-                                    terrType2 = (short)(unsigned char)
-                                        scnData2[terrIdx2 + 0x711];
-                                else
-                                    terrType2 = (terrIdx2 >> 4) & 0x0F;
-
-                                if (terrType2 >= NUM_TERRAIN_COLORS)
-                                    terrType2 = 0;
-
-                                dL = tx2 * TERRAIN_TILE_W;
-                                dT = ty2 * TERRAIN_TILE_H;
-                                dR = dL + TERRAIN_TILE_W;
-                                dB = dT + TERRAIN_TILE_H;
-
-                                if (dL >= panelX) continue;
-                                if (dR > panelX) dR = panelX;
-
-                                SetRect(&dstR2, dL, dT, dR, dB);
-
-                                if (sTerrainLoaded) {
-                                    short local2 = terrIdx2 %
-                                        TERRAIN_TILES_PER_SHEET;
-                                    short sCol2  = local2 % TERRAIN_COLS;
-                                    short sRow2  = local2 / TERRAIN_COLS;
-                                    GWorldPtr sheet2 =
-                                        (terrIdx2 < TERRAIN_TILES_PER_SHEET)
-                                        ? sTerrainGW : sTerrainGW2;
-
-                                    if (sheet2 != NULL) {
-                                        PixMapHandle srcPix2 =
-                                            GetGWorldPixMap(sheet2);
-                                        SetRect(&srcR2,
-                                            sCol2 * TERRAIN_TILE_W,
-                                            sRow2 * TERRAIN_TILE_H,
-                                            (sCol2 + 1) * TERRAIN_TILE_W,
-                                            (sRow2 + 1) * TERRAIN_TILE_H);
-                                        CopyBits(
-                                            (BitMap *)*srcPix2,
-                                            (BitMap *)*GetGWorldPixMap(bsGW),
-                                            &srcR2, &dstR2,
-                                            srcCopy, NULL);
-                                        continue;
-                                    }
-                                }
-
-                                /* Fallback: flat color */
-                                RGBForeColor(&sTerrainColors[terrType2]);
-                                PaintRect(&dstR2);
-                            }
-                        }
-
-                        if (sTerrainLoaded) {
-                            if (sTerrainGW  != NULL)
-                                UnlockPixels(GetGWorldPixMap(sTerrainGW));
-                            if (sTerrainGW2 != NULL)
-                                UnlockPixels(GetGWorldPixMap(sTerrainGW2));
-                        }
-                    }
-
-                    /* Red 2px highlight on city tile */
-                    {
-                        short sx2 = (cityX - sViewportX) * TERRAIN_TILE_W;
-                        short sy2 = (cityY - sViewportY) * TERRAIN_TILE_H;
-                        if (sx2 >= 0 && sx2 < panelX && sy2 >= 0 && sy2 < winH) {
-                            Rect   capR;
-                            RGBColor red = {0xDDDD, 0x1111, 0x1111};
-                            SetRect(&capR, sx2, sy2,
-                                    sx2 + TERRAIN_TILE_W, sy2 + TERRAIN_TILE_H);
-                            if (capR.right > panelX) capR.right = panelX;
-                            RGBForeColor(&red);
-                            PenSize(2, 2);
-                            FrameRect(&capR);
-                            PenSize(1, 1);
-                        }
+                    short sx2 = (cityX - sViewportX) * TERRAIN_TILE_W;
+                    short sy2 = (cityY - sViewportY) * TERRAIN_TILE_H;
+                    if (sx2 >= 0 && sx2 < panelX && sy2 >= 0 && sy2 < winH) {
+                        Rect   capR;
+                        RGBColor red = {0xDDDD, 0x1111, 0x1111};
+                        SetRect(&capR, sx2, sy2,
+                                sx2 + TERRAIN_TILE_W, sy2 + TERRAIN_TILE_H);
+                        if (capR.right > panelX) capR.right = panelX;
+                        RGBForeColor(&red);
+                        PenSize(2, 2);
+                        FrameRect(&capR);
+                        PenSize(1, 1);
                     }
                 }
 
