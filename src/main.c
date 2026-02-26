@@ -112,7 +112,7 @@ static short sSoundMusic = 5;
 /* snd resource IDs from original app */
 #define SND_ARMY      1000  /* army selection/movement */
 #define SND_ARMY2     1001  /* secondary army sound */
-#define SND_CHORD     1002  /* completion/success */
+#define SND_CHORD     1002  /* invalid move / error */
 #define SND_DING      1003  /* notification ding */
 #define SND_DRAMATIC  1004  /* dramatic event */
 #define SND_ORCH      1005  /* orchestral fanfare */
@@ -21132,8 +21132,7 @@ static void ShowTurnSplash(short playerIdx)
     if (splashWin == NULL) return;
     SetPort(splashWin);
 
-    PlaySound(SND_CHORD);  /* metal bong at turn announcement */
-    PlaySound(SND_SPLASH);
+    PlaySound(SND_TURN);  /* turn announcement bong */
 
     /* Draw castle gate background (PICT 3100, 320x312) */
     gatePict = GetPicture(3100);
@@ -27175,6 +27174,21 @@ int main(void)
         /* Hero offer — original game (68k CODE_117) has no army selection
          * dialog; starting armies are determined by scenario data. */
         ShowHeroHire(startPlayer, true);
+
+        /* Turn 1: prompt player to set production for all owned cities.
+         * Always shown at game start regardless of current production. */
+        if (*gExtState != 0) {
+            unsigned char *t1Ext = (unsigned char *)*gExtState;
+            short t1CC = *(short *)(gs + 0x810);
+            short t1CI;
+            if (t1CC > 40) t1CC = 40;
+            for (t1CI = 0; t1CI < t1CC; t1CI++) {
+                unsigned char *t1City = gs + 0x812 + t1CI * 0x20;
+                if ((short)(unsigned char)t1City[0x18] >= 2) continue;
+                if (*(short *)(t1City + 0x04) != startPlayer) continue;
+                ShowCityBuildSelection(t1CI);
+            }
+        }
     }
 
     /* Force-redraw all game windows before entering event loop.
