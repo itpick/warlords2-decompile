@@ -76,6 +76,21 @@ See [`docs/CODEWARRIOR.md`](docs/CODEWARRIOR.md) for a full technical reference
 covering the 68k and PPC ABIs, struct alignment pragmas, inter-segment call
 mechanics, Mixed Mode interop, and key differences from MPW/GCC.
 
+## UI Design Decisions
+
+Key dialog and UI design decisions are documented in [`docs/plans/`](docs/plans/). Summary:
+
+### City Build Selection (`ShowCityBuildSelection`)
+
+Full-window overlay matching the original Warlords II city production screen. See [`docs/plans/2026-02-26-city-build-selection-design.md`](docs/plans/2026-02-26-city-build-selection-design.md) for full spec. Key decisions:
+
+- **Full-window replacement** (not a modal popup): a `CWindow` the same size as the main game window. Left half = live map at current viewport with a red box around the capital tile. Right half = marble panel.
+- **Right panel layout**: faction name (Illuria 24pt gold) → "CAPITAL" shield + "Current:" ring indicator → row of up to 4 unit type icons each with a 36×36 procedurally-drawn selection ring (solid purple/blue when selected, grey outline when not) → STOP button → bottom action buttons + Done.
+- **Selection rings**: drawn via `FrameOval`/`PaintOval`, unit sprite drawn centered on top. No separate ring resource needed.
+- **Triggers**: fires automatically at turn start for any owned city with `extCity+0x02 < 0` (no production set), and on any city click.
+- **Escape/Cancel**: leaves production unset; auto-prompt fires again next turn.
+- **68k reference**: `CODE_045.c` `FUN_00000e5c` (city view render), `FUN_000011ca` (city view init).
+
 ## Project Structure
 
 - `src/main.c` — Main game source (single-file reconstruction)
