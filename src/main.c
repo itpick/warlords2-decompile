@@ -740,7 +740,6 @@ static RGBColor sPlayerColors[9] = {
 static GWorldPtr sTerrainGW   = NULL;   /* PICT 30022: tiles 0-95 */
 static GWorldPtr sTerrainGW2  = NULL;   /* PICT 30023: tiles 96-191 */
 static GWorldPtr sRoadGW      = NULL;   /* PICT 30021: road/overlay sprites (16x2 grid) */
-static GWorldPtr sRoadMaskGW  = NULL;   /* 1-bit mask generated from sRoadGW for CopyMask */
 static RGBColor  sRoadBgColor;          /* road sprite sheet background color */
 static Boolean   sTerrainLoaded = false;
 static short     sTerrainResFile = -1;
@@ -1347,10 +1346,12 @@ static void CenterViewportOnPlayer(void)
     /* Try capital city first (68k: verify capital still owned by player) */
     {
         unsigned char *pstat = gs + 0x186 + currentPlayer * 0x14;
-        short capX = *(short *)(pstat + 0x04);
-        short capY = *(short *)(pstat + 0x06);
+        /* Read from pstat+0x0E/0x10 (68k start_x/start_y, written by GameInit
+         * capital coord loop). If zero (loop hasn't run), fall back to raw SCN
+         * byte values at pstat[3]=capX and pstat[5]=capY. */
+        short capX = *(short *)(pstat + 0x0E);
+        short capY = *(short *)(pstat + 0x10);
 
-        /* Fallback to raw byte capital coords if shorts not yet written */
         if (capX == 0 && capY == 0) {
             capX = (short)(unsigned char)pstat[3];
             capY = (short)(unsigned char)pstat[5];
@@ -1521,12 +1522,18 @@ static void GameInit(void)
      * code (income, production, rendering) has correct X/Y, owner, and production. */
     {
         /* Read player capital coordinates from raw SCN player stat blocks.
-         * pstat = gs+0x186+p*0x14. Capital X is a BYTE at pstat[3], Y at pstat[5]. */
+         * pstat = gs+0x186+p*0x14. Capital X is a BYTE at pstat[3] (low byte
+         * of the BE short at pstat+0x02), Y at pstat[5] (low byte of pstat+0x04).
+         * Write them immediately to pstat+0x0E/0x10 (68k start_x/start_y) so
+         * army creation and CenterViewportOnPlayer always find valid coords there,
+         * regardless of whether the capital coord writing loop below succeeds. */
         short capX[8], capY[8];
         for (i = 0; i < 8; i++) {
             unsigned char *pstat = gs + 0x186 + i * 0x14;
             capX[i] = (short)(unsigned char)pstat[3];
             capY[i] = (short)(unsigned char)pstat[5];
+            *(short *)(pstat + 0x0E) = capX[i];
+            *(short *)(pstat + 0x10) = capY[i];
         }
 
         /* Count valid city records (scan until X=0 && Y=0 or out of bounds) */
@@ -1992,11 +1999,19 @@ static void GameInit(void)
         for (i = 0; i < fCount && armyCount < 100; i++) {
             unsigned char *pstat  = gs + 0x186 + i * 0x14;
             short pAlive = *(short *)(gs + 0x138 + i * 2);
-            short capX   = *(short *)(pstat + 0x04);
-            short capY   = *(short *)(pstat + 0x06);
+            /* Read capital coords from pstat+0x0E/0x10 (68k start_x/start_y).
+             * The capital coord writing loop writes capX/capY here. If it
+             * hasn't run yet (zero from NewPtrClear), fall back to the raw
+             * SCN byte values at pstat[3] (capX) and pstat[5] (capY). */
+            short capX   = *(short *)(pstat + 0x0E);
+            short capY   = *(short *)(pstat + 0x10);
             short unitType = 0;
 
             if (!pAlive) continue;
+            if (capX == 0 && capY == 0) {
+                capX = (short)(unsigned char)pstat[3];
+                capY = (short)(unsigned char)pstat[5];
+            }
             if (capX <= 0 && capY <= 0) continue;
             if (capX < 0 || capX >= sMapWidth || capY < 0 || capY >= sMapHeight) continue;
 
@@ -2646,76 +2661,18 @@ static void LoadTerrainSprites(void)
      * Tile index = (RD value - 1). col = tileIdx % 13, row = tileIdx / 13. */
     sRoadGW = LoadPICTIntoGWorld(30021);
 
-    /* Generate a 1-bit mask from the road sprite sheet for CopyMask.
-     * In 1-bit GWorlds: BLACK = bit 1 = copy source, WHITE = bit 0 = skip.
-     * So: background → WHITE (transparent), road pixels → BLACK (opaque). */
+    /* Sample road sprite background color for transparent-mode CopyBits.
+     * Row 1 (y=40+) of PICT 30021 is all empty background — no road tiles
+     * reach row 1 in any shipped scenario (all tile indices 0-12 stay in row 0).
+     * Sampling at (0,40) gives the uniform background for mode-36 transparency. */
     if (sRoadGW != NULL) {
         CGrafPtr sp;
         GDHandle sd;
         PixMapHandle roadPM = GetGWorldPixMap(sRoadGW);
-        Rect roadBounds;
-        short rw, rh;
-
         GetGWorld(&sp, &sd);
         SetGWorld(sRoadGW, NULL);
         LockPixels(roadPM);
-        /* Sample background color from row 1, column 2 (x=80, y=40) which is empty
-         * space in the 16-col grid (only tile 16 is at row 1, col 0). */
-        GetCPixel(80, 40, &sRoadBgColor);
-
-        roadBounds = (**roadPM).bounds;
-        rw = roadBounds.right - roadBounds.left;
-        rh = roadBounds.bottom - roadBounds.top;
-
-        {
-            Rect maskBounds;
-            OSErr maskErr;
-            SetRect(&maskBounds, 0, 0, rw, rh);
-            maskErr = NewGWorld(&sRoadMaskGW, 1, &maskBounds, NULL, NULL, 0);
-            if (maskErr == noErr && sRoadMaskGW != NULL) {
-                PixMapHandle maskPM = GetGWorldPixMap(sRoadMaskGW);
-                RGBColor pixel, black;
-                short mx, my;
-
-                LockPixels(maskPM);
-                black.red = 0; black.green = 0; black.blue = 0;
-
-                /* Fill mask with WHITE (all transparent via EraseRect).
-                 * Then set road pixels to BLACK (opaque/copy source). */
-                SetGWorld(sRoadMaskGW, NULL);
-                EraseRect(&maskBounds);
-
-                for (my = 0; my < rh; my++) {
-                    unsigned char rowMask[640];
-                    short nonBgCount = 0;
-
-                    /* Read source row */
-                    SetGWorld(sRoadGW, NULL);
-                    for (mx = 0; mx < rw && mx < 640; mx++) {
-                        GetCPixel(mx, my, &pixel);
-                        if (pixel.red != sRoadBgColor.red ||
-                            pixel.green != sRoadBgColor.green ||
-                            pixel.blue != sRoadBgColor.blue)
-                        {
-                            rowMask[mx] = 1;
-                            nonBgCount++;
-                        } else {
-                            rowMask[mx] = 0;
-                        }
-                    }
-
-                    /* Write mask row: set road pixels to BLACK (copy source) */
-                    if (nonBgCount > 0) {
-                        SetGWorld(sRoadMaskGW, NULL);
-                        for (mx = 0; mx < rw && mx < 640; mx++) {
-                            if (rowMask[mx])
-                                SetCPixel(mx, my, &black);
-                        }
-                    }
-                }
-                UnlockPixels(maskPM);
-            }
-        }
+        GetCPixel(0, 40, &sRoadBgColor);
         UnlockPixels(roadPM);
         SetGWorld(sp, sd);
     }
@@ -4723,14 +4680,30 @@ static Boolean ShowScenarioSelection(void)
         MoveTo(barLeft, barTop - 6);
         DrawString(GetCachedString(STR_MISC, 25, "\pReading scenario data..."));
 
-        /* Cover any PICT 1010 embedded bar graphic before drawing our own.
-         * The PICT background may have a decorative bar at wider dimensions. */
+        /* Draw PICT 1011 as full-width decorative border strips above and below
+         * the progress bar, framing the loading bar section. */
         {
-            Rect coverR;
-            RGBColor parchment = {0xDDDD, 0xCCCC, 0xAAAA};
-            SetRect(&coverR, 60, barTop - 4, 420, barTop + barH + 4);
-            RGBForeColor(&parchment);
-            PaintRect(&coverR);
+            PicHandle borderPict = GetPicture(1011);
+            if (borderPict != NULL) {
+                Rect pf = (**borderPict).picFrame;
+                short bh = pf.bottom - pf.top;
+                if (bh < 4) bh = 20;  /* safety floor */
+                {
+                    Rect topBand, btmBand;
+                    SetRect(&topBand, 0, barTop - bh - 4, 480, barTop - 4);
+                    SetRect(&btmBand, 0, barTop + barH + 4, 480, barTop + barH + bh + 4);
+                    DrawPicture(borderPict, &topBand);
+                    DrawPicture(borderPict, &btmBand);
+                }
+                KillPicture(borderPict);
+            } else {
+                /* Fallback: parchment cover rect */
+                Rect coverR;
+                RGBColor parchment = {0xDDDD, 0xCCCC, 0xAAAA};
+                SetRect(&coverR, 60, barTop - 4, 420, barTop + barH + 4);
+                RGBForeColor(&parchment);
+                PaintRect(&coverR);
+            }
         }
 
         /* Progress bar frame */
@@ -4925,6 +4898,24 @@ static Boolean ShowScenarioSelection(void)
         RGBForeColor(&ltBlue);
         MoveTo(barLeft, barTop - 6);
         DrawString(GetCachedString(STR_MISC, 27, "\pCreating terrain and placing cities..."));
+
+        /* PICT 1011 decorative border strips around the progress bar */
+        {
+            PicHandle borderPict = GetPicture(1011);
+            if (borderPict != NULL) {
+                Rect pf = (**borderPict).picFrame;
+                short bh = pf.bottom - pf.top;
+                if (bh < 4) bh = 20;
+                {
+                    Rect topBand, btmBand;
+                    SetRect(&topBand, 0, barTop - bh - 4, 460, barTop - 4);
+                    SetRect(&btmBand, 0, barTop + barH + 4, 460, barTop + barH + bh + 4);
+                    DrawPicture(borderPict, &topBand);
+                    DrawPicture(borderPict, &btmBand);
+                }
+                KillPicture(borderPict);
+            }
+        }
 
         /* Progress bar frame */
         SetRect(&barFrame, barLeft, barTop, barRight, barTop + barH);
@@ -6806,12 +6797,12 @@ static void DrawMapInWindow(WindowPtr win)
         unsigned char *roadData = (unsigned char *)*gRoadData;
         short rdMapH = sMapHeight;
         PixMapHandle roadPix = GetGWorldPixMap(sRoadGW);
-        Boolean useMask = (sRoadMaskGW != NULL);
-        PixMapHandle maskPix = useMask ? GetGWorldPixMap(sRoadMaskGW) : NULL;
+        RGBColor savedBg;
 
         if (rdMapH > 156) rdMapH = 156;
         LockPixels(roadPix);
-        if (useMask) LockPixels(maskPix);
+        GetBackColor(&savedBg);
+        RGBBackColor(&sRoadBgColor);
 
         for (ty = 0; ty < tilesHigh; ty++) {
             for (tx = 0; tx < tilesWide; tx++) {
@@ -6823,12 +6814,11 @@ static void DrawMapInWindow(WindowPtr win)
 
                 if (rMapX < 0 || rMapX >= 112 || rMapY < 0 || rMapY >= rdMapH)
                     continue;
-                rd = roadData[rMapY * 112 + rMapX] & 0x1F; /* mask off flag bits */
+                rd = roadData[rMapY * 112 + rMapX] & 0x1F;
                 if (rd == 0) continue;
 
-                /* Direct mapping: tile index = RD value - 1 (original game subtracts 1) */
                 tileIdx = rd - 1;
-                spriteCol = tileIdx % 13;  /* 13 road tiles per row (68k confirmed) */
+                spriteCol = tileIdx % 13;
                 spriteRow = tileIdx / 13;
                 SetRect(&srcRect,
                     spriteCol * TERRAIN_TILE_W,
@@ -6842,29 +6832,17 @@ static void DrawMapInWindow(WindowPtr win)
                     winRect.left + (tx + 1) * TERRAIN_TILE_W,
                     winRect.top  + (ty + 1) * TERRAIN_TILE_H);
 
-                /* Use CopyMask like the original: source pixels + 1-bit mask.
-                 * In the mask, BLACK=1=copy, WHITE=0=skip (transparent). */
-                if (useMask) {
-                    CopyMask((BitMap *)*roadPix,
-                             (BitMap *)*maskPix,
-                             &((GrafPtr)win)->portBits,
-                             &srcRect, &srcRect, &dstRect);
-                } else {
-                    /* Fallback: mode 36 (transparent) if mask unavailable */
-                    RGBColor savedBg;
-                    GetBackColor(&savedBg);
-                    RGBBackColor(&sRoadBgColor);
-                    CopyBits((BitMap *)*roadPix,
-                             &((GrafPtr)win)->portBits,
-                             &srcRect, &dstRect,
-                             36, NULL);
-                    RGBBackColor(&savedBg);
-                }
+                /* Transparent blit: pixels matching sRoadBgColor are skipped.
+                 * Same pattern as army sprite rendering (mode 36 = transparent). */
+                CopyBits((BitMap *)*roadPix,
+                         &((GrafPtr)win)->portBits,
+                         &srcRect, &dstRect,
+                         36, NULL);
             }
         }
 
+        RGBBackColor(&savedBg);
         UnlockPixels(roadPix);
-        if (useMask) UnlockPixels(maskPix);
     }
 
     /* --- Fog of war overlay (bitmap-based) --- */
@@ -7281,29 +7259,8 @@ static void DrawMapInWindow(WindowPtr win)
                         RGBBackColor(&savedBg);
                     }
                     UnlockPixels(GetGWorldPixMap(armyGW));
-
-                    /* Draw faction shield icon overlapping army sprite.
-                     * 68k CODE_067 case 3: shield at (tileX+7, tileY+7), 26x27px. */
-                    if (owner >= 0 && owner < MAX_FACTIONS) {
-                        Rect shR;
-                        SetRect(&shR, screenX + 7, screenY + 7,
-                                screenX + 7 + SMALL_SHIELD_W, screenY + 7 + SMALL_SHIELD_H);
-                        DrawMapShield(owner, &shR);
-                    } else {
-                        /* Neutral army (owner 0x0F): small gray shield.
-                         * 68k remaps 0x0F to player 8 index. */
-                        Rect nR;
-                        RGBColor gray = {0x8888, 0x8888, 0x8888};
-                        RGBColor black = {0, 0, 0};
-                        SetRect(&nR, screenX + 7, screenY + 7,
-                                screenX + 7 + 12, screenY + 7 + 12);
-                        RGBForeColor(&gray);
-                        PaintRoundRect(&nR, 4, 4);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&nR, 4, 4);
-                    }
                 } else {
-                    /* No army sprites loaded — draw shield + colored oval */
+                    /* No army sprites loaded — draw colored oval fallback */
                     Rect markerR;
                     RGBColor black = {0, 0, 0};
                     SetRect(&markerR, screenX + 6, screenY + 2,
@@ -7312,77 +7269,87 @@ static void DrawMapInWindow(WindowPtr win)
                     PaintOval(&markerR);
                     RGBForeColor(&black);
                     FrameOval(&markerR);
-                    /* Shield icon at tile+7,+7 */
-                    if (owner >= 0 && owner < MAX_FACTIONS) {
-                        Rect shR;
-                        SetRect(&shR, screenX + 7, screenY + 7,
-                                screenX + 7 + SMALL_SHIELD_W, screenY + 7 + SMALL_SHIELD_H);
-                        DrawMapShield(owner, &shR);
-                    }
                 }
             }
         }
     }
 
-    /* --- Draw army strength numbers --- */
-    if (hasScn) {
+    /* --- Draw army strength flag indicators (from sArmyGW bottom strip) ---
+     * PICT 30000-30007 bottom row (y=32..63) contains 4 pennant flag tiers:
+     *   Tier 0 (y=32..39): tiny flag   — str 1-3
+     *   Tier 1 (y=40..47): small flag  — str 4-9
+     *   Tier 2 (y=48..55): medium flag — str 10-19
+     *   Tier 3 (y=56..63): large flag  — str 20+
+     * Source x=464..511 (48px); pole at x=464..467, pennant extends right.
+     * Drawn at the top-left corner of the army's tile. */
+    if (hasScn && sArmyLoaded) {
         short armyCount = *(short *)(scnData + 0x1602);
         if (armyCount > 100) armyCount = 100;
-        TextFont(3);
-        TextSize(9);
-        TextFace(bold);
         for (i = 0; i < armyCount; i++) {
             unsigned char *army = scnData + 0x1604 + i * 0x42;
-            short ax = *(short *)(army + 0x00);
-            short ay = *(short *)(army + 0x02);
+            short ax   = *(short *)(army + 0x00);
+            short ay   = *(short *)(army + 0x02);
             short aOwn = (short)(unsigned char)army[0x15];
+            short sheetIdx = (aOwn >= 0 && aOwn < ARMY_SHEETS) ? aOwn : 0;
             short screenX, screenY;
 
-            /* Skip invalid/empty army records */
             if (army[0x16] == 0xFF) continue;
-            if (ax < 0 || ay < 0) continue;
-            if (ax >= sMapWidth || ay >= sMapHeight) continue;
+            if (ax < 0 || ay < 0 || ax >= sMapWidth || ay >= sMapHeight) continue;
 
-            /* Fog of war: hide enemy army strength in non-visible tiles */
+            /* Fog of war */
             if (*(short *)(scnData + 0x116) != 0) {
                 short curP = *(short *)(scnData + 0x110);
-                if (curP >= 0 && curP < 8 && aOwn != curP) {
-                    if (!FogGetBit(sFogVisible[curP], ax, ay))
-                        continue;
-                }
+                if (curP >= 0 && curP < 8 && aOwn != curP)
+                    if (!FogGetBit(sFogVisible[curP], ax, ay)) continue;
             }
 
             screenX = winRect.left + (ax - sViewportX) * TERRAIN_TILE_W;
             screenY = winRect.top  + (ay - sViewportY) * TERRAIN_TILE_H;
-            if (screenX >= winRect.left && screenX < winRect.right - SCROLLBAR_W &&
-                screenY >= winRect.top && screenY < winRect.bottom - SCROLLBAR_H) {
-                /* Check if this is the topmost army at this tile */
+            if (screenX < winRect.left || screenX >= winRect.right - SCROLLBAR_W) continue;
+            if (screenY < winRect.top  || screenY >= winRect.bottom - SCROLLBAR_H) continue;
+
+            /* Only draw for the topmost army at this tile */
+            {
                 short aj;
                 Boolean isTop = true;
                 for (aj = i + 1; aj < armyCount; aj++) {
                     unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
-                    if (*(short *)(a2 + 0x00) == ax && *(short *)(a2 + 0x02) == ay) {
-                        isTop = false;
-                        break;
-                    }
+                    if (*(short *)(a2+0x00)==ax && *(short *)(a2+0x02)==ay) { isTop=false; break; }
                 }
-                if (isTop) {
-                    short str = *(short *)(army + 0x2a);
-                    Str255 sn;
-                    RGBColor sBg = {0x0000, 0x0000, 0x0000};
-                    RGBColor sFg = {0xFFFF, 0xFFFF, 0xFFFF};
-                    NumToString((long)str, sn);
-                    /* Draw with shadow for readability */
-                    RGBForeColor(&sBg);
-                    MoveTo(screenX + TERRAIN_TILE_W - StringWidth(sn) - 1, screenY + 9);
-                    DrawString(sn);
-                    RGBForeColor(&sFg);
-                    MoveTo(screenX + TERRAIN_TILE_W - StringWidth(sn) - 2, screenY + 8);
-                    DrawString(sn);
+                if (!isTop) continue;
+            }
+
+            {
+                GWorldPtr flagGW = (sArmyGW[sheetIdx] != NULL) ? sArmyGW[sheetIdx]
+                                 : (sArmyGW[0]        != NULL) ? sArmyGW[0] : NULL;
+                if (flagGW == NULL) continue;
+                {
+                    short str  = *(short *)(army + 0x2a);
+                    short tier = (str >= 20) ? 3 : (str >= 10) ? 2 : (str >= 4) ? 1 : 0;
+                    short srcY = 32 + tier * 8;   /* 32, 40, 48, or 56 */
+                    Rect  srcRect, dstRect;
+                    RGBColor savedBg;
+                    /* Use 7 rows (not 8) to exclude the bottom separator/base row */
+                    SetRect(&srcRect, 464, srcY, 512, srcY + 7);
+                    SetRect(&dstRect, screenX, screenY, screenX + 48, screenY + 7);
+                    /* Clip dst to window */
+                    if (dstRect.right  > winRect.right  - SCROLLBAR_W)
+                        dstRect.right  = winRect.right  - SCROLLBAR_W;
+                    if (dstRect.bottom > winRect.bottom - SCROLLBAR_H)
+                        dstRect.bottom = winRect.bottom - SCROLLBAR_H;
+                    srcRect.right  = srcRect.left + (dstRect.right  - dstRect.left);
+                    srcRect.bottom = srcRect.top  + (dstRect.bottom - dstRect.top);
+                    LockPixels(GetGWorldPixMap(flagGW));
+                    GetBackColor(&savedBg);
+                    RGBBackColor(&sArmyBgColor[sheetIdx]);
+                    CopyBits((BitMap *)*GetGWorldPixMap(flagGW),
+                             &((GrafPtr)win)->portBits,
+                             &srcRect, &dstRect, 36, NULL);
+                    RGBBackColor(&savedBg);
+                    UnlockPixels(GetGWorldPixMap(flagGW));
                 }
             }
         }
-        TextFace(0);
     }
 
     /* --- Draw defend mode indicators on defending armies --- */
@@ -8216,25 +8183,39 @@ static void DrawOverviewInWindow(WindowPtr win)
                             !FogGetBit(sFogExplored[curP], cx, cy))
                             continue;
                     }
-                    Rect dot;
                     if (siteType >= 2 && siteType <= 5) {
-                        /* Ruins/temples: small gray dot */
+                        /* Ruins/temples: small gray 3x3 dot */
                         RGBColor ruinGray = {0x9999, 0x9999, 0x7777};
+                        Rect dot;
                         SetRect(&dot, r.left + cx * scale, r.top + cy * scale,
                                 r.left + cx * scale + 3, r.top + cy * scale + 3);
                         RGBForeColor(&ruinGray);
+                        PaintRect(&dot);
+                    } else if (owner >= 0 && owner < 8 &&
+                               sShieldsLoaded &&
+                               (sShieldIcons[owner] != NULL || sShieldSmallGW != NULL)) {
+                        /* Cities with known faction: draw small shield icon (10x12).
+                         * Centered on the city's 2x2 tile block on the minimap. */
+                        Rect shR;
+                        SetRect(&shR,
+                                r.left + cx * scale - 4,
+                                r.top  + cy * scale - 5,
+                                r.left + cx * scale + 6,
+                                r.top  + cy * scale + 7);
+                        DrawMapShield(owner, &shR);
                     } else {
-                        /* Cities: 5x5 dot with black outline (68k CODE_128) */
+                        /* Neutral or shields not loaded: colored 5x5 dot */
                         short colorIdx = (owner >= 0 && owner < 8) ? owner + 1 : 8;
                         RGBColor black3 = {0, 0, 0};
+                        Rect dot;
                         SetRect(&dot, r.left + cx * scale - 1, r.top + cy * scale - 1,
                                 r.left + cx * scale + 5, r.top + cy * scale + 5);
                         RGBForeColor(&black3);
                         PaintRect(&dot);
                         InsetRect(&dot, 1, 1);
                         RGBForeColor(&sPlayerColors[colorIdx]);
+                        PaintRect(&dot);
                     }
-                    PaintRect(&dot);
                 }
             }
         }
@@ -8393,7 +8374,7 @@ static void DrawMinimapInRect(Rect *destRect, short highlightX, short highlightY
             }
         }
 
-        /* City dots */
+        /* City dots / shields */
         if (*gGameState != 0) {
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short cityCount = *(short *)(gs2 + 0x810);
@@ -8404,13 +8385,36 @@ static void DrawMinimapInRect(Rect *destRect, short highlightX, short highlightY
                 short cx = *(short *)(city + 0x00);
                 short cy = *(short *)(city + 0x02);
                 short owner = *(short *)(city + 0x04);
+                short sType = (short)(unsigned char)city[0x17];
                 if (cx >= 0 && cx < destW && cy >= 0 && cy < destH) {
-                    short colorIdx = (owner >= 0 && owner < 8) ? owner + 1 : 8;
-                    Rect dot;
-                    SetRect(&dot, destRect->left + cx - 1, destRect->top + cy - 1,
-                            destRect->left + cx + 2, destRect->top + cy + 2);
-                    RGBForeColor(&sPlayerColors[colorIdx]);
-                    PaintRect(&dot);
+                    if (sType >= 2) {
+                        /* Ruins: tiny dot */
+                        RGBColor ruinGray = {0x9999, 0x9999, 0x7777};
+                        Rect dot;
+                        SetRect(&dot, destRect->left + cx, destRect->top + cy,
+                                destRect->left + cx + 2, destRect->top + cy + 2);
+                        RGBForeColor(&ruinGray);
+                        PaintRect(&dot);
+                    } else if (owner >= 0 && owner < 8 &&
+                               sShieldsLoaded &&
+                               (sShieldIcons[owner] != NULL || sShieldSmallGW != NULL)) {
+                        /* City with faction: small shield (6x7) centered on position */
+                        Rect shR;
+                        SetRect(&shR,
+                                destRect->left + cx - 2,
+                                destRect->top  + cy - 3,
+                                destRect->left + cx + 4,
+                                destRect->top  + cy + 4);
+                        DrawMapShield(owner, &shR);
+                    } else {
+                        /* Neutral or no shields: 3x3 colored dot */
+                        short colorIdx = (owner >= 0 && owner < 8) ? owner + 1 : 8;
+                        Rect dot;
+                        SetRect(&dot, destRect->left + cx - 1, destRect->top + cy - 1,
+                                destRect->left + cx + 2, destRect->top + cy + 2);
+                        RGBForeColor(&sPlayerColors[colorIdx]);
+                        PaintRect(&dot);
+                    }
                 }
             }
         }
