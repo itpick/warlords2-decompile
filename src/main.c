@@ -954,7 +954,7 @@ static void RecordTurnSnapshot(void)
     if (*gGameState == 0 || sHistoryTurnCount >= MAX_HIST_TURNS) return;
     gs = (unsigned char *)*gGameState;
     cityCount = *(short *)(gs + 0x810);
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
 
     for (p = 0; p < 8; p++) {
         short pCities = 0;
@@ -1045,7 +1045,7 @@ static void FogUpdatePlayer(short player)
     /* Reveal around owned cities */
     {
         short cityCount = *(short *)(gs + 0x810);
-        if (cityCount > 40) cityCount = 40;
+        if (cityCount > 99) cityCount = 99;
         for (i = 0; i < cityCount; i++) {
             unsigned char *city = gs + 0x812 + i * 0x20;
             if (*(short *)(city + 0x04) == player) {
@@ -1090,9 +1090,9 @@ static short sSgnSignpostCount = 0;
 /* City names — loaded from CTY resource */
 #define MAX_CITY_NAME 20
 #define MAX_CITY_DESC 100
-static char sCityNames[40][MAX_CITY_NAME];  /* up to 40 cities, 20 chars each */
-static char sCityDescs[40][MAX_CITY_DESC];  /* city descriptions from CTY resource */
-static char sSiteDescs[40][MAX_CITY_DESC];  /* site descriptions from SPC resource */
+static char sCityNames[99][MAX_CITY_NAME];  /* up to 99 cities, 20 chars each */
+static char sCityDescs[99][MAX_CITY_DESC];  /* city descriptions from CTY resource */
+static char sSiteDescs[99][MAX_CITY_DESC];  /* site descriptions from SPC resource */
 static short sCityNameCount = 0;
 
 /* Unit type name lookup — indexed by unit type byte */
@@ -1214,8 +1214,8 @@ static void RecalcArmyStrength(unsigned char *army);
 #define SCROLLBAR_W    16   /* width of right scrollbar track */
 #define SCROLLBAR_H    18   /* height of bottom bar (compact shield area + padding) */
 #define SHIELD_SLOT_W  16   /* 68k CODE_067: 16px stride per shield slot */
-#define SHIELD_ICON_W  15   /* actual icon width within slot (15x13 from PICT 30024) */
-#define SHIELD_ICON_H  13   /* actual icon height (15x13 from PICT 30024) */
+#define SHIELD_ICON_W  11   /* small faction shield width (11x14 from PICT 30010 at x=112,y=94) */
+#define SHIELD_ICON_H  14   /* small faction shield height */
 #define SHIELD_STRIP_W 128  /* 68k: total shield strip = 8 slots * 16px = 128px */
 
 /* Shield icons: cicn 30600-30607 from external shield set file (e.g. Elemental Shields).
@@ -1223,9 +1223,11 @@ static void RecalcArmyStrength(unsigned char *army);
 static CIconHandle sShieldIcons[MAX_FACTIONS];
 static Boolean     sShieldsLoaded = false;
 static short       sShieldResFile = -1;          /* resource file ref for shield set */
-static GWorldPtr   sShieldBigGW   = NULL;        /* PICT 30011/15009: big shields (capital banners) */
-static GWorldPtr   sShieldSmallGW = NULL;        /* PICT 30024/15010: small shields (dialog+map) */
-static RGBColor    sShieldSheetBgColor;           /* background color sampled from PICT 30024 for transparent blit */
+static GWorldPtr   sShieldBigGW    = NULL;  /* PICT 30011/15009: big shields (capital banners) */
+static GWorldPtr   sShieldSmallGW  = NULL;  /* PICT 30024/15010: map shields (26×27 per faction) */
+static GWorldPtr   sMasterSpriteGW = NULL;  /* PICT 30010: master UI sheet; small faction shields at (112,96) */
+static RGBColor    sShieldSheetBgColor;     /* background color sampled from PICT 30024 for transparent blit */
+static RGBColor    sMasterSpriteBgColor;    /* background color from PICT 30010 (0xEFEF grey) */
 
 /* PICT 30024 layout: 368x64, multi-region sprite sheet.
  * Row 0 (y=0..26):  map shields — 26px wide x 27px tall, stride 26.
@@ -1348,18 +1350,32 @@ static void CenterViewportOnPlayer(void)
         short capX = *(short *)(pstat + 0x04);
         short capY = *(short *)(pstat + 0x06);
 
+        /* Fallback to raw byte capital coords if shorts not yet written */
+        if (capX == 0 && capY == 0) {
+            capX = (short)(unsigned char)pstat[3];
+            capY = (short)(unsigned char)pstat[5];
+        }
+
         if (capX > 0 || capY > 0) {
             short cci, ccc = *(short *)(gs + 0x810);
-            if (ccc > 40) ccc = 40;
+            if (ccc > 99) ccc = 99;
             for (cci = 0; cci < ccc; cci++) {
                 unsigned char *city = gs + 0x812 + cci * 0x20;
                 if (*(short *)(city + 0x00) == capX &&
-                    *(short *)(city + 0x02) == capY &&
-                    *(short *)(city + 0x04) == currentPlayer) {
+                    *(short *)(city + 0x02) == capY) {
+                    /* Accept if owned by current player OR still neutral
+                     * (happens on first call during GameInit before ownership
+                     * is assigned). Direct capital coord match is sufficient. */
                     sViewportX = capX - 7;
                     sViewportY = capY - 5;
                     goto clamp;
                 }
+            }
+            /* Capital coords are valid but city not in array yet — use coords directly */
+            if (capX >= 0 && capX < sMapWidth && capY >= 0 && capY < sMapHeight) {
+                sViewportX = capX - 7;
+                sViewportY = capY - 5;
+                goto clamp;
             }
         }
     }
@@ -1489,27 +1505,77 @@ static void GameInit(void)
         }
     }
 
-    /* --- Extract city ownership from MAP tile data (68k CODE_117) ---
-     * SCN city+0x04 is the city NAME (char[20]), NOT the owner.
-     * The owner nibble lives in MAP tile byte 1, bits 3:0.
-     * We extract it here and overwrite city+0x04 with the numeric owner,
-     * converting the field from name to runtime owner for all downstream code.
-     * City names are separately loaded from the CTY resource into sCityNames[]. */
-    if (*gMapTiles != 0) {
-        unsigned char *mapData = (unsigned char *)*gMapTiles;
-        short cityCount = *(short *)(gs + 0x810);
-        if (cityCount > 40) cityCount = 40;
+    /* --- Rebuild city records from valid SCN data at gs+0x15BE ---
+     * The raw gs+0x812 records are MacApp-serialized objects; X/Y coordinates
+     * and most fields are garbage in those bytes. The valid scenario city data
+     * lives at gs+0x15BE with stride 0x41 (65 bytes) per record:
+     *   +0x00/0x01: X (little-endian short)
+     *   +0x02/0x03: Y (little-endian short)
+     *   +0x04..0x13: name (16-byte null-padded C string)
+     *   +0x14: defense rating (byte)
+     *   +0x15: owner (byte; 0x0F = neutral in SCN — all start neutral)
+     *   +0x16..0x19: first 4 producible unit type indices (bytes)
+     * All cities start neutral. Player capitals are identified by matching
+     * coordinates against player stat blocks (pstat+3 = capX byte, pstat+5 = capY byte).
+     * We rebuild gs+0x812 (stride 0x20) from these valid records so all downstream
+     * code (income, production, rendering) has correct X/Y, owner, and production. */
+    {
+        /* Read player capital coordinates from raw SCN player stat blocks.
+         * pstat = gs+0x186+p*0x14. Capital X is a BYTE at pstat[3], Y at pstat[5]. */
+        short capX[8], capY[8];
+        for (i = 0; i < 8; i++) {
+            unsigned char *pstat = gs + 0x186 + i * 0x14;
+            capX[i] = (short)(unsigned char)pstat[3];
+            capY[i] = (short)(unsigned char)pstat[5];
+        }
+
+        /* Count valid city records (scan until X=0 && Y=0 or out of bounds) */
+        short cityCount = 0;
+        for (i = 0; i < 99; i++) {
+            unsigned char *src = gs + 0x15BE + i * 0x41;
+            short cx = (short)((unsigned char)src[0] | ((unsigned short)(unsigned char)src[1] << 8));
+            short cy = (short)((unsigned char)src[2] | ((unsigned short)(unsigned char)src[3] << 8));
+            if ((cx == 0 && cy == 0) || cx >= 112 || cy >= 156) break;
+            cityCount++;
+        }
+        *(short *)(gs + 0x810) = cityCount;
+
+        /* Rebuild gs+0x812 entries from the valid 0x41-byte city records.
+         * Our runtime 0x20-byte layout:
+         *   +0x00: X (short, native BE)
+         *   +0x02: Y (short, native BE)
+         *   +0x04: owner (short; 0-7 = player, 0x0F = neutral)
+         *   +0x06: defense (short)
+         *   +0x0C..+0x13: production type slots (4 shorts; -1 = empty)
+         *   +0x17: site type (0 = city; non-zero = ruin/temple) */
         for (i = 0; i < cityCount; i++) {
-            unsigned char *city = gs + 0x812 + i * 0x20;
-            short cx = *(short *)(city + 0x00);
-            short cy = *(short *)(city + 0x02);
-            if (cx >= 0 && cx < 112 && cy >= 0 && cy < 156) {
-                long tileOff = (long)cy * 0xE0 + (long)cx * 2;
-                short tileOwner = (short)(mapData[tileOff + 1] & 0x0F);
-                *(short *)(city + 0x04) = tileOwner;
-            } else {
-                *(short *)(city + 0x04) = (short)0xFF;  /* out of bounds = neutral */
+            unsigned char *src  = gs + 0x15BE + i * 0x41;
+            unsigned char *city = gs + 0x812  + i * 0x20;
+            short cx = (short)((unsigned char)src[0] | ((unsigned short)(unsigned char)src[1] << 8));
+            short cy = (short)((unsigned char)src[2] | ((unsigned short)(unsigned char)src[3] << 8));
+
+            /* Determine owner: player if capital, else neutral */
+            short owner = 0x0F;
+            for (j = 0; j < 8; j++) {
+                if (cx == capX[j] && cy == capY[j]) { owner = j; break; }
             }
+
+            /* Clear the 0x20-byte record first */
+            for (j = 0; j < 0x20; j++) city[j] = 0;
+
+            *(short *)(city + 0x00) = cx;
+            *(short *)(city + 0x02) = cy;
+            *(short *)(city + 0x04) = owner;
+            *(short *)(city + 0x06) = (short)(unsigned char)src[0x14];  /* defense */
+
+            /* Production capability: first 4 unit type indices (bytes at +0x16..0x19).
+             * Store as shorts. 0xFF → -1 (empty slot); 0-28 → that type index. */
+            for (j = 0; j < 4; j++) {
+                unsigned char pt = src[0x16 + j];
+                *(short *)(city + 0x0C + j * 2) = (pt == 0xFF) ? (short)-1 : (short)(unsigned char)pt;
+            }
+
+            city[0x17] = 0;  /* site type: 0 = playable city */
         }
     }
 
@@ -1521,23 +1587,22 @@ static void GameInit(void)
          * City count at gs+0x0810. */
         cityCount = *(short *)(gs + 0x810);
         if (cityCount < 0) cityCount = 0;
-        if (cityCount > 40) cityCount = 40;
+        if (cityCount > 99) cityCount = 99;
 
         *(short *)(ext + 0x24a) = cityCount;
 
-        /* City record layout AFTER ownership extraction above:
+        /* City record layout (rebuilt from valid SCN city data):
          *   +0x00: city_x (short)
          *   +0x02: city_y (short)
-         *   +0x04: owner (short, extracted from MAP tile — was name in SCN)
+         *   +0x04: owner (short; 0-7 = player, 0x0F = neutral)
          *   +0x06: defense (short)
-         *   +0x08: income (short)
-         *   +0x0A: name_index (short)
-         *   +0x0C-0x1F: production data
+         *   +0x0C-0x13: production capability (4 shorts)
+         *   +0x17: site type (0 = city, non-zero = ruin/temple)
          */
         for (i = 0; i < cityCount; i++) {
             unsigned char *city = gs + 0x812 + i * 0x20;
             unsigned char *extCity = ext + 0x24c + i * 0x5c;
-            short siteType = (short)(unsigned char)city[0x18];
+            short siteType = (short)(unsigned char)city[0x17];
 
             /* Mark city as active */
             *(short *)(extCity + 0x00) = 1;
@@ -1595,14 +1660,14 @@ static void GameInit(void)
      *   +0x0E: start_x,   +0x10: start_y   */
     {
         short cityCount = *(short *)(gs + 0x810);
-        if (cityCount > 40) cityCount = 40;
+        if (cityCount > 99) cityCount = 99;
         for (i = 0; i < 8; i++) {
             unsigned char *pstat = gs + 0x186 + i * 0x14;
             Boolean foundCap = false;
             for (j = 0; j < cityCount && !foundCap; j++) {
                 unsigned char *city = gs + 0x812 + j * 0x20;
                 short cOwner = *(short *)(city + 0x04);
-                short sType  = (short)(unsigned char)city[0x18];
+                short sType  = (short)(unsigned char)city[0x17];
                 if (cOwner == i && sType == 0) {  /* city owned by player i */
                     short capX = *(short *)(city + 0x00);
                     short capY = *(short *)(city + 0x02);
@@ -1630,11 +1695,11 @@ static void GameInit(void)
                 /* No capital found — check if player has any cities at all */
                 short cityCount = *(short *)(gs + 0x810);
                 Boolean hasCity = false;
-                if (cityCount > 40) cityCount = 40;
+                if (cityCount > 99) cityCount = 99;
                 for (j = 0; j < cityCount; j++) {
                     unsigned char *site = gs + 0x812 + j * 0x20;
                     if (*(short *)(site + 0x04) == i &&
-                        (unsigned char)site[0x18] == 0) {
+                        (unsigned char)site[0x17] == 0) {
                         hasCity = true;
                         break;
                     }
@@ -1649,46 +1714,22 @@ static void GameInit(void)
     }
 
     /* --- Initialize army records --- */
-    /* Clear runtime fields for all 100 army slots (matching 68k CODE_116
-     * FUN_0000000c). The SCN data provides static fields (name, type, stats,
-     * owner at +0x15); runtime fields (orders, movement, items) must be
-     * zeroed before gameplay. */
+    /* The raw gs+0x1602/0x1604 area overlaps with the city compact records at
+     * gs+0x15BE that we read for city initialization. The "army count" value
+     * read from gs+0x1602 is garbage (it's city name bytes, not a real count).
+     * We reset the army count to 0 and build all armies from scratch:
+     *   1. Neutral garrison armies are created by the loop below.
+     *   2. Player starting armies are created after the garrison loop.
+     * This matches the 68k initialization which also builds armies
+     * programmatically (CODE_116 FUN_0000000c, CODE_117 FUN_00001ecc). */
     {
-        short armyCount = *(short *)(gs + 0x1602);
-        if (armyCount < 0) armyCount = 0;
-        if (armyCount > 100) armyCount = 100;
-
-        for (i = 0; i < armyCount; i++) {
+        /* Zero out all 100 army slots so no garbage data remains */
+        for (i = 0; i < 100; i++) {
             unsigned char *army = gs + 0x1604 + i * 0x42;
-
-            /* Clear runtime status bytes */
-            army[0x2c] = 0;  /* build/fortify counter */
-            army[0x2d] = 0;  /* fortification state */
-            army[0x2e] = 0;  /* current movement points (set below) */
-
-            /* Copy SCN owner to runtime owner (68k: +0x15 → +0x2F).
-             * The runtime owner changes during gameplay when armies are
-             * captured; the SCN owner stays fixed for history tracking. */
-            army[0x2f] = army[0x15];
-
-            army[0x30] = 0;  /* has-moved-this-turn flag */
-
-            /* Clear movement orders (hasOrders, targetX, targetY) */
-            *(short *)(army + 0x32) = 0;  /* hasOrders */
-            *(short *)(army + 0x34) = 0;  /* target_x */
-            *(short *)(army + 0x36) = 0;  /* target_y */
-
-            /* Clear status/misc bytes */
-            army[0x38] = army[0x38] & 0xFF;  /* preserve high bits */
-            army[0x39] = 0;
-
-            /* Clear hero items (0x3A-0x40) */
-            for (j = 0x3a; j <= 0x40; j += 2)
-                *(short *)(army + j) = 0;
-
-            /* Set initial movement points from base movement stat */
-            army[0x2e] = army[0x1a];  /* current_mp = base_mp of lead unit */
+            for (j = 0; j < 0x42; j++) army[j] = 0;
         }
+        /* Reset army count to 0; garrison/player army loops will set it */
+        *(short *)(gs + 0x1602) = 0;
     }
 
     /* --- Initialize movement cost table (9 terrain x 29 units) --- */
@@ -1746,7 +1787,7 @@ static void GameInit(void)
     {
         short siteCount = *(short *)(gs + 0x810);
         short numToActivate, activated = 0;
-        if (siteCount > 40) siteCount = 40;
+        if (siteCount > 99) siteCount = 99;
 
         /* Initialize all sites: active=0, visited_bitmask=0xFF */
         for (i = 0; i < siteCount; i++) {
@@ -1760,7 +1801,7 @@ static void GameInit(void)
         {
             short eligibleCount = 0, attempts = 0;
             for (i = 0; i < siteCount; i++) {
-                short sType = (short)(unsigned char)(gs + 0x812 + i * 0x20)[0x18];
+                short sType = (short)(unsigned char)(gs + 0x812 + i * 0x20)[0x17];
                 if (sType >= 2 && sType <= 5) eligibleCount++;
             }
             numToActivate = (eligibleCount * 3) / 10;
@@ -1770,7 +1811,7 @@ static void GameInit(void)
             while (activated < numToActivate && attempts < siteCount * 10) {
                 short idx = (short)((unsigned short)Random() % siteCount);
                 unsigned char *site = gs + 0x812 + idx * 0x20;
-                short sType = (short)(unsigned char)site[0x18];
+                short sType = (short)(unsigned char)site[0x17];
                 attempts++;
                 if (site[0x1C] != 0) continue;  /* already active */
                 if (sType >= 2 && sType <= 5) {
@@ -1792,12 +1833,12 @@ static void GameInit(void)
         short activeSites[40];
         short activeCount = 0;
         unsigned short rSeed2 = (unsigned short)TickCount();
-        if (siteCount > 40) siteCount = 40;
+        if (siteCount > 99) siteCount = 99;
 
         /* Collect activated site types 2-5 (item/defended/gold/ally) */
         for (i = 0; i < siteCount; i++) {
             unsigned char *site = gs + 0x812 + i * 0x20;
-            short sType = (short)(unsigned char)site[0x18];
+            short sType = (short)(unsigned char)site[0x17];
             if (sType >= 2 && sType <= 5 && site[0x1C] != 0) {
                 if (activeCount < 40)
                     activeSites[activeCount++] = i;
@@ -1845,13 +1886,13 @@ static void GameInit(void)
     {
         short siteCount = *(short *)(gs + 0x810);
         short armyCount = *(short *)(gs + 0x1602);
-        if (siteCount > 40) siteCount = 40;
+        if (siteCount > 99) siteCount = 99;
         if (armyCount < 0) armyCount = 0;
 
         for (i = 0; i < siteCount && armyCount < 100; i++) {
             unsigned char *site = gs + 0x812 + i * 0x20;
             short sOwner = *(short *)(site + 0x04);
-            short sType = (short)(unsigned char)site[0x18];
+            short sType = (short)(unsigned char)site[0x17];
             short sx = *(short *)(site + 0x00);
             short sy = *(short *)(site + 0x02);
 
@@ -1939,6 +1980,87 @@ static void GameInit(void)
         *(short *)(gs + 0x1602) = armyCount;
     }
 
+    /* --- Create player starting armies (68k CODE_117 FUN_00001ecc) ---
+     * Each active player starts with 1 army at their capital. The raw SCN
+     * army data is MacApp-serialized and cannot be read directly, so we
+     * fabricate a starting force: one unit of the capital city's first
+     * producible type, at the capital coordinates. */
+    {
+        short armyCount = *(short *)(gs + 0x1602);
+        short fCount = *(short *)(gs + 0x10C);
+        if (fCount < 1 || fCount > 8) fCount = 8;
+        for (i = 0; i < fCount && armyCount < 100; i++) {
+            unsigned char *pstat  = gs + 0x186 + i * 0x14;
+            short pAlive = *(short *)(gs + 0x138 + i * 2);
+            short capX   = *(short *)(pstat + 0x04);
+            short capY   = *(short *)(pstat + 0x06);
+            short unitType = 0;
+
+            if (!pAlive) continue;
+            if (capX <= 0 && capY <= 0) continue;
+            if (capX < 0 || capX >= sMapWidth || capY < 0 || capY >= sMapHeight) continue;
+
+            /* Find capital city and its first producible unit type */
+            {
+                short cityCount2 = *(short *)(gs + 0x810);
+                if (cityCount2 > 99) cityCount2 = 99;
+                for (j = 0; j < cityCount2; j++) {
+                    unsigned char *city = gs + 0x812 + j * 0x20;
+                    if (*(short *)(city + 0x00) == capX &&
+                        *(short *)(city + 0x02) == capY &&
+                        *(short *)(city + 0x04) == i) {
+                        short pt = *(short *)(city + 0x0C);
+                        if (pt >= 0 && pt < MAX_UNIT_TYPES) unitType = pt;
+                        break;
+                    }
+                }
+            }
+
+            /* Get base movement from unit type table */
+            {
+                unsigned char baseMov = 10;
+                if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
+                    unsigned char *ute = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
+                    short mv = *(short *)(ute + 0x16 + 3 * 2);  /* stats[3] = movement */
+                    if (mv > 0 && mv <= 99) baseMov = (unsigned char)mv;
+                }
+
+                /* Create the army record */
+                {
+                    unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
+                    short k;
+                    for (k = 0; k < 0x42; k++) newArmy[k] = 0;
+
+                    *(short *)(newArmy + 0x00) = capX;
+                    *(short *)(newArmy + 0x02) = capY;
+                    newArmy[0x15] = (unsigned char)i;  /* owner */
+                    newArmy[0x2f] = (unsigned char)i;  /* runtime owner */
+
+                    /* Sprite: use unitType; player color via faction sheet */
+                    {
+                        static unsigned char sprMap[] = {0, 2, 4, 6, 8, 10, 12, 14};
+                        newArmy[0x14] = (unitType < 8) ? sprMap[unitType] : (unsigned char)(unitType * 2);
+                    }
+
+                    /* One unit in slot 0, slots 1-3 empty (0xFF = vacant) */
+                    newArmy[0x16] = (unsigned char)unitType;  /* slot 0 unit type */
+                    newArmy[0x17] = 0xFF;  /* slot 1 empty */
+                    newArmy[0x18] = 0xFF;  /* slot 2 empty */
+                    newArmy[0x19] = 0xFF;  /* slot 3 empty */
+                    newArmy[0x1a] = baseMov;  /* slot 0 base movement */
+                    newArmy[0x1e] = 3;   /* slot 0 base HP */
+                    newArmy[0x22] = 0;   /* slot 0 defense bonus */
+                    newArmy[0x26] = 0;   /* slot 0 experience */
+
+                    newArmy[0x2e] = baseMov;  /* current MP */
+                    RecalcArmyStrength(newArmy);
+                    armyCount++;
+                }
+            }
+        }
+        *(short *)(gs + 0x1602) = armyCount;
+    }
+
     /* --- Center viewport on current player's capital city --- */
     CenterViewportOnPlayer();
 
@@ -1966,14 +2088,14 @@ static void GameInit(void)
     if (*gMapTiles != 0) {
         unsigned char *mapData = (unsigned char *)*gMapTiles;
         short siteCount = *(short *)(gs + 0x810);
-        if (siteCount > 40) siteCount = 40;
+        if (siteCount > 99) siteCount = 99;
 
         for (i = 0; i < siteCount; i++) {
             unsigned char *site = gs + 0x812 + i * 0x20;
             short sx = *(short *)(site + 0x00);
             short sy = *(short *)(site + 0x02);
             short sOwner = *(short *)(site + 0x04);
-            short sType = (short)(unsigned char)site[0x18];
+            short sType = (short)(unsigned char)site[0x17];
             unsigned char terrIdx;
             unsigned char ownerNibble;
             Boolean isCapital = false;
@@ -2218,7 +2340,7 @@ static void TryLoadScenario(void)
                 char *buf;
                 long p = 0;
                 short idx = 0;
-                short maxIdx = 40;
+                short maxIdx = 99;
                 HLock(hdl);
                 buf = (char *)*hdl;
 
@@ -2481,7 +2603,7 @@ static void DrawMarbleBackground(Rect *r)
         }
         UnlockPixels(mPix);
     } else {
-        RGBColor gray = {0x8888, 0x8888, 0x8888};
+        RGBColor gray = {0x5555, 0x5555, 0x5555};
         RGBForeColor(&gray);
         PaintRect(r);
     }
@@ -2620,13 +2742,11 @@ static void LoadTerrainSprites(void)
         sShieldBigGW = LoadPICTIntoGWorld(30011);
     if (sShieldSmallGW == NULL)
         sShieldSmallGW = LoadPICTIntoGWorld(30024);
+    if (sMasterSpriteGW == NULL)
+        sMasterSpriteGW = LoadPICTIntoGWorld(30010);
 
-    /* Sample shield sprite sheet background color for transparent blitting.
-     * Pixel (0,0) is faction 0's shield artwork — NOT background!
-     * Sample from (310,26) which is in a gap between sprite regions:
-     * - Right of region F (small emblems, ends x=279)
-     * - Left of region C/D (tiny icons, starts x=312)
-     * - Below region A map shields (ends y=26), between G banners (y=27) */
+    /* Sample PICT 30024 background for DrawMapShield transparent blit.
+     * (310,26) is in a gap region of PICT 30024 between sprite areas. */
     if (sShieldSmallGW != NULL) {
         CGrafPtr sp; GDHandle sd;
         Rect gwBounds;
@@ -2641,6 +2761,11 @@ static void LoadTerrainSprites(void)
         UnlockPixels(GetGWorldPixMap(sShieldSmallGW));
         SetGWorld(sp, sd);
     }
+
+    /* PICT 30010 background: light grey (239,239,239) surrounding sprite areas */
+    sMasterSpriteBgColor.red   = 0xEFEF;
+    sMasterSpriteBgColor.green = 0xEFEF;
+    sMasterSpriteBgColor.blue  = 0xEFEF;
 
     UseResFile(oldResFile);
     sTerrainLoaded = (sTerrainGW != NULL);
@@ -2975,6 +3100,10 @@ static void LoadShieldIcons(void)
             DisposeGWorld(sShieldSmallGW);
             sShieldSmallGW = NULL;
         }
+        if (sMasterSpriteGW != NULL) {
+            DisposeGWorld(sMasterSpriteGW);
+            sMasterSpriteGW = NULL;
+        }
     }
 
     /* If a non-default army set is selected, try matching shield set file.
@@ -3209,21 +3338,27 @@ static void DrawSmallShieldIcon(short factionIdx, const Rect *dstRect)
         return;
     }
 
-    if (sShieldSmallGW != NULL) {
+    /* Default armies: read 11x14 faction shields from PICT 30010 master sprite sheet.
+     * Pixel-scan confirmed layout: 2 columns x 4 rows.
+     *   Left column  (x=112..122): factions 0-3 top-to-bottom, row stride 14px, y=94
+     *   Right column (x=128..138): factions 4-7 top-to-bottom, row stride 14px, y=94
+     * Background: light grey (0xEFEF, 0xEFEF, 0xEFEF). */
+    if (sMasterSpriteGW != NULL) {
         GrafPtr curPort;
-        PixMapHandle pm = GetGWorldPixMap(sShieldSmallGW);
+        PixMapHandle pm = GetGWorldPixMap(sMasterSpriteGW);
         Rect srcR;
         RGBColor savedBg;
+        short col = factionIdx / 4;   /* 0 for factions 0-3, 1 for factions 4-7 */
+        short row = factionIdx % 4;
 
         GetPort(&curPort);
-        /* Case 2 small icons: 13x15 at x=208+owner*13, y=0..14 */
         SetRect(&srcR,
-                208 + factionIdx * 13, 0,
-                208 + factionIdx * 13 + 13, 15);
+                112 + col * 16,      94 + row * 14,
+                112 + col * 16 + 11, 94 + row * 14 + 14);
 
         if (LockPixels(pm)) {
             GetBackColor(&savedBg);
-            RGBBackColor(&sShieldSheetBgColor);
+            RGBBackColor(&sMasterSpriteBgColor);
             CopyBits((BitMap *)*pm,
                      &curPort->portBits,
                      &srcR, dstRect, 36, NULL);
@@ -3726,7 +3861,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         short totalCities;
 
         totalCities = factionCount + neutralCount;
-        if (totalCities > 40) totalCities = 40;
+        if (totalCities > 99) totalCities = 99;
 
         /* Place faction starting cities in quadrants */
         for (i = 0; i < factionCount && cityCount < 40; i++) {
@@ -3748,7 +3883,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     *(short *)(city + 0x06) = 3;   /* defense */
                     *(short *)(city + 0x08) = 4;   /* income */
                     *(short *)(city + 0x0A) = cityCount;
-                    city[0x18] = 0;   /* site_type = city */
+                    city[0x17] = 0;   /* site_type = city */
                     /* Ensure grass under city */
                     terrain[cy * 112 + cx] = TT_GRASS;
                     {
@@ -3795,7 +3930,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     *(short *)(city + 0x06) = 2;   /* defense */
                     *(short *)(city + 0x08) = 3;   /* income */
                     *(short *)(city + 0x0A) = cityCount;
-                    city[0x18] = 0;   /* site_type = city */
+                    city[0x17] = 0;   /* site_type = city */
                     cityCount++;
                     break;
                 }
@@ -3839,7 +3974,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                         *(short *)(ruin + 0x00) = rx;
                         *(short *)(ruin + 0x02) = ry;
                         *(short *)(ruin + 0x04) = (short)0xFF;  /* no owner */
-                        ruin[0x18] = siteTypes[(unsigned short)Random() % 4];
+                        ruin[0x17] = siteTypes[(unsigned short)Random() % 4];
                         *(short *)(ruin + 0x1c) = 1;  /* active/searchable */
                         cityCount++;
                         break;
@@ -3887,13 +4022,13 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                 short bestIdx[2]  = {-1, -1};
 
                 /* Only connect cities (site_type=0), not ruins */
-                if (siteA[0x18] != 0) continue;
+                if (siteA[0x17] != 0) continue;
 
                 /* Find 2 nearest other cities */
                 for (cj = 0; cj < siteCount; cj++) {
                     unsigned char *siteB = gs + 0x812 + cj * 0x20;
                     short dx, dy, dist;
-                    if (cj == ci || siteB[0x18] != 0) continue;
+                    if (cj == ci || siteB[0x17] != 0) continue;
                     dx = *(short *)(siteB + 0x00) - ax;
                     dy = *(short *)(siteB + 0x02) - ay;
                     if (dx < 0) dx = -dx;
@@ -4079,7 +4214,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         /* Vary composition based on city index to match original Warlords II */
         for (i = 8; i < cityCount && armyIdx < 100; i++) {
             unsigned char *city = gs + 0x812 + i * 0x20;
-            short sType = (short)(unsigned char)city[0x18];
+            short sType = (short)(unsigned char)city[0x17];
             short cx, cy;
             unsigned char *army;
             short j2;
@@ -6781,14 +6916,14 @@ static void DrawMapInWindow(WindowPtr win)
     /* site_type: 0/1=city, 2=item, 3=defended, 4=gold, 5=ally */
     if (hasScn) {
         short cityCount = *(short *)(scnData + 0x810);
-        if (cityCount > 40) cityCount = 40;
+        if (cityCount > 99) cityCount = 99;
 
         for (i = 0; i < cityCount; i++) {
             unsigned char *city = scnData + 0x812 + i * 0x20;
             short cx = *(short *)(city + 0x00);
             short cy = *(short *)(city + 0x02);
             short owner = *(short *)(city + 0x04);
-            short siteType = (short)(unsigned char)city[0x18];
+            short siteType = (short)(unsigned char)city[0x17];
             short screenX, screenY;
 
             screenX = winRect.left + (cx - sViewportX) * TERRAIN_TILE_W;
@@ -6971,7 +7106,7 @@ static void DrawMapInWindow(WindowPtr win)
     /* --- Draw city names below castle icons --- */
     if (hasScn) {
         short cityCount2 = *(short *)(scnData + 0x810);
-        if (cityCount2 > 40) cityCount2 = 40;
+        if (cityCount2 > 99) cityCount2 = 99;
         TextFont(3);
         TextSize(9);
         TextFace(0);
@@ -6980,7 +7115,7 @@ static void DrawMapInWindow(WindowPtr win)
             short cx = *(short *)(city + 0x00);
             short cy = *(short *)(city + 0x02);
             short cityOwner = *(short *)(city + 0x04);
-            short siteType = (short)(unsigned char)city[0x18];
+            short siteType = (short)(unsigned char)city[0x17];
             short screenX, screenY;
 
             if (siteType != 0) continue;  /* only label cities */
@@ -7556,7 +7691,7 @@ static void DrawMapInWindow(WindowPtr win)
         short cityCount = *(short *)(scnData + 0x810);
         short curPlayer = *(short *)(scnData + 0x110);
         short ci;
-        if (cityCount > 40) cityCount = 40;
+        if (cityCount > 99) cityCount = 99;
         for (ci = 0; ci < cityCount; ci++) {
             unsigned char *city = scnData + 0x812 + ci * 0x20;
             unsigned char *extCity = ext + 0x24c + ci * 0x5c;
@@ -7736,7 +7871,9 @@ static void DrawMapInWindow(WindowPtr win)
             short maxH = sMapWidth > tilesWide ? sMapWidth - tilesWide : 0;
             SetControlMaximum(sHScrollBar, maxH);
             SetControlValue(sHScrollBar, sViewportX);
-            Draw1Control(sHScrollBar);
+            /* Draw1Control(sHScrollBar) deferred: the bottom bar PaintRect
+             * (drawn further down) would erase the scrollbar.  We call
+             * Draw1Control after all bottom-bar painting is finished. */
         }
 
         /* Draw resize grip in the bottom-right corner (without DrawGrowIcon's
@@ -7911,6 +8048,11 @@ static void DrawMapInWindow(WindowPtr win)
         }
         }  /* end aliveSlot scope */
     }
+
+    /* --- Horizontal scrollbar drawn LAST so bottom bar PaintRect doesn't erase it --- */
+    if (sHScrollBar != NULL) {
+        Draw1Control(sHScrollBar);
+    }
 }
 
 
@@ -8057,14 +8199,14 @@ static void DrawOverviewInWindow(WindowPtr win)
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short cityCount = *(short *)(gs2 + 0x810);
             short ci;
-            if (cityCount > 40) cityCount = 40;
+            if (cityCount > 99) cityCount = 99;
 
             for (ci = 0; ci < cityCount; ci++) {
                 unsigned char *city = gs2 + 0x812 + ci * 0x20;
                 short cx = *(short *)(city + 0x00);
                 short cy = *(short *)(city + 0x02);
                 short owner = *(short *)(city + 0x04);
-                short siteType = (short)(unsigned char)city[0x18];
+                short siteType = (short)(unsigned char)city[0x17];
 
                 if (cx >= 0 && cx < sMapWidth && cy >= 0 && cy < sMapHeight) {
                     /* Fog of war: hide unexplored cities on minimap */
@@ -8256,7 +8398,7 @@ static void DrawMinimapInRect(Rect *destRect, short highlightX, short highlightY
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short cityCount = *(short *)(gs2 + 0x810);
             short ci;
-            if (cityCount > 40) cityCount = 40;
+            if (cityCount > 99) cityCount = 99;
             for (ci = 0; ci < cityCount; ci++) {
                 unsigned char *city = gs2 + 0x812 + ci * 0x20;
                 short cx = *(short *)(city + 0x00);
@@ -10647,7 +10789,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             short defY = *(short *)(defArmy + 0x02);
             short cityCount = *(short *)(gs + 0x810);
             short ci;
-            if (cityCount > 40) cityCount = 40;
+            if (cityCount > 99) cityCount = 99;
             for (ci = 0; ci < cityCount; ci++) {
                 unsigned char *city = gs + 0x812 + ci * 0x20;
                 if (*(short *)(city + 0x00) == defX &&
@@ -12197,7 +12339,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                 {
                     short cityCount = *(short *)(gs + 0x810);
                     short ci;
-                    if (cityCount > 40) cityCount = 40;
+                    if (cityCount > 99) cityCount = 99;
                     for (ci = 0; ci < cityCount; ci++) {
                         unsigned char *city = gs + 0x812 + ci * 0x20;
                         if (*(short *)(city + 0x00) == mx &&
@@ -12445,7 +12587,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                             unsigned char *rzExt = (unsigned char *)*gExtState;
                                             short rCityCount = *(short *)(gs + 0x810);
                                             short rcj;
-                                            if (rCityCount > 40) rCityCount = 40;
+                                            if (rCityCount > 99) rCityCount = 99;
                                             for (rcj = 0; rcj < rCityCount; rcj++) {
                                                 unsigned char *rzExtCity = rzExt + 0x24c + rcj * 0x5c;
                                                 short rvi;
@@ -12521,7 +12663,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                                 short cj, prevCities = 0;
                                 for (cj = 0; cj < cityCount; cj++) {
                                     unsigned char *c2 = gs + 0x812 + cj * 0x20;
-                                    short sType = (short)(unsigned char)c2[0x18];
+                                    short sType = (short)(unsigned char)c2[0x17];
                                     if (*(short *)(c2 + 0x04) == prevOwner &&
                                         sType != 2 && sType != 5 && sType != 6)
                                         prevCities++;
@@ -12697,7 +12839,7 @@ static void ShowReportDialog(short tab)
                 short cityCount = *(short *)(gs + 0x810);
                 short rowNum = 0;
                 if (armyCount > 100) armyCount = 100;
-                if (cityCount > 40) cityCount = 40;
+                if (cityCount > 99) cityCount = 99;
 
                 for (pi = 0; pi < 8; pi++) {
                     short alive = *(short *)(gs + 0x138 + pi * 2);
@@ -13247,7 +13389,7 @@ static void ShowHistoryDialog(short tab)
                     /* City counts per player */
                     short cityCount = *(short *)(gs + 0x810);
                     short rowNum = 0;
-                    if (cityCount > 40) cityCount = 40;
+                    if (cityCount > 99) cityCount = 99;
 
                     MoveTo(20, 90);
                     TextFace(bold);
@@ -13426,7 +13568,7 @@ static void ShowHistoryDialog(short tab)
                         armyCount = *(short *)(gs + 0x1602);
                         cityCount = *(short *)(gs + 0x810);
                         if (armyCount > 100) armyCount = 100;
-                        if (cityCount > 40) cityCount = 40;
+                        if (cityCount > 99) cityCount = 99;
 
                         for (ci = 0; ci < cityCount; ci++) {
                             if (*(short *)(gs + 0x812 + ci * 0x20 + 0x04) == pi) pCities++;
@@ -14699,7 +14841,7 @@ static void GenerateQuest(short player)
     gs = (unsigned char *)*gGameState;
     rnd = (long)TickCount() + player * 137;
     cityCount = *(short *)(gs + 0x810);
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
 
     /* Pick quest type based on game state */
     questType = (short)(rnd % 4) + 1;
@@ -14717,7 +14859,7 @@ static void GenerateQuest(short player)
                 short idx = (startIdx + ci) % cityCount;
                 unsigned char *city = gs + 0x812 + idx * 0x20;
                 short owner = *(short *)(city + 0x04);
-                short sType = (short)(unsigned char)city[0x18];
+                short sType = (short)(unsigned char)city[0x17];
                 if (sType >= 2 && sType <= 5) continue;
                 if (owner != player && owner >= 0 && owner < 8 &&
                     *(short *)(gs + 0x138 + owner * 2) != 0) {
@@ -14783,7 +14925,7 @@ static void CheckQuestProgress(short player)
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
     cityCount = *(short *)(gs + 0x810);
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
 
     switch (q->type) {
         case QUEST_CAPTURE:
@@ -14981,7 +15123,7 @@ static void ShowQuestDialog(void)
                         short qCityCount = *(short *)(gs + 0x810);
                         unsigned char *city;
                         short owner, cx, cy;
-                        if (qCityCount > 40) qCityCount = 40;
+                        if (qCityCount > 99) qCityCount = 99;
                         if (q->target < 0 || q->target >= qCityCount) break;
                         city = gs + 0x812 + q->target * 0x20;
                         owner = *(short *)(city + 0x04);
@@ -15524,7 +15666,7 @@ static void ShowTriumphsDialog(void)
         armyCount = *(short *)(gs + 0x1602);
         cityCount = *(short *)(gs + 0x810);
         if (armyCount > 100) armyCount = 100;
-        if (cityCount > 40) cityCount = 40;
+        if (cityCount > 99) cityCount = 99;
 
         for (ai = 0; ai < armyCount; ai++) {
             if ((short)(unsigned char)*(gs + 0x1604 + ai * 0x42 + 0x15) == curPlayer)
@@ -16251,7 +16393,7 @@ static void ShowHeroInspect(void)
                             short cityCount = *(short *)(gs + 0x810);
                             short ci, bestDist = 9999;
                             short bestCI = -1;
-                            if (cityCount > 40) cityCount = 40;
+                            if (cityCount > 99) cityCount = 99;
                             for (ci = 0; ci < cityCount; ci++) {
                                 unsigned char *city = gs + 0x812 + ci * 0x20;
                                 short cx = *(short *)(city + 0x00);
@@ -16786,7 +16928,7 @@ static void ShowRuinsDialog(void)
             short ci, ruinRow = 0;
             Str255 numStr;
 
-            if (cityCount > 40) cityCount = 40;
+            if (cityCount > 99) cityCount = 99;
             GetGWorld(&savePort, &saveGD);
             SetGWorld(offGW, NULL);
             LockPixels(GetGWorldPixMap(offGW));
@@ -16829,7 +16971,7 @@ static void ShowRuinsDialog(void)
             /* List all ruins/temples/libraries */
             for (ci = 0; ci < cityCount; ci++) {
                 unsigned char *site = gs + 0x812 + ci * 0x20;
-                short sType = (short)(unsigned char)site[0x18];
+                short sType = (short)(unsigned char)site[0x17];
                 short sx = *(short *)(site + 0x00);
                 short sy = *(short *)(site + 0x02);
                 short yPos;
@@ -16942,7 +17084,7 @@ static void ShowRuinsDialog(void)
                 RGBColor gray2 = {0x6666, 0x6666, 0x6666};
                 short totalRuins = 0;
                 for (ci = 0; ci < cityCount; ci++) {
-                    short st = (short)(unsigned char)(gs + 0x812 + ci * 0x20)[0x18];
+                    short st = (short)(unsigned char)(gs + 0x812 + ci * 0x20)[0x17];
                     if (st >= 2 && st <= 5) totalRuins++;
                 }
                 RGBForeColor(&gray2);
@@ -16995,9 +17137,9 @@ static void ShowRuinsDialog(void)
                     unsigned char *gs2 = (unsigned char *)*gGameState;
                     short cc = *(short *)(gs2 + 0x810);
                     short ci2, rowCount = 0;
-                    if (cc > 40) cc = 40;
+                    if (cc > 99) cc = 99;
                     for (ci2 = 0; ci2 < cc; ci2++) {
-                        short st = (short)(unsigned char)(gs2 + 0x812 + ci2 * 0x20)[0x18];
+                        short st = (short)(unsigned char)(gs2 + 0x812 + ci2 * 0x20)[0x17];
                         if (st >= 2 && st <= 5) {
                             if (rowCount == rowClicked) {
                                 /* Scroll map to this ruin */
@@ -18160,10 +18302,10 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             short heroCap = 5;
             short myCityCap = 0, ci2;
             short siteCount2 = *(short *)(gs + 0x810);
-            if (siteCount2 > 40) siteCount2 = 40;
+            if (siteCount2 > 99) siteCount2 = 99;
             for (ci2 = 0; ci2 < siteCount2; ci2++) {
                 unsigned char *c2 = gs + 0x812 + ci2 * 0x20;
-                if ((unsigned char)c2[0x18] == 0 && *(short *)(c2 + 0x04) == playerIdx)
+                if ((unsigned char)c2[0x17] == 0 && *(short *)(c2 + 0x04) == playerIdx)
                     myCityCap++;
             }
             if (myCityCap > 39) heroCap = 6;
@@ -18206,16 +18348,10 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
         }
     }
 
-    /* Determine gender from name */
-    {
-        const unsigned char *hn = sHeroNames[heroNameIdx];
-        isFemaleHero = false;
-        if (hn[1] == 'B' && hn[2] == 'r') isFemaleHero = true;       /* Brynhild */
-        else if (hn[1] == 'T' && hn[2] == 'h') isFemaleHero = true;  /* Thundra */
-        else if (hn[1] == 'S' && hn[2] == 'i') isFemaleHero = true;  /* Silvara */
-        else if (hn[1] == 'R' && hn[2] == 'a') isFemaleHero = true;  /* Ravenna */
-        else if (hn[1] == 'E' && hn[2] == 'l') isFemaleHero = true;  /* Elandra */
-    }
+    /* Determine gender by index — avoids false matches (e.g. Thorin starts "Th" like Thundra).
+     * Female indices: 1=Brynhild, 4=Thundra, 9=Silvara, 14=Ravenna, 17=Elandra */
+    isFemaleHero = (heroNameIdx == 1 || heroNameIdx == 4 ||
+                    heroNameIdx == 9 || heroNameIdx == 14 || heroNameIdx == 17);
 
     /* Find spawn location (68k CODE_103):
      * Turn 1 (initialOffer): always capital coords (gs+0x186+player*0x14+0x04/0x06).
@@ -18230,12 +18366,12 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
         short cityCount = *(short *)(gs + 0x810);
         short myArmyCount = 0, targetN, foundIdx = -1, ci;
         if (armyCount2 > 100) armyCount2 = 100;
-        if (cityCount > 40) cityCount = 40;
+        if (cityCount > 99) cityCount = 99;
         /* Count player's cities (68k uses cityCount as random range) */
         { short myCities = 0;
           for (ci = 0; ci < cityCount; ci++) {
               unsigned char *c2 = gs + 0x812 + ci * 0x20;
-              short st2 = (short)(unsigned char)c2[0x18];
+              short st2 = (short)(unsigned char)c2[0x17];
               if ((st2 == 0 || st2 == 1) && *(short *)(c2 + 0x04) == playerIdx)
                   myCities++;
           }
@@ -18279,6 +18415,13 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                           plainDBox, (WindowPtr)-1L, false, 0);
     if (hireWin == NULL)
         return false;
+
+    /* Keep game palette active while hire dialog is frontmost */
+    if (*gMainGameWindow != 0) {
+        PaletteHandle gamePal = GetPalette((WindowPtr)*gMainGameWindow);
+        if (gamePal != NULL)
+            SetPalette(hireWin, gamePal, false);
+    }
 
     SetPort(hireWin);
 
@@ -18481,7 +18624,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                         short cityCount = *(short *)(gs + 0x810);
                         short ci;
                         Boolean foundCity = false;
-                        if (cityCount > 40) cityCount = 40;
+                        if (cityCount > 99) cityCount = 99;
                         for (ci = 0; ci < cityCount; ci++) {
                             unsigned char *city = gs + 0x812 + ci * 0x20;
                             if (*(short *)(city + 0x04) == playerIdx) {
@@ -18755,6 +18898,8 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
     if (offscreen != NULL)
         DisposeGWorld(offscreen);
     DisposeWindow(hireWin);
+    if (*gMainGameWindow != 0)
+        ActivatePalette((WindowPtr)*gMainGameWindow);
     InvalidateAllGameWindows();
     return hired;
 }
@@ -18782,7 +18927,7 @@ static short CheckVictoryConditions(void)
     curPlayer = *(short *)(gs + 0x110);
     cityCount = *(short *)(gs + 0x810);
     armyCount = *(short *)(gs + 0x1602);
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
     if (armyCount > 100) armyCount = 100;
 
     for (pi = 0; pi < 8; pi++) {
@@ -18793,7 +18938,7 @@ static short CheckVictoryConditions(void)
     for (ci = 0; ci < cityCount; ci++) {
         unsigned char *vc = gs + 0x812 + ci * 0x20;
         short owner = *(short *)(vc + 0x04);
-        short vst = (short)(unsigned char)vc[0x18];
+        short vst = (short)(unsigned char)vc[0x17];
         if (vst != 0 && vst != 1) continue;  /* only cities + capitals */
         if (owner >= 0 && owner < 8) playerCities[owner]++;
     }
@@ -19172,9 +19317,17 @@ static void ShowCityBuildSelection(short cityIndex)
                        dBoxProc, (WindowPtr)-1L, false, 0);
     if (bsWin == NULL) return;
 
-    /* --- Create offscreen GWorld --- */
+    /* Give dialog same palette as game window — palette arbitration stays stable.
+     * Do NOT call ActivatePalette here — it can hang in SheepShaver. */
+    if (*gMainGameWindow != 0) {
+        PaletteHandle gamePal = GetPalette((WindowPtr)*gMainGameWindow);
+        if (gamePal != NULL)
+            SetPalette(bsWin, gamePal, false);
+    }
+
+    /* --- Create offscreen GWorld at 16-bit so marble CopyBits is palette-safe --- */
     SetRect(&gwRect, 0, 0, winW, winH);
-    if (NewGWorld(&bsGW, 0, &gwRect, NULL, NULL, 0) != noErr || bsGW == NULL) {
+    if (NewGWorld(&bsGW, 16, &gwRect, NULL, NULL, 0) != noErr || bsGW == NULL) {
         DisposeWindow(bsWin);
         return;
     }
@@ -19201,15 +19354,16 @@ static void ShowCityBuildSelection(short cityIndex)
         short stopW = 36;
         short stopH = 36;
 
-        /* Bottom navigation buttons (4 tabs + Done, right panel bottom row) */
-        short navBtnW = 44, navBtnH = 24;
-        short navBtnY = winH - navBtnH - 8;
-        short navBtn0X = panelX + 6;                          /* Overview */
-        short navBtn1X = navBtn0X + navBtnW + 4;              /* Build (current) */
-        short navBtn2X = navBtn1X + navBtnW + 4;              /* Armies */
-        short navBtn3X = navBtn2X + navBtnW + 4;              /* Vector */
+        /* Bottom navigation buttons — must fit right panel (winW/2 = 230px wide)
+         * 4×36 + 3×2 + 4 (lead) + 4 (gap) + 44 (Done) = 202px — fits with margin */
+        short navBtnW = 36, navBtnH = 36;
+        short navBtnY = winH - navBtnH - 6;
+        short navBtn0X = panelX + 4;
+        short navBtn1X = navBtn0X + navBtnW + 2;
+        short navBtn2X = navBtn1X + navBtnW + 2;
+        short navBtn3X = navBtn2X + navBtnW + 2;
         /* Done button */
-        short btnW = 50, btnH = navBtnH;
+        short btnW = 44, btnH = navBtnH;
         short btnX = navBtn3X + navBtnW + 4;
         short btnY = navBtnY;
 
@@ -19228,13 +19382,13 @@ static void ShowCityBuildSelection(short cityIndex)
 
                 SetRect(&rightR, panelX, 0, winW, winH);
 
-                /* ---- LEFT HALF: scaled minimap fills entire left panel ---- */
+                /* ---- LEFT HALF: dark background + minimap ---- */
                 {
                     Rect leftPanel;
                     SetRect(&leftPanel, 0, 0, panelX, winH);
-                    /* Fill with dark background first */
+                    /* Dark background; minimap pixels overwrite it */
                     {
-                        RGBColor bg = {0x0000, 0x0000, 0x0000};
+                        RGBColor bg = {0x2222, 0x2222, 0x2222};
                         RGBForeColor(&bg);
                         PaintRect(&leftPanel);
                     }
@@ -19277,7 +19431,7 @@ static void ShowCityBuildSelection(short cityIndex)
                             unsigned char *gs2 = (unsigned char *)*gGameState;
                             short cityCount = *(short *)(gs2 + 0x810);
                             short ci;
-                            if (cityCount > 40) cityCount = 40;
+                            if (cityCount > 99) cityCount = 99;
                             for (ci = 0; ci < cityCount; ci++) {
                                 unsigned char *ct = gs2 + 0x812 + ci * 0x20;
                                 short cx = *(short *)(ct + 0x00);
@@ -19312,8 +19466,8 @@ static void ShowCityBuildSelection(short cityIndex)
                 }
 
                 /* ---- RIGHT HALF: dark stone grey panel ---- */
-                /* DrawMarbleBackground (PICT 1001) renders pink in 8-bit mode
-                 * because the game palette has no grey tones. Use RGB grey. */
+                /* PICT 1001 marble renders pink/red in both 8-bit and 16-bit
+                 * mode (it is a warm salmon marble).  Use RGB grey instead. */
                 {
                     RGBColor stone = {0x5555, 0x5555, 0x5555};
                     RGBForeColor(&stone);
@@ -19339,12 +19493,12 @@ static void ShowCityBuildSelection(short cityIndex)
                     TextFace(0);
                 }
 
-                /* Shield (20x20) */
+                /* Big shield — same style as turn splash */
                 {
                     Rect shR;
                     SetRect(&shR, shieldX, shieldY,
-                            shieldX + 20, shieldY + 20);
-                    DrawShieldIcon(curPlayer, &shR);
+                            shieldX + BIG_SHIELD_W, shieldY + BIG_SHIELD_H);
+                    DrawBigShield(curPlayer, &shR);
                 }
 
                 /* "CAPITAL" label (silver 7pt bold) */
@@ -19577,14 +19731,6 @@ static void ShowCityBuildSelection(short cityIndex)
                     }
                 }
 
-                /* Vertical divider between left and right panels */
-                {
-                    RGBColor divColor = {0x5555, 0x5555, 0x5555};
-                    RGBForeColor(&divColor);
-                    MoveTo(panelX, 0);
-                    LineTo(panelX, winH);
-                }
-
                 UnlockPixels(GetGWorldPixMap(bsGW));
                 SetGWorld(savePort, saveGD);
 
@@ -19723,8 +19869,11 @@ static void ShowCityBuildSelection(short cityIndex)
     DisposeGWorld(bsGW);
     DisposeWindow(bsWin);
 
-    if (*gMainGameWindow != 0)
+    /* Reactivate game palette now that dialog is gone */
+    if (*gMainGameWindow != 0) {
+        ActivatePalette((WindowPtr)*gMainGameWindow);
         InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+    }
 }
 
 
@@ -20104,7 +20253,7 @@ static void ExecuteAITurn(short aiPlayer)
     armyCount = *(short *)(gs + 0x1602);
     cityCount = *(short *)(gs + 0x810);
     if (armyCount > 100) armyCount = 100;
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
 
     /* Process income for AI (income minus army upkeep) */
     {
@@ -20112,7 +20261,7 @@ static void ExecuteAITurn(short aiPlayer)
         short totalUpkeep = 0;
         for (ci = 0; ci < cityCount; ci++) {
             unsigned char *city = gs + 0x812 + ci * 0x20;
-            short st3 = (short)(unsigned char)city[0x18];
+            short st3 = (short)(unsigned char)city[0x17];
             if (st3 != 0 && st3 != 1) continue;  /* cities + capitals only */
             if (*(short *)(city + 0x04) == aiPlayer) {
                 short inc = *(short *)(city + 0x08);
@@ -20145,7 +20294,7 @@ static void ExecuteAITurn(short aiPlayer)
             short ci2;
             for (ci2 = 0; ci2 < cityCount; ci2++) {
                 unsigned char *city = gs + 0x812 + ci2 * 0x20;
-                short ais = (short)(unsigned char)city[0x18];
+                short ais = (short)(unsigned char)city[0x17];
                 if (ais != 0 && ais != 1) continue;
                 if (*(short *)(city + 0x04) == aiPlayer) aiCityCount++;
             }
@@ -20183,7 +20332,7 @@ static void ExecuteAITurn(short aiPlayer)
                 /* Auto-set production for idle AI cities (e.g. newly captured).
                  * 68k AI always produces — use first available unit type. */
                 if (producing < 0) {
-                    short sType = (short)(unsigned char)city[0x18];
+                    short sType = (short)(unsigned char)city[0x17];
                     if (sType == 0 || sType == 1) {
                         short firstProd = *(short *)(extCity + 0x06);
                         short setProd;
@@ -20434,7 +20583,7 @@ static void ExecuteAITurn(short aiPlayer)
             short pci;
             for (pci = 0; pci < cityCount; pci++) {
                 unsigned char *pcity = gs + 0x812 + pci * 0x20;
-                short sType = (short)(unsigned char)pcity[0x18];
+                short sType = (short)(unsigned char)pcity[0x17];
                 if (sType >= 2 && sType <= 5) continue;
                 if (*(short *)(pcity + 0x04) == pi2) pc++;
             }
@@ -20454,7 +20603,7 @@ static void ExecuteAITurn(short aiPlayer)
 
         for (ci = 0; ci < cityCount; ci++) {
             unsigned char *city = gs + 0x812 + ci * 0x20;
-            short sType = (short)(unsigned char)city[0x18];
+            short sType = (short)(unsigned char)city[0x17];
             if (*(short *)(city + 0x04) == aiPlayer &&
                 sType != 2 && sType != 5 && sType != 6) {
                 /* Check if any friendly army is at this city */
@@ -20502,7 +20651,7 @@ static void ExecuteAITurn(short aiPlayer)
                     long bestRuinDist = 999999L;
                     for (ci = 0; ci < cityCount; ci++) {
                         unsigned char *site = gs + 0x812 + ci * 0x20;
-                        short sType = (short)(unsigned char)site[0x18];
+                        short sType = (short)(unsigned char)site[0x17];
                         if (sType >= 2 && sType <= 5) {
                             short rx = *(short *)(site + 0x00);
                             short ry = *(short *)(site + 0x02);
@@ -20616,7 +20765,7 @@ static void ExecuteAITurn(short aiPlayer)
                     for (ci = 0; ci < cityCount; ci++) {
                         unsigned char *city = gs + 0x812 + ci * 0x20;
                         short cOwner = *(short *)(city + 0x04);
-                        short sType = (short)(unsigned char)city[0x18];
+                        short sType = (short)(unsigned char)city[0x17];
                         if (sType >= 2 && sType <= 5) continue;
                         if (cOwner == aiPlayer) continue;
                         /* Pass 0: only primary enemy. Pass 1: any valid target. */
@@ -20713,7 +20862,7 @@ static void ExecuteAITurn(short aiPlayer)
                           if (hasHero) {
                               for (ru = 0; ru < cityCount; ru++) {
                                   unsigned char *rsite = gs + 0x812 + ru * 0x20;
-                                  short rsT = (short)(unsigned char)rsite[0x18];
+                                  short rsT = (short)(unsigned char)rsite[0x17];
                                   if ((rsT == 2 || rsT == 5 || rsT == 6) &&
                                       *(short *)(rsite + 0x1c) != 0 &&
                                       *(short *)(rsite + 0x00) == nx &&
@@ -20788,7 +20937,7 @@ static void ExecuteAITurn(short aiPlayer)
         for (ci = 0; ci < cityCount; ci++) {
             unsigned char *city = gs + 0x812 + ci * 0x20;
             unsigned char *extCity = ext + 0x24c + ci * 0x5c;
-            short sType = (short)(unsigned char)city[0x18];
+            short sType = (short)(unsigned char)city[0x17];
             if (*(short *)(city + 0x04) != aiPlayer) continue;
             if (sType >= 2 && sType <= 5) continue;
 
@@ -20835,7 +20984,7 @@ static void ExecuteAITurn(short aiPlayer)
         /* Count AI's cities and armies */
         for (ci = 0; ci < cityCount; ci++) {
             unsigned char *city = gs + 0x812 + ci * 0x20;
-            short ds = (short)(unsigned char)city[0x18];
+            short ds = (short)(unsigned char)city[0x17];
             if (ds != 0 && ds != 1) continue;
             if (*(short *)(city + 0x04) == aiPlayer) aiCities++;
         }
@@ -21009,10 +21158,10 @@ static void ExecuteAITurn(short aiPlayer)
             /* 68k: cap based on THIS player's city count, not total sites */
             short aiCities = 0, cci;
             short cc = *(short *)(gs + 0x810);
-            if (cc > 40) cc = 40;
+            if (cc > 99) cc = 99;
             for (cci = 0; cci < cc; cci++) {
                 unsigned char *cc2 = gs + 0x812 + cci * 0x20;
-                if ((unsigned char)cc2[0x18] == 0 && *(short *)(cc2 + 0x04) == aiPlayer)
+                if ((unsigned char)cc2[0x17] == 0 && *(short *)(cc2 + 0x04) == aiPlayer)
                     aiCities++;
             }
             if (aiCities > 39) heroCap = 6;
@@ -21025,7 +21174,7 @@ static void ExecuteAITurn(short aiPlayer)
             short ownedCount = 0;
             for (ci = 0; ci < cityCount; ci++) {
                 unsigned char *city = gs + 0x812 + ci * 0x20;
-                short sType = (short)(unsigned char)city[0x18];
+                short sType = (short)(unsigned char)city[0x17];
                 if (*(short *)(city + 0x04) == aiPlayer &&
                     sType != 2 && sType != 5 && sType != 6) {
                     ownedCities[ownedCount++] = ci;
@@ -21222,8 +21371,17 @@ static void ShowTurnSplash(short playerIdx)
     splashWin = NewCWindow(NULL, &winRect, "\p", true,
                             plainDBox, (WindowPtr)-1L, false, 0);
     if (splashWin == NULL) return;
+
+    /* Give splash the same palette as the game window so CLUT isn't changed
+     * when this window comes to front (palette arbitration stays stable).
+     * Do NOT call ActivatePalette here — it can hang in SheepShaver. */
+    if (*gMainGameWindow != 0) {
+        PaletteHandle gamePal = GetPalette((WindowPtr)*gMainGameWindow);
+        if (gamePal != NULL)
+            SetPalette(splashWin, gamePal, false);
+    }
+
     SetPort(splashWin);
-    PlaySound(SND_TURN);
 
     /* Draw castle gate background (PICT 3100, 320x312) */
     gatePict = GetPicture(3100);
@@ -21310,11 +21468,11 @@ static void ShowTurnSplash(short playerIdx)
         short sl = 0;
         RGBColor statCol = {0xCCCC, 0xBBBB, 0x8888};
         RGBColor shadow = {0x0000, 0x0000, 0x0000};
-        if (cc > 40) cc = 40;
+        if (cc > 99) cc = 99;
         if (ac > 100) ac = 100;
         for (si = 0; si < cc; si++) {
             unsigned char *c = gs + 0x812 + si * 0x20;
-            short st = (short)(unsigned char)c[0x18];
+            short st = (short)(unsigned char)c[0x17];
             if ((st == 0 || st == 1) && *(short *)(c + 0x04) == playerIdx) {
                 playerCities++;
                 playerIncome += *(short *)(c + 0x08);
@@ -21353,6 +21511,14 @@ static void ShowTurnSplash(short playerIdx)
 
     TextFace(0); TextFont(3); TextSize(9);
 
+    /* Play turn bong after drawing — quiet any queued sound first so bong plays immediately */
+    if (sSndChannel != NULL) {
+        SndCommand qCmd;
+        qCmd.cmd = quietCmd; qCmd.param1 = 0; qCmd.param2 = 0;
+        SndDoImmediate(sSndChannel, &qCmd);
+    }
+    PlaySound(SND_TURN);
+
     /* Wait for click or ~2.5 seconds */
     endTick = TickCount() + 150;
     while (TickCount() < endTick) {
@@ -21361,6 +21527,8 @@ static void ShowTurnSplash(short playerIdx)
     }
 
     DisposeWindow(splashWin);
+    if (*gMainGameWindow != 0)
+        ActivatePalette((WindowPtr)*gMainGameWindow);
     InvalidateAllGameWindows();
 }
 
@@ -21383,13 +21551,13 @@ static void ProcessNeutralCities(void)
     gs = (unsigned char *)*gGameState;
     cityCount = *(short *)(gs + 0x810);
     armyCount = *(short *)(gs + 0x1602);
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
     if (armyCount > 100) armyCount = 100;
 
     for (ci = 0; ci < cityCount; ci++) {
         unsigned char *city = gs + 0x812 + ci * 0x20;
         short owner = *(short *)(city + 0x04);
-        short sType = (short)(unsigned char)city[0x18];
+        short sType = (short)(unsigned char)city[0x17];
         short cx, cy;
 
         /* Only process neutral cities (owner < 0 or unowned) */
@@ -21469,7 +21637,7 @@ static void ProcessNeutralCities(void)
                     for (ci = 0; ci < cityCount; ci++) {
                         unsigned char *city = gs + 0x812 + ci * 0x20;
                         short cOwner = *(short *)(city + 0x04);
-                        short sType2 = (short)(unsigned char)city[0x18];
+                        short sType2 = (short)(unsigned char)city[0x17];
                         if (sType2 == 2 || sType2 == 5 || sType2 == 6) continue;
                         if (cOwner < 0 || cOwner >= 8) continue; /* skip neutral */
                         {
@@ -21518,7 +21686,7 @@ static void ProcessStartOfTurn(short player)
 
     cityCount = *(short *)(gs + 0x810);
     armyCount = *(short *)(gs + 0x1602);
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
     if (armyCount > 100) armyCount = 100;
 
     /* --- 0. Capital recalculation (68k CODE_080 FUN_00000714) ---
@@ -21549,7 +21717,7 @@ static void ProcessStartOfTurn(short player)
             short found = 0;
             for (i = 0; i < cityCount; i++) {
                 unsigned char *city = gs + 0x812 + i * 0x20;
-                short sType = (short)(unsigned char)city[0x18];
+                short sType = (short)(unsigned char)city[0x17];
                 if (sType != 0 && sType != 1) continue;
                 if (*(short *)(city + 0x04) == player) {
                     short cx = *(short *)(city + 0x00);
@@ -21605,7 +21773,7 @@ static void ProcessStartOfTurn(short player)
         short totalUpkeep = 0;
         for (i = 0; i < cityCount; i++) {
             unsigned char *city = gs + 0x812 + i * 0x20;
-            short sType = (short)(unsigned char)city[0x18];
+            short sType = (short)(unsigned char)city[0x17];
             /* Cities (sType 0) and capitals (sType 1) provide income */
             if (sType != 0 && sType != 1) continue;
             if (*(short *)(city + 0x04) == player) {
@@ -21649,7 +21817,7 @@ static void ProcessStartOfTurn(short player)
                         short playerCities = 0, ci;
                         for (ci = 0; ci < cityCount; ci++) {
                             unsigned char *c2 = gs + 0x812 + ci * 0x20;
-                            short st = (short)(unsigned char)c2[0x18];
+                            short st = (short)(unsigned char)c2[0x17];
                             if ((st == 0 || st == 1) && *(short *)(c2 + 0x04) == player)
                                 playerCities++;
                         }
@@ -21676,7 +21844,7 @@ static void ProcessStartOfTurn(short player)
         for (i = 0; i < cityCount; i++) {
             unsigned char *city = gs + 0x812 + i * 0x20;
             unsigned char *extCity = ext + 0x24c + i * 0x5c;
-            short sType = (short)(unsigned char)city[0x18];
+            short sType = (short)(unsigned char)city[0x17];
             short owner = *(short *)(city + 0x04);
             short prodType;
 
@@ -22104,7 +22272,7 @@ static void AdvanceToNextPlayer(void)
                 short pi;
                 Str255 ns;
 
-                if (cityCount > 40) cityCount = 40;
+                if (cityCount > 99) cityCount = 99;
                 if (armyCount > 100) armyCount = 100;
 
                 SetRect(&sumR, 0, 0, 360, 200);
@@ -22164,7 +22332,7 @@ static void AdvanceToNextPlayer(void)
                         /* Count cities and armies */
                         for (ci2 = 0; ci2 < cityCount; ci2++) {
                             unsigned char *c = gs + 0x812 + ci2 * 0x20;
-                            short sType = (short)(unsigned char)c[0x18];
+                            short sType = (short)(unsigned char)c[0x17];
                             if (sType >= 2 && sType <= 5) continue;
                             if (*(short *)(c + 0x04) == pi) yCities++;
                         }
@@ -22258,10 +22426,10 @@ static void AdvanceToNextPlayer(void)
                     short hasCities = 0;
                     short ci;
                     short cc = *(short *)(gs + 0x810);
-                    if (cc > 40) cc = 40;
+                    if (cc > 99) cc = 99;
                     for (ci = 0; ci < cc; ci++) {
                         unsigned char *city = gs + 0x812 + ci * 0x20;
-                        short est = (short)(unsigned char)city[0x18];
+                        short est = (short)(unsigned char)city[0x17];
                         if (est != 0 && est != 1) continue;  /* only cities + capitals */
                         if (*(short *)(city + 0x04) == pi) { hasCities = 1; break; }
                     }
@@ -22307,7 +22475,7 @@ static void AdvanceToNextPlayer(void)
                     if (cx2 > 0 || cy2 > 0) {
                         short cci;
                         short ccc = *(short *)(gs + 0x810);
-                        if (ccc > 40) ccc = 40;
+                        if (ccc > 99) ccc = 99;
                         for (cci = 0; cci < ccc; cci++) {
                             unsigned char *city = gs + 0x812 + cci * 0x20;
                             if (*(short *)(city + 0x00) == cx2 &&
@@ -22415,10 +22583,10 @@ static void AdvanceToNextPlayer(void)
                 short cc = *(short *)(gs + 0x810);
                 short myCities = 0, totalCities = 0, ci2;
                 short numAlive = 0, pi2;
-                if (cc > 40) cc = 40;
+                if (cc > 99) cc = 99;
                 for (ci2 = 0; ci2 < cc; ci2++) {
                     unsigned char *ct = gs + 0x812 + ci2 * 0x20;
-                    short ct_type = (short)(unsigned char)ct[0x18];
+                    short ct_type = (short)(unsigned char)ct[0x17];
                     if (ct_type == 2 || ct_type == 5 || ct_type == 6) continue;
                     totalCities++;
                     if (*(short *)(ct + 0x04) == curPlayer) myCities++;
@@ -22545,7 +22713,7 @@ static void AdvanceToNextPlayer(void)
                 case 3: { /* City income boost: random city +2 income this turn */
                     short cc = *(short *)(gs + 0x810);
                     short ci, target = -1;
-                    if (cc > 40) cc = 40;
+                    if (cc > 99) cc = 99;
                     for (ci = 0; ci < cc; ci++) {
                         unsigned char *c = gs + 0x812 + ci * 0x20;
                         if (*(short *)(c + 0x04) == curPlayer) {
@@ -22735,12 +22903,12 @@ static void AdvanceToNextPlayer(void)
         {
             short cityCount = *(short *)(gs + 0x810);
             short ci, cityIncome = 0, totalUpkeep = 0;
-            if (cityCount > 40) cityCount = 40;
+            if (cityCount > 99) cityCount = 99;
 
             for (ci = 0; ci < cityCount; ci++) {
                 unsigned char *city = gs + 0x812 + ci * 0x20;
                 short cityOwner = *(short *)(city + 0x04);
-                short st4 = (short)(unsigned char)city[0x18];
+                short st4 = (short)(unsigned char)city[0x17];
                 if (st4 != 0 && st4 != 1) continue;  /* cities + capitals only */
                 if (cityOwner == curPlayer) {
                     cityIncome += *(short *)(city + 0x08);
@@ -22755,7 +22923,7 @@ static void AdvanceToNextPlayer(void)
                 if (armyCount2 > 100) armyCount2 = 100;
                 for (ci = 0; ci < cityCount; ci++) {
                     unsigned char *ct = gs + 0x812 + ci * 0x20;
-                    short ost = (short)(unsigned char)ct[0x18];
+                    short ost = (short)(unsigned char)ct[0x17];
                     if (ost != 0 && ost != 1) continue;
                     if (*(short *)(ct + 0x04) == curPlayer) ownedCities++;
                 }
@@ -22938,10 +23106,10 @@ static void AdvanceToNextPlayer(void)
             unsigned char *pExt = (unsigned char *)*gExtState;
             short pCC = *(short *)(gs + 0x810);
             short pCI;
-            if (pCC > 40) pCC = 40;
+            if (pCC > 99) pCC = 99;
             for (pCI = 0; pCI < pCC; pCI++) {
                 unsigned char *pCity = gs + 0x812 + pCI * 0x20;
-                short pSType = (short)(unsigned char)pCity[0x18];
+                short pSType = (short)(unsigned char)pCity[0x17];
                 if (pSType >= 2) continue;  /* skip ruins/temples */
                 if (*(short *)(pCity + 0x04) != curPlayer) continue;
                 {
@@ -23324,7 +23492,7 @@ static Boolean LoadGameFromFile(FSSpec *spec)
         count = 2;
         if (FSRead(refNum, &count, &nameCount) == noErr) {
             sCityNameCount = nameCount;
-            if (sCityNameCount > 40) sCityNameCount = 40;
+            if (sCityNameCount > 99) sCityNameCount = 99;
             count = sizeof(sCityNames);
             FSRead(refNum, &count, sCityNames);
         }
@@ -23526,7 +23694,7 @@ static void ShowVectoringDialog(short cityIndex)
     ext = (unsigned char *)*gExtState;
     curPlayer = *(short *)(gs + 0x110);
     cityCount = *(short *)(gs + 0x810);
-    if (cityCount > 40) cityCount = 40;
+    if (cityCount > 99) cityCount = 99;
     if (cityIndex < 0 || cityIndex >= cityCount) return;
 
     city = gs + 0x812 + cityIndex * 0x20;
@@ -23542,7 +23710,7 @@ static void ShowVectoringDialog(short cityIndex)
     /* Build list of owned cities (excluding this one) */
     for (ci = 0; ci < cityCount; ci++) {
         unsigned char *c2 = gs + 0x812 + ci * 0x20;
-        short sType = (short)(unsigned char)c2[0x18];
+        short sType = (short)(unsigned char)c2[0x17];
         if (ci != cityIndex && *(short *)(c2 + 0x04) == curPlayer &&
             sType != 2 && sType != 5 && sType != 6) {
             ownedCities[ownedCount++] = ci;
@@ -24626,13 +24794,13 @@ static void HandleMenuChoice(long menuResult)
                 short siteCount = *(short *)(gs + 0x810);
                 short ci;
                 Boolean foundRuin = false;
-                if (siteCount > 40) siteCount = 40;
+                if (siteCount > 99) siteCount = 99;
 
                 for (ci = 0; ci < siteCount; ci++) {
                     unsigned char *site = gs + 0x812 + ci * 0x20;
                     if (*(short *)(site + 0x00) == ax &&
                         *(short *)(site + 0x02) == ay) {
-                        short siteType = (short)(unsigned char)site[0x18];
+                        short siteType = (short)(unsigned char)site[0x17];
                         if (siteType >= 2 && siteType <= 5 &&
                             *(short *)(site + 0x1c) != 0) {
                             short curPlayer = *(short *)(gs + 0x110);
@@ -24692,7 +24860,7 @@ static void HandleMenuChoice(long menuResult)
                                 } else {
                                     /* 68k CODE_074: clear site type after item taken so
                                      * it can't be searched again */
-                                    site[0x18] = 0;
+                                    site[0x17] = 0;
                                 }
                             }
 
@@ -24972,10 +25140,10 @@ static void HandleMenuChoice(long menuResult)
                                             short bestDist = 32000, bestDx = 0, bestDy = 0;
                                             short si2;
                                             short sc2 = *(short *)(gs + 0x810);
-                                            if (sc2 > 40) sc2 = 40;
+                                            if (sc2 > 99) sc2 = 99;
                                             for (si2 = 0; si2 < sc2; si2++) {
                                                 unsigned char *s2 = gs + 0x812 + si2 * 0x20;
-                                                short st2 = (short)(unsigned char)s2[0x18];
+                                                short st2 = (short)(unsigned char)s2[0x17];
                                                 if (st2 >= 2 && st2 <= 5) {
                                                     short dx = *(short *)(s2 + 0x00) - ax;
                                                     short dy = *(short *)(s2 + 0x02) - ay;
@@ -25156,10 +25324,10 @@ static void HandleMenuChoice(long menuResult)
                     short curP = *(short *)(gs + 0x110);
                     short cc = *(short *)(gs + 0x810);
                     short bci;
-                    if (cc > 40) cc = 40;
+                    if (cc > 99) cc = 99;
                     for (bci = 0; bci < cc; bci++) {
                         unsigned char *c = gs + 0x812 + bci * 0x20;
-                        short sType = (short)(unsigned char)c[0x18];
+                        short sType = (short)(unsigned char)c[0x17];
                         if (sType >= 2 && sType <= 5) continue;
                         if (*(short *)(c + 0x00) == ax && *(short *)(c + 0x02) == ay &&
                             *(short *)(c + 0x04) == curP) {
@@ -25189,11 +25357,11 @@ static void HandleMenuChoice(long menuResult)
                 short cityCount = *(short *)(gs + 0x810);
                 short ci;
                 Boolean found = false;
-                if (cityCount > 40) cityCount = 40;
+                if (cityCount > 99) cityCount = 99;
                 for (ci = 0; ci < cityCount; ci++) {
                     unsigned char *c = gs + 0x812 + ci * 0x20;
                     if (*(short *)(c + 0x00) == ax && *(short *)(c + 0x02) == ay) {
-                        short sType = (short)(unsigned char)c[0x18];
+                        short sType = (short)(unsigned char)c[0x17];
                         if (sType != 2 && sType != 5 && sType != 6) {
                             ShowVectoringDialog(ci);
                             found = true;
@@ -25431,10 +25599,10 @@ static void TryAutoSearchRuin(short armyIdx)
     {
         short siteCount = *(short *)(gs + 0x810);
         short ci;
-        if (siteCount > 40) siteCount = 40;
+        if (siteCount > 99) siteCount = 99;
         for (ci = 0; ci < siteCount; ci++) {
             unsigned char *site = gs + 0x812 + ci * 0x20;
-            short siteType = (short)(unsigned char)site[0x18];
+            short siteType = (short)(unsigned char)site[0x17];
             if (*(short *)(site + 0x00) == ax &&
                 *(short *)(site + 0x02) == ay &&
                 (siteType >= 2 && siteType <= 5) &&
@@ -25812,13 +25980,13 @@ static void HandleMouseDown(EventRecord *event)
                         {
                             short cityCount = *(short *)(gs + 0x810);
                             short ci;
-                            if (cityCount > 40) cityCount = 40;
+                            if (cityCount > 99) cityCount = 99;
                             for (ci = 0; ci < cityCount; ci++) {
                                 unsigned char *city = gs + 0x812 + ci * 0x20;
                                 if (*(short *)(city + 0x00) == clickTileX &&
                                     *(short *)(city + 0x02) == clickTileY &&
                                     *(short *)(city + 0x04) == currentPlayer) {
-                                    short sType = (short)(unsigned char)city[0x18];
+                                    short sType = (short)(unsigned char)city[0x17];
                                     if (sType == 0) {
                                         ShowCityBuildSelection(ci);
                                         SetPort(whichWindow);
@@ -25906,7 +26074,7 @@ static void HandleMouseDown(EventRecord *event)
                             {
                                 short cCount = *(short *)(gs + 0x810);
                                 short ci;
-                                if (cCount > 40) cCount = 40;
+                                if (cCount > 99) cCount = 99;
                                 for (ci = 0; ci < cCount; ci++) {
                                     unsigned char *c = gs + 0x812 + ci * 0x20;
                                     if (*(short *)(c + 0x00) == clickTileX &&
@@ -26024,12 +26192,12 @@ static void HandleMouseDown(EventRecord *event)
                             /* Double-click: check for city (even if army present) */
                             short cCount = *(short *)(gs + 0x810);
                             short ci;
-                            if (cCount > 40) cCount = 40;
+                            if (cCount > 99) cCount = 99;
                             for (ci = 0; ci < cCount; ci++) {
                                 unsigned char *c = gs + 0x812 + ci * 0x20;
                                 if (*(short *)(c + 0x00) == clickTileX &&
                                     *(short *)(c + 0x02) == clickTileY) {
-                                    short sType = (short)(unsigned char)c[0x18];
+                                    short sType = (short)(unsigned char)c[0x17];
                                     if (sType == 0) {
                                         if (*(short *)(c + 0x04) == currentPlayer)
                                             ShowCityBuildSelection(ci);
@@ -26052,12 +26220,12 @@ static void HandleMouseDown(EventRecord *event)
                             short cCount = *(short *)(gs + 0x810);
                             short ci;
                             Boolean foundCityHere = false;
-                            if (cCount > 40) cCount = 40;
+                            if (cCount > 99) cCount = 99;
                             for (ci = 0; ci < cCount; ci++) {
                                 unsigned char *c = gs + 0x812 + ci * 0x20;
                                 if (*(short *)(c + 0x00) == clickTileX &&
                                     *(short *)(c + 0x02) == clickTileY) {
-                                    short sType = (short)(unsigned char)c[0x18];
+                                    short sType = (short)(unsigned char)c[0x17];
                                     if (sType == 0 && *(short *)(c + 0x04) == currentPlayer) {
                                         ShowCityBuildSelection(ci);
                                     } else {
@@ -26266,7 +26434,7 @@ static void HandleMouseDown(EventRecord *event)
                         short cityCount = *(short *)(gs + 0x810);
                         short ci;
                         Boolean foundCity = false;
-                        if (cityCount > 40) cityCount = 40;
+                        if (cityCount > 99) cityCount = 99;
 
                         for (ci = 0; ci < cityCount; ci++) {
                             unsigned char *city = gs + 0x812 + ci * 0x20;
@@ -26444,6 +26612,9 @@ static void HandleUpdate(EventRecord *event)
         /* Info panel: PaintRect fills entire background */
     } else if (gStatusWindow != NULL && win == (WindowPtr)*gStatusWindow) {
         /* Status bar: DrawMarbleBackground covers all pixels */
+    } else if (win == sTooltipWin) {
+        /* Floating tooltip: skip erase.  Content was drawn at creation time;
+         * EraseRect here would blank the tooltip text to white. */
     } else {
         EraseRect(&r);
     }
@@ -26697,7 +26868,7 @@ static void HandleUpdate(EventRecord *event)
             short ci;
             Str255 numStr;
 
-            if (cityTotal > 40) cityTotal = 40;
+            if (cityTotal > 99) cityTotal = 99;
 
             /* --- Cities, gold, income, armies with Illuria font --- */
             {
@@ -26715,7 +26886,7 @@ static void HandleUpdate(EventRecord *event)
                 /* Count cities (site_type == 0 only) and sum actual income */
                 for (ci = 0; ci < cityTotal; ci++) {
                     unsigned char *city = gs + 0x812 + ci * 0x20;
-                    unsigned char siteType = city[0x18];
+                    unsigned char siteType = city[0x17];
                     if (siteType == 0 && *(short *)(city + 0x04) == curPlayer) {
                         myCities++;
                         myIncome += *(short *)(city + 0x08);  /* read city's actual income */
@@ -27165,6 +27336,32 @@ int main(void)
     if (*gMainGameWindow != 0) {
         PaletteHandle gamePal = GetNewPalette(1000);
         if (gamePal != NULL) {
+            /* Inject warm-grey entries so marble renders correctly in 8-bit mode.
+             * pltt 1000 has no neutral or warm grey; CopyBits from the 16-bit
+             * marble GWorld to an 8-bit window colour-matches grey to pink/salmon
+             * through the game CLUT.  Replace the last 16 palette entries with a
+             * warm-grey ramp so ActivatePalette pushes grey into the device CLUT,
+             * allowing subsequent CopyBits to find grey instead of pink. */
+            {
+                static const RGBColor sGreyRamp[16] = {
+                    {0xF0F0, 0xEEEE, 0xECEC}, {0xE8E8, 0xE6E6, 0xE4E4},
+                    {0xE0E0, 0xDEDE, 0xDCDC}, {0xD8D8, 0xD6D6, 0xD4D4},
+                    {0xD0D0, 0xCECE, 0xCCCC}, {0xC8C8, 0xC6C6, 0xC4C4},
+                    {0xC0C0, 0xBEBE, 0xBCBC}, {0xB8B8, 0xB6B6, 0xB4B4},
+                    {0xB0B0, 0xAEAE, 0xACAC}, {0xA0A0, 0x9E9E, 0x9C9C},
+                    {0x9090, 0x8E8E, 0x8C8C}, {0x8080, 0x7E7E, 0x7C7C},
+                    {0x7070, 0x6E6E, 0x6C6C}, {0x6060, 0x5E5E, 0x5C5C},
+                    {0x5050, 0x4E4E, 0x4C4C}, {0x4040, 0x3E3E, 0x3C3C},
+                };
+                short nPal = (**gamePal).pmEntries;
+                short nGrey = (nPal < 16) ? nPal : 16;
+                short base  = nPal - nGrey;
+                short gi;
+                for (gi = 0; gi < nGrey; gi++) {
+                    RGBColor gc = sGreyRamp[gi];
+                    SetEntryColor(gamePal, base + gi, &gc);
+                }
+            }
             SetPalette((WindowPtr)*gMainGameWindow, gamePal, true);
             ActivatePalette((WindowPtr)*gMainGameWindow);
         }
@@ -27260,19 +27457,23 @@ int main(void)
          * dialog; starting armies are determined by scenario data. */
         ShowHeroHire(startPlayer, true);
 
-        /* Turn 1: show city build selection for every owned city so the
-         * player sets production before their first turn begins.
-         * AdvanceToNextPlayer handles subsequent turns (production < 0 only). */
+        /* Turn 1: show city build selection for the player's capital only.
+         * AdvanceToNextPlayer handles all cities on subsequent turns (production < 0). */
         if (*gExtState != 0) {
-            unsigned char *t1Ext = (unsigned char *)*gExtState;
+            unsigned char *pstat1 = gs + 0x186 + startPlayer * 0x14;
+            short capX1 = *(short *)(pstat1 + 0x04);
+            short capY1 = *(short *)(pstat1 + 0x06);
             short t1CC = *(short *)(gs + 0x810);
             short t1CI;
-            if (t1CC > 40) t1CC = 40;
+            if (t1CC > 99) t1CC = 99;
             for (t1CI = 0; t1CI < t1CC; t1CI++) {
                 unsigned char *t1City = gs + 0x812 + t1CI * 0x20;
-                if ((short)(unsigned char)t1City[0x18] >= 2) continue; /* skip ruins */
+                if ((short)(unsigned char)t1City[0x17] >= 2) continue; /* skip ruins */
                 if (*(short *)(t1City + 0x04) != startPlayer) continue;
+                if (*(short *)(t1City + 0x00) != capX1) continue;      /* capital match */
+                if (*(short *)(t1City + 0x02) != capY1) continue;
                 ShowCityBuildSelection(t1CI);
+                break; /* only one capital */
             }
         }
     }
@@ -27751,7 +27952,7 @@ int main(void)
                         short ay = *(short *)(army + 0x02);
                         short cc = *(short *)(gs + 0x810);
                         short ci;
-                        if (cc > 40) cc = 40;
+                        if (cc > 99) cc = 99;
                         for (ci = 0; ci < cc; ci++) {
                             unsigned char *city = gs + 0x812 + ci * 0x20;
                             if (*(short *)(city + 0x00) == ax &&
