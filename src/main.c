@@ -8146,18 +8146,20 @@ static void DrawOverviewInWindow(WindowPtr win)
     mapData = (unsigned char *)*gMapTiles;
     r = win->portRect;
 
-    /* Fill background: PICT 1012 ocean gradient via DrawPicture
-     * (DrawPicture handles depth conversion properly, unlike CopyBits
-     * from GWorlds which can produce palette mismatches in this window) */
-    {
-        PicHandle oceanPic = (PicHandle)GetResource('PICT', 1012);
-        if (oceanPic != NULL) {
-            DrawPicture(oceanPic, &r);
-        } else {
-            RGBColor bg = {0x0000, 0x2222, 0x6666};
-            RGBForeColor(&bg);
-            PaintRect(&r);
+    /* Fill background: PICT 1012 ocean gradient via CopyBits from GWorld */
+    if (sMinimapOceanGW != NULL) {
+        PixMapHandle opm = GetGWorldPixMap(sMinimapOceanGW);
+        if (LockPixels(opm)) {
+            Rect srcR = (**opm).bounds;
+            CopyBits((BitMap *)*opm,
+                     &((GrafPtr)win)->portBits,
+                     &srcR, &r, srcCopy, NULL);
+            UnlockPixels(opm);
         }
+    } else {
+        RGBColor bg = {0x0000, 0x2222, 0x6666};
+        RGBForeColor(&bg);
+        PaintRect(&r);
     }
 
     /* Scale factor: always 2px per tile (68k CODE_128 never uses 1x) */
