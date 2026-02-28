@@ -81,15 +81,13 @@
 - Current approach: RemapShieldColors() modifies each cicn's embedded CLUT entries to nearest pltt 1000 palette color
 - Original game renders correctly in SheepShaver, so something differs in our build
 
-### Roads (Feb 21 fixes)
-- CopyMask with depth-aware 1-bit mask: reads corner pixel (0,0) as background reference, compares at native depth (8/16/32-bit)
-- Autotile pass added for random maps: converts boolean road flags to proper tile indices 1-17
-- Pre-built scenarios load pre-computed autotile values from RD resource (confirmed via resource dump)
-- Autotile mapping: 4-direction neighbor mask (N=1,E=2,S=4,W=8) → 16 tile variants + isolated fallback
-- PICT 30021 layout: 16 tiles per row (640px / 40px = 16 cols), NOT 13 as RE_rendering.md suggests
-- Road buffer always 112 wide, hardcoded (previously used sMapWidth variable)
-- Background color: palette index 146 = (0xEF,0xEF,0xEF) light gray
-- Previous bugs fixed: (1) all random roads wrote value 1, (2) mode 36 transparent CopyBits didn't match bg color at >8-bit depth
+### Roads (Fixed Feb 27)
+- Road rendering now uses mode-36 CopyBits (transparent blit), same pattern as army sprites
+- Previous 1-bit GWorld mask approach (CopyMask) failed silently due to PixMap rowBytes bit-15 flag
+- Background color sampled from PICT 30021 row 1 (y=40) for transparency key
+- PICT 30021 layout: 13 tiles per row (confirmed from 68k decompilation), 2 rows of 40x40 tiles
+- Autotile pass for random maps: 4-direction neighbor mask → 16 tile variants
+- Road buffer always 112 wide, hardcoded
 
 ### Control Window Layout
 - Original uses View 2000 with T3DCluster containing 26 T3DIconRadio buttons (100x30 each, icon+text)

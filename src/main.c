@@ -1585,14 +1585,15 @@ static void GameInit(void)
             *(short *)(city + 0x04) = owner;
             *(short *)(city + 0x06) = (short)(unsigned char)src[0x14];  /* defense */
 
-            /* Production capability: default to first 4 unit types [0,1,2,3].
-             * SCN compact record +0x16..+0x19 bytes are NOT confirmed as
-             * production type indices — they may encode something else.
-             * TODO: decode proper production types from SCN data. */
-            *(short *)(city + 0x0C) = 0;  /* Lt Infantry */
-            *(short *)(city + 0x0E) = 1;  /* Hv Infantry */
-            *(short *)(city + 0x10) = 2;  /* Cavalry */
-            *(short *)(city + 0x12) = 3;  /* Archers */
+            /* Production capability: read from SCN compact record +0x16..+0x19.
+             * Each byte is a unit type index (0-28) or 0xFF (empty slot). */
+            for (j = 0; j < 4; j++) {
+                unsigned char pt = src[0x16 + j];
+                *(short *)(city + 0x0C + j * 2) = (pt == 0xFF) ? -1 : (short)pt;
+            }
+
+            /* Income: SCN compact record +0x2A */
+            *(short *)(city + 0x08) = (short)(unsigned char)src[0x2A];
 
             city[0x17] = 0;  /* site type: 0 = playable city */
         }
@@ -2013,8 +2014,13 @@ static void GameInit(void)
                 newArmy[0x15] = 0x0F;
                 newArmy[0x2f] = 0x0F;
 
-                /* Sprite index: neutral garrisons use Heavy Infantry (sprite 2) */
-                newArmy[0x14] = 2;
+                /* Sprite index: look up from unit type table, or use type directly */
+                if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
+                    unsigned char *ute = sUnitTypeTable + prodType * UNIT_TYPE_ENTRY;
+                    newArmy[0x14] = (unsigned char)ute[0x00];
+                } else {
+                    newArmy[0x14] = (unsigned char)prodType;
+                }
 
                 /* Fill unit slots */
                 {
@@ -2109,10 +2115,12 @@ static void GameInit(void)
                     newArmy[0x15] = (unsigned char)i;  /* owner */
                     newArmy[0x2f] = (unsigned char)i;  /* runtime owner */
 
-                    /* Sprite: use unitType; player color via faction sheet */
-                    {
-                        static unsigned char sprMap[] = {0, 2, 4, 6, 8, 10, 12, 14};
-                        newArmy[0x14] = (unitType < 8) ? sprMap[unitType] : (unsigned char)(unitType * 2);
+                    /* Sprite: look up from unit type table (offset 0x00 = sprite index) */
+                    if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
+                        unsigned char *ute = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
+                        newArmy[0x14] = (unsigned char)ute[0x00];
+                    } else {
+                        newArmy[0x14] = (unsigned char)unitType;
                     }
 
                     /* One unit in slot 0, slots 1-3 empty (0xFF = vacant) */
@@ -8986,7 +8994,7 @@ static void ShowCityInfo(short cityIndex)
                                         PixMapHandle pm3;
                                         if (sUnitTypesLoaded && pType < sUnitTypeCount) {
                                             unsigned char *ute2 = sUnitTypeTable + pType * UNIT_TYPE_ENTRY;
-                                            si2 = *(short *)(ute2 + 0x24);
+                                            si2 = (short)ute2[0x00];
                                         }
                                         SetRect(&srcR3, (si2 % 16) * 32, (si2 / 16) * 30,
                                                 (si2 % 16) * 32 + 29, (si2 / 16) * 30 + 32);
@@ -9143,7 +9151,7 @@ static void ShowCityInfo(short cityIndex)
                                         PixMapHandle pm;
                                         if (sUnitTypesLoaded && pType < sUnitTypeCount) {
                                             unsigned char *ute = sUnitTypeTable + pType * UNIT_TYPE_ENTRY;
-                                            si = *(short *)(ute + 0x24);
+                                            si = (short)ute[0x00];
                                         }
                                         SetRect(&srcR2, (si % 16) * 32, (si / 16) * 30,
                                                 (si % 16) * 32 + 29, (si / 16) * 30 + 32);
@@ -9697,7 +9705,7 @@ static void ShowArmyInspect(short armyIndex)
                             PixMapHandle pm3;
                             if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
                                 unsigned char *ute = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
-                                si3 = *(short *)(ute + 0x24);
+                                si3 = (short)ute[0x00];
                             }
                             SetRect(&srcR4, (si3 % 16) * 32, (si3 / 16) * 30,
                                     (si3 % 16) * 32 + 29, (si3 / 16) * 30 + 32);
@@ -11673,7 +11681,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                         Rect srcR2, dstR2;
                         if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
                             unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
-                            sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                            sprIdx = (short)ute[0x00];
                         }
                         sprCol2 = sprIdx % 16;
                         sprRow2 = sprIdx / 16;
@@ -11778,7 +11786,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                         Rect srcR2, dstR2;
                         if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
                             unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
-                            sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                            sprIdx = (short)ute[0x00];
                         }
                         sprCol2 = sprIdx % 16;
                         sprRow2 = sprIdx / 16;
@@ -14169,7 +14177,7 @@ static void ShowFightOrder(short armyIndex)
                         Rect srcR2, dstR2;
                         if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
                             unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
-                            sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                            sprIdx = (short)ute[0x00];
                         }
                         sprCol2 = sprIdx % 16;
                         sprRow2 = sprIdx / 16;
@@ -17437,7 +17445,7 @@ static void ShowStackDialog(void)
                             /* Map unit type to sprite: first unit slot's type */
                             if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
                                 unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
-                                sprIdx = (short)((ute[0x24] << 8) | ute[0x25]);
+                                sprIdx = (short)ute[0x00];
                             }
                             sprCol2 = sprIdx % 16;
                             sprRow2 = sprIdx / 16;
@@ -17981,7 +17989,7 @@ static void ShowArmySelection_REMOVED(short playerIdx)
                 armyStrength[ci2] = (short)((ute[0x16] << 8) | ute[0x17]);
                 armyMoves[ci2]    = (short)((ute[0x1C] << 8) | ute[0x1D]);
                 armyHP[ci2]       = (short)((ute[0x1E] << 8) | ute[0x1F]);
-                armySprites[ci2]  = (short)((ute[0x24] << 8) | ute[0x25]);
+                armySprites[ci2]  = (short)ute[0x00];
                 if (armyHP[ci2] <= 0) armyHP[ci2] = fallHP[ci2];
             } else {
                 short ni2;
@@ -19652,8 +19660,14 @@ static void ShowCityBuildSelection(short cityIndex)
 
                         if (sArmyLoaded && curPlayer < ARMY_SHEETS &&
                             sArmyGW[curPlayer] != NULL) {
-                            short sprC = selectedType % 16;
-                            short sprR = selectedType / 16;
+                            short sprI = selectedType;
+                            if (sUnitTypesLoaded && selectedType >= 0 && selectedType < sUnitTypeCount) {
+                                unsigned char *ute = sUnitTypeTable + selectedType * UNIT_TYPE_ENTRY;
+                                sprI = (short)ute[0x00];
+                            }
+                            {
+                            short sprC = sprI % 16;
+                            short sprR = sprI / 16;
                             short sX   = sprC * 32;
                             short sY   = sprR * 30;
                             Rect  srcR3, dstR3;
@@ -19673,6 +19687,7 @@ static void ShowCityBuildSelection(short cityIndex)
                                 RGBBackColor(&savedBg2);
                             }
                             UnlockPixels(GetGWorldPixMap(sArmyGW[curPlayer]));
+                        }
                         }
                     }
                 }
@@ -19704,8 +19719,14 @@ static void ShowCityBuildSelection(short cityIndex)
                         if (sArmyLoaded && curPlayer < ARMY_SHEETS &&
                             sArmyGW[curPlayer] != NULL) {
                             short ti   = typeList[i2];
-                            short sprC = ti % 16;
-                            short sprR = ti / 16;
+                            short sprI = ti;
+                            if (sUnitTypesLoaded && ti >= 0 && ti < sUnitTypeCount) {
+                                unsigned char *ute = sUnitTypeTable + ti * UNIT_TYPE_ENTRY;
+                                sprI = (short)ute[0x00];
+                            }
+                            {
+                            short sprC = sprI % 16;
+                            short sprR = sprI / 16;
                             short sxs  = sprC * 32;
                             short sys  = sprR * 30;
                             Rect  srcRs, dstRs;
@@ -19725,6 +19746,7 @@ static void ShowCityBuildSelection(short cityIndex)
                                 RGBBackColor(&savedBg3);
                             }
                             UnlockPixels(GetGWorldPixMap(sArmyGW[curPlayer]));
+                        }
                         }
 
                         /* Unit name below ring (white 8pt) */
@@ -20548,8 +20570,8 @@ static void ExecuteAITurn(short aiPlayer)
                         newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
                         /* Use unit type table for sprite, HP, and movement */
                         if (sUnitTypesLoaded && producing < sUnitTypeCount) {
-                            /* Fix: use GetUnitTypeStat (reads high byte from correct stat offset) */
-                            newArmy[0x14] = (unsigned char)(producing * 2); /* sprite sheet row */
+                            unsigned char *ute = sUnitTypeTable + producing * UNIT_TYPE_ENTRY;
+                            newArmy[0x14] = (unsigned char)ute[0x00];
                             newArmy[0x1a] = (unsigned char)GetUnitTypeStat(producing, 3); /* movement */
                             newArmy[0x1e] = (unsigned char)GetUnitTypeStat(producing, 0); /* HP */
                             /* Tech upgrade bonus (68k CODE_080 FUN_00001858) */
@@ -20561,12 +20583,11 @@ static void ExecuteAITurn(short aiPlayer)
                             RecalcArmyStrength(newArmy);
                             newArmy[0x2e] = newArmy[0x1a] / 2; /* half movement on spawn */
                         } else {
-                            static unsigned char spriteIdx[] = {0, 2, 4, 6, 8, 10};
                             static unsigned char unitHP2[]  = {3, 4, 5, 3, 6, 4};
                             static unsigned char unitMov2[] = {10, 8, 14, 10, 6, 12};
                             short uidx = producing;
                             if (uidx < 0 || uidx > 5) uidx = 0;
-                            newArmy[0x14] = spriteIdx[uidx];
+                            newArmy[0x14] = (unsigned char)producing;
                             newArmy[0x1a] = unitMov2[uidx];
                             newArmy[0x1e] = unitHP2[uidx];
                             RecalcArmyStrength(newArmy);
@@ -22067,19 +22088,19 @@ static void ProcessStartOfTurn(short player)
                             a[0x04 + nl] = 0;
                         }
 
-                        /* Sprite from unit type index (each type = 2 sprite rows) */
-                        a[0x14] = (unsigned char)(prodType * 2);
-
+                        /* Sprite from unit type table (offset 0x24) */
                         a[0x15] = (unsigned char)player;
                         a[0x16] = (unsigned char)prodType;
                         a[0x17] = 0xFF; a[0x18] = 0xFF; a[0x19] = 0xFF;
 
-                        /* Movement and HP from unit type table */
+                        /* Sprite, movement and HP from unit type table */
                         if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
-                            /* Fix: use GetUnitTypeStat (reads high byte from correct stat offset) */
+                            unsigned char *ute = sUnitTypeTable + prodType * UNIT_TYPE_ENTRY;
+                            a[0x14] = (unsigned char)ute[0x00];
                             a[0x1a] = (unsigned char)GetUnitTypeStat(prodType, 3); /* movement */
                             a[0x1e] = (unsigned char)GetUnitTypeStat(prodType, 0); /* HP */
                         } else {
+                            a[0x14] = (unsigned char)prodType;
                             a[0x1a] = 8;
                             a[0x1e] = 3;
                         }
@@ -24310,7 +24331,7 @@ static void HandleMenuChoice(long menuResult)
                         short ut = (short)(unsigned char)newArmy[0x16];
                         if (sUnitTypesLoaded && ut >= 0 && ut < sUnitTypeCount) {
                             unsigned char *ute = sUnitTypeTable + ut * UNIT_TYPE_ENTRY;
-                            newArmy[0x14] = (unsigned char)(*(short *)(ute + 0x24) & 0xFF);
+                            newArmy[0x14] = (unsigned char)ute[0x00];
                         } else {
                             newArmy[0x14] = army[0x14]; /* copy from source */
                         }
