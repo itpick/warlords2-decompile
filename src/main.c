@@ -8847,14 +8847,15 @@ static void ShowCityInfo(short cityIndex)
                             DrawString("\pNothing");
                         }
 
-                        /* Available production unit icons (circular, 4 slots) */
+                        /* Available production unit icons (circular, 4 slots)
+                         * Draw strongest (last slot) on left, weakest (first) on right */
                         {
                             short pi3, iconX = 20;
                             short iconY = yBase + 60;
                             short iconSz = 40;  /* circular icon diameter */
                             short pSheet = (owner >= 0 && owner < ARMY_SHEETS) ? owner : 0;
                             GWorldPtr pGW = sArmyGW[pSheet] ? sArmyGW[pSheet] : sArmyGW[0];
-                            for (pi3 = 0; pi3 < 4; pi3++) {
+                            for (pi3 = 3; pi3 >= 0; pi3--) {
                                 short pType = *(short *)(extCity + 0x06 + pi3 * 2);
                                 Rect iconOval;
                                 SetRect(&iconOval, iconX, iconY, iconX + iconSz, iconY + iconSz);
@@ -8989,8 +8990,8 @@ static void ShowCityInfo(short cityIndex)
                             LineTo(CITY_WIN_W - 25, yBase + 4);
                         }
 
-                        /* List available production slots */
-                        for (pi2 = 0; pi2 < 4; pi2++) {
+                        /* List available production slots (strongest first) */
+                        for (pi2 = 3; pi2 >= 0; pi2--) {
                             short pType = *(short *)(extCity + 0x06 + pi2 * 2);
                             if (pType >= 0 && pType < 29) {
                                 Str255 uName;

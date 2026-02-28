@@ -97,6 +97,14 @@
 - PICT 1020 "HELPGFX" shows toolbar sections: minimap, task, speed, end, skill, options, misc
 - 15 CMNU resources define all toolbar commands
 
+### Random Map Minimap Roads
+- Random scenarios show funky road rendering scribble all over the minimap
+- Campaign scenarios (e.g. Erythea) are fine; issue is specific to random map generation
+
+### Port/Anchor Labels
+- Anchor/water port icons on cities are not labeled correctly
+- Need to verify port detection and ensure correct icon rendering for coastal cities
+
 ### Missing Game Logic
 - No save/load game implementation yet
 - No quest/ruin exploration rewards
