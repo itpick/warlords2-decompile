@@ -100,4 +100,9 @@ Full-window overlay matching the original Warlords II city production screen. Se
 - `src/sound/` — Sound/music reference code (original decompiled QTMA routines)
 - `docs/` — Research notes, resource catalogs, architecture docs
 - `docs/CODEWARRIOR.md` — Original compiler technical reference
+- `docs/terrain_resources.md` — Terrain sprite sheets and PICT 30010 sprite map
 - `tools/` — Analysis and extraction scripts
+
+## License & Permission
+
+This project has received permission from the original developers to pursue this faithful re-creation of Warlords II.

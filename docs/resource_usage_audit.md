@@ -377,3 +377,342 @@ Views are loaded by `GetResource('View', id)` in the MacApp window creation infr
 19. **Roll 3020** — Player setup roller
 20. **PICT 1002** — Marble bar placeholder
 21. **PICT 3011** — Scrollbar thumb
+
+---
+
+## 68k Decompiled Code — Sprite/PICT Cross-Reference
+
+Complete mapping of every sprite sheet access, CopyBits call, and resource load found in the original 68k decompiled code (`tools/68k_binary/decompiled/CODE_XXX.c`).
+
+### CopyBits Function Signatures
+
+The original 68k code uses four CopyBits entry points via the A5 jump table:
+
+| Jump Table Address | Signature | Notes |
+|---|---|---|
+| `func_0x00002378` | `(srcGW, srcRect, dstRect, mode)` | Standard source-to-screen CopyBits (~125 calls) |
+| `func_0x00002380` / `FUN_00002380` | `(destGW, srcX, srcY, srcGW, destX, mode)` | Source-to-destination GWorld variant (~90 calls) |
+| `FUN_00002388` | `(srcGW, srcRect, destRect, destGW, mode)` | Combat-specific blit variant |
+| `func_0x00002370` / `FUN_00002370` | `(gwAddr)` | EraseRect / clear sprite area |
+
+**Transfer Modes Observed:**
+
+| Mode Value | Meaning | Usage |
+|---|---|---|
+| `0` | srcCopy (opaque) | Base terrain, backgrounds |
+| `0x24` | Mode 36 (transparent) | Armies, cities, roads, overlays — skips bg-color pixels |
+| `0x10024` | Mode 36 + mask flag | Shields, flags, spell effects — clipped transparent blit |
+| `0x20001d` | Special blend | Selection highlight / army blink |
+
+### Resource Loading Functions
+
+| Jump Table Address | Mac API Equivalent | Signature | Usage |
+|---|---|---|---|
+| `func_0x00002878` | `Get1Resource(type, id)` | `(resourceID)` | Load sprite sheets, terrain data |
+| `func_0x00002860` | `Get1Resource` + validate | `(resID, typeParam)` | Load with type/subtype check |
+| `func_0x000076d0` | Dialog text renderer | `(buffer, resID, param)` | ~259 calls across dialogs (city, hero, report) |
+| `FUN_00002430` | `DrawPicture` or init | `(handle, pictID, port, ...)` | Dialog PICT setup (CODE_057) |
+| `FUN_00002ad8` / `func_0x00002ad8` | Sprite animation setup | `(param1, param2, ...)` | Initialize sprite sequences |
+| `FUN_00002ad0` | Resource utility | `(resourceID)` | Fetch/validate resources |
+
+### GWorld Address Map (A5-Relative Globals)
+
+Each address is an A5-relative offset to a GWorld pointer (or array of pointers) holding a loaded sprite sheet.
+
+| A5 Address | Sprite Sheet | PICT Source | Pixel Size | Grid | Notes |
+|---|---|---|---|---|---|
+| `0x14098` | Army unit sprites | PICT 30000-30009 | 29x32 | 29 entries × 0x1c stride | Per-faction tinted unit sprites |
+| `0x140b4` | Flag/banner sprites | PICT 30030-30037 | varies | Per-faction | Map army markers, animated |
+| `0x140d0` | Base terrain layer | PICT 30022 | 40x40 | 16×6 grid | Opaque (mode 0) |
+| `0x140ec` | Terrain overlay layer | PICT 30023 | 40x80 | 16 cols × 3 rows | City styles (18 normal + razed) + landscape. Mode 36 transparent |
+| `0x14124` | Sound/UI indicator | — | varies | — | Audio UI sprites (CODE_125) |
+| `0x14140` | City/settlement sprites | PICT 25000 | 27x26 | 9 columns (8 factions + neutral) | Mode 36 transparent |
+| `0x143fc`–`0x144c0` | Game setup screen GWorlds | Multiple PICTs | varies | Complex layers | Faction selection, hero/unit setup |
+| `0x4098` | Unit roster (dialog copy) | Same as 0x14098 | 29x32 | Mirrors army sprites | Used in setup dialog list view |
+| `0x4124` | Sound indicator sprites | — | varies | — | CODE_125 sound dialog |
+| `0x4140` | Sidebar/UI icon sprites | PICT 30010 (master sheet) | varies | Small icons | Buttons, markers, shields |
+| `0x415c` | Shield/spell effect sprites | PICT 30024 | varies | 8 columns | Faction shields, spell icons |
+| `0x4178` | Weapon/item icon sprites | PICT 30010 subsection | varies | — | Combat item/weapon display |
+| `0x446c` | Terrain defense icons (set A) | PICT 30010 subsection | varies | — | Fortress, mountain, tower overlays |
+| `0x44a4` | Terrain defense icons (set B) | PICT 30010 subsection | varies | — | Additional terrain markers |
+
+### Per-Segment Sprite References
+
+#### CODE_067 — `a1View` (Main Map Rendering) — 40+ sprite calls
+
+The primary map renderer. Contains the big dispatch switch (`FUN_00001c6a`) for all sprite types.
+
+| Line | Function | GWorld | Mode | Description |
+|---|---|---|---|---|
+| 34 | `FUN_000000ae` | `0x14098` | `0x20001d` | Army sprite blink/selection highlight |
+| 66 | `FUN_000001c4` | `param_1+0x22` | `0x10024` | Army sprite on tile (mode 36 + mask) |
+| 827 | — | `0x140b4` | `0` | Flag sprite (opaque) |
+| 865 | — | `0x140b4` | `0` | Flag sprite variant |
+| 1003 | — | `0x14098` | varies | Army sprite by unit type index |
+| 1100 | — | `0x4140` | `0x24` | City marker icon (transparent) |
+| 1124 | — | `0x4140` | `0x24` | City marker variant |
+| 1140 | — | `0x4098` | varies | Unit type sprite (dialog mirror) |
+| 1287 | — | `0x415c` | `0x10024` | Shield/faction sprite |
+| 1304 | — | `0x415c` | `0x10024` | Shield variant |
+| 1319 | — | `0x4178` | `0x10024` | Weapon/item icon |
+| 1345 | — | `0x415c` | `0x10024` | Shield (another faction) |
+| 1360 | — | `0x415c` | `0x10024` | Shield (another faction) |
+| 1375 | — | `0x4140` | `0x10024` | City/UI icon |
+| 1392 | — | `0x446c` | `0x10024` | Terrain defense icon |
+| 1407 | — | `0x446c` | `0x10024` | Terrain defense variant |
+| 1418 | — | `0x415c` | `0x10024` | Shield (conditional) |
+| 1426 | — | `0x446c` | `0x10024` | Defense icon (conditional) |
+| 1446 | — | `0x446c` | `0x10024` | Defense icon |
+| 1461 | — | `0x446c` | `0x10024` | Defense icon |
+| 1472 | — | `0x4140` | `0x10024` | UI icon (conditional) |
+| 1492 | — | `0x446c` | `0x10024` | Defense icon |
+| 1507 | — | `0x446c` | `0x10024` | Defense icon |
+| 1522 | — | `0x446c` | `0x10024` | Defense icon |
+| 1533 | — | `0x446c` | `0x10024` | Defense icon (conditional) |
+| 1551 | — | `0x4140` | `0x10024` | UI icon |
+| 3635-3656 | — | `0x140b4` | varies | Flag animation sequence |
+
+#### CODE_057 — `a2GameSetup` (Game Setup) — 60+ CopyBits calls
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 401-402 | — | — | `FUN_00002430(handle, 3000, ...)` — Load PICT 3000 (scenario bg) |
+| 2167-2181 | `0x14098`, `0x4098` | varies | Army sprite setup + clear |
+| 2307-2317 | `0x14098`, `0x4098` | varies | Army sprite variant |
+| 2434-2444 | `0x14098`, `0x4098` | varies | Army sprite variant |
+| 2530-2540 | `0x14098`, `0x4098` | varies | Army sprite variant |
+| 2605 | `0x4098` | — | Clear roster slot |
+| 2827-2928 | — | — | Dialog PICT 3000 references |
+
+#### CODE_014 — `a1ImportantRes` (Combat Map) — 12+ blit calls
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 2488-2496 | `0x140ec` | `0x24` | Terrain overlay (transparent) |
+| 2522 | `0x140ec` | `0x24` | Terrain overlay |
+| 2677-2733 | `0x140ec` | `0x24` | Terrain defense overlays in combat view |
+
+#### CODE_128 — `a1OverviewMap` — 15+ blit calls
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 272-384 | `0x140d0`, `0x140ec` | `0` | Overview minimap terrain rendering |
+| 309 | `0x14140` | varies | City dots on overview |
+| 419, 440, 452 | `0x14140` | varies | City icons on overview at different zoom levels |
+| 497, 570 | — | — | Resource validation for overview sprites |
+
+#### CODE_079 — `a2Stack` (Stack Movement) — 6+ calls
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 510 | `0x4140` | `0x24` | Stack movement indicator |
+| 556-572 | `0x44a4` | `0x24` | Terrain capability icons (5 variants at different Y offsets) |
+
+#### CODE_036 — `a1Help` (Help Dialog) — 6+ calls
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 508-554 | `0x4140`, `0x446c`, `0x44a4` | `0x24` | Help dialog icon sprites |
+| 632 | `0x14140` | varies | City icon in help |
+
+#### CODE_044 — `a1HumanControl` (Army/Hero Dialogs) — 6+ calls
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 1696-1730 | `0x14140` | varies | City markers in dialog |
+
+#### CODE_125 — `a1Sound` (Sound System) — 4+ calls
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 683 | — | — | `func_0x00002ae0(0x250000)` — Sound resource 0 |
+| 692 | — | — | `func_0x00002ae0(0x250001)` — Sound resource 1 |
+| 1198 | `0x4124` | `0x24` | Sound UI sprite |
+| 1204-1216 | `0x14124` | `0x24` | Sound UI sprites (3 calls) |
+
+#### CODE_063 — `a2HeroInfo` (Hero Info Dialog)
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 756 | — | — | `func_0x00002878(0x30000)` — Load PICT 30000 terrain sheet |
+
+#### CODE_053 — `a2CombatAnim` (Combat Animation)
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 645 | `0x1446c` | `0` | Combat terrain sprite (opaque) |
+| 656 | `0x1446c` | `0` | Combat terrain variant |
+
+#### CODE_104 — `a1AICommon` (AI Common)
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 291 | `0x140b4` | varies | AI flag/marker sprite |
+
+#### CODE_078 — (Unknown Segment)
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 52 | `param_1+0xc0` | `0x24` | Transparent blit from object GWorld |
+
+#### CODE_054 — `a2Reports` (Reports Dialog)
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 638 | — | `0x24` | `func_0x00003b78(...)` — Report sprite rendering |
+
+#### CODE_133 — `a1Fight2Possibly` (Combat System)
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 698, 708 | — | — | `func_0x00002ad8(0xa30002, ...)` — Combat sprite animation |
+
+#### CODE_042 — `a1SmallCommonRoutines`
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 1398 | — | — | `func_0x00002a48(rect, CONCAT, 0x30003)` — Terrain coordinate calc |
+
+#### CODE_080 — `a2StartOfTurn` (Turn Initialization)
+
+| Line | GWorld | Mode | Description |
+|---|---|---|---|
+| 2637, 2697, 2763 | — | — | `FUN_00002ad8(0x130000, ...)` — Turn splash sprite rendering |
+
+### Road Rendering (68k Original)
+
+The original road rendering uses **mode 36 CopyBits** (NOT CopyMask). Found in the map view renderer (CODE_067):
+
+```c
+// 68k road rendering pattern (CODE_067, inferred from sprite dispatch)
+func_0x00002378(roadGW, &srcRect, &dstRect, 0x24);  // mode 36
+```
+
+- Road sprite sheet at PICT 30021 (640x80)
+- 13 tiles per row, 2 rows of 40x40 tiles
+- Background color from pixel (0,0) of sheet
+- Same transparent blit approach as army sprites — NO CopyMask involved
+
+### Army Sprite Rendering with Masks (PICT 30009)
+
+PICT 30009 contains 1-bit silhouette masks for army sprites. The original code uses this for CopyMask-based army rendering as an alternative to mode 36:
+
+```c
+// 68k army mask rendering (CODE_067 FUN_000001c4, line 66)
+func_0x00002378(param_1 + 0x22, &srcRect, &dstRect, 0x10024);
+```
+
+The `0x10024` mode combines mode 36 with an additional mask flag. PICT 30009 serves as the mask source for precise army sprite transparency.
+
+### Master Sprite Sheet Breakdown (PICT 30010, 144x246)
+
+The 0x4140/0x415c/0x4178/0x446c/0x44a4 GWorld addresses all appear to reference subsections of PICT 30010 (the master UI sprite sheet). Based on the CopyBits source rectangles in CODE_067:
+
+| Address | Approx Region | Content |
+|---|---|---|
+| `0x4140` | Top section | Small UI icons, city markers, buttons |
+| `0x415c` | Mid section | Faction shields (8 columns), spell icons |
+| `0x4178` | Mid-lower | Weapon/item combat icons |
+| `0x446c` | Lower section | Terrain defense icons set A (fortress, mountain, tower) |
+| `0x44a4` | Bottom section | Terrain defense icons set B (additional markers) |
+
+These may be separate GWorlds loaded from different PICTs, or offset views into the same master sheet. The exact mapping requires cross-referencing the sprite setup code in CODE_143 and CODE_057.
+
+#### Confirmed Individual Sprite Locations (Feb 27 2026)
+
+Background color: light grey (0xEFEF). All use CopyBits mode 36 for transparent blit.
+
+| Sprite | Source Rect (L,T,R,B) | Size | Purpose | Function |
+|--------|----------------------|------|---------|----------|
+| Anchor | (0, 0, 32, 30) | 32×30 | Port/harbor — embark/disembark point | `DrawPortAnchor()` |
+| Firebomb | (33, 2, 62, 28) | 29×26 | War indicator on map | — |
+| Money pouch | (64, 4, 96, 30) | 32×26 | Gold from fallen heroes/skills | — |
+| Grey shield | (131, 54, 139, 62) | 8×8 | Minimap city marker | `DrawMinimapShield()` |
+| Selection shield | (96, 94, 106, 104) | 10×10 | Prod dialog minimap current city | `DrawMinimapSelectionShield()` |
+| Colored shields | (112, 94, ...) | varies | Small faction shields for UI | `DrawSmallShieldIcon()` |
+
+---
+
+## PPC Decompiled Code — Sprite/PICT Cross-Reference
+
+PPC decompiled code in `tools/ppc_decompiled/PPC_0000.c` through `PPC_0009.c`. Function names use `FUN_10XXXXXX` format (absolute PPC addresses). The PPC code compiles from the **same C++ source** as the 68k code, so resource loading patterns are identical — only the calling convention differs.
+
+### PPC Resource Loading Functions
+
+| PPC Address | Purpose | Signature | Mac API Equivalent |
+|---|---|---|---|
+| `FUN_10001728` | Load resource by type + ID | `(resType, resID)` | `GetResource(type, id)` |
+| `FUN_10003540` | Load from current file by type + name | `(resType, name)` | `Get1NamedResource(type, name)` |
+| `FUN_10003558` | Load from current file by type + ID | `(resType, resID)` | `Get1Resource(type, id)` |
+| `FUN_10044d38` | Load PICT by numeric ID | `(target, pictID)` | Calls `GetResource('PICT', id)` + `DrawPicture` |
+| `FUN_10044c60` | Load PICT by name string | `(target, param, name)` | Calls `Get1NamedResource('PICT', name)` + `DrawPicture` |
+| `FUN_10044d8c` | Main sprite dispatcher | `(target, name, flags)` | Dispatches to ID or name loader based on flags |
+| `FUN_10044a10` | Install loaded resource | `(target, handle)` | Caches resource in GWorld for CopyBits |
+| `FUN_1005f6b0` | Get string from STR# | `(strListID, index)` | `GetIndString` |
+
+### Resource Type Constants (PPC)
+
+| Hex | ASCII | Usage |
+|---|---|---|
+| `0x50494354` | `PICT` | Picture resources — sprite sheets, backgrounds, UI art |
+| `0x6369636e` | `cicn` | Color icons — toolbar, shields, status indicators |
+| `0x5349434e` | `SICN` | Small icons — fallback when cicn not found |
+| `0x4e414d45` | `NAME` | Name tables — armies, cities, heroes, items, ruins |
+| `0x44415420` | `DAT ` | Data blobs — strings, items, areas, buttons |
+| `0x53504320` | `SPC ` | Special location data |
+| `0x49544d20` | `ITM ` | Item definitions |
+| `0x5343454e` | `SCEN` | Scenario game state |
+| `0x414c5254` | `ALRT` | Alert dialogs |
+| `0x4449544c` | `DITL` | Dialog item lists |
+| `0x65727273` | `errs` | Error strings |
+| `0x616c6973` | `alis` | Alias records (external file references) |
+
+### PPC PICT Loading Call Sites
+
+| File | Line | Function | Resource | ID | Description |
+|---|---|---|---|---|---|
+| PPC_0002.c | 7107 | `FUN_10044d38` | PICT | (param) | LoadPICTByID definition — calls `FUN_10001728(0x50494354, id)` |
+| PPC_0002.c | 7072 | `FUN_10044c60` | PICT | (name) | LoadPICTByName definition — calls `FUN_10003540(0x50494354, name)` |
+| PPC_0002.c | 7123 | `FUN_10044d8c` | PICT | (name) | LoadSprite dispatcher — resolves name via STR# then calls LoadPICTByName |
+| PPC_0001.c | 20394 | — | PICT | 0x2711 (10001) | `FUN_10003558(0x50494354, 0x2711)` — Load scenario preview PICT |
+| PPC_0001.c | 20396-20400 | — | PICT | (name) | `FUN_10044c60(...)` — Load named PICTs during init |
+| PPC_0003.c | 9827, 9893, 10041 | — | PICT | (param) | `FUN_10044d38(...)` — Load dialog background PICTs |
+| PPC_0003.c | 17144, 17326 | — | PICT | (param) | `FUN_10044d38(...)` — Load UI PICTs |
+| PPC_0004.c | 9074 | — | PICT | 0x3EB (1003) | `FUN_10003558(0x50494354, 0x3eb)` — Load scenario preview for save |
+
+### PPC cicn Loading Call Sites
+
+| File | Line | Resource | Description |
+|---|---|---|---|
+| PPC_0003.c | 1119 | cicn | `FUN_10001728(0x6369636e, id)` — Load color icon by ID |
+| PPC_0006.c | ~1950 | cicn | `FUN_10001728(0x6369636e, id)` — Load cicn for dialog view |
+| PPC_0003.c | (fallback) | SICN | `FUN_10001728(0x5349434e, id)` — Fallback when cicn not found |
+
+### PPC NAME Resource Loading (Scenario Init)
+
+Five NAME resource tables loaded during scenario initialization (PPC_0001.c:20231-20273):
+
+| Line | NAME ID | Decimal | Content |
+|---|---|---|---|
+| 20231 | 0x2710 | 10000 | City names |
+| 20241 | 0x7530 | 30000 | Army names |
+| 20251 | 0x4E20 | 20000 | Hero names |
+| 20262 | 0x61A8 | 25000 | Item names |
+| 20273 | 0x3A98 | 15000 | Ruin names |
+
+Same IDs loaded again in PPC_0004.c:9157-9207 (save/load path).
+
+### PPC vs 68k Differences
+
+The PPC and 68k code compile from the **same C++ source**, so the resource loading logic is identical. Key differences are ABI-only:
+
+| Aspect | 68k | PPC |
+|---|---|---|
+| Resource loader | `func_0x00002878(id)` via A5 jump table | `FUN_10003558(type, id)` direct call |
+| CopyBits | `func_0x00002378(src, srcR, dstR, mode)` via A5 | Standard CopyBits trap via MixedMode |
+| GWorld addresses | A5-relative (0x14098, 0x4140, etc.) | RTOC-relative (R2 + offset) |
+| Sprite dispatch | Same switch/case logic in CODE_067 | Same logic in PPC equivalent |
+| Transfer modes | 0x24 (mode 36), 0x10024, 0x20001d | Identical values |
+| Named PICT loading | Same 8-char truncation + Pascal string | Same via `FUN_10044c60` |
+
+**Conclusion:** No functional differences in resource handling between architectures. The same PICT IDs, loading paths, and rendering modes are used. The PPC code confirms the 68k analysis above.
