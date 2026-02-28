@@ -2013,14 +2013,8 @@ static void GameInit(void)
                 newArmy[0x15] = 0x0F;
                 newArmy[0x2f] = 0x0F;
 
-                /* Sprite index: use prodType * 2 (same mapping as player armies) */
-                {
-                    static unsigned char sprMap[] = {0, 2, 4, 6, 8, 10};
-                    if (prodType >= 0 && prodType <= 5)
-                        newArmy[0x14] = sprMap[prodType];
-                    else
-                        newArmy[0x14] = 0;
-                }
+                /* Sprite index: neutral garrisons use Heavy Infantry (sprite 2) */
+                newArmy[0x14] = 2;
 
                 /* Fill unit slots */
                 {
@@ -7191,17 +7185,6 @@ static void DrawMapInWindow(WindowPtr win)
                                  srcCopy, NULL);
                         UnlockPixels(srcPix);
 
-                        /* Draw faction shield overlay on owned cities.
-                         * 68k CODE_067 FUN_00001c6a case 3: shield with swords
-                         * drawn at the city tile for faction-owned cities. */
-                        if (owner >= 0 && owner < 8 && sShieldsLoaded) {
-                            Rect shieldR;
-                            SetRect(&shieldR,
-                                screenX + 1, screenY + TERRAIN_TILE_H - 16,
-                                screenX + 15, screenY + TERRAIN_TILE_H - 1);
-                            DrawMapShield(owner, &shieldR);
-                        }
-
                         /* Draw port anchor on water-adjacent cities */
                         if (*gExtState != 0) {
                             unsigned char *ext = (unsigned char *)*gExtState;
@@ -7218,25 +7201,7 @@ static void DrawMapInWindow(WindowPtr win)
                             }
                         }
 
-                        /* DEBUG: draw owner value on city tile */
-                        {
-                            Str255 dbg;
-                            RGBColor yellow = {0xFFFF, 0xFFFF, 0x0000};
-                            RGBColor black  = {0x0000, 0x0000, 0x0000};
-                            short val = owner;
-                            if (val == 0x0F || val == 0xFF || val == 255)
-                                dbg[1] = 'N';
-                            else
-                                dbg[1] = '0' + (val % 10);
-                            dbg[0] = 1;
-                            TextFont(3); TextSize(9); TextFace(bold);
-                            RGBForeColor(&black);
-                            MoveTo(screenX + 16, screenY + 12);
-                            DrawString(dbg);
-                            RGBForeColor(&yellow);
-                            MoveTo(screenX + 15, screenY + 11);
-                            DrawString(dbg);
-                        }
+                        /* (debug owner overlay removed) */
                     } else {
                         /* Fallback: programmatic castle icon */
                         RGBColor black = {0x0000, 0x0000, 0x0000};
@@ -7436,8 +7401,7 @@ static void DrawMapInWindow(WindowPtr win)
                  * Do NOT use army[0x16] (unit type) + table lookup — that gives
                  * wrong results for heroes and loaded scenarios. */
                 short spriteIdx = (short)(unsigned char)army[0x14];
-                short sheetIdx = (owner >= 0 && owner < 8) ? owner :
-                                 (owner == 0x0F && ARMY_SHEETS > 8) ? 8 : 0;
+                short sheetIdx = (owner >= 0 && owner < 8) ? owner : 8;
                 GWorldPtr armyGW;
                 short spriteCol, spriteRow;
 
@@ -7514,7 +7478,7 @@ static void DrawMapInWindow(WindowPtr win)
             short ax   = *(short *)(army + 0x00);
             short ay   = *(short *)(army + 0x02);
             short aOwn = (short)(unsigned char)army[0x15];
-            short sheetIdx = (aOwn >= 0 && aOwn < ARMY_SHEETS) ? aOwn : 0;
+            short sheetIdx = (aOwn >= 0 && aOwn < 8) ? aOwn : 8;
             short screenX, screenY;
 
             if (army[0x16] == 0xFF) continue;
@@ -7576,28 +7540,7 @@ static void DrawMapInWindow(WindowPtr win)
         }
     }
 
-    /* DEBUG: diagnostic banner at top of map */
-    {
-        Str255 dbgStr;
-        char buf[80];
-        short len2;
-        RGBColor red = {0xFFFF, 0x0000, 0x0000};
-        RGBColor white2 = {0xFFFF, 0xFFFF, 0xFFFF};
-        Rect bgR;
-        SetRect(&bgR, winRect.left, winRect.top, winRect.left + 350, winRect.top + 14);
-        RGBForeColor(&white2);
-        PaintRect(&bgR);
-        sprintf(buf, "cap0=(%d,%d) c0=(%d,%d) cnt=%d owned=%d rnd=%d",
-            sDbgCapX0, sDbgCapY0, sDbgCity0X, sDbgCity0Y,
-            sDbgCityCount, sDbgOwnedCount, (int)sRandomMap);
-        len2 = (short)strlen(buf);
-        dbgStr[0] = (unsigned char)len2;
-        BlockMoveData(buf, &dbgStr[1], len2);
-        TextFont(4); TextSize(9); TextFace(0);
-        RGBForeColor(&red);
-        MoveTo(winRect.left + 4, winRect.top + 11);
-        DrawString(dbgStr);
-    }
+    /* (debug banner removed) */
 
     /* --- Draw defend mode indicators on defending armies --- */
     if (hasScn) {
@@ -7671,10 +7614,11 @@ static void DrawMapInWindow(WindowPtr win)
 
             if (screenX >= winRect.left && screenX < winRect.right &&
                 screenY >= winRect.top && screenY < winRect.bottom) {
-                /* Count armies at this tile */
+                /* Count armies at this tile (skip dead/inactive) */
                 short aj, stackCount = 0;
                 for (aj = 0; aj < armyCount; aj++) {
                     unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
+                    if (a2[0x16] == 0xFF) continue;
                     if (*(short *)(a2 + 0x00) == ax && *(short *)(a2 + 0x02) == ay)
                         stackCount++;
                 }
@@ -7683,6 +7627,7 @@ static void DrawMapInWindow(WindowPtr win)
                     Boolean isFirst = true;
                     for (aj = 0; aj < i; aj++) {
                         unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
+                        if (a2[0x16] == 0xFF) continue;
                         if (*(short *)(a2 + 0x00) == ax && *(short *)(a2 + 0x02) == ay) {
                             isFirst = false;
                             break;
@@ -8192,23 +8137,27 @@ static void DrawOverviewInWindow(WindowPtr win)
     if (!sMapLoaded || *gMapTiles == 0)
         return;
 
+    {
+        CGrafPtr savedPort;
+        GDHandle savedDev;
+        GetGWorld(&savedPort, &savedDev);
+        SetGWorld((CGrafPtr)win, GetMainDevice());
+    }
     mapData = (unsigned char *)*gMapTiles;
     r = win->portRect;
 
-    /* Fill background: PICT 1012 ocean gradient, or black fallback */
-    if (sMinimapOceanGW != NULL) {
-        PixMapHandle opm = GetGWorldPixMap(sMinimapOceanGW);
-        if (LockPixels(opm)) {
-            Rect srcR = {0, 0, 312, 224};
-            CopyBits((BitMap *)*opm,
-                     &((GrafPtr)win)->portBits,
-                     &srcR, &r, srcCopy, NULL);
-            UnlockPixels(opm);
+    /* Fill background: PICT 1012 ocean gradient via DrawPicture
+     * (DrawPicture handles depth conversion properly, unlike CopyBits
+     * from GWorlds which can produce palette mismatches in this window) */
+    {
+        PicHandle oceanPic = (PicHandle)GetResource('PICT', 1012);
+        if (oceanPic != NULL) {
+            DrawPicture(oceanPic, &r);
+        } else {
+            RGBColor bg = {0x0000, 0x2222, 0x6666};
+            RGBForeColor(&bg);
+            PaintRect(&r);
         }
-    } else {
-        RGBColor bg = {0x0000, 0x0000, 0x0000};
-        RGBForeColor(&bg);
-        PaintRect(&r);
     }
 
     /* Scale factor: always 2px per tile (68k CODE_128 never uses 1x) */
@@ -8314,55 +8263,12 @@ static void DrawOverviewInWindow(WindowPtr win)
             }
         }
 
-        /* Draw city/ruin dots on minimap from SCN site records at gs+0x812 */
-        if (*gGameState != 0) {
-            unsigned char *gs2 = (unsigned char *)*gGameState;
-            short cityCount = sCityCount;
-            short ci;
-            if (cityCount > 99) cityCount = 99;
-
-            for (ci = 0; ci < cityCount; ci++) {
-                unsigned char *city = sCityData +ci * 0x20;
-                short cx = *(short *)(city + 0x00);
-                short cy = *(short *)(city + 0x02);
-                short owner = *(short *)(city + 0x04);
-                short siteType = (short)(unsigned char)city[0x17];
-
-                if (cx >= 0 && cx < sMapWidth && cy >= 0 && cy < sMapHeight) {
-                    /* Fog of war: hide unexplored cities on minimap */
-                    if (*(short *)(gs2 + 0x116) != 0) {
-                        short curP = *(short *)(gs2 + 0x110);
-                        if (curP >= 0 && curP < 8 &&
-                            !FogGetBit(sFogExplored[curP], cx, cy))
-                            continue;
-                    }
-                    if (siteType >= 2 && siteType <= 5) {
-                        /* Ruins/temples: small gray 3x3 dot */
-                        RGBColor ruinGray = {0x9999, 0x9999, 0x7777};
-                        Rect dot;
-                        SetRect(&dot, r.left + cx * scale, r.top + cy * scale,
-                                r.left + cx * scale + 3, r.top + cy * scale + 3);
-                        RGBForeColor(&ruinGray);
-                        PaintRect(&dot);
-                    } else {
-                        /* City: grey shield from PICT 30010 */
-                        Rect shR;
-                        SetRect(&shR,
-                                r.left + cx * scale - 3,
-                                r.top  + cy * scale - 2,
-                                r.left + cx * scale + 5,
-                                r.top  + cy * scale + 5);
-                        DrawMinimapShield(&shR);
-                    }
-                }
-            }
-        }
-
-        /* Draw army dots on minimap */
+        /* Draw army dots on minimap (drawn first, cities go on top) */
         if (*gGameState != 0) {
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short armyCount = *(short *)(gs2 + 0x1602);
             short ai;
+            RGBColor black2 = {0, 0, 0};
             if (armyCount > 100) armyCount = 100;
 
             for (ai = 0; ai < armyCount; ai++) {
@@ -8381,22 +8287,89 @@ static void DrawOverviewInWindow(WindowPtr win)
                             !FogGetBit(sFogVisible[curP], ax, ay))
                             continue;
                     }
-                    /* 68k CODE_128: army dots are ~7px squares */
+                    /* Colored dot for army position */
                     Rect px;
-                    RGBColor black2 = {0, 0, 0};
                     SetRect(&px, r.left + ax * scale - 1, r.top + ay * scale - 1,
-                                 r.left + ax * scale + 5, r.top + ay * scale + 5);
-                    /* Black outline for contrast */
+                                 r.left + ax * scale + 4, r.top + ay * scale + 4);
                     RGBForeColor(&black2);
-                    InsetRect(&px, -1, -1);
                     PaintRect(&px);
                     InsetRect(&px, 1, 1);
                     RGBForeColor(&sPlayerColors[colorIdx]);
                     PaintRect(&px);
                 }
             }
+        }
 
-            /* Highlight selected army with crosshair */
+        /* Draw city shields on minimap ON TOP of army dots.
+         * CopyBits from PICT 30010 (sMasterSpriteGW):
+         *   Grey shield:    (131, 54, 139, 62) for neutral
+         *   Colored shields: (faction*16+7, 86, faction*16+15, 94) for factions
+         * Uses mode 36 (transparent) with sMasterSpriteBgColor as key. */
+        if (*gGameState != 0 && sMasterSpriteGW != NULL) {
+            unsigned char *gs2 = (unsigned char *)*gGameState;
+            PixMapHandle pm = GetGWorldPixMap(sMasterSpriteGW);
+            short cityCount = sCityCount;
+            short ci;
+            if (cityCount > 99) cityCount = 99;
+
+            if (LockPixels(pm)) {
+                RGBColor savedBg;
+                GetBackColor(&savedBg);
+                RGBBackColor(&sMasterSpriteBgColor);
+
+                for (ci = 0; ci < cityCount; ci++) {
+                    unsigned char *city = sCityData + ci * 0x20;
+                    short cx = *(short *)(city + 0x00);
+                    short cy = *(short *)(city + 0x02);
+                    short owner = *(short *)(city + 0x04);
+                    short siteType = (short)(unsigned char)city[0x17];
+
+                    if (cx >= 0 && cx < sMapWidth && cy >= 0 && cy < sMapHeight) {
+                        /* Fog of war: hide unexplored cities on minimap */
+                        if (*(short *)(gs2 + 0x116) != 0) {
+                            short curP = *(short *)(gs2 + 0x110);
+                            if (curP >= 0 && curP < 8 &&
+                                !FogGetBit(sFogExplored[curP], cx, cy))
+                                continue;
+                        }
+                        if (siteType >= 2) {
+                            /* Ruins/temples: small gray 3x3 dot */
+                            RGBColor ruinGray = {0x9999, 0x9999, 0x7777};
+                            Rect dot;
+                            SetRect(&dot, r.left + cx * scale, r.top + cy * scale,
+                                    r.left + cx * scale + 3, r.top + cy * scale + 3);
+                            RGBForeColor(&ruinGray);
+                            PaintRect(&dot);
+                        } else {
+                            /* City: shield sprite from PICT 30010 */
+                            Rect srcR, dstR;
+                            if (owner >= 0 && owner < 8) {
+                                SetRect(&srcR, owner * 16 + 7, 86,
+                                               owner * 16 + 15, 94);
+                            } else {
+                                SetRect(&srcR, 131, 54, 139, 62);
+                            }
+                            SetRect(&dstR,
+                                    r.left + cx * scale - 3,
+                                    r.top  + cy * scale - 3,
+                                    r.left + cx * scale + 5,
+                                    r.top  + cy * scale + 5);
+                            CopyBits((BitMap *)*pm,
+                                     &((GrafPtr)win)->portBits,
+                                     &srcR, &dstR, 36, NULL);
+                        }
+                    }
+                }
+
+                RGBBackColor(&savedBg);
+                UnlockPixels(pm);
+            }
+        }
+
+        /* Highlight selected army with crosshair */
+        if (*gGameState != 0) {
+            unsigned char *gs2 = (unsigned char *)*gGameState;
+            short armyCount = *(short *)(gs2 + 0x1602);
             if (sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
                 unsigned char *selA = gs2 + 0x1604 + sSelectedArmy * 0x42;
                 short sx = *(short *)(selA + 0x00);
