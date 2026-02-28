@@ -755,8 +755,8 @@ static RGBColor sPlayerColors[9] = {
 static GWorldPtr sTerrainGW   = NULL;   /* PICT 30022: tiles 0-95 */
 static GWorldPtr sTerrainGW2  = NULL;   /* PICT 30023: tiles 96-191 */
 static GWorldPtr sRoadGW      = NULL;   /* PICT 30021: road/overlay sprites (16x2 grid) */
-static BitMap    sRoadMask;             /* 1-bit mask for CopyMask road rendering */
-static Boolean   sRoadMaskValid = false;
+static RGBColor  sRoadBgColor;          /* background color for mode 36 road rendering */
+static Boolean   sRoadBgColorValid = false;
 static Boolean   sTerrainLoaded = false;
 static short     sTerrainResFile = -1;
 static GWorldPtr sMarbleGW    = NULL;   /* PICT 1001 "MARBLE" background */
@@ -2726,63 +2726,16 @@ static void LoadTerrainSprites(void)
     /* Load road sprite sheet at screen depth (same as all other sprite sheets). */
     sRoadGW = LoadPICTIntoGWorld(30021);
 
-    /* Build 1-bit mask for CopyMask road rendering.
-     * Compare pixel RGB values (ignore alpha/unused high byte for 32-bit).
-     * Uses a raw BitMap (not GWorld PixMap) so rowBytes bit-15 is clear. */
-    if (sRoadGW != NULL && !sRoadMaskValid) {
-        PixMapHandle roadPM = GetGWorldPixMap(sRoadGW);
-        if (LockPixels(roadPM)) {
-            Rect pmBounds = (**roadPM).bounds;
-            short mw = pmBounds.right - pmBounds.left;
-            short mh = pmBounds.bottom - pmBounds.top;
-            short mRowBytes = ((mw + 15) / 16) * 2;
-            short pixSize = (**roadPM).pixelSize;
-            short srcRowBytes = (**roadPM).rowBytes & 0x3FFF;
-            Ptr baseAddr = GetPixBaseAddr(roadPM);
-            Ptr maskBase = NewPtrClear((long)mRowBytes * mh);
-
-            if (maskBase != NULL) {
-                short x, y;
-                if (pixSize == 8) {
-                    unsigned char bgIdx = ((unsigned char *)baseAddr)[0];
-                    for (y = 0; y < mh; y++) {
-                        unsigned char *srcRow = (unsigned char *)baseAddr + (long)y * srcRowBytes;
-                        unsigned char *mskRow = (unsigned char *)maskBase + (long)y * mRowBytes;
-                        for (x = 0; x < mw; x++) {
-                            if (srcRow[x] != bgIdx)
-                                mskRow[x >> 3] |= (0x80 >> (x & 7));
-                        }
-                    }
-                } else if (pixSize == 16) {
-                    unsigned short bgVal = *(unsigned short *)baseAddr;
-                    for (y = 0; y < mh; y++) {
-                        unsigned short *srcRow = (unsigned short *)((char *)baseAddr + (long)y * srcRowBytes);
-                        unsigned char *mskRow = (unsigned char *)maskBase + (long)y * mRowBytes;
-                        for (x = 0; x < mw; x++) {
-                            if (srcRow[x] != bgVal)
-                                mskRow[x >> 3] |= (0x80 >> (x & 7));
-                        }
-                    }
-                } else if (pixSize == 32) {
-                    /* Mask off high byte (unused/alpha) — it can vary
-                     * across pixels even for the same RGB color. */
-                    unsigned long bgRGB = *(unsigned long *)baseAddr & 0x00FFFFFFUL;
-                    for (y = 0; y < mh; y++) {
-                        unsigned long *srcRow = (unsigned long *)((char *)baseAddr + (long)y * srcRowBytes);
-                        unsigned char *mskRow = (unsigned char *)maskBase + (long)y * mRowBytes;
-                        for (x = 0; x < mw; x++) {
-                            if ((srcRow[x] & 0x00FFFFFFUL) != bgRGB)
-                                mskRow[x >> 3] |= (0x80 >> (x & 7));
-                        }
-                    }
-                }
-                sRoadMask.baseAddr = maskBase;
-                sRoadMask.rowBytes = mRowBytes;
-                sRoadMask.bounds = pmBounds;
-                sRoadMaskValid = true;
-            }
-            UnlockPixels(roadPM);
-        }
+    /* Sample background color from road sprite sheet pixel (0,0) for mode 36 rendering.
+     * Matches the pattern used by army/city/shield sprites. */
+    if (sRoadGW != NULL && !sRoadBgColorValid) {
+        CGrafPtr savedPort;
+        GDHandle savedDev;
+        GetGWorld(&savedPort, &savedDev);
+        SetGWorld(sRoadGW, NULL);
+        GetCPixel(0, 0, &sRoadBgColor);
+        SetGWorld(savedPort, savedDev);
+        sRoadBgColorValid = true;
     }
 
     /* Load MAPCOLOR data (DAT 30020) for minimap per-tile colors */
@@ -6938,42 +6891,23 @@ static void DrawMapInWindow(WindowPtr win)
     }
 
     /* --- Road overlay --- */
-    /* PICT 30021 (640x80): road sprites in first 13 columns of row 0 (tiles 0-12).
-     * Positions 13-15 in row 0 contain non-road overlay sprites.
+    /* PICT 30021 (640x80): 17 road sprites, 13 per row, 48px horizontal stride,
+     * 40px vertical stride. Each sprite is 40x40 with 8px horizontal padding.
      * RD byte bits 0-4 = road type (0=none, 1-17=road variant).
-     * Tile lookup: RD 1-13 → direct tile index (rd-1), RD 14-17 → substitutes.
-     * RD 14/15 (dead-end E/N) and RD 16/17 (EW/NS bridge) have no dedicated
-     * sprites in the sheet, so we substitute the straight road equivalents. */
-    if (*gRoadData != 0 && sMapLoaded && sRoadGW != NULL && sRoadMaskValid) {
-        /* Lookup table: RD value → sprite tile index in PICT 30021.
-         * Tiles 0-12 are in row 0 columns 0-12.  RD 14-17 map to
-         * straight-road substitutes (tile 0=EW or tile 1=NS). */
-        static const short kRoadTile[18] = {
-            -1,  /* RD  0: no road */
-             0,  /* RD  1: EW straight */
-             1,  /* RD  2: NS straight */
-             2,  /* RD  3: crossroads */
-             3,  /* RD  4: T-junction ESW */
-             4,  /* RD  5: T-junction NSW */
-             5,  /* RD  6: T-junction NEW */
-             6,  /* RD  7: T-junction NES */
-             7,  /* RD  8: corner SW */
-             8,  /* RD  9: corner NW */
-             9,  /* RD 10: corner NE */
-            10,  /* RD 11: corner SE */
-            11,  /* RD 12: dead-end W */
-            12,  /* RD 13: dead-end S */
-             0,  /* RD 14: dead-end E (no sprite → EW substitute) */
-             1,  /* RD 15: dead-end N (no sprite → NS substitute) */
-             0,  /* RD 16: EW bridge  (no sprite → EW substitute) */
-             1,  /* RD 17: NS bridge  (no sprite → NS substitute) */
-        };
+     * Tile index = rd - 1. srcX = (tileIdx % 13) * 48, srcY = (tileIdx / 13) * 40.
+     * Formula from original PPC binary (PPC_0001.c lines 2992-2993). */
+    if (*gRoadData != 0 && sMapLoaded && sRoadGW != NULL && sRoadBgColorValid) {
         unsigned char *roadData = (unsigned char *)*gRoadData;
         short rdMapH = sMapHeight;
         PixMapHandle roadPix = GetGWorldPixMap(sRoadGW);
+        RGBColor oldBack;
 
         if (rdMapH > 156) rdMapH = 156;
         LockPixels(roadPix);
+
+        /* Set background color once outside the loop for mode 36 transparency */
+        GetBackColor(&oldBack);
+        RGBBackColor(&sRoadBgColor);
 
         for (ty = 0; ty < tilesHigh; ty++) {
             for (tx = 0; tx < tilesWide; tx++) {
@@ -6981,23 +6915,17 @@ static void DrawMapInWindow(WindowPtr win)
                 short rMapY = sViewportY + ty;
                 unsigned char rd;
                 Rect srcRect, dstRect;
-                short tileIdx, spriteCol;
+                short tileIdx, srcX, srcY;
 
                 if (rMapX < 0 || rMapX >= 112 || rMapY < 0 || rMapY >= rdMapH)
                     continue;
                 rd = roadData[rMapY * 112 + rMapX] & 0x1F;
                 if (rd == 0 || rd > 17) continue;
 
-                tileIdx = kRoadTile[rd];
-                if (tileIdx < 0) continue;
-
-                /* All valid tiles (0-12) fit in row 0 of the sprite sheet */
-                spriteCol = tileIdx;
-                SetRect(&srcRect,
-                    spriteCol * TERRAIN_TILE_W,
-                    0,
-                    (spriteCol + 1) * TERRAIN_TILE_W,
-                    TERRAIN_TILE_H);
+                tileIdx = rd - 1;
+                srcX = (tileIdx % 13) * 48;
+                srcY = (tileIdx / 13) * 40;
+                SetRect(&srcRect, srcX, srcY, srcX + 40, srcY + 40);
 
                 SetRect(&dstRect,
                     winRect.left + tx * TERRAIN_TILE_W,
@@ -7005,16 +6933,13 @@ static void DrawMapInWindow(WindowPtr win)
                     winRect.left + (tx + 1) * TERRAIN_TILE_W,
                     winRect.top  + (ty + 1) * TERRAIN_TILE_H);
 
-                /* CopyMask: 1-bit mask controls which pixels are drawn.
-                 * Mask bit 1 = opaque (road pixel), 0 = transparent (background).
-                 * Same srcRect used for both source and mask coordinates. */
-                CopyMask((BitMap *)*roadPix,
-                         &sRoadMask,
+                CopyBits((BitMap *)*roadPix,
                          &((GrafPtr)win)->portBits,
-                         &srcRect, &srcRect, &dstRect);
+                         &srcRect, &dstRect, 36, NULL);
             }
         }
 
+        RGBBackColor(&oldBack);
         UnlockPixels(roadPix);
     }
 
@@ -7622,47 +7547,7 @@ static void DrawMapInWindow(WindowPtr win)
 
             if (screenX >= winRect.left && screenX < winRect.right &&
                 screenY >= winRect.top && screenY < winRect.bottom) {
-                /* Count armies at this tile (skip dead/inactive) */
-                short aj, stackCount = 0;
-                for (aj = 0; aj < armyCount; aj++) {
-                    unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
-                    if (a2[0x16] == 0xFF) continue;
-                    if (*(short *)(a2 + 0x00) == ax && *(short *)(a2 + 0x02) == ay)
-                        stackCount++;
-                }
-                /* Only draw badge for the first army at this location, and only if 2+ */
-                if (stackCount >= 2) {
-                    Boolean isFirst = true;
-                    for (aj = 0; aj < i; aj++) {
-                        unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
-                        if (a2[0x16] == 0xFF) continue;
-                        if (*(short *)(a2 + 0x00) == ax && *(short *)(a2 + 0x02) == ay) {
-                            isFirst = false;
-                            break;
-                        }
-                    }
-                    if (isFirst) {
-                        /* 68k CODE_067: stack badge 14x16 at (tile+13, tile+16) */
-                        Rect badge;
-                        Str255 numStr;
-                        RGBColor badgeBg = {0xFFFF, 0xFFFF, 0xFFFF};
-                        RGBColor badgeTxt = {0x0000, 0x0000, 0x0000};
-                        SetRect(&badge, screenX + 13, screenY + 16,
-                                screenX + 13 + 14, screenY + 16 + 16);
-                        RGBForeColor(&badgeBg);
-                        PaintRoundRect(&badge, 4, 4);
-                        RGBForeColor(&badgeTxt);
-                        FrameRoundRect(&badge, 4, 4);
-                        TextFont(3);
-                        TextSize(9);
-                        TextFace(bold);
-                        NumToString((long)stackCount, numStr);
-                        MoveTo(screenX + 13 + (14 - StringWidth(numStr)) / 2,
-                               screenY + 16 + 12);
-                        DrawString(numStr);
-                        TextFace(0);
-                    }
-                }
+                (void)0; /* army sprite drawn above */
             }
         }
     }
