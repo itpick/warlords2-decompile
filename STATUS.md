@@ -138,6 +138,7 @@
 - **Hero name selection**: hero names now picked from full 20-name pool (male + female intermixed), was male-only (68k CODE_064)
 - **Fog blocks human pathfinding**: unexplored tiles marked PATH_COST_BLOCK for human players in ComputeWavefrontPath, AI can pathfind through fog (68k CODE_115 FUN_000025b8)
 - **Auto-fortification for unmoved armies**: armies with full movement points at turn end now auto-fortified (army[0x2d]=3), matching 68k CODE_080 FUN_00001a30 (was explicit Defend only)
+- **Road/bridge movement cost**: default cost changed from 2 to 1 MP, matching 68k. Path preview dots now correctly prefer roads over plains (2 MP) and forest (3 MP). Road overlay on non-road terrain still reduces to 2 MP via gRoadData check.
 - **Production spawn stall**: when no empty spawn tile available, production permanently stalls (timer=0), matching 68k CODE_080 line 668-675 (was retrying every turn with timer=1)
 - **Terrain validation on production spawn**: adjacent spawn tiles now validated against sMoveCostTable — don't spawn land units on water (68k CODE_080 FUN_000017c4)
 - **Vectoring teleport**: vectored production spawns army directly at destination city instead of production city with walk orders (68k CODE_080 uses instant 2-phase teleport; simplified to direct spawn)
@@ -190,6 +191,18 @@
 ### Port/Anchor Labels
 - Anchor/water port icons on cities are not labeled correctly
 - Need to verify port detection and ensure correct icon rendering for coastal cities
+
+### Stack Grouping Info Window (WIP)
+- Goal: replace modal ShowStackDialog with inline stack UI in the gold info panel, matching the original game
+- Helper functions extracted and ready: StackToggleSlot, StackGroupAll, StackUngroupAll, StackCommitGroups, StackRestoreBackup, StackTakeBackup
+- DrawInfoStackUI (4x2 circular army grid) and HandleInfoStackClick written and wired into HandleUpdate/HandleMouseDown
+- **Blocked**: info window not visually refreshing when selecting a multi-army tile. InvalRect is called via BuildStackArrays with GetPort/SetPort save/restore, but HandleUpdate is not receiving the update event. Needs investigation — may be a port context issue or event delivery problem
+- Keyboard G shortcut for grouping works correctly
+
+### Testing Automation (TODO)
+- Set up InfiniteMac browser instance with Playwright for automated visual testing
+- Enable quick build→deploy→screenshot→verify iterations instead of manual SheepShaver testing
+- Would have caught the info window refresh issue much faster
 
 ### Missing Game Logic
 - No save/load game implementation yet
