@@ -49,6 +49,8 @@ The deploy script does the following:
 
 Launch SheepShaver and run "Warlords II" from the shared folder.
 
+**Primary testing campaign:** Erythea (no port cities, good coverage of ruins/temples and multi-faction combat).
+
 ## Original Compiler
 
 Warlords II was compiled with **Metrowerks CodeWarrior** (approximately CW Gold 7–9,
@@ -102,6 +104,13 @@ Full-window overlay matching the original Warlords II city production screen. Se
 - `docs/CODEWARRIOR.md` — Original compiler technical reference
 - `docs/terrain_resources.md` — Terrain sprite sheets and PICT 30010 sprite map
 - `tools/` — Analysis and extraction scripts
+
+## Intentional Deviations from 68k Original
+
+While this reconstruction aims for high fidelity to the original 68k Warlords II, a few behaviors have been intentionally omitted or changed for the modern emulator context:
+
+- **No loading screen** — The original displayed a loading/splash screen while resources were read from disk. On modern machines running in SheepShaver, loading completes near-instantly, making the screen unnecessary.
+- **No 256-color mode switch** — The original switched the display to 256 colors on launch. This is unnecessary in emulators and can cause display issues, so it has been disabled.
 
 ## License & Permission
 
