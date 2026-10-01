@@ -1,7 +1,7 @@
 #!/bin/bash
 # CLI for the dev-loop bridge (bridge.mjs must be running).
 #   wl.sh status | shot [name] | click X Y | dbl X Y | drag X1 Y1 X2 Y2 | key K | type TEXT
-#        push PATH | pulled | reload [DISK] | quit
+#        push PATH | pulled | reload [DISK] | audio start|stop NAME | quit
 B="http://127.0.0.1:${WL_PORT:-3200}"
 enc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$1"; }
 cmd="$1"; shift
@@ -16,5 +16,6 @@ case "$cmd" in
   type)   curl -s "$B/type?t=$(enc "$1")" ;;
   push)   curl -s "$B/push?path=$(enc "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")")" ;;
   reload) curl -s "$B/reload${1:+?disk=$(enc "$1")}" ;;
+  audio)  curl -s "$B/audio?cmd=$1${2:+&name=$(enc "$2")}" ;;   # audio start | audio stop NAME
   *) sed -n 2,4p "$0"; exit 1 ;;
 esac

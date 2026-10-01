@@ -42,6 +42,37 @@ const pos = opt('--pos', null);
 const winArgs = pos ? [`--window-position=${pos}`, '--window-size=1040,900'] : [];
 const browser = await chromium.launch({ headless, args: ['--autoplay-policy=no-user-gesture-required', ...winArgs] });
 const ctx = await browser.newContext({ viewport: { width: 1024, height: 768 }, acceptDownloads: true });
+// Audio tap: every node connected to an AudioContext's destination is also
+// routed into a ScriptProcessor that keeps the PCM (and the context time of
+// each block) while recording is on. /audio?cmd=start|stop&name=x writes
+// .devloop/audio/<port>/<name>.wav (mono mix, context sample rate).
+await ctx.addInitScript(() => {
+  const rec = window.__wlrec = { on: false, blocks: [], sr: 0, t0: 0 };
+  const orig = AudioNode.prototype.connect;
+  const taps = new WeakMap();
+  AudioNode.prototype.connect = function (dest, ...rest) {
+    const r = orig.call(this, dest, ...rest);
+    try {
+      if (dest instanceof AudioDestinationNode && !taps.has(this)) {
+        const ac = this.context;
+        const sp = ac.createScriptProcessor(4096, 2, 2);
+        sp.onaudioprocess = e => {
+          if (!rec.on) return;
+          const ib = e.inputBuffer, n = ib.length, m = new Float32Array(n);
+          for (let c = 0; c < ib.numberOfChannels; c++) {
+            const d = ib.getChannelData(c);
+            for (let i = 0; i < n; i++) m[i] += d[i] / ib.numberOfChannels;
+          }
+          rec.sr = ib.sampleRate;
+          rec.blocks.push({ t: e.playbackTime, d: m });
+        };
+        orig.call(this, sp); orig.call(sp, ac.destination);
+        taps.set(this, sp);
+      }
+    } catch (e) {}
+    return r;
+  };
+});
 let page, aborted = false, bootedAt = 0;
 
 async function open(d) {
@@ -144,6 +175,36 @@ http.createServer(async (req, res) => {
           return k;
         });
         return reply(200, n > 15 ? 'game' : (n < 0 ? 'unknown' : 'finder'));
+      }
+      case '/audio': {
+        if (q('cmd') === 'start') {
+          await page.evaluate(() => { const r = window.__wlrec; if (r) { r.blocks = []; r.on = true; r.wall = Date.now(); } });
+          return reply(200, 'recording');
+        }
+        const out = await page.evaluate(() => {
+          const r = window.__wlrec; if (!r) return null; r.on = false;
+          if (!r.blocks.length) return { sr: r.sr, t0: 0, b64: '' };
+          const t0 = r.blocks[0].t, n = r.blocks.length * r.blocks[0].d.length;
+          const pcm = new Int16Array(Math.round((r.blocks[r.blocks.length - 1].t - t0) * r.sr) + r.blocks[0].d.length);
+          for (const b of r.blocks) {           // place each block at its context time
+            const o = Math.round((b.t - t0) * r.sr);
+            for (let i = 0; i < b.d.length && o + i < pcm.length; i++)
+              pcm[o + i] = Math.max(-32768, Math.min(32767, Math.round(b.d[i] * 32767)));
+          }
+          const u8 = new Uint8Array(pcm.buffer); let s = '';
+          for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+          return { sr: r.sr, wall: r.wall, n, b64: btoa(s) };
+        });
+        if (!out) return reply(500, 'no audio tap (reload the page)');
+        const dir = path.join(WORK, 'audio', String(PORT)); fs.mkdirSync(dir, { recursive: true });
+        const f = path.join(dir, (q('name') || `rec_${Date.now()}`) + '.wav');
+        const data = Buffer.from(out.b64, 'base64'), h = Buffer.alloc(44);
+        h.write('RIFF', 0); h.writeUInt32LE(36 + data.length, 4); h.write('WAVEfmt ', 8);
+        h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+        h.writeUInt32LE(out.sr || 44100, 24); h.writeUInt32LE((out.sr || 44100) * 2, 28);
+        h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(data.length, 40);
+        fs.writeFileSync(f, Buffer.concat([h, data]));
+        return reply(200, f);
       }
       case '/quit': reply(200, 'bye'); await browser.close(); process.exit(0);
       default: return reply(404, 'unknown endpoint');

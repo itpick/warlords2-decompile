@@ -1,0 +1,7 @@
+{"steps":[{"audio":"start"},
+          {"click":[360,350]},{"wait":800},{"click":[372,547]},{"wait":10000},{"shot":"setup"},
+          {"click":[608,512]},{"wait":12000},{"shot":"splash"},
+          {"click":[510,320]},{"wait":8000},{"shot":"hero"},
+          {"click":[703,470]},{"wait":6000},{"shot":"city"},
+          {"click":[718,455]},{"wait":6000},{"shot":"map"},
+          {"audio":"stop"}]}

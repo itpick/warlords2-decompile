@@ -12,5 +12,7 @@ $W key Alt+Meta+q >/dev/null; sleep 4
 [ "$($W front)" = "game" ] || exit 0
 $W key Meta+q >/dev/null; sleep 5
 [ "$($W front)" = "game" ] || exit 0
+$W key Meta+d >/dev/null; sleep 5        # the original's "Save changes?" alert: Don't Save
+[ "$($W front)" = "game" ] || exit 0
 echo "could not quit the game (modal dialog?); use: WL_PORT=$WL_PORT $W reload"
 exit 1

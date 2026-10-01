@@ -4,6 +4,7 @@
 // --reuse-orig replays only the remake and pairs it with the original frames from the
 // previous run of the same script (capture the original once per screen, then iterate).
 // Step: {click:[x,y]} {dbl:[x,y]} {key:"Enter"} {type:"Tutoria"} {wait:ms} {shot:"label"}
+//       {audio:"start"} / {audio:"stop"} -> .devloop/audio/<port>/<script>_<side>.wav
 // Any step may carry "orig": {...} / "remake": {...} to override it per side
 // (layouts differ); "orig": null or "remake": null skips the step on that side.
 import fs from 'fs';
@@ -34,6 +35,8 @@ async function run(side) {
     if (s.key) await call(port, 'key', { k: s.key });
     if (s.type) await call(port, 'type', { t: s.type });
     if (s.wait) await new Promise(r => setTimeout(r, s.wait));
+    if (s.audio === 'start') await call(port, 'audio', { cmd: 'start' });
+    if (s.audio === 'stop') console.log(await call(port, 'audio', { cmd: 'stop', name: `${name}_${side}` }));
     if (s.shot) shots[s.shot] = await call(port, 'shot', { name: `${name}_${String(i).padStart(2, '0')}_${s.shot}` });
   }
   return shots;

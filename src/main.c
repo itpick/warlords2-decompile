@@ -184,9 +184,10 @@ static void PlaySound(short sndID)
     if (sSndChannel == NULL) return;
 
     /* Set volume before playing (original sends ampCmd = vol * 25) */
-    ampCmd.cmd = 43;  /* ampCmd */
-    ampCmd.param1 = 0;
-    ampCmd.param2 = (long)sSoundEffects * 25L;
+    ampCmd.cmd = 43;  /* ampCmd: amplitude 0..255 is param1 (param2 was used
+                       * before, so every effect played at amplitude 0) */
+    ampCmd.param1 = (short)(sSoundEffects * 25);
+    ampCmd.param2 = 0;
     SndDoImmediate(sSndChannel, &ampCmd);
 
     sndH = GetResource('snd ', sndID);
@@ -409,15 +410,29 @@ static void PlayVoice(short sndID)
     if (sVoiceChannel == NULL) return;
 
     /* Apply master volume */
-    ampCmd.cmd = 43;  /* ampCmd */
-    ampCmd.param1 = 0;
-    ampCmd.param2 = (long)sSoundMaster * 25L;
+    ampCmd.cmd = 43;  /* ampCmd: amplitude is param1 */
+    ampCmd.param1 = (short)(sSoundMaster * 25);
+    ampCmd.param2 = 0;
     SndDoImmediate(sVoiceChannel, &ampCmd);
 
     sndH = GetResource('snd ', sndID);
     if (sndH != NULL) {
         HLock(sndH);
         SndPlay(sVoiceChannel, sndH, true);
+    }
+}
+
+/* Block (yielding) until the voice channel has finished playing. */
+static void WaitVoiceDone(void)
+{
+    SCStatus st;
+    EventRecord e;
+    unsigned long until = TickCount() + 60 * 10;
+    if (sVoiceChannel == NULL) return;
+    while (TickCount() < until) {
+        if (SndChannelStatus(sVoiceChannel, sizeof(st), &st) != noErr || !st.scChannelBusy)
+            break;
+        WaitNextEvent(0, &e, 2, NULL);
     }
 }
 
@@ -5783,9 +5798,8 @@ static Boolean ShowScenarioSelection(void)
     /* Progress bar dimensions (shared between drawing and resource loading blocks) */
     short barLeft = 155, barRight = 305, barTop = 200, barH = 16;
 
-    /* Play splash sound at load start */
-    PlaySound(SND_SPLASH);
-    PlayVoice(SND_VMOMENT);
+    /* No sound while a scenario loads: the original is silent from the picker
+     * to "Let the war begin!" (recorded, sound_erythea). */
 
     /* Loading screen visuals commented out — keep code for later restoration.
      * Original uses 6 text labels + progress bar advancing 0%→20%→60%→100%. */
@@ -20863,7 +20877,6 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
     Rect       screenRect = qd.screenBits.bounds;
     unsigned char *gs;
 
-    PlaySound(SND_DING);
     short      heroStrength, heroMovement, heroCommand, heroCost;
     short      heroNameIdx;
     short      playerGold;
@@ -20936,8 +20949,10 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                 return false;
         }
 
-        /* Hero check passed — play voice AFTER probability gate (68k CODE_064) */
-        PlayVoice(SND_VHERO00);
+        /* Hero check passed — play voice AFTER probability gate (68k CODE_064).
+         * The free turn-1 hero is silent in the original (recorded). */
+        if (!initialOffer)
+            PlayVoice(SND_VHERO00);
 
         /* 68k CODE_064 FUN_0000026e: hero stats come from unit type table
          * entry 0x1C (hero type), NOT random generation.  func_0x000049a8
@@ -30896,8 +30911,11 @@ int main(void)
          * Without this, gold shows as 0 (raw SCN value) on turn 1. */
         ProcessStartOfTurn(startPlayer);
 
-        /* "Let the war begin!" voice after game setup completes */
+        /* "Let the war begin!" voice after game setup completes; the original
+         * lets it finish before the turn banner and its chime (recorded:
+         * VBEGIN 12.3s, SND_TURN 18.7s). */
         PlayVoice(SND_VBEGIN);
+        WaitVoiceDone();
 
         /* Turn 1 announcement splash (castle gate with faction name). */
         ShowTurnSplash(startPlayer);  /* plays SND_TURN internally */
