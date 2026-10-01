@@ -7,15 +7,22 @@
 
 #include "warlords2.h"
 
-/* Core game data pointers (Mac OS Handles - pointer to master pointer).
- * Each global is a pointer-to-int that the game uses as a level of
- * indirection: *gGameState gives the base address of the allocated buffer.
- * We provide static backing storage so dereferencing is safe. */
+/* Core game data pointers. These are the AUTHORITATIVE global definitions (the
+ * TOC references in every module resolve here). gExtState was `= NULL` (no
+ * backing storage, unlike gGameState/gMapTiles), so *gExtState dereferenced Mac
+ * addr 0 (a ~0x40810000 low-mem pointer); that nonzero junk fooled the
+ * `if(*gExtState==0)` alloc guard, so GameInit wrote the ext city records
+ * through a wild pointer -> dcbz OOB = crash #6. Fixed: give it backing too. */
 static pint  _s_gGameState       = 0;
 pint         *gGameState         = &_s_gGameState;  /* 0x1011735c */
-pint         *gExtState          = NULL;    /* 0x10117468 */
+static pint  _s_gExtState        = 0;
+pint         *gExtState          = &_s_gExtState;   /* 0x10117468 (was NULL — crash #6) */
 static pint  _s_gMapTiles        = 0;
 pint         *gMapTiles          = &_s_gMapTiles;   /* 0x10117358 */
+/* Status window — sibling of the macro-generated window globals (gMainGameWindow etc.) but
+ * not in that list; main.c references and writes *gStatusWindow, so give it backing storage. */
+static pint  _s_gStatusWindow    = 0;
+int          *gStatusWindow      = (int *)&_s_gStatusWindow;
 pint         *gUnitTypeTable     = NULL;    /* 0x10117360 */
 pint         *gUnitClassTable    = NULL;    /* 0x10117364 */
 pint         *gUnitInstanceTable = NULL;    /* 0x101175d0 */

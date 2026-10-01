@@ -1,0 +1,13 @@
+{
+  "name": "gamesetup",
+  "viewport": { "width": 1024, "height": 768 },
+  "bootWaitMs": 125000,
+  "steps": [
+    { "shot": "01_boot" },
+    { "wait": 5000 }, { "shot": "02_postboot" },
+    { "key": "Enter" }, { "wait": 6000 }, { "shot": "03_after_enter" },
+    { "wait": 6000 }, { "shot": "04_wait" },
+    { "key": "Enter" }, { "wait": 6000 }, { "shot": "05_after_enter2" },
+    { "wait": 6000 }, { "shot": "06_wait" }
+  ]
+}

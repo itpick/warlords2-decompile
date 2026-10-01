@@ -1,0 +1,10 @@
+{
+  "name": "begin_game",
+  "viewport": { "width": 1024, "height": 768 },
+  "bootWaitMs": 125000,
+  "steps": [
+    { "key": "Enter" }, { "wait": 7000 }, { "shot": "01_setup" },
+    { "click": [640, 521] }, { "wait": 9000 }, { "shot": "02_map" },
+    { "wait": 5000 }, { "shot": "03_map2" }
+  ]
+}

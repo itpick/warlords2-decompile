@@ -1,0 +1,14 @@
+{
+  "name": "tutoria",
+  "viewport": { "width": 1024, "height": 768 },
+  "bootWaitMs": 130000,
+  "steps": [
+    { "shot": "01_scenario" },
+    { "key": "Enter" }, { "wait": 11000 },
+    { "shot": "02_tutorial_dialog" },
+    { "key": "Enter" }, { "wait": 8000 },
+    { "shot": "03_map" },
+    { "key": "Space" }, { "wait": 4000 },
+    { "shot": "04_after_space" }
+  ]
+}

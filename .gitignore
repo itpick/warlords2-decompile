@@ -33,3 +33,11 @@ Warlords_II_CD/
 
 # Ghidra project files (generated, not source)
 tools/ghidra_projects/
+.devloop/
+
+# InfiniteMac tooling: built/generated artifacts (sources and scripts are tracked)
+tools/infinitemac/gowrapper/warlords-bin
+tools/infinitemac/gowrapper/Warlords II.app/
+tools/infinitemac/*.png
+tools/infinitemac/oracle/out/
+warlords-offline/

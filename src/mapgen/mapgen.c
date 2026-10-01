@@ -1858,8 +1858,13 @@ static void PlaceRuins(void) /* PlaceRuins */
     int ruinOffset;
     short ruinsCount;
 
-    /* Set total ruins to 40 */
-    *(short *)(gameState + 0x810) = MAX_RUINS;
+    /* Set total ruins to MIN(total_cities/2, 40) — 68k CODE_020 FUN_0000607c
+     * (CODE_020.c:3250-3258): ruinsCount = cities/2, capped at 40. The remake
+     * previously hardcoded 40, over-placing ruins on small-city maps. */
+    ruinsCount = GetConfigShort(CFG_TOTAL_CITIES) / 2;
+    if (ruinsCount > MAX_RUINS) ruinsCount = MAX_RUINS;
+    if (ruinsCount < 0) ruinsCount = 0;
+    *(short *)(gameState + 0x810) = ruinsCount;
 
     /* Initialize ruins records */
     for (i = 0; i < MAX_RUINS; i++) {

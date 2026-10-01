@@ -33,7 +33,10 @@ STUB_SRCS    = stubs/stubs.c stubs/globals_extra.c \
                stubs/wave2_tvect.c stubs/wave2_game1.c \
                stubs/wave2_game2.c stubs/wave2_macapp1.c \
                stubs/wave2_macapp2.c stubs/wave2_macapp3.c \
-               stubs/wave2_macapp4.c stubs/blr_verified.c main.c
+               stubs/wave2_macapp4.c main.c
+# NOTE: stubs/blr_verified.c is byte-VERIFICATION data (verified function bodies that
+# duplicate the runnable stubs). It must NOT be linked into the runnable app — it causes
+# 4398 duplicate-symbol errors. Excluded here; the file stays committed for verification.
 
 ALL_SRCS = $(CORE_SRCS) $(COMBAT_SRCS) $(AI_SRCS) $(MOVE_SRCS) \
            $(ECON_SRCS) $(RENDER_SRCS) $(SOUND_SRCS) $(SERIAL_SRCS) \

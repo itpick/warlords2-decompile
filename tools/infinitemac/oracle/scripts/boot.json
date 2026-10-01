@@ -1,0 +1,11 @@
+{
+  "name": "boot",
+  "viewport": { "width": 1024, "height": 768 },
+  "bootWaitMs": 125000,
+  "steps": [
+    { "shot": "after_boot" },
+    { "wait": 6000 }, { "shot": "t1" },
+    { "wait": 6000 }, { "shot": "t2" },
+    { "wait": 6000 }, { "shot": "t3" }
+  ]
+}

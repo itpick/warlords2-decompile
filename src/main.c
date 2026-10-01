@@ -20,6 +20,29 @@
 #define newMovieActive 1
 #endif
 
+/* Development escape hatch: Cmd-Option-Q quits from anywhere, including modal
+ * dialogs that ignore the menu bar. Every event loop goes through
+ * WaitNextEvent, so the check lives in this wrapper. The original has no
+ * Cmd-Option-Q binding. Used by tools/infinitemac/devloop to relaunch builds. */
+static Boolean DevIsQuitChord(const EventRecord *e)
+{
+    return e->what == keyDown && (e->modifiers & cmdKey) && (e->modifiers & optionKey) &&
+           ((e->message & keyCodeMask) >> 8) == 0x0C;      /* 'Q' key */
+}
+
+static pascal Boolean DevWaitNextEvent(INTEGER mask, EventRecord *evp, LONGINT sleep, RgnHandle mousergn)
+{
+    EventRecord k;
+    Boolean got;
+    /* queued before the wait (also catches loops whose mask excludes keys) */
+    if (EventAvail(keyDownMask, &k) && DevIsQuitChord(&k)) ExitToShell();
+    got = WaitNextEvent(mask, evp, sleep, mousergn);
+    /* or delivered by this wait */
+    if (got && DevIsQuitChord(evp)) ExitToShell();
+    return got;
+}
+#define WaitNextEvent DevWaitNextEvent
+
 /* Window and buffer globals.
  * Each is a pointer-to-int; *gXxx gives the underlying WindowPtr or buffer.
  * In the solo build (main.c only), we define them with backing storage.
@@ -63,10 +86,15 @@ static short   sMapHeight = 0;
 
 /* City record array — separate from gGameState to avoid overlapping other fields.
  * The SCN format stores 32 ruin/site records at gs+0x812 (stride 0x20) and
- * up to 79 city records at gs+0x15BE (stride 0x41). We rebuild the 0x20-byte
+ * a LE city count at gs+0x157B followed by up to 99 city records from gs+0x157D
+ * (stride 0x41). We rebuild the 0x20-byte
  * runtime city layout into this dedicated array so we don't clobber hero hire
  * data, diplomacy tables, or other fields packed between 0xC12..0x15BE. */
 static unsigned char sCityData[140 * 0x20];  /* up to 140 cities+sites, 0x20 bytes each */
+/* Per-city SCN production slot stats {build turns, strength, movement}, parallel to
+ * the compacted slots at sCityData+0x0C. Filled by GameInit's city rebuild; read by
+ * the starting-army choice (68k FUN_00000db4) after the SCN bytes in gs are reused. */
+static unsigned char sScnSlotStats[99][4][3];
 static short sCityCount = 0;
 
 /* DEBUG: capital matching diagnostics */
@@ -1572,12 +1600,25 @@ static void GameInit(void)
         if (factionCount < 1 || factionCount > 8) factionCount = 8;
 
         for (i = 0; i < 8; i++) {
-            if (i < factionCount) {
+            /* A faction participates only if its slot has a REAL name. The SCN
+             * stores the literal "Not Used" for unused slots (verified: Tutoria
+             * SCN 10000 = Knights, "Not Used" x6, Darklords). factionCount is just
+             * the highest named slot+1, so unused middle slots fall inside it —
+             * without this check they were marked alive and got starting armies at
+             * junk capital coords (the phantom armies floating in the sea). The
+             * original keys participation off the capital, then overwrites dead
+             * slots' names with "Not Used" + colour 3 (68k CODE_116:177-191). */
+            unsigned char *fname = gs + i * 0x14;
+            Boolean realFaction = (i < factionCount) && (fname[0] != 0) &&
+                !(fname[0]=='N' && fname[1]=='o' && fname[2]=='t' && fname[3]==' ' &&
+                  fname[4]=='U' && fname[5]=='s' && fname[6]=='e' && fname[7]=='d');
+            if (realFaction) {
                 *(short *)(gs + 0x138 + i * 2) = 1;  /* alive */
                 *(short *)(gs + 0x148 + i * 2) = 1;  /* secondary alive flag */
             } else {
-                *(short *)(gs + 0x138 + i * 2) = 0;  /* eliminated */
+                *(short *)(gs + 0x138 + i * 2) = 0;  /* not in this scenario */
                 *(short *)(gs + 0x148 + i * 2) = 0;
+                *(short *)(gs + 0xc0 + i * 2) = 3;   /* grey (68k CODE_116: colour 3) */
             }
         }
     }
@@ -1623,14 +1664,15 @@ static void GameInit(void)
         /* Alive players keep their SCN-defined starting gold */
     }
 
-    /* --- Rebuild city records from valid SCN data at gs+0x15BE ---
+
+    /* --- Rebuild city records from valid SCN data at gs+0x157D ---
      * IMPORTANT: This MUST run before diplomacy init, because the diplomacy
      * table at gs+0x1582 (64 bytes) extends to gs+0x15C1, overlapping the
-     * first 4 bytes of the city compact records at gs+0x15BE. ---
+     * SCN city compact records starting at gs+0x157D. ---
      * For loaded scenarios: the raw gs+0x812 records are MacApp-serialized objects
-     * with garbage X/Y. Valid city data lives at gs+0x15BE (stride 0x41).
+     * with garbage X/Y. Valid city data lives at gs+0x157D (stride 0x41).
      * For random maps: gs+0x812 already has valid city data written by
-     * GenerateRandomMap, and gs+0x15BE now overlaps with army records.
+     * GenerateRandomMap, and gs+0x157D now overlaps with army records.
      * Skip this rebuild for random maps to avoid overwriting correct data. */
     if (!sRandomMap) {
         /* Read player capital coordinates from raw SCN player stat blocks.
@@ -1650,10 +1692,16 @@ static void GameInit(void)
         /* DEBUG: store P0 capital coords */
         sDbgCapX0 = capX[0]; sDbgCapY0 = capY[0];
 
-        /* Count valid city records (scan until X=0 && Y=0 or out of bounds) */
+        /* SCN city block: LE short count at gs+0x157B, then 0x41-byte records
+         * from gs+0x157D (verified on all 6 scenarios: Erythea=80, Tutoria=6).
+         * Reading from gs+0x15BE skipped record 0 (Kuuria / Skullcrag). The
+         * coordinate scan below stays as a guard against a bad count. */
+        short scnCityCount = (short)((unsigned char)gs[0x157B] |
+                                     ((unsigned short)(unsigned char)gs[0x157C] << 8));
+        if (scnCityCount < 0 || scnCityCount > 99) scnCityCount = 99;
         short cityCount = 0;
-        for (i = 0; i < 99; i++) {
-            unsigned char *src = gs + 0x15BE + i * 0x41;
+        for (i = 0; i < scnCityCount; i++) {
+            unsigned char *src = gs + 0x157D + i * 0x41;
             short cx = (short)((unsigned char)src[0] | ((unsigned short)(unsigned char)src[1] << 8));
             short cy = (short)((unsigned char)src[2] | ((unsigned short)(unsigned char)src[3] << 8));
             if ((cx == 0 && cy == 0) || cx >= 112 || cy >= 156) break;
@@ -1663,7 +1711,7 @@ static void GameInit(void)
         /* DEBUG */
         sDbgCityCount = cityCount;
         if (cityCount > 0) {
-            unsigned char *s0 = gs + 0x15BE;
+            unsigned char *s0 = gs + 0x157D;
             sDbgCity0X = (short)((unsigned char)s0[0] | ((unsigned short)(unsigned char)s0[1] << 8));
             sDbgCity0Y = (short)((unsigned char)s0[2] | ((unsigned short)(unsigned char)s0[3] << 8));
         }
@@ -1677,7 +1725,7 @@ static void GameInit(void)
          *   +0x0C..+0x13: production type slots (4 shorts; -1 = empty)
          *   +0x17: site type (0 = city; non-zero = ruin/temple) */
         for (i = 0; i < cityCount; i++) {
-            unsigned char *src  = gs + 0x15BE + i * 0x41;
+            unsigned char *src  = gs + 0x157D + i * 0x41;
             unsigned char *city = sCityData + i * 0x20;
             short cx = (short)((unsigned char)src[0] | ((unsigned short)(unsigned char)src[1] << 8));
             short cy = (short)((unsigned char)src[2] | ((unsigned short)(unsigned char)src[3] << 8));
@@ -1697,10 +1745,27 @@ static void GameInit(void)
             *(short *)(city + 0x06) = (short)(unsigned char)src[0x14];  /* defense */
 
             /* Production capability: read from SCN compact record +0x16..+0x19.
-             * Each byte is a unit type index (0-28) or 0xFF (empty slot). */
-            for (j = 0; j < 4; j++) {
-                unsigned char pt = src[0x16 + j];
-                *(short *)(city + 0x0C + j * 2) = (pt == 0xFF) ? -1 : (short)pt;
+             * Each byte is a unit type index (0-28) or 0xFF (empty slot).
+             * 68k CODE_117 FUN_00002118 strips Catapults (type 5) from every
+             * city at game start and compacts the list (confirmed in an original
+             * Erythea save: Mirea 01 04 05 0a -> 01 04 0a ff). The slot's SCN
+             * build turns (+0x1A), strength (+0x1E) and movement (+0x22) travel
+             * with it for the starting-army choice below. */
+            {
+                short n = 0;
+                for (j = 0; j < 4; j++) {
+                    *(short *)(city + 0x0C + j * 2) = -1;
+                    sScnSlotStats[i][j][0] = sScnSlotStats[i][j][1] = sScnSlotStats[i][j][2] = 0;
+                }
+                for (j = 0; j < 4; j++) {
+                    unsigned char pt = src[0x16 + j];
+                    if (pt == 0xFF || pt == 5) continue;
+                    *(short *)(city + 0x0C + n * 2) = (short)pt;
+                    sScnSlotStats[i][n][0] = src[0x1A + j];
+                    sScnSlotStats[i][n][1] = src[0x1E + j];
+                    sScnSlotStats[i][n][2] = src[0x22 + j];
+                    n++;
+                }
             }
 
             /* Income: SCN compact record +0x2A */
@@ -1769,7 +1834,7 @@ static void GameInit(void)
      * Table is 64 bytes: 8 rows x 8 cols x 1 byte per entry.
      * Default: 0x00 (at peace, all flags clear).
      * NOTE: This MUST run after city rebuild, because the 64-byte range
-     * gs+0x1582..0x15C1 overlaps the city compact records at gs+0x15BE. */
+     * gs+0x1582..0x15C1 overlaps the city compact records at gs+0x157D. */
     for (i = 0; i < 8; i++) {
         for (j = 0; j < 8; j++) {
             *(gs + 0x1582 + i * 8 + j) = 0x00;
@@ -1976,7 +2041,7 @@ static void GameInit(void)
 
     /* --- Initialize army records --- */
     /* The raw gs+0x1602/0x1604 area overlaps with the city compact records at
-     * gs+0x15BE that we read for city initialization. The "army count" value
+     * gs+0x157D that we read for city initialization. The "army count" value
      * read from gs+0x1602 is garbage (it's city name bytes, not a real count).
      * We reset the army count to 0 and build all armies from scratch:
      *   1. Neutral garrison armies are created by the loop below.
@@ -2266,11 +2331,18 @@ static void GameInit(void)
         *(short *)(gs + 0x1602) = armyCount;
     }
 
-    /* --- Create player starting armies (68k CODE_117 FUN_00001ecc) ---
-     * Each active player starts with 1 army at their capital. The raw SCN
-     * army data is MacApp-serialized and cannot be read directly, so we
-     * fabricate a starting force: one unit of the capital city's first
-     * producible type, at the capital coordinates. */
+    /* --- Create player starting armies (68k CODE_117 FUN_00000be0) ---
+     * Scenarios carry no army data: the SCN ends after the city block. At new
+     * game the original gives each owned city (the capitals) ONE unit (more
+     * only when gs+0x128 is set): the production slot that FUN_00000db4 scores
+     * highest with weight set 3 (table at A5+0x15BA2[3]):
+     *   score = 10*min(str,9) + 5*(10 - min(turns,10)) + move/2
+     *   (turns+1 when str < 3; slots scanned 3..0, strict '>' so ties keep the
+     *   later slot). Verified 8/8 against an original Erythea turn-1 save using
+     *   the original's per-city stats; with the SCN slot stats used here it
+     *   matches 7/8 (Starfire differs: the original also reorders slots).
+     * The +2 strength bonuses from gs+0xF0 and the per-type flag table
+     * (_DAT_00028864[t*6+5]) are not modelled yet. */
     {
         short armyCount = *(short *)(gs + 0x1602);
         short fCount = *(short *)(gs + 0x10C);
@@ -2284,7 +2356,7 @@ static void GameInit(void)
              * SCN byte values at pstat[3] (capX) and pstat[5] (capY). */
             short capX   = *(short *)(pstat + 0x0E);
             short capY   = *(short *)(pstat + 0x10);
-            short unitType = 0;
+            short unitType = -1;
 
             if (!pAlive) continue;
             if (capX == 0 && capY == 0) {
@@ -2294,74 +2366,79 @@ static void GameInit(void)
             if (capX <= 0 && capY <= 0) continue;
             if (capX < 0 || capX >= sMapWidth || capY < 0 || capY >= sMapHeight) continue;
 
-            /* Find capital city and its first producible unit type */
+            /* Find the capital and pick its best-scoring production slot */
             {
                 short cityCount2 = sCityCount;
-                if (cityCount2 > 139) cityCount2 = 139;
+                if (cityCount2 > 99) cityCount2 = 99;
                 for (j = 0; j < cityCount2; j++) {
-                    unsigned char *city = sCityData +j * 0x20;
+                    unsigned char *city = sCityData + j * 0x20;
                     if (*(short *)(city + 0x00) == capX &&
                         *(short *)(city + 0x02) == capY &&
                         *(short *)(city + 0x04) == i) {
-                        short pt = *(short *)(city + 0x0C);
-                        if (pt >= 0 && pt < MAX_UNIT_TYPES) unitType = pt;
+                        short s, best = 0;
+                        for (s = 3; s >= 0; s--) {
+                            short pt = *(short *)(city + 0x0C + s * 2);
+                            short turns, str, move, score;
+                            if (pt < 0 || pt >= MAX_UNIT_TYPES) continue;
+                            if (sRandomMap) {  /* no SCN slot stats: use the army set */
+                                turns = GetUnitTypeStat(pt, 1);
+                                str   = GetUnitTypeStat(pt, 0);
+                                move  = GetUnitTypeStat(pt, 3);
+                            } else {
+                                turns = sScnSlotStats[j][s][0];
+                                str   = sScnSlotStats[j][s][1];
+                                move  = sScnSlotStats[j][s][2];
+                            }
+                            if (str > 9) str = 9;
+                            if (str < 3) turns++;
+                            if (turns > 10) turns = 10;
+                            score = str * 10 + 5 * (10 - turns) + move / 2;
+                            if (score > best) { best = score; unitType = pt; }
+                        }
+                        if (unitType < 0) {
+                            short pt = *(short *)(city + 0x0C);
+                            if (pt >= 0 && pt < MAX_UNIT_TYPES) unitType = pt;
+                        }
                         break;
                     }
                 }
             }
+            if (unitType < 0) unitType = 0;
 
-            /* Get base movement from unit type table */
+            /* Create the army record: one unit of unitType */
             {
-                unsigned char baseMov = 10;
+                unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
+                unsigned char baseMov = 10, hp = 3;
+                short k;
+
                 if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
-                    unsigned char *ute = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
-                    short mv = *(short *)(ute + 0x16 + 3 * 2);  /* stats[3] = movement */
+                    short mv = GetUnitTypeStat(unitType, 3);
+                    short uHP = GetUnitTypeStat(unitType, 0);
                     if (mv > 0 && mv <= 99) baseMov = (unsigned char)mv;
+                    if (uHP > 0) hp = (unsigned char)uHP;
                 }
 
-                /* Create the army record */
-                {
-                    unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
-                    short k;
-                    for (k = 0; k < 0x42; k++) newArmy[k] = 0;
+                for (k = 0; k < 0x42; k++) newArmy[k] = 0;
+                *(short *)(newArmy + 0x00) = capX;
+                *(short *)(newArmy + 0x02) = capY;
+                newArmy[0x15] = (unsigned char)i;  /* owner */
+                newArmy[0x2f] = (unsigned char)i;  /* runtime owner */
 
-                    *(short *)(newArmy + 0x00) = capX;
-                    *(short *)(newArmy + 0x02) = capY;
-                    newArmy[0x15] = (unsigned char)i;  /* owner */
-                    newArmy[0x2f] = (unsigned char)i;  /* runtime owner */
+                /* Sprite: unit type table offset 0x00 = sprite index */
+                if (sUnitTypesLoaded && unitType < sUnitTypeCount)
+                    newArmy[0x14] = sUnitTypeTable[unitType * UNIT_TYPE_ENTRY];
+                else
+                    newArmy[0x14] = (unsigned char)unitType;
 
-                    /* Sprite: look up from unit type table (offset 0x00 = sprite index) */
-                    if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
-                        unsigned char *ute = sUnitTypeTable + unitType * UNIT_TYPE_ENTRY;
-                        newArmy[0x14] = (unsigned char)ute[0x00];
-                    } else {
-                        newArmy[0x14] = (unsigned char)unitType;
-                    }
-
-                    /* Two units of the same type (68k: SCN armies typically
-                     * start with 2 Light Infantry per capital). Slots 2-3 empty. */
-                    newArmy[0x16] = (unsigned char)unitType;  /* slot 0 unit type */
-                    newArmy[0x17] = (unsigned char)unitType;  /* slot 1 same type */
-                    newArmy[0x18] = 0xFF;  /* slot 2 empty */
-                    newArmy[0x19] = 0xFF;  /* slot 3 empty */
-                    newArmy[0x1a] = baseMov;  /* slot 0 base movement */
-                    newArmy[0x1b] = baseMov;  /* slot 1 base movement */
-                    /* HP from unit type table (68k FUN_1003b9f8: init stats) */
-                    {
-                        short uHP = GetUnitTypeStat(unitType, 0);
-                        unsigned char hp = (uHP > 0) ? (unsigned char)uHP : 3;
-                        newArmy[0x1e] = hp;   /* slot 0 HP */
-                        newArmy[0x1f] = hp;   /* slot 1 HP */
-                    }
-                    newArmy[0x22] = 0;   /* slot 0 defense bonus */
-                    newArmy[0x23] = 0;   /* slot 1 defense bonus */
-                    newArmy[0x26] = 0;   /* slot 0 experience */
-                    newArmy[0x27] = 0;   /* slot 1 experience */
-
-                    newArmy[0x2e] = baseMov;  /* current MP */
-                    RecalcArmyStrength(newArmy);
-                    armyCount++;
-                }
+                newArmy[0x16] = (unsigned char)unitType;  /* slot 0 */
+                newArmy[0x17] = 0xFF;
+                newArmy[0x18] = 0xFF;
+                newArmy[0x19] = 0xFF;
+                newArmy[0x1a] = baseMov;  /* slot 0 base movement */
+                newArmy[0x1e] = hp;       /* slot 0 HP (68k FUN_1003b9f8 init stats) */
+                newArmy[0x2e] = baseMov;  /* current MP */
+                RecalcArmyStrength(newArmy);
+                armyCount++;
             }
         }
         *(short *)(gs + 0x1602) = armyCount;
@@ -3864,6 +3941,34 @@ static void DrawPortAnchor(const Rect *dstRect)
     }
 }
 
+/* Game palette (pltt 1000). Verified on the oracle: every colour on the
+ * original's 8-bit screen is a pltt 1000 entry (after the display gamma) while
+ * the remake was on the system CLUT, so PICTs, marble and UI greys all came out
+ * different. Like the original (SetPalette in its code), windows get the palette
+ * through the Palette Manager, which switches the device CLUT *and* has the Finder
+ * redraw the desktop/icons in the nearest colours. Offscreen GWorlds created
+ * before any window is active use sGameCTab explicitly instead of the device. */
+static PaletteHandle sGamePal = NULL;
+static WindowPtr     sSplashWin = NULL;     /* start-up splash; closed before the scenario picker */
+static unsigned long sSplashStart = 0;
+static CTabHandle    sGameCTab = NULL;
+
+static void InstallGamePalette(void)
+{
+    if (sGamePal != NULL) return;
+    sGamePal = GetNewPalette(1000);
+    if (sGamePal == NULL) return;
+    sGameCTab = (CTabHandle)NewHandle(sizeof(ColorTable));
+    if (sGameCTab != NULL) Palette2CTab(sGamePal, sGameCTab);
+}
+
+static void ApplyGamePalette(WindowPtr w)
+{
+    if (sGamePal == NULL || w == NULL) return;
+    SetPalette(w, sGamePal, true);
+    ActivatePalette(w);
+}
+
 /* ===================================================================
  * RemapShieldColors — Remap cicn CLUTs to nearest game palette entries
  *
@@ -4054,6 +4159,21 @@ static void ScanForScenarios(void)
                 }
             }
             CloseResFile(refNum);
+        }
+    }
+
+    /* The original lists scenarios alphabetically regardless of directory
+     * order (which differs on non-HFS volumes such as The Outside World). */
+    {
+        short x, y;
+        for (x = 1; x < sScenarioCount; x++) {
+            for (y = x; y > 0 && RelString(sScenarioNames[y - 1], sScenarioNames[y], false, true) > 0; y--) {
+                Str255 tn; FSSpec ts;
+                BlockMoveData(sScenarioNames[y], tn, sizeof(Str255));
+                BlockMoveData(sScenarioNames[y - 1], sScenarioNames[y], sizeof(Str255));
+                BlockMoveData(tn, sScenarioNames[y - 1], sizeof(Str255));
+                ts = sScenarioSpecs[y]; sScenarioSpecs[y] = sScenarioSpecs[y - 1]; sScenarioSpecs[y - 1] = ts;
+            }
         }
     }
 }
@@ -4796,8 +4916,9 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
     for (i = 0; i < 8; i++)
         *(short *)(gs + 0x186 + i * 0x14) = 100;
 
-    /* Enable hero generation for random maps */
-    *(short *)(gs + 0x12e) = 1;
+    /* gs+0x12E is the tutorial flag (68k: gates the tutorial screens and the
+     * CODE_104 hero-vs-neutral protection), not hero generation. */
+    *(short *)(gs + 0x12e) = 0;
 
     sMapLoaded = true;
     sRandomMap = true;
@@ -4836,6 +4957,364 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 }
 
 
+/* View/button title from STR# 'id', 1-based like the original's MacApp views
+ * (GetCachedString is 0-based and only covers the cached lists). */
+static ConstStr255Param ViewString(Str255 buf, short id, short idx, ConstStr255Param fallback)
+{
+    GetIndString(buf, id, idx);
+    return buf[0] ? buf : fallback;
+}
+
+/* MacApp T3DButton as the original draws it (pixel-sampled from the scenario
+ * picker, colours resolved through pltt 1000): 0xBBBB face, white highlight on
+ * the top/left inner edge, two shadow steps (0x7777, 0x5555) on the bottom/right,
+ * black outline with rounded (8px oval) corners, and
+ * a Chicago 12 label in black over a 0xDDDD +1,+1 emboss. */
+static void DrawT3DButton(const Rect *r, ConstStr255Param label)
+{
+    RGBColor face = {0xBBBB, 0xBBBB, 0xBBBB}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+    RGBColor sh1 = {0x7777, 0x7777, 0x7777}, sh2 = {0x5555, 0x5555, 0x5555};
+    RGBColor black = {0, 0, 0};
+    Rect f = *r;
+    short w;
+
+    RGBForeColor(&black);
+    PaintRoundRect(&f, 8, 8);
+    InsetRect(&f, 1, 1);
+    RGBForeColor(&face);
+    PaintRoundRect(&f, 6, 6);
+    RGBForeColor(&white);                      /* highlight: second row/column */
+    MoveTo(f.left + 1, f.bottom - 3); LineTo(f.left + 1, f.top + 1); LineTo(f.right - 3, f.top + 1);
+    RGBForeColor(&sh1);                        /* inner shadow */
+    MoveTo(f.left + 1, f.bottom - 2); LineTo(f.right - 2, f.bottom - 2); LineTo(f.right - 2, f.top + 1);
+    RGBForeColor(&sh2);                        /* outer shadow */
+    MoveTo(f.left, f.bottom - 1); LineTo(f.right - 1, f.bottom - 1); LineTo(f.right - 1, f.top);
+
+    {   /* TxSt 1002 names Chicago explicitly; on 8.5+ font 0 is Charcoal */
+        short fnum;
+        GetFNum("\pChicago", &fnum);
+        TextFont(fnum); TextSize(12); TextFace(0);
+    }
+    w = StringWidth(label);
+    {
+        RGBColor emboss = {0xDDDD, 0xDDDD, 0xDDDD};
+        short x = (r->left + r->right - w + 1) / 2;
+        RGBForeColor(&emboss);
+        MoveTo(x + 1, r->bottom - 5);
+        DrawString(label);
+        RGBForeColor(&black);
+        MoveTo(x, r->bottom - 6);
+        DrawString(label);
+    }
+}
+
+/* Draw text in a MacApp static-text view rect with the view's justification
+ * (1 = centre, -1 = right, -2 = left), baseline at top + font ascent. */
+static void DrawViewText(const Rect *r, ConstStr255Param s, short just)
+{
+    FontInfo fi;
+    short w = StringWidth(s), x;
+    GetFontInfo(&fi);
+    if (just == 1)       x = (r->left + r->right - w) / 2;
+    else if (just == -1) x = r->right - w;
+    else                 x = r->left;
+    MoveTo(x, r->top + fi.ascent);
+    DrawString(s);
+}
+
+/* ===================================================================
+ * Tutorial screens (68k CODE_062 "a1Tutorial").
+ *
+ * A scenario whose SCN has the tutorial flag at gs+0x12E (only Tutoria) shows
+ * its named 'GFX ' scripts at fixed moments; gs+0x134 holds a bit per screen
+ * already shown (same bits as the 68k: THERO 0x01, TPROD 0x02, TSELECT 0x04,
+ * TMOVE 0x08, TFIGHT 0x10, TPROD2 0x20, TTURN2 0x40, TSEARCH 0x80; TWARLORD
+ * and TENDTURN have none). Each script is drawn in View 1030: a 366x352
+ * window on WDEF 128 variant 7 (procID 0x0807, which adds the drop shadow),
+ * marble edge PICTs 1004/1005/1006/1008 around PICT 1001, the script area at
+ * (7,7) and a "Done" T3DButton. Script commands (CODE_062 FUN_000002f4):
+ *   #H / #T          foreground = palette entry 0xE0, background = 0xF9
+ *   #Fnnn            foreground = palette entry nnn
+ *   #C(x,y)|text|    title, centred on x;  #L / #R: left / right aligned line
+ *   #G(sx,sy,w,h)nnn(x,y)  transparent blit from the first army sheet
+ *   #Bnnnnn(x,y)     cicn nnnnn (mouse pictures)
+ *   #E               end
+ * Coordinates are relative to the script area; y is the top of the text.
+ * =================================================================== */
+#define MAX_TUTORIAL_SCRIPTS 16
+static Handle  sTutorialScripts[MAX_TUTORIAL_SCRIPTS];
+static Str63   sTutorialNames[MAX_TUTORIAL_SCRIPTS];
+static short   sTutorialCount = 0;
+
+/* Called with the scenario's resource file current. */
+static void LoadTutorialScripts(void)
+{
+    short n, i;
+    for (i = 0; i < sTutorialCount; i++)
+        if (sTutorialScripts[i] != NULL) DisposeHandle(sTutorialScripts[i]);
+    sTutorialCount = 0;
+    n = Count1Resources('GFX ');
+    for (i = 1; i <= n && sTutorialCount < MAX_TUTORIAL_SCRIPTS; i++) {
+        Handle h = Get1IndResource('GFX ', i);
+        short id; ResType t;
+        if (h == NULL) continue;
+        GetResInfo(h, &id, &t, sTutorialNames[sTutorialCount]);
+        DetachResource(h);
+        sTutorialScripts[sTutorialCount++] = h;
+    }
+}
+
+static Boolean TutorialActive(void)
+{
+    return *gGameState != 0 && *(short *)((unsigned char *)*gGameState + 0x12e) != 0;
+}
+
+static short ParseNum3(const char **p)
+{
+    const char *s = *p;
+    short v = (s[0] - '0') * 100 + (s[1] - '0') * 10 + (s[2] - '0');
+    *p = s + 3;
+    return v;
+}
+
+/* "(xxx,yyy)" -> x, y */
+static void ParsePoint(const char **p, short *x, short *y)
+{
+    (*p)++;  *x = ParseNum3(p);
+    (*p)++;  *y = ParseNum3(p);
+    (*p)++;
+}
+
+/* "|text|" -> Pascal string */
+static void ParseText(const char **p, const char *end, Str255 out)
+{
+    const char *s = *p;
+    short n = 0;
+    while (s < end && *s != '|') s++;
+    if (s < end) s++;
+    while (s < end && *s != '|' && n < 255) out[++n] = *s++;
+    if (s < end) s++;
+    out[0] = (unsigned char)n;
+    *p = s;
+}
+
+static void DrawTutorialScript(Handle script, short ox, short oy)
+{
+    const char *p, *end;
+    RGBColor fg = {0xFFFF, 0xFFFF, 0xCCCC};
+    RGBColor dark = {0x4444, 0x4444, 0x4444}, light = {0xAAAA, 0xAAAA, 0xAAAA};
+    short illuria;
+    char saved = HGetState(script);
+
+    GetFNum("\pIlluria", &illuria);
+    if (illuria == 0) illuria = 1602;
+    HLock(script);
+    p = *script;
+    end = p + GetHandleSize(script);
+    if (sGamePal != NULL) GetEntryColor(sGamePal, 0xE0, &fg);
+
+    while (p < end) {
+        char cmd;
+        while (p < end && *p != '#') p++;
+        if (p + 1 >= end) break;
+        cmd = p[1];
+        p += 2;
+        if (cmd == 'E') break;
+        if (cmd == 'H' || cmd == 'T') {
+            if (sGamePal != NULL) GetEntryColor(sGamePal, 0xE0, &fg);
+        } else if (cmd == 'F') {
+            short idx = ParseNum3(&p);
+            if (sGamePal != NULL && idx < 256) GetEntryColor(sGamePal, idx, &fg);
+        } else if (cmd == 'C' || cmd == 'L' || cmd == 'R') {
+            short x, y, w;
+            FontInfo fi;
+            Str255 text;
+            ParsePoint(&p, &x, &y);
+            ParseText(&p, end, text);
+            TextFont(illuria);
+            TextSize(cmd == 'C' ? 36 : 17);
+            TextFace(0);
+            GetFontInfo(&fi);
+            w = StringWidth(text);
+            if (cmd == 'C') x -= w / 2;
+            else if (cmd == 'R') x -= w;
+            /* Embossed like the original: 0xAAAA at (x+2,y+2), then 0x4444 at
+             * (x,y) on top of it, then the script colour at (x+1,y+1). */
+            RGBForeColor(&light);
+            MoveTo(ox + x + 2, oy + y + fi.ascent + 2);
+            DrawString(text);
+            RGBForeColor(&dark);
+            MoveTo(ox + x, oy + y + fi.ascent);
+            DrawString(text);
+            RGBForeColor(&fg);
+            MoveTo(ox + x + 1, oy + y + fi.ascent + 1);
+            DrawString(text);
+        }
+        else if (cmd == 'G') {
+            /* #G(sx,sy,w,h)nnn(dx,dy): transparent blit (mode 0x24) from a sprite
+             * sheet. nnn 100/101/102 pick shields/PICTS0/SCENERY0 (unused by the
+             * shipped scripts); every other value is sheet 14, which on the Mac
+             * holds the first army sheet (A0: the hero knight at (384,30) in
+             * THERO matches the original pixel for pixel). */
+            short sx, sy, w, h, sheet, dx, dy;
+            p++; sx = ParseNum3(&p); p++; sy = ParseNum3(&p);
+            p++; w = ParseNum3(&p);  p++; h = ParseNum3(&p); p++;
+            sheet = ParseNum3(&p);
+            ParsePoint(&p, &dx, &dy);
+            if (sheet < 100 && sArmyGW[0] != NULL) {
+                Rect src, dst;
+                RGBColor key;
+                GWorldPtr gw = sArmyGW[0];
+                SetRect(&src, sx, sy, sx + w, sy + h);
+                SetRect(&dst, ox + dx, oy + dy, ox + dx + w, oy + dy + h);
+                key = sArmyBgColor[0];
+                RGBBackColor(&key);
+                CopyBits((BitMap *)*GetGWorldPixMap(gw), &qd.thePort->portBits,
+                         &src, &dst, transparent, NULL);
+                {
+                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                    RGBBackColor(&white);
+                }
+            }
+        } else if (cmd == 'B' || cmd == 'I') {
+            /* #Bnnnnn(x,y): small picture (cicn nnnnn, the mouse drawings) */
+            short id, x, y;
+            CIconHandle ic;
+            id = (short)((p[0]-'0') * 10000 + (p[1]-'0') * 1000 + (p[2]-'0') * 100 +
+                         (p[3]-'0') * 10 + (p[4]-'0'));
+            p += 5;
+            ParsePoint(&p, &x, &y);
+            ic = GetCIcon(id);
+            if (ic != NULL) {
+                Rect ir = (**ic).iconPMap.bounds;
+                OffsetRect(&ir, ox + x - ir.left, oy + y - ir.top);
+                PlotCIcon(&ir, ic);
+                DisposeCIcon(ic);
+            }
+        }
+    }
+    HSetState(script, saved);
+}
+
+/* Show tutorial screen 'name' if the tutorial is active and its gs+0x134 bit
+ * (0 = no bit, may repeat) is clear; modal until Done. Restores the port.
+ * Returns true if it was shown (callers then redraw what was underneath). */
+static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
+{
+    GrafPtr savedPort;
+    unsigned char *gsp;
+    WindowPtr win;
+    Rect wr, r;
+    short i, idx = -1, left, top, mbar = GetMBarHeight();
+    Rect screen = qd.screenBits.bounds;
+    Boolean done = false;
+    unsigned long openTick;
+
+    if (!TutorialActive()) return false;
+    gsp = (unsigned char *)*gGameState;
+    if (bit != 0 && (gsp[0x134] & bit)) return false;
+    for (i = 0; i < sTutorialCount; i++)
+        if (EqualString(sTutorialNames[i], name, false, true)) { idx = i; break; }
+    if (idx < 0) return false;
+    gsp[0x134] |= bit;
+    GetPort(&savedPort);
+
+    /* View 1030 placement (MacApp alert position, counting the 5px shadow):
+     * centred horizontally, a third of the way down below the menu bar. */
+    left = (screen.right - (366 + 5)) / 2;
+    top  = mbar + (screen.bottom - mbar - (352 + 5)) / 3;
+    SetRect(&wr, left, top, left + 366, top + 352);
+    win = NewCWindow(NULL, &wr, "\p", true, 0x0807, (WindowPtr)-1L, false, 0);
+    if (win == NULL) return false;
+    {   /* MacApp windows take their WDEF colours from wctb 1000 */
+        Handle wctb = GetResource('wctb', 1000);
+        if (wctb != NULL) SetWinColor(win, (CTabHandle)wctb);
+    }
+    ApplyGamePalette(win);
+    SetPort(win);
+    /* Drop the key/click that opened us. A Return that confirmed the scenario
+     * picker can still be held (and repeat) after the scenario has loaded, so
+     * wait for Return/Enter to be released (max 2s) before flushing. */
+    {
+        unsigned long until = TickCount() + 120;
+        unsigned char km[16];    /* KeyMap: bit (k & 7) of byte (k >> 3) */
+        do {
+            GetKeys(km);
+        } while ((((km[0x24 >> 3] >> (0x24 & 7)) & 1) ||      /* Return */
+                  ((km[0x4C >> 3] >> (0x4C & 7)) & 1)) &&     /* Enter */
+                 TickCount() < until);
+    }
+    FlushEvents(keyDownMask | keyUpMask | autoKeyMask | mDownMask | mUpMask, 0);
+    openTick = TickCount();
+
+    while (!done) {
+        EventRecord evt;
+        Rect doneOuter, doneBtn;
+        SetRect(&doneOuter, 279, 310, 351, 339);   /* View 1030 'done' (310,279) 29x72 */
+        doneBtn = doneOuter;
+        InsetRect(&doneBtn, 4, 4);
+
+        if (WaitNextEvent(everyEvent, &evt, 30, NULL)) {
+            if (evt.what == updateEvt && (WindowPtr)evt.message == win) {
+                static const short edges[4][5] = {     /* pict, top, left, bottom, right */
+                    {1004, 0, 0, 7, 366}, {1005, 7, 0, 352, 7},
+                    {1006, 345, 0, 352, 366}, {1008, 0, 359, 352, 366} };
+                BeginUpdate(win);
+                SetRect(&r, 7, 7, 359, 345);
+                {
+                    PicHandle marble = GetPicture(1001);
+                    Rect pf;
+                    if (marble != NULL) {
+                        ClipRect(&r);
+                        pf = (**marble).picFrame;
+                        OffsetRect(&pf, 7 - pf.left, 7 - pf.top);
+                        DrawPicture(marble, &pf);
+                    }
+                }
+                for (i = 0; i < 4; i++) {
+                    PicHandle pic = GetPicture(edges[i][0]);
+                    Rect pf, clip;
+                    if (pic == NULL) continue;
+                    SetRect(&clip, edges[i][2], edges[i][1], edges[i][4], edges[i][3]);
+                    ClipRect(&clip);
+                    pf = (**pic).picFrame;
+                    OffsetRect(&pf, edges[i][2] - pf.left, edges[i][1] - pf.top);
+                    DrawPicture(pic, &pf);
+                }
+                ClipRect(&win->portRect);
+                DrawTutorialScript(sTutorialScripts[idx], 7, 7);
+                {
+                    RGBColor black = {0, 0, 0};
+                    RGBForeColor(&black);
+                    PenSize(3, 3);
+                    FrameRoundRect(&doneOuter, 16, 16);
+                    PenSize(1, 1);
+                }
+                {
+                    Str255 title;
+                    DrawT3DButton(&doneBtn, ViewString(title, 1000, 5, "\pDone"));  /* STR# 1000 #5 */
+                }
+                EndUpdate(win);
+            } else if (evt.what == mouseDown) {
+                Point pt = evt.where;
+                WindowPtr hit;
+                if (FindWindow(pt, &hit) == inContent && hit == win) {
+                    GlobalToLocal(&pt);
+                    if (PtInRect(pt, &doneOuter)) done = true;
+                }
+            } else if (evt.what == keyDown && TickCount() - openTick > 30) {
+                /* A Return still held from the picker can arrive (or repeat)
+                 * after the flush while the scenario was loading. */
+                char key = evt.message & charCodeMask;
+                if (key == 0x0D || key == 0x03 || key == 0x1B) done = true;
+            }
+        }
+    }
+    DisposeWindow(win);
+    SetPort(savedPort);
+    return true;
+}
+
 /* ===================================================================
  * ShowScenarioSelection — Display scenario choice dialog
  *
@@ -4854,29 +5333,45 @@ static Boolean ShowScenarioSelection(void)
     Boolean    done = false;
     Boolean    loaded = false;
     Boolean    useRandomMap = false;
-    short      lineHeight = 16;
+    short      lineHeight = 18;   /* View 3000 'lstg' row height */
+    ControlHandle vScroll = NULL;
     Rect       screenRect = qd.screenBits.bounds;
 
-    ScanForScenarios();
+    if (sScenarioCount == 0) ScanForScenarios();   /* normally done during the splash */
 
     if (sScenarioCount == 0) {
         /* No scenarios found — fall back to StandardGetFile */
         return false;
     }
 
-    /* Center a 480x360 window on screen (matches PICT 3000) */
-    SetRect(&winRect,
-        (screenRect.right - 480) / 2,
-        (screenRect.bottom - 360) / 2,
-        (screenRect.right - 480) / 2 + 480,
-        (screenRect.bottom - 360) / 2 + 360);
+    /* Default selection: last scenario (Tutoria), matching the original. */
+    selectedIdx = sScenarioCount - 1;
+
+    /* View 3000: matches the original on 1024x768 pixel-for-pixel: 482x362
+     * content at (271,213) inside plainDBox's 1px frame, PICT 3000 at the
+     * content origin and the spare right/bottom pixels black. */
+    {
+        short mbar = GetMBarHeight();
+        short top = mbar + (screenRect.bottom - mbar - 360) / 2;
+        short left = (screenRect.right - 480) / 2;
+        SetRect(&winRect, left - 1, top - 1, left + 481, top + 361);  /* (271,213) on 1024x768 */
+    }
 
     scenWin = NewCWindow(NULL, &winRect, "\p", true,
                           plainDBox, (WindowPtr)-1L, false, 0);
     if (scenWin == NULL)
         return false;
+    ApplyGamePalette(scenWin);
 
     SetPort(scenWin);
+
+    /* View 3000 'vScr': standard scroll bar in the list frame (inactive when
+     * every scenario fits, as in the original). */
+    {
+        Rect sr;
+        SetRect(&sr, 170, 110, 186, 273);
+        vScroll = NewControl(scenWin, &sr, "\p", true, 0, 0, 0, scrollBarProc, 0);
+    }
 
     /* Create offscreen buffer for flicker-free drawing */
     {
@@ -4885,8 +5380,8 @@ static Boolean ShowScenarioSelection(void)
         NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
     }
 
-    /* Calculate list area (left side of scenario screen) */
-    SetRect(&listRect, 20, 60, 220, 290);
+    /* List rows area: View 3000 scroller (111,16) 162x154; 18px rows from y=111 */
+    SetRect(&listRect, 16, 111, 170, 273);
     visibleItems = (listRect.bottom - listRect.top) / lineHeight;
 
     /* Drain pending events and ignore early keypresses */
@@ -4922,38 +5417,43 @@ static Boolean ShowScenarioSelection(void)
                     }
                 }
 
-                /* List background */
+                /* List frame: T3DFrameAdorner around View 3000 (109,14) 166x173 —
+                 * 0x4444/black on top-left, black/0xAAAA on bottom-right — white rows. */
                 {
-                    RGBColor listBg = {0xEEEE, 0xEEEE, 0xEEEE};
-                    RGBColor black = {0, 0, 0};
-                    RGBForeColor(&listBg);
-                    PaintRect(&listRect);
-                    RGBForeColor(&black);
-                    FrameRect(&listRect);
+                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF}, black = {0, 0, 0};
+                    RGBColor dark = {0x4444, 0x4444, 0x4444}, light = {0xAAAA, 0xAAAA, 0xAAAA};
+                    Rect fr;
+                    SetRect(&fr, 15, 110, 186, 273);
+                    RGBForeColor(&white); PaintRect(&fr);
+                    RGBForeColor(&black); FrameRect(&fr);
+                    RGBForeColor(&dark);
+                    MoveTo(14, 273); LineTo(14, 109); LineTo(186, 109);
+                    RGBForeColor(&light);
+                    MoveTo(15, 273); LineTo(186, 273); LineTo(186, 110);
                 }
 
-                /* Scenario names */
-                TextFont(3);
-                TextSize(10);
+                /* Rows: W2SC document icon (BNDL family 133) + name in the system
+                 * font; selection painted in the original's 0xCCCC,0xCCCC,0xFFFF. */
+                TextFont(0);
+                TextSize(12);
                 TextFace(0);
                 for (i = 0; i < visibleItems && (i + scrollOffset) < sScenarioCount; i++) {
                     short itemIdx = i + scrollOffset;
-                    short textY = listRect.top + (i + 1) * lineHeight - 3;
+                    short rowTop = listRect.top + i * lineHeight;
+                    RGBColor black = {0, 0, 0};
+                    Rect iconR;
 
                     if (itemIdx == selectedIdx) {
-                        RGBColor hilite = {0x3333, 0x3333, 0x9999};
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                        RGBColor hilite = {0xCCCC, 0xCCCC, 0xFFFF};
                         Rect selRect;
-                        SetRect(&selRect, listRect.left + 1, listRect.top + i * lineHeight + 1,
-                                listRect.right - 1, listRect.top + (i + 1) * lineHeight);
+                        SetRect(&selRect, listRect.left, rowTop, listRect.right, rowTop + lineHeight);
                         RGBForeColor(&hilite);
                         PaintRect(&selRect);
-                        RGBForeColor(&white);
-                    } else {
-                        RGBColor black = {0, 0, 0};
-                        RGBForeColor(&black);
                     }
-                    MoveTo(listRect.left + 6, textY);
+                    SetRect(&iconR, 20, rowTop + 1, 36, rowTop + 17);
+                    PlotIconID(&iconR, atNone, ttNone, 133);
+                    RGBForeColor(&black);
+                    MoveTo(37, rowTop + 13);
                     DrawString(sScenarioNames[itemIdx]);
                 }
 
@@ -4983,45 +5483,34 @@ static Boolean ShowScenarioSelection(void)
                             ruins   = (short)sc[78];
                             players = (short)sc[80];
 
-                            /* Draw values in the crystal ball area (right side) */
-                            TextFont(3);
-                            TextSize(10);
-                            TextFace(bold);
-                            RGBForeColor(&valueColor);
-
-                            /* Name value */
-                            MoveTo(290, 70);
-                            DrawString(sScenarioNames[selectedIdx]);
-
-                            /* Description value */
-                            TextFace(0);
-                            MoveTo(290, 143);
+                            /* View 3000 static texts, all TxSt 1011: Illuria 17pt in
+                             * (0x12B8,0x88A3,0xD000), each with its view's justification. */
                             {
-                                Str255 pDesc;
-                                short dlen = 0;
-                                while (dlen < 32 && descBuf[dlen] != 0) dlen++;
-                                pDesc[0] = (unsigned char)dlen;
-                                BlockMoveData(descBuf, pDesc + 1, dlen);
-                                DrawString(pDesc);
+                                RGBColor teal = {0x12B8, 0x88A3, 0xD000};
+                                Str255 pStr;
+                                short fnum, len = 0;
+                                Rect vr;
+                                GetFNum("\pIlluria", &fnum);
+                                if (fnum == 0) fnum = 1602;
+                                TextFont(fnum); TextSize(17); TextFace(0);
+                                RGBForeColor(&teal);
+
+                                while (len < 20 && nameBuf[len] != 0) len++;   /* SCEN title */
+                                pStr[0] = (unsigned char)len; BlockMoveData(nameBuf, pStr + 1, len);
+                                SetRect(&vr, 236, 55, 436, 72);  DrawViewText(&vr, pStr, 1);
+
+                                len = 0;
+                                while (len < 32 && descBuf[len] != 0) len++;
+                                pStr[0] = (unsigned char)len; BlockMoveData(descBuf, pStr + 1, len);
+                                SetRect(&vr, 200, 130, 472, 147); DrawViewText(&vr, pStr, 1);
+
+                                NumToString((long)cities, numStr);
+                                SetRect(&vr, 238, 189, 288, 206); DrawViewText(&vr, numStr, -1);
+                                NumToString((long)ruins, numStr);
+                                SetRect(&vr, 392, 189, 442, 206); DrawViewText(&vr, numStr, -2);
+                                NumToString((long)players, numStr);
+                                SetRect(&vr, 311, 209, 361, 226); DrawViewText(&vr, numStr, 1);
                             }
-
-                            /* Cities value */
-                            TextSize(12);
-                            TextFace(bold);
-                            NumToString((long)cities, numStr);
-                            MoveTo(300, 210);
-                            DrawString(numStr);
-
-                            /* Ruins value */
-                            NumToString((long)ruins, numStr);
-                            MoveTo(380, 210);
-                            DrawString(numStr);
-
-                            /* Players value */
-                            TextSize(14);
-                            NumToString((long)players, numStr);
-                            MoveTo(335, 250);
-                            DrawString(numStr);
 
                             HUnlock(scenHdl);
                             ReleaseResource(scenHdl);
@@ -5030,37 +5519,23 @@ static Boolean ShowScenarioSelection(void)
                     }
                 }
 
-                /* Buttons */
+                /* Buttons: View 3000 'Rand' (292,15) 20x172 and 'Star' (321,11) 28x180,
+                 * whose 'outl' adorner is a 3px round-rect ring (TxSt 1001 colour) around a
+                 * button inset 4px. */
                 {
-                    RGBColor black = {0, 0, 0};
-                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    Rect useBtnRect, randBtnRect;
-
-                    SetRect(&randBtnRect, 30, 308, 210, 328);
-                    SetRect(&useBtnRect, 30, 332, 210, 350);
-
-                    /* "Use Random Map..." */
-                    RGBForeColor(&white);
-                    PaintRoundRect(&randBtnRect, 8, 8);
-                    RGBForeColor(&black);
-                    FrameRoundRect(&randBtnRect, 8, 8);
-                    TextFont(3);
-                    TextSize(10);
-                    TextFace(0);
-                    MoveTo(randBtnRect.left + 30, randBtnRect.bottom - 5);
-                    DrawString(GetCachedString(STR_GAME_SETUP, 19, "\pUse Random Map..."));
-
-                    /* "Use Selected Scenario" */
-                    RGBForeColor(&white);
-                    PaintRoundRect(&useBtnRect, 8, 8);
-                    RGBForeColor(&black);
-                    FrameRoundRect(&useBtnRect, 8, 8);
-                    PenSize(2, 2);
-                    FrameRoundRect(&useBtnRect, 8, 8);
+                    RGBColor ring = {0xC28E, 0x1999, 0x0000};   /* TxSt 1001 colour */
+                    Rect randBtnRect, starRect, starBtn;
+                    Str255 title;
+                    SetRect(&randBtnRect, 15, 292, 187, 312);
+                    DrawT3DButton(&randBtnRect, ViewString(title, 3000, 3, "\pUse Random Map\311"));  /* View 3000 Rand: STR# 3000 #3 */
+                    SetRect(&starRect, 11, 321, 191, 349);
+                    RGBForeColor(&ring);
+                    PenSize(3, 3);
+                    FrameRoundRect(&starRect, 16, 16);
                     PenSize(1, 1);
-                    TextFace(bold);
-                    MoveTo(useBtnRect.left + 16, useBtnRect.bottom - 5);
-                    DrawString(GetCachedString(STR_GAME_SETUP, 20, "\pUse Selected Scenario"));
+                    starBtn = starRect;
+                    InsetRect(&starBtn, 4, 4);
+                    DrawT3DButton(&starBtn, ViewString(title, 3000, 2, "\pUse Selected Scenario"));  /* View 3000 Star: STR# 3000 #2 */
                 }
 
                 /* Blit offscreen buffer to window */
@@ -5070,10 +5545,17 @@ static Boolean ShowScenarioSelection(void)
                     SetPort(scenWin);
                     CopyBits((BitMap *)*GetGWorldPixMap(offscreen),
                              &((GrafPtr)scenWin)->portBits,
-                             &r, &scenWin->portRect,
-                             srcCopy, NULL);
+                             &r, &r, srcCopy, NULL);
+                }
+                {   /* spare right/bottom pixels of the 482x362 content */
+                    RGBColor black = {0, 0, 0};
+                    Rect edge;
+                    RGBForeColor(&black);
+                    SetRect(&edge, 480, 0, 482, 362); PaintRect(&edge);
+                    SetRect(&edge, 0, 360, 482, 362); PaintRect(&edge);
                 }
 
+                if (vScroll != NULL) Draw1Control(vScroll);
                 needsRedraw = false;
             }
 
@@ -5118,7 +5600,7 @@ static Boolean ShowScenarioSelection(void)
                 /* Check "Use Selected Scenario" button */
                 {
                     Rect useBtnRect;
-                    SetRect(&useBtnRect, 30, 332, 210, 350);
+                    SetRect(&useBtnRect, 11, 321, 191, 349);
                     if (PtInRect(localPt, &useBtnRect)) {
                         done = true;
                         loaded = true;
@@ -5128,7 +5610,7 @@ static Boolean ShowScenarioSelection(void)
                 /* Check "Use Random Map..." button */
                 {
                     Rect randBtnRect;
-                    SetRect(&randBtnRect, 30, 308, 210, 328);
+                    SetRect(&randBtnRect, 15, 292, 187, 312);
                     if (PtInRect(localPt, &randBtnRect)) {
                         done = true;
                         loaded = true;
@@ -5283,6 +5765,7 @@ static Boolean ShowScenarioSelection(void)
         if (refNum != -1) {
             Handle mapHdl, scnHdl;
             UseResFile(refNum);
+            LoadTutorialScripts();
 
 #if 0  /* Progress bar 20% disabled */
             {
@@ -5363,8 +5846,13 @@ static Boolean ShowScenarioSelection(void)
 
             CloseResFile(refNum);
 
-            /* Allocate extended state and run game initialization */
-            if (*gExtState == 0)
+            /* Allocate extended state and run game initialization.
+             * Guard against a garbage (non-heap) pointer too, not just 0 — a
+             * duplicate gExtState definition (main.c vs core/globals.c) can leave
+             * *gExtState holding a low-memory junk value (~0x40810000) that is
+             * nonzero, which would otherwise skip the alloc and make GameInit
+             * write the ext city records through a wild pointer (crash #6). */
+            if (*gExtState == 0 || (unsigned long)*gExtState >= 0x10000000)
                 *gExtState = (pint)NewPtrClear(0x4000);
             if (sMapLoaded && *gGameState != 0)
                 GameInit();
@@ -6107,11 +6595,18 @@ static Boolean ShowGameSetup(void)
         return false;
 
     SetPort(setupWin);
+    ShowWindow(setupWin);   /* show up front — we draw directly now (the old
+                             * ShowWindow lived inside the offscreen-blit block). */
 
     {
-        Rect obounds;
-        SetRect(&obounds, 0, 0, winW, winH);
-        NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
+        /* Draw the setup screen DIRECTLY to the window (no offscreen buffer).
+         * An offscreen GWorld matched PICT 1001's dark-granite marble to the
+         * wrong palette and washed it out (same regression as the city-build
+         * dialog). The window has the correct screen palette, so drawing
+         * straight to it keeps the marble dark, matching the original. Redraw is
+         * on-demand (only after a click), so there is no continuous flicker.
+         * offscreen stays NULL; every `if (offscreen != NULL)` path is skipped. */
+        offscreen = NULL;
     }
 
     FlushEvents(everyEvent, 0);
@@ -6205,7 +6700,7 @@ static Boolean ShowGameSetup(void)
                         }
                     }
 
-                    /* "Computer Skill" label */
+                    /* "Computer Level" label (matches the original game) */
                     {
                         RGBColor labelColor = {0xFFFF, 0xCCCC, 0x3333};
                         RGBForeColor(&labelColor);
@@ -6213,7 +6708,7 @@ static Boolean ShowGameSetup(void)
                         TextSize(12);
                         TextFace(bold);
                         MoveTo(260, 60);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 2, "\pComputer Skill"));
+                        DrawString(GetCachedString(STR_GAME_SETUP, 2, "\pComputer Level"));
                     }
 
                     /* Skill level radio buttons */
@@ -6286,6 +6781,32 @@ static Boolean ShowGameSetup(void)
                         DrawString(GetCachedString(STR_GAME_SETUP, 7, "\pEdit Options..."));
                     }
 
+                    /* "I am the Greatest" checkbox (original shows it here, in the
+                     * main view's Options section) — sets all AI to easiest. */
+                    {
+                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                        Rect cbRect;
+                        SetRect(&cbRect, 260, 220, 272, 232);
+                        if (sIAmGreatest) {
+                            RGBColor checkGreen = {0x4444, 0xFFFF, 0x4444};
+                            RGBForeColor(&checkGreen);
+                            PaintRect(&cbRect);
+                            RGBForeColor(&white);
+                            MoveTo(cbRect.left + 2, cbRect.bottom - 3);
+                            LineTo(cbRect.left + 4, cbRect.bottom - 1);
+                            LineTo(cbRect.right - 2, cbRect.top + 2);
+                        } else {
+                            RGBColor dark = {0x2222, 0x2222, 0x2222};
+                            RGBForeColor(&dark);
+                            PaintRect(&cbRect);
+                        }
+                        RGBForeColor(&white);
+                        FrameRect(&cbRect);
+                        TextFont(3); TextSize(10); TextFace(0);
+                        MoveTo(278, 230);
+                        DrawString(GetCachedString(STR_GAME_SETUP, 13, "\pI am the Greatest"));
+                    }
+
                     /* Difficulty rating */
                     {
                         RGBColor valueColor = {0xCCCC, 0xDDDD, 0xFFFF};
@@ -6295,7 +6816,7 @@ static Boolean ShowGameSetup(void)
                         TextFont(3);
                         TextSize(10);
                         TextFace(0);
-                        MoveTo(260, 240);
+                        MoveTo(260, 252);
                         DrawString(GetCachedString(STR_GAME_SETUP, 8, "\pDifficulty Rating: "));
                         NumToString((long)rating, numStr);
                         DrawString(numStr);
@@ -6668,6 +7189,15 @@ static Boolean ShowGameSetup(void)
             /* Wait for events */
             WaitNextEvent(everyEvent, &evt, 30, NULL);
 
+            /* Service update events with a full redraw. We draw the setup screen
+             * directly to the window (no offscreen buffer, so the marble keeps its
+             * true dark palette), so an unserviced update would erase content. */
+            if (evt.what == updateEvt && (WindowPtr)evt.message == setupWin) {
+                BeginUpdate(setupWin);
+                EndUpdate(setupWin);
+                needsRedraw = true;
+            }
+
             if (evt.what == mouseDown) {
                 WindowPtr clickWin2;
                 short partCode2 = FindWindow(evt.where, &clickWin2);
@@ -6732,6 +7262,21 @@ static Boolean ShowGameSetup(void)
                         SetRect(&editOptBtn, 260, 196, 410, 214);
                         if (PtInRect(localPt, &editOptBtn)) {
                             ShowEditOptions();
+                            needsRedraw = true;
+                        }
+                    }
+
+                    /* "I am the Greatest" checkbox click (checkbox + label hit area) */
+                    {
+                        Rect greatRect;
+                        SetRect(&greatRect, 260, 218, 410, 234);
+                        if (PtInRect(localPt, &greatRect)) {
+                            sIAmGreatest = !sIAmGreatest;
+                            if (sIAmGreatest) {
+                                /* Set all AI factions to Knight (easiest) */
+                                for (i = 0; i < factionCount; i++)
+                                    if (sFactionAI[i] != 0) sFactionAI[i] = 1;
+                            }
                             needsRedraw = true;
                         }
                     }
@@ -7952,9 +8497,10 @@ static void DrawMapInWindow(WindowPtr win)
                         short sx2 = (selSprite % 16) * 32;
                         short sy2 = (selSprite / 16) * 30;
                         SetRect(&srcR2, sx2, sy2, sx2 + 32, sy2 + 29);
-                        /* 68k: dest offset (+8, +5) for selected army */
-                        SetRect(&dstR2, screenX + 8, screenY + 5,
-                                screenX + 8 + 32, screenY + 5 + 29);
+                        /* 68k CODE_067: dest Y offset is +7 (same as the unselected
+                         * sprite); was +5, causing a 2px jump when an army is selected. */
+                        SetRect(&dstR2, screenX + 8, screenY + 7,
+                                screenX + 8 + 32, screenY + 7 + 29);
                         LockPixels(GetGWorldPixMap(selGW));
                         {
                             RGBColor savedBg2;
@@ -8559,6 +9105,7 @@ static void DrawOverviewInWindow(WindowPtr win)
             short armyCount = *(short *)(gs2 + 0x1602);
             short ai;
             RGBColor black2 = {0, 0, 0};
+            if (armyCount < 0) armyCount = 0;
             if (armyCount > 100) armyCount = 100;
 
             for (ai = 0; ai < armyCount; ai++) {
@@ -9773,7 +10320,7 @@ static void ShowCityInfo(short cityIndex)
                                         si2 = (short)ute[0x00];
                                     }
                                     SetRect(&srcR3, (si2 % 16) * 32, (si2 / 16) * 30,
-                                            (si2 % 16) * 32 + 29, (si2 / 16) * 30 + 32);
+                                            (si2 % 16) * 32 + 32, (si2 / 16) * 30 + 29);
                                     SetRect(&dstR3, iconX + 5, iconY + 4,
                                             iconX + iconSz - 5, iconY + iconSz - 4);
                                     pm3 = GetGWorldPixMap(pGW);
@@ -9918,7 +10465,7 @@ static void ShowCityInfo(short cityIndex)
                                         Rect srcR2, dstR2;
                                         PixMapHandle pm;
                                         SetRect(&srcR2, (si % 16) * 32, (si / 16) * 30,
-                                                (si % 16) * 32 + 29, (si / 16) * 30 + 32);
+                                                (si % 16) * 32 + 32, (si / 16) * 30 + 29);
                                         SetRect(&dstR2, xOff + 10, rowY - 6, xOff + 36, rowY + 14);
                                         pm = GetGWorldPixMap(pGW);
                                         if (LockPixels(pm)) {
@@ -10088,7 +10635,7 @@ static void ShowCityInfo(short cityIndex)
                                     Rect srcR3, dstR3;
                                     PixMapHandle pm2;
                                     SetRect(&srcR3, (si2 % 16) * 32, (si2 / 16) * 30,
-                                            (si2 % 16) * 32 + 29, (si2 / 16) * 30 + 32);
+                                            (si2 % 16) * 32 + 32, (si2 / 16) * 30 + 29);
                                     SetRect(&dstR3, xOff + 14, armyY - 8, xOff + 38, armyY + 10);
                                     pm2 = GetGWorldPixMap(aGW);
                                     if (LockPixels(pm2)) {
@@ -10460,7 +11007,7 @@ static void ShowArmyInspect(short armyIndex)
                                 si3 = (short)ute[0x00];
                             }
                             SetRect(&srcR4, (si3 % 16) * 32, (si3 / 16) * 30,
-                                    (si3 % 16) * 32 + 29, (si3 / 16) * 30 + 32);
+                                    (si3 % 16) * 32 + 32, (si3 / 16) * 30 + 29);
                             SetRect(&dstR4, 18, yPos - 4, 46, yPos + 24);
                             pm3 = GetGWorldPixMap(uGW);
                             if (LockPixels(pm3)) {
@@ -11295,9 +11842,10 @@ static Boolean IsDiagonalBlocked(short srcX, short srcY, short dstX, short dstY,
     dstTT = GetTerrainType(dstX, dstY);
     if (srcTT < 0 || dstTT < 0) return false;
 
-    /* 68k CODE_115 FUN_000014c2: terrain categories 2 (forest) and 3 (hills)
-     * from gs+0x711 are the restricted types for diagonal movement.
-     * Prevents cutting corners between forest/hills and open terrain. */
+    /* 68k CODE_115 FUN_000014c2: terrain categories 2 (Water) and 3 (Shore)
+     * from gs+0x711 are the restricted types for diagonal movement (the 68k
+     * literal bytes are '\x02'/'\x03'). Prevents cutting corners between
+     * water/shore and land. */
     srcRestricted = (srcTT == 2 || srcTT == 3);
     dstRestricted = (dstTT == 2 || dstTT == 3);
 
@@ -12295,7 +12843,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
         /* combatOnWater removed: embarked cap disabled (port system not implemented) */
         short attHeroBonus = 0, defHeroBonus = 0;
         short attItemBonus = 0, defItemBonus = 0;
-        short dieRange = sOptIntenseCombat ? 24 : 20;
+        short dieRange = (*(short *)(gs + 0x126) == 0) ? 20 : 24;  /* 68k CODE_104: gs+0x126 controls die range (was wrongly sOptIntenseCombat) */
 
         /* Gather unit stats */
         attSlots = 0;
@@ -12605,7 +13153,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
 
                 if (attFail) {
                     /* 68k CODE_104 FUN_000003d2: hero vs neutral protection.
-                     * When heroes enabled, a human player's hero attacking
+                     * In tutorial games (gs+0x12E), a human player's hero attacking
                      * neutral armies is protected from failed die rolls.
                      * 68k enters the defender-hit branch via OR, but the inner
                      * guard (defFail && attSucceed) prevents actual damage.
@@ -14339,7 +14887,16 @@ static void ShowReportDialog(short tab)
                         if (*(short *)(city + 0x04) == pi) {
                             pCities++;
                             pIncome += *(short *)(city + 0x08);
-                            pProducing++;
+                            /* "Producing" counts only cities actively building a
+                             * unit (ext production type >= 0; -1 = idle). Without
+                             * this it equalled the Cities column. */
+                            if (*gExtState != 0) {
+                                unsigned char *ext = (unsigned char *)*gExtState;
+                                if (*(short *)(ext + 0x24c + ci * 0x5c + 0x02) >= 0)
+                                    pProducing++;
+                            } else {
+                                pProducing++;
+                            }
                         }
                     }
 
@@ -19805,10 +20362,11 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             if (heroStrength < 1) heroStrength = 5;
             if (heroMovement < 1) heroMovement = 14;
 
-            /* Pick name: turn 1 (initial offer) always male,
-             * later offers pick from full pool of 20 names. */
+            /* Pick name from the full pool of 20. 68k CODE_064 has no gender
+             * restriction on the initial offer (the male/female radio works on
+             * turn 1 too); the initial hero is just free (heroCost=0). */
             if (initialOffer) {
-                heroNameIdx = sMaleIndices[(unsigned short)Random() % NUM_MALE_HEROES];
+                heroNameIdx = (short)((unsigned short)Random() % 20);
                 heroCost = 0;
             } else {
                 heroNameIdx = (short)((unsigned short)Random() % 20);
@@ -19896,6 +20454,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
     {
         Boolean needsRedraw = true;
         Boolean hireShown = false;
+        Boolean drawnVisible = false;
         unsigned long startTick = TickCount();
 
         /* Button hit rects */
@@ -19905,8 +20464,15 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
         SetRect(&maleRadioR, 270, 218, 340, 236);
         SetRect(&femaleRadioR, 270, 238, 340, 256);
 
+        Boolean tutorialChecked = false;
         while (!done) {
             EventRecord evt;
+
+            /* Tutorial: THERO over the drawn hero offer (68k CODE_064). */
+            if (drawnVisible && !needsRedraw && !tutorialChecked) {
+                tutorialChecked = true;
+                if (ShowTutorialScreen("\pTHERO", 0x01)) needsRedraw = true;
+            }
 
             if (needsRedraw) {
                 Rect r;
@@ -20023,7 +20589,8 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                 /* ---- Stats (4 text strings matching original str1..str4) ---- */
                 {
                     RGBColor labelColor = {0xBBBB, 0xBBBB, 0xBBBB};
-                    RGBColor valueColor = {0xFFFF, 0xFFFF, 0xFFFF};
+                    RGBColor valueColor = {0xFFFF, 0xCCCC, 0x3333};  /* gold — was white
+                                * (0xFFFF), invisible on the light marble panel */
                     Str255 numStr;
                     short yBase = 226;
 
@@ -20163,13 +20730,16 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                              srcCopy, NULL);
                 }
 
-                /* Show window after first blit to avoid white flash */
+                /* Show window after first blit to avoid white flash; the blit
+                 * into the still-hidden window is lost, so draw once more. */
+                needsRedraw = false;
                 if (!hireShown) {
                     ShowWindow(hireWin);
                     hireShown = true;
+                    needsRedraw = true;
+                } else {
+                    drawnVisible = true;
                 }
-
-                needsRedraw = false;
             }
 
             WaitNextEvent(everyEvent, &evt, 30, NULL);
@@ -20875,7 +21445,21 @@ static void ShowCityBuildSelection(short cityIndex)
         short btnY = navBtnY;
 
         bsDone = false;
+        {
+        Boolean tutorialChecked = false;
         while (!bsDone) {
+
+            /* Tutorial: TPROD, and TPROD2 once the player has several cities,
+             * over the drawn production screen (68k CODE_045). */
+            if (!redraw && !tutorialChecked) {
+                short owned = 0, ci, me = *(short *)((unsigned char *)*gGameState + 0x110);
+                tutorialChecked = true;
+                for (ci = 0; ci < sCityCount; ci++)
+                    if (sCityData[ci * 0x20 + 0x17] == 0 && *(short *)(sCityData + ci * 0x20 + 0x04) == me)
+                        owned++;
+                if (ShowTutorialScreen("\pTPROD", 0x02)) redraw = true;
+                if (owned > 1 && ShowTutorialScreen("\pTPROD2", 0x20)) redraw = true;
+            }
 
             /* ======================================================
              * REDRAW
@@ -21043,7 +21627,7 @@ static void ShowCityBuildSelection(short cityIndex)
                             short sX   = sprC * 32;
                             short sY   = sprR * 30;
                             Rect  srcR3, dstR3;
-                            SetRect(&srcR3, sX, sY, sX + 29, sY + 32);
+                            SetRect(&srcR3, sX, sY, sX + 32, sY + 29);
                             SetRect(&dstR3,
                                 curCX - 14, curCY - 16,
                                 curCX - 14 + 29, curCY - 16 + 32);
@@ -21105,7 +21689,7 @@ static void ShowCityBuildSelection(short cityIndex)
                             short sxs  = sprC * 32;
                             short sys  = sprR * 30;
                             Rect  srcRs, dstRs;
-                            SetRect(&srcRs, sxs, sys, sxs + 29, sys + 32);
+                            SetRect(&srcRs, sxs, sys, sxs + 32, sys + 29);
                             SetRect(&dstRs,
                                 cx2 - 14, cy2 - 16,
                                 cx2 - 14 + 29, cy2 - 16 + 32);
@@ -21519,6 +22103,7 @@ static void ShowCityBuildSelection(short cityIndex)
                             short pillGold = cInc * 4 + cDef * 2 + ((unsigned short)Random() % 20);
                             short *pgold = (short *)(gs + 0x186 + curPlayer * 0x14);
                             *pgold += pillGold;
+                            if (*pgold > 30000) *pgold = 30000; /* 68k gold cap */
                             if (cDef > 0)
                                 *(short *)(city + 0x06) = cDef - 1;
                             PlaySound(SND_CHORD);
@@ -21530,6 +22115,7 @@ static void ShowCityBuildSelection(short cityIndex)
                             short razeGold = cInc2 * 2 + ((unsigned short)Random() % 10);
                             short *pgold = (short *)(gs + 0x186 + curPlayer * 0x14);
                             *pgold += razeGold;
+                            if (*pgold > 30000) *pgold = 30000; /* 68k gold cap */
                             *(short *)(city + 0x04) = 0xFF;  /* neutral */
                             *(short *)(city + 0x06) = 0;     /* defense = 0 */
                             /* Cancel production */
@@ -21607,6 +22193,7 @@ static void ShowCityBuildSelection(short cityIndex)
                 }
             }
         } /* while (!bsDone) */
+        }
     }
 
     /* --- Commit production --- */
@@ -21641,6 +22228,9 @@ static void ShowCityBuildSelection(short cityIndex)
         ActivatePalette((WindowPtr)*gMainGameWindow);
         InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
     }
+
+    /* Tutorial: TSELECT once the production screen closes (68k CODE_045). */
+    ShowTutorialScreen("\pTSELECT", 0x04);
 }
 
 
@@ -23006,7 +23596,8 @@ static void ExecuteAITurn(short aiPlayer)
                 short sType = (short)(unsigned char)city[0x17];
                 if (*(short *)(city + 0x04) == aiPlayer &&
                     sType != 2 && sType != 5 && sType != 6) {
-                    ownedCities[ownedCount++] = ci;
+                    if (ownedCount < 40)
+                        ownedCities[ownedCount++] = ci;
                 }
             }
             if (ownedCount > 0) {
@@ -23260,12 +23851,9 @@ static void ShowTurnSplash(short playerIdx)
 
     SetPort(splashWin);
 
-    /* Play turn bong immediately when splash appears */
-    if (sSndChannel != NULL) {
-        SndCommand qCmd;
-        qCmd.cmd = quietCmd; qCmd.param1 = 0; qCmd.param2 = 0;
-        SndDoImmediate(sSndChannel, &qCmd);
-    }
+    /* Play turn bong immediately when splash appears. 68k CODE_080:1547 plays
+     * 0x3ef directly with no prior quietCmd — the quiet was silencing the
+     * channel so the gong never sounded on the new-turn splash. */
     PlaySound(SND_TURN);
 
     /* Draw castle gate background (PICT 3100, 320x312) */
@@ -23414,9 +24002,11 @@ static void ShowTurnSplash(short playerIdx)
 
     TextFace(0); TextFont(3); TextSize(9);
 
-    /* Wait for click or ~2.5 seconds */
-    endTick = TickCount() + 150;
-    while (TickCount() < endTick) {
+    /* Wait for a click or key: the original's turn banner stays up until
+     * dismissed (observed >15s on the oracle), it does not time out. */
+    (void)endTick;
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) {
         if (WaitNextEvent(mDownMask | keyDownMask, &dummyEvt, 5, NULL))
             break;
     }
@@ -24228,8 +24818,10 @@ static void ProcessStartOfTurn(short player)
 
     /* --- 2c. Disband single-member groups (68k CODE_080 FUN_00000098) ---
      * Groups with only 1 army should have their group tag cleared.
-     * 68k: HUMAN TURNS ONLY — AI armies keep persistent groups. */
-    if (isHuman) {
+     * 68k FUN_00002108 calls FUN_00000098 UNCONDITIONALLY (CODE_080:1531) for
+     * ALL players; the disband keys off the current player (gs+0x110 == `player`
+     * here), so it runs on human AND AI turns. (Prior "human-only" was wrong.) */
+    {
         unsigned char tagCount[9];
         short t;
         for (t = 0; t < 9; t++) tagCount[t] = 0;
@@ -24837,6 +25429,9 @@ static void AdvanceToNextPlayer(void)
         /* Show turn start banner (PICT 3100 castle gate) */
         LoadAndPlayMusic(MUSIC_STATE_TURN);
         ShowTurnSplash(curPlayer);  /* plays SND_TURN internally */
+        /* Tutorial: TTURN2 at the start of turn 2 (68k CODE_080) */
+        if (*(short *)(gs + 0x136) == 2)
+            ShowTutorialScreen("\pTTURN2", 0x40);
 
         /* Voice narration: territory status (every 3 turns to avoid spam) */
         {
@@ -25986,7 +26581,8 @@ static void ShowVectoringDialog(short cityIndex)
         short sType = (short)(unsigned char)c2[0x17];
         if (ci != cityIndex && *(short *)(c2 + 0x04) == curPlayer &&
             sType != 2 && sType != 5 && sType != 6) {
-            ownedCities[ownedCount++] = ci;
+            if (ownedCount < 40)
+                ownedCities[ownedCount++] = ci;
         }
     }
 
@@ -29141,6 +29737,11 @@ static void HandleMouseDown(EventRecord *event)
                                         /* Combat may have removed the army */
                                         if (sSelectedArmy < 0)
                                             SelectNextArmy();
+                                        /* Refresh stack-group arrays at the new tile
+                                         * (the nearby-move path does this; without it a
+                                         * multi-army destination stack is uninteractable). */
+                                        if (sSelectedArmy >= 0)
+                                            BuildStackArrays(sSelectedArmy);
                                     } else if (pathLen < 0) {
                                         /* Unreachable: cancel orders */
                                         *(short *)(selArmy + 0x32) = 0;
@@ -29443,7 +30044,7 @@ static void DrawInfoStackUI(WindowPtr win, Rect *r)
             PenSize(1, 1);
 
             /* Movement points below circle */
-            TextFont(geneva); TextSize(9); TextFace(0);
+            TextFont(3); TextSize(9); TextFace(0);
             NumToString((long)movePts, numStr);
             {
                 short tw = StringWidth(numStr);
@@ -29475,7 +30076,7 @@ static void DrawInfoStackUI(WindowPtr win, Rect *r)
         RGBForeColor(&btnFace);
         PaintRoundRect(&btnR, 4, 4);
         RGBForeColor(&greenCol);
-        TextFont(geneva); TextSize(12); TextFace(bold);
+        TextFont(3); TextSize(12); TextFace(bold);
         MoveTo(ctrlX + 2, ctrlY + 13);
         DrawChar(0xC3); /* checkmark character */
         TextFace(0);
@@ -29485,14 +30086,14 @@ static void DrawInfoStackUI(WindowPtr win, Rect *r)
         RGBForeColor(&btnFace);
         PaintRoundRect(&btnR, 4, 4);
         RGBForeColor(&redCol);
-        TextFont(geneva); TextSize(12); TextFace(bold);
+        TextFont(3); TextSize(12); TextFace(bold);
         MoveTo(ctrlX + 26, ctrlY + 13);
         DrawChar('X');
         TextFace(0);
 
         /* "Group Move N" text */
         RGBForeColor(&black);
-        TextFont(geneva); TextSize(9); TextFace(0);
+        TextFont(3); TextSize(9); TextFace(0);
         MoveTo(ctrlX + 46, ctrlY + 12);
         DrawString("\pMv ");
         if (minMove < 9999) {
@@ -29511,7 +30112,7 @@ static void DrawInfoStackUI(WindowPtr win, Rect *r)
             RGBForeColor(&black);
             PenSize(1, 1);
             FrameRoundRect(&btnR, 4, 4);
-            TextFont(geneva); TextSize(9); TextFace(bold);
+            TextFont(3); TextSize(9); TextFace(bold);
             MoveTo(grpX + 5, ctrlY + 12);
             DrawString("\pGrp");
             TextFace(0);
@@ -29988,6 +30589,74 @@ static void HandleUpdate(EventRecord *event)
 /* ===================================================================
  * main — Application entry point
  * =================================================================== */
+/* ===================================================================
+ * TutorialWatch — in-game tutorial triggers (68k CODE_023/123 on selecting
+ * an army, CODE_115 after it moves). Called once per main-loop pass.
+ *   select: TMOVE (0x08), then the TFIGHT / TSEARCH checks
+ *   move:   TENDTURN when the army has no movement left on turn 1 (no bit,
+ *           as in the 68k), otherwise the TFIGHT / TSEARCH checks
+ *   TFIGHT (0x10): a city of another owner on one of the 8 adjacent tiles
+ *   TSEARCH (0x80): a hero (unit type 0x1C) standing on ruin terrain (11)
+ * =================================================================== */
+static Boolean TutorialEnemyCityAdjacent(short ax, short ay, short me)
+{
+    short d, ci;
+    for (d = 0; d < 9; d++) {
+        short tx = ax + (d % 3) - 1, ty = ay + (d / 3) - 1;
+        if (d == 4) continue;
+        for (ci = 0; ci < sCityCount; ci++) {
+            unsigned char *c = sCityData + ci * 0x20;
+            short cx = *(short *)(c + 0x00), cy = *(short *)(c + 0x02);
+            if (c[0x17] != 0) continue;                       /* cities only */
+            if (tx >= cx && tx <= cx + 1 && ty >= cy && ty <= cy + 1 &&   /* 2x2 */
+                *(short *)(c + 0x04) != me)
+                return true;
+        }
+    }
+    return false;
+}
+
+static void TutorialArmyChecks(unsigned char *army, short me)
+{
+    short ax = *(short *)(army + 0x00), ay = *(short *)(army + 0x02), k;
+    Boolean hero = false;
+    if (TutorialEnemyCityAdjacent(ax, ay, me))
+        ShowTutorialScreen("\pTFIGHT", 0x10);
+    for (k = 0; k < 4; k++) if (army[0x16 + k] == 0x1C) hero = true;
+    if (hero && GetTerrainType(ax, ay) == 11)
+        ShowTutorialScreen("\pTSEARCH", 0x80);
+}
+
+static void TutorialWatch(void)
+{
+    static short lastSel = -1, lastX, lastY;
+    unsigned char *gs, *army;
+    short me;
+
+    if (!TutorialActive()) return;
+    gs = (unsigned char *)*gGameState;
+    me = *(short *)(gs + 0x110);
+    if (sSelectedArmy < 0 || *(short *)(gs + 0xd0 + me * 2) != 0) {   /* none, or AI turn */
+        lastSel = -1;
+        return;
+    }
+    army = gs + 0x1604 + sSelectedArmy * 0x42;
+    if (army[0x15] != me) { lastSel = -1; return; }
+
+    if (sSelectedArmy != lastSel) {
+        ShowTutorialScreen("\pTMOVE", 0x08);
+        TutorialArmyChecks(army, me);
+    } else if (*(short *)(army + 0x00) != lastX || *(short *)(army + 0x02) != lastY) {
+        if (army[0x2e] == 0 && *(short *)(gs + 0x136) == 1)
+            ShowTutorialScreen("\pTENDTURN", 0);
+        else
+            TutorialArmyChecks(army, me);
+    }
+    lastSel = sSelectedArmy;
+    lastX = *(short *)(army + 0x00);
+    lastY = *(short *)(army + 0x02);
+}
+
 int main(void)
 {
     EventRecord event;
@@ -30043,13 +30712,8 @@ int main(void)
                                        NULL, newMovieActive, &wasChanged);
                 CloseMovieFile(movieResFile);
             }
-            /* Debug: show error if movie failed to load */
-            if (err != noErr) {
-                Str255 errStr;
-                NumToString((long)err, errStr);
-                ParamText("\pStartup movie error:", errStr, "\p", "\p");
-                Alert(1000, NULL);  /* reuse file-not-found alert */
-            }
+            /* A missing/failed startup movie is non-fatal — skip it silently
+             * (matches the original, which continues straight to the game). */
             if (err == noErr && theMovie != NULL) {
                 Rect screenRect;
                 EventRecord movieEvt;
@@ -30096,39 +30760,42 @@ int main(void)
     /* Title music */
     LoadAndPlayMusic(MUSIC_STATE_TITLE);
 
-    /* === Splash Screen === */
+    /* === Splash Screen (View 1000) ===
+     * Like the original: the game palette is active before the splash is drawn
+     * (desktop already in game colours), the 292x380 plainDBox window is centred
+     * below the menu bar, and it stays up while the app finishes starting; it is
+     * closed right before the scenario picker. The original shows it ~0.8s on the
+     * oracle (its load time); the remake starts faster, so it holds that long. */
     {
-        PicHandle   splashPic;
-        WindowPtr   splashWin;
-        Rect        picRect, winRect;
-        EventRecord splashEvt;
-
-        splashPic = (PicHandle)GetResource('PICT', 1000);
+        /* A just-launched app isn't the front process until it calls the event
+         * loop, and the Palette Manager only activates the front process's
+         * palette: yield first so the splash comes up in game colours. */
+        EventRecord e;
+        short n;
+        for (n = 0; n < 4; n++) WaitNextEvent(0, &e, 1, NULL);
+    }
+    InstallGamePalette();
+    {
+        PicHandle splashPic = (PicHandle)GetResource('PICT', 1000);
         if (splashPic != NULL) {
-            picRect = (*splashPic)->picFrame;
-            {
-                short pw = picRect.right - picRect.left;
-                short ph = picRect.bottom - picRect.top;
-                short sx = (qd.screenBits.bounds.right - pw) / 2;
-                short sy = (qd.screenBits.bounds.bottom - ph) / 2;
-                SetRect(&winRect, sx, sy, sx + pw, sy + ph);
-            }
-            splashWin = NewCWindow(NULL, &winRect, "\p", true,
-                                   plainDBox, (WindowPtr)-1L, false, 0);
-            if (splashWin != NULL) {
-                SetPort(splashWin);
-                DrawPicture(splashPic, &splashWin->portRect);
-                while (1) {
-                    WaitNextEvent(everyEvent, &splashEvt, 60, NULL);
-                    if (splashEvt.what == mouseDown ||
-                        splashEvt.what == keyDown)
-                        break;
-                }
-                DisposeWindow(splashWin);
-                InvalidateAllGameWindows();
+            Rect picRect = (*splashPic)->picFrame, winRect;
+            short pw = picRect.right - picRect.left;
+            short ph = picRect.bottom - picRect.top;
+            short mbar = GetMBarHeight();
+            short sx = (qd.screenBits.bounds.right - pw) / 2;
+            short sy = mbar + (qd.screenBits.bounds.bottom - mbar - ph) / 2;
+            SetRect(&winRect, sx, sy, sx + pw, sy + ph);
+            sSplashWin = NewCWindow(NULL, &winRect, "\p", true,
+                                    plainDBox, (WindowPtr)-1L, false, 0);
+            if (sSplashWin != NULL) {
+                ApplyGamePalette(sSplashWin);
+                SetPort(sSplashWin);
+                DrawPicture(splashPic, &sSplashWin->portRect);
+                sSplashStart = TickCount();
             }
         }
     }
+
 
     /* === Load marble background BEFORE depth switch (needed by dialogs).
      * Load at screen depth (0) so colors match the display palette.
@@ -30143,7 +30810,10 @@ int main(void)
             Rect mBounds;
             CGrafPtr mSP; GDHandle mSD;
             SetRect(&mBounds, 0, 0, mW, mH);
-            if (NewGWorld(&sMarbleGW, 0, &mBounds, NULL, NULL, 0) == noErr && sMarbleGW != NULL) {
+            /* 8-bit GWorld on the game palette's colour table: PICT 1001 maps
+             * exactly as in the original. The washed-out marble came from drawing
+             * it through the system CLUT. */
+            if (NewGWorld(&sMarbleGW, sGameCTab ? 8 : 0, &mBounds, sGameCTab, NULL, 0) == noErr && sMarbleGW != NULL) {
                 GetGWorld(&mSP, &mSD);
                 SetGWorld(sMarbleGW, NULL);
                 LockPixels(GetGWorldPixMap(sMarbleGW));
@@ -30195,10 +30865,61 @@ int main(void)
         AppendMenu(m, "\pUndo/Z;(-;Cut/X;Copy/C;Paste/V;Clear");
         InsertMenu(m, 0);
 
+        /* 4 - Orders */
+        m = NewMenu(4, "\pOrders");
+        AppendMenu(m, "\pGroup Stack/G;Ungroup;(-;Move Group/M;Move All Armies;Cancel Path");
+        AppendMenu(m, "\p(-;Next Group/N;Leave Group/L;Defend;Deselect Group");
+        AppendMenu(m, "\p(-;Show current army;Show army's shadow");
+        AppendMenu(m, "\p(-;Fight Order...;Disband Group;Change Signpost...;(-;Resign...");
+        InsertMenu(m, 0);
+
+        /* 5 - Reports */
+        m = NewMenu(5, "\pReports");
+        AppendMenu(m, "\pShow Report.../R;(-;Armies...;Cities...;Gold...;Production...;Winning...");
+        AppendMenu(m, "\p(-;Diplomacy...;Quest...");
+        InsertMenu(m, 0);
+
+        /* 6 - Heroes */
+        m = NewMenu(6, "\pHeroes");
+        AppendMenu(m, "\pInspect Heroes...;Plant Flag;Hero Levels...;Search...");
+        InsertMenu(m, 0);
+
+        /* 7 - View */
+        m = NewMenu(7, "\pView");
+        AppendMenu(m, "\pArmy Bonuses.../B;Items.../I;(-;Build...;Cities...;Production.../P;Vectoring...;Ruins...;Stack.../K");
+        InsertMenu(m, 0);
+
+        /* 8 - History */
+        m = NewMenu(8, "\pHistory");
+        AppendMenu(m, "\pShow History.../H;(-;Cities...;Events...;Gold...;Winners...;(-;Triumphs.../T");
+        InsertMenu(m, 0);
+
+        /* 9 - Game */
+        m = NewMenu(9, "\pGame");
+        AppendMenu(m, "\pEnd Turn/E;Save and End Turn;(-;Strategy Map;Control Window;Info Window;Clean Up Windows");
+        AppendMenu(m, "\p(-;Game Settings...;Sound Volumes...;Shortcuts...");
+        InsertMenu(m, 0);
+
+        /* The original's picker shows the full menu bar with Edit..History
+         * disabled (only File and Game usable). */
+        {
+            short id;
+            for (id = 3; id <= 8; id++)
+                if ((m = GetMenuHandle(id)) != NULL) DisableItem(m, 0);
+        }
+
         DrawMenuBar();
     }
 
     /* === Scenario Selection Screen (before creating game windows) === */
+    ScanForScenarios();   /* while the splash is still up, like the original */
+    if (sSplashWin != NULL) {
+        EventRecord e;
+        while (TickCount() - sSplashStart < 48)      /* original's ~0.8s; yield, */
+            WaitNextEvent(0, &e, 1, NULL);           /* don't spin the emulator  */
+        DisposeWindow(sSplashWin);
+        sSplashWin = NULL;
+    }
     {
         Boolean scenarioLoaded = ShowScenarioSelection();
         if (!scenarioLoaded) {
@@ -30218,7 +30939,12 @@ int main(void)
 
     /* === Game Setup Dialog === */
     if (sMapLoaded) {
-        ShowGameSetup();
+        /* Tutorial scenarios skip Game Setup and open with the TWARLORD
+         * briefing instead (verified on the original with Tutoria). */
+        if (TutorialActive() && !sRandomMap)
+            ShowTutorialScreen("\pTWARLORD", 0);
+        else
+            ShowGameSetup();
 
         /* Re-center viewport on the selected player's capital.
          * ShowGameSetup changes gs+0x110 (current player) but GameInit
@@ -30230,45 +30956,17 @@ int main(void)
     {
         Rect    mainRect, overRect, infoRect;
 
-        /* Add remaining game menus (Apple/File/Edit already created before scenario selection) */
+        /* Game menus already exist (built before scenario selection) */
         {
             MenuHandle m;
 
-            /* 4 - Orders */
-            m = NewMenu(4, "\pOrders");
-            AppendMenu(m, "\pGroup Stack/G;Ungroup;(-;Move Group/M;Move All Armies;Cancel Path");
-            AppendMenu(m, "\p(-;Next Group/N;Leave Group/L;Defend;Deselect Group");
-            AppendMenu(m, "\p(-;Show current army;Show army's shadow");
-            AppendMenu(m, "\p(-;Fight Order...;Disband Group;Change Signpost...;(-;Resign...");
-            InsertMenu(m, 0);
-
-            /* 5 - Reports */
-            m = NewMenu(5, "\pReports");
-            AppendMenu(m, "\pShow Report.../R;(-;Armies...;Cities...;Gold...;Production...;Winning...");
-            AppendMenu(m, "\p(-;Diplomacy...;Quest...");
-            InsertMenu(m, 0);
-
-            /* 6 - Heroes */
-            m = NewMenu(6, "\pHeroes");
-            AppendMenu(m, "\pInspect Heroes...;Plant Flag;Hero Levels...;Search...");
-            InsertMenu(m, 0);
-
-            /* 7 - View */
-            m = NewMenu(7, "\pView");
-            AppendMenu(m, "\pArmy Bonuses.../B;Items.../I;(-;Build...;Cities...;Production.../P;Vectoring...;Ruins...;Stack.../K");
-            InsertMenu(m, 0);
-
-            /* 8 - History */
-            m = NewMenu(8, "\pHistory");
-            AppendMenu(m, "\pShow History.../H;(-;Cities...;Events...;Gold...;Winners...;(-;Triumphs.../T");
-            InsertMenu(m, 0);
-
-            /* 9 - Game */
-            m = NewMenu(9, "\pGame");
-            AppendMenu(m, "\pEnd Turn/E;Save and End Turn;(-;Strategy Map;Control Window;Info Window;Clean Up Windows");
-            AppendMenu(m, "\p(-;Game Settings...;Sound Volumes...;Shortcuts...");
-            InsertMenu(m, 0);
-
+            /* Edit..History were shown disabled during scenario selection and
+             * setup, as in the original; enable them now the game is running. */
+            {
+                short id;
+                for (id = 3; id <= 8; id++)
+                    if ((m = GetMenuHandle(id)) != NULL) EnableItem(m, 0);
+            }
             DrawMenuBar();
         }
 
@@ -30356,32 +31054,6 @@ int main(void)
     if (*gMainGameWindow != 0) {
         PaletteHandle gamePal = GetNewPalette(1000);
         if (gamePal != NULL) {
-            /* Inject warm-grey entries so marble renders correctly in 8-bit mode.
-             * pltt 1000 has no neutral or warm grey; CopyBits from the 16-bit
-             * marble GWorld to an 8-bit window colour-matches grey to pink/salmon
-             * through the game CLUT.  Replace the last 16 palette entries with a
-             * warm-grey ramp so ActivatePalette pushes grey into the device CLUT,
-             * allowing subsequent CopyBits to find grey instead of pink. */
-            {
-                static const RGBColor sGreyRamp[16] = {
-                    {0xF0F0, 0xEEEE, 0xECEC}, {0xE8E8, 0xE6E6, 0xE4E4},
-                    {0xE0E0, 0xDEDE, 0xDCDC}, {0xD8D8, 0xD6D6, 0xD4D4},
-                    {0xD0D0, 0xCECE, 0xCCCC}, {0xC8C8, 0xC6C6, 0xC4C4},
-                    {0xC0C0, 0xBEBE, 0xBCBC}, {0xB8B8, 0xB6B6, 0xB4B4},
-                    {0xB0B0, 0xAEAE, 0xACAC}, {0xA0A0, 0x9E9E, 0x9C9C},
-                    {0x9090, 0x8E8E, 0x8C8C}, {0x8080, 0x7E7E, 0x7C7C},
-                    {0x7070, 0x6E6E, 0x6C6C}, {0x6060, 0x5E5E, 0x5C5C},
-                    {0x5050, 0x4E4E, 0x4C4C}, {0x4040, 0x3E3E, 0x3C3C},
-                };
-                short nPal = (**gamePal).pmEntries;
-                short nGrey = (nPal < 16) ? nPal : 16;
-                short base  = nPal - nGrey;
-                short gi;
-                for (gi = 0; gi < nGrey; gi++) {
-                    RGBColor gc = sGreyRamp[gi];
-                    SetEntryColor(gamePal, base + gi, &gc);
-                }
-            }
             SetPalette((WindowPtr)*gMainGameWindow, gamePal, true);
             ActivatePalette((WindowPtr)*gMainGameWindow);
         }
@@ -30514,6 +31186,7 @@ int main(void)
     /* Main event loop */
     while (!sDone) {
         WaitNextEvent(everyEvent, &event, 6, NULL);
+        TutorialWatch();
 
         /* Cursor management: context-sensitive cursors */
         {

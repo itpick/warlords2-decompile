@@ -1839,10 +1839,10 @@ static void BuildMovementCostMap(short armyType, short forceRebuild)
                    a decompilation artifact of a 'continue' in the original loop,
                    since this early exit only makes sense for this inner iteration.
                    In practice this is reached for all valid terrain types. */
-                /* Actually, the decompiled code literally returns here. This seems
-                   to be a bug in the decompilation. Based on context, it should
-                   continue. But we preserve the EXACT logic: */
-                return;  /* NOTE: matches decompiled output exactly */
+                /* Ghidra rendered the original loop's 'continue' as 'return'; a real
+                   'return' here exits after the first standard tile and leaves the
+                   112x156 cost map almost entirely unbuilt. Use continue. */
+                continue;
             }
 
             /* If tile has a road (bit 23 of tile word), set road flag */

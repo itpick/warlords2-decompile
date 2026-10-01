@@ -1,0 +1,10 @@
+{
+  "name": "begin2",
+  "viewport": { "width": 1024, "height": 768 },
+  "bootWaitMs": 125000,
+  "steps": [
+    { "key": "Enter" }, { "wait": 6000 },
+    { "key": "Enter" }, { "wait": 10000 }, { "shot": "01_map" },
+    { "wait": 5000 }, { "shot": "02_map2" }
+  ]
+}

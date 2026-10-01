@@ -1,0 +1,11 @@
+{
+  "name": "orig_setup",
+  "viewport": { "width": 1024, "height": 768 },
+  "bootWaitMs": 125000,
+  "steps": [
+    { "shot": "01_picker" },
+    { "click": [360, 331] }, { "wait": 1500 }, { "shot": "02_selected" },
+    { "click": [370, 547] }, { "wait": 8000 }, { "shot": "03_setup" },
+    { "wait": 5000 }, { "shot": "04_setup2" }
+  ]
+}

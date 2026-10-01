@@ -2146,7 +2146,11 @@ int gPatternDrawFlag = 0;
 void *gPerPlayerArmyCount = NULL;
 void *gProgressBar = NULL;
 void *gProgressView = NULL;
-void *gRoadData = NULL;
+/* gRoadData must point to backing storage: the game uses *gRoadData (the road
+ * overlay buffer pointer) and guards alloc with `if (*gRoadData == 0)`. As a bare
+ * NULL it dereferenced Mac addr 0 (junk ~0x40810000), fooling that guard. */
+static long _s_gRoadData = 0;
+void *gRoadData = &_s_gRoadData;
 void *gSCENInfo = NULL;
 void *gScreenGWorld = NULL;
 int gScreenSentinel = 0;
