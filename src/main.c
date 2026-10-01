@@ -1009,6 +1009,9 @@ static short sTooltipTileY = -1;
 static unsigned long sTooltipHoverStart = 0;
 static WindowPtr sTooltipWin = NULL;
 static Boolean   sShowCityLabels = false;  /* remake debug overlay; off = original */
+static GWorldPtr sHaloGW = NULL;          /* PICT 1002 selection halo frames */
+static RGBColor  sHaloKey;
+static short     sHaloFrame = 0;
 static Boolean sControlsLive = false;   /* off from the turn banner until the
                                            player has control (original greys
                                            the whole area meanwhile) */
@@ -1384,6 +1387,9 @@ static short CalcCityDefense(unsigned char *extCity)
 #define TURN_VIEW_W    199  /* TTurnView width at runtime (h scroll bar starts here) */
 #define TURN_TEXT_X    3    /* "Turn N" pen x (Chicago 12) */
 static void LayoutMapScrollBars(WindowPtr w);
+static Boolean ArmyShownOnTile(short i);
+static void RefreshInitialArmyStats(void);
+static void DrawArmySpriteAt(short owner, short spriteIdx, short x, short y, Boolean faded);
 static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
@@ -2139,11 +2145,12 @@ static void GameInit(void)
      * init in BeginGame() which overwrites gs+0x60C.
      * Layout: sMoveCostTable[terrainType * 29 + unitType] = cost (0=impassable) */
     {
+        /* gs+0x60C is the per-player fight-order table (Erythea: the same
+         * 29-byte permutation 8 times), NOT movement costs; copying it gave
+         * the hero 8 MP per road tile. Always use the defaults until the
+         * original's table is known (road/city measured at 1 MP). */
         Boolean tableEmpty = true;
-        BlockMoveData(gs + 0x60C, sMoveCostTable, 9 * 29);
-        for (i = 0; i < 9 * 29 && tableEmpty; i++) {
-            if (sMoveCostTable[i] != 0) tableEmpty = false;
-        }
+        for (i = 0; i < 9 * 29; i++) sMoveCostTable[i] = 0;
         if (tableEmpty) {
             /* Fill with defaults: land costs by terrain
              * 68k types: 0=Road, 1=Bridge, 2=Water, 3=Shore, 4=Forest,
@@ -3362,6 +3369,38 @@ static void ScanArmySets(void)
  * Opens the selected army set's resource fork and loads
  * PICT 20000-20009 into offscreen GWorlds.
  * =================================================================== */
+/* Starting armies and garrisons are created by GameInit at scenario load,
+ * before the army set (chosen in Game Setup) is loaded, so their units got
+ * placeholder stats (10 MP). Give every unit its type's movement/strength
+ * once the table exists (the original copies them from the city slot,
+ * whose stats are the type's with a small random adjustment). */
+static void RefreshInitialArmyStats(void)
+{
+    unsigned char *gs;
+    short n, i, k;
+    if (*gGameState == 0 || !sUnitTypesLoaded) return;
+    gs = (unsigned char *)*gGameState;
+    n = *(short *)(gs + 0x1602);
+    if (n > 100) n = 100;
+    for (i = 0; i < n; i++) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        short minMv = 255;
+        if (a[0x16] == 0xFF) continue;
+        for (k = 0; k < 4; k++) {
+            short t = a[0x16 + k], mv, str;
+            if (t == 0xFF || t >= sUnitTypeCount) continue;
+            mv = GetUnitTypeStat(t, 3);
+            str = GetUnitTypeStat(t, 0);
+            if (mv > 0) a[0x1a + k] = (unsigned char)mv;
+            if (str > 0) a[0x1e + k] = (unsigned char)str;
+            if (a[0x1a + k] < minMv) minMv = a[0x1a + k];
+        }
+        a[0x14] = sUnitTypeTable[(unsigned char)a[0x16] * UNIT_TYPE_ENTRY];
+        if (minMv < 255) a[0x2e] = (unsigned char)minMv;
+        RecalcArmyStrength(a);
+    }
+}
+
 static void LoadArmySprites(void)
 {
     FSSpec armySpec;
@@ -8701,8 +8740,15 @@ static void DrawMapInWindow(WindowPtr win)
             {
                 Boolean iHero = ((unsigned char)army[0x16] == 0x1C);
                 short aj;
-                Boolean hidden = false;
-                for (aj = 0; aj < armyCount && !hidden; aj++) {
+                Boolean hidden = false, selHere = false;
+                if (sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
+                    unsigned char *sel = scnData + 0x1604 + sSelectedArmy * 0x42;
+                    if (*(short *)(sel + 0) == ax && *(short *)(sel + 2) == ay) {
+                        if (i != sSelectedArmy) continue;    /* the selection is drawn on its tile */
+                        selHere = true;
+                    }
+                }
+                for (aj = 0; aj < armyCount && !hidden && !selHere; aj++) {
                     unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
                     Boolean jHero;
                     if (aj == i || a2[0x16] == 0xFF) continue;
@@ -8908,7 +8954,7 @@ static void DrawMapInWindow(WindowPtr win)
                 }
             }
             if (*gExtState != 0 &&
-                ((unsigned char *)*gExtState)[0x56 + i] == 7) {
+                ((unsigned char *)*gExtState)[0x56 + i] == 7 && ArmyShownOnTile(i)) {
                 /* Army is guarding (ext state army_state == 7): draw defend sprite.
                  * 68k CODE_067 FUN_000000ae: uses sprite index 5 as overlay. */
                 short ax = *(short *)(army + 0x00);
@@ -9025,53 +9071,37 @@ static void DrawMapInWindow(WindowPtr win)
                 screenX < winRect.right &&
                 screenY >= winRect.top - TERRAIN_TILE_H &&
                 screenY < winRect.bottom) {
-                /* 68k CODE_067 FUN_00003980: selection draws army sprite at
-                 * offset (+8,+5) on top of fog, then highlights with tan color.
-                 * Blink: alternate every 15 ticks (~0.25 sec on/off). */
-                unsigned long blinkPhase = (TickCount() / 15) & 1;
-                {
-                    /* Always redraw selected army sprite on top of fog (68k does this) */
-                    short selOwner = (short)(unsigned char)selArmy[0x15];
-                    short selSheet = (selOwner >= 0 && selOwner < 8) ? selOwner : 8;
-                    short selSprite = (short)(unsigned char)selArmy[0x14];
-                    GWorldPtr selGW;
-                    if (selSprite == 0x1C && IsHeroFemale(sSelectedArmy))
-                        selSprite = 0x1D;
-                    selGW = (sArmyGW[selSheet] != NULL) ? sArmyGW[selSheet] :
-                            (sArmyGW[0] != NULL) ? sArmyGW[0] : NULL;
-                    if (sArmyLoaded && selGW != NULL) {
-                        Rect srcR2, dstR2;
-                        short sx2 = (selSprite % 16) * 32;
-                        short sy2 = (selSprite / 16) * 30;
-                        SetRect(&srcR2, sx2, sy2, sx2 + 32, sy2 + 29);
-                        /* 68k CODE_067: dest Y offset is +7 (same as the unselected
-                         * sprite); was +5, causing a 2px jump when an army is selected. */
-                        SetRect(&dstR2, screenX + 8, screenY + 7,
-                                screenX + 8 + 32, screenY + 7 + 29);
-                        LockPixels(GetGWorldPixMap(selGW));
-                        {
-                            RGBColor savedBg2;
-                            GetBackColor(&savedBg2);
-                            RGBBackColor(&sArmyBgColor[selSheet]);
-                            CopyBits((BitMap *)*GetGWorldPixMap(selGW),
-                                     &((GrafPtr)win)->portBits,
-                                     &srcR2, &dstR2, 36, NULL);
-                            RGBBackColor(&savedBg2);
-                        }
-                        UnlockPixels(GetGWorldPixMap(selGW));
-                    }
-                    if (blinkPhase) {
-                        Rect selRect;
-                        /* 68k CODE_067: selection highlight is an oval around the tile */
-                        RGBColor selColor = {0xEBEB, 0xA3A3, 0x7777};
-                        SetRect(&selRect, screenX + 2, screenY + 2,
-                                screenX + TERRAIN_TILE_W - 2, screenY + TERRAIN_TILE_H - 2);
-                        RGBForeColor(&selColor);
-                        PenSize(2, 2);
-                        FrameOval(&selRect);
-                        PenSize(1, 1);
+                /* Halo (PPC FUN_10082430/FUN_10082260): four 31x30 frames of
+                 * blue rings in PICT 1002 (32 apart), cycled on idle, drawn at
+                 * (+8,+7) with the selected army's sprite over it. */
+                short selOwner = (short)(unsigned char)selArmy[0x15];
+                short selSprite = (short)(unsigned char)selArmy[0x14];
+                if (selSprite == 0x1C && IsHeroFemale(sSelectedArmy)) selSprite = 0x1D;
+                if (sHaloGW == NULL) {
+                    sHaloGW = LoadPICTIntoGWorld(1002);
+                    if (sHaloGW != NULL) {
+                        CGrafPtr sp; GDHandle sd;
+                        GetGWorld(&sp, &sd);
+                        SetGWorld(sHaloGW, NULL);
+                        GetCPixel(0, 0, &sHaloKey);
+                        SetGWorld(sp, sd);
                     }
                 }
+                if (sHaloGW != NULL) {
+                    PixMapHandle pm = GetGWorldPixMap(sHaloGW);
+                    Rect sr, dr;
+                    RGBColor savedBg, black = {0, 0, 0};
+                    LockPixels(pm);
+                    GetBackColor(&savedBg);
+                    RGBForeColor(&black);
+                    RGBBackColor(&sHaloKey);
+                    SetRect(&sr, (sHaloFrame & 3) * 32, 0, (sHaloFrame & 3) * 32 + 31, 30);
+                    SetRect(&dr, screenX + 8, screenY + 7, screenX + 8 + 31, screenY + 7 + 30);
+                    CopyBits((BitMap *)*pm, &((GrafPtr)win)->portBits, &sr, &dr, 36, NULL);
+                    RGBBackColor(&savedBg);
+                    UnlockPixels(pm);
+                }
+                DrawArmySpriteAt(selOwner, selSprite, screenX + 8, screenY + 7, false);
             }
 
             /* Draw movement target indicator if army has orders */
@@ -11893,6 +11923,57 @@ static void SelectNextArmy(void)
  *
  * 68k: CODE_123 FUN_00000788 + FUN_000008de
  * =================================================================== */
+/* The army whose sprite stands on its tile (one per tile): the selection if
+ * it is there, else a hero, else the first army. */
+static Boolean ArmyShownOnTile(short i)
+{
+    unsigned char *gs = (unsigned char *)*gGameState, *a;
+    short n, j;
+    Boolean iHero;
+    if (gs == NULL) return true;
+    n = *(short *)(gs + 0x1602);
+    a = gs + 0x1604 + i * 0x42;
+    if (sSelectedArmy >= 0 && sSelectedArmy < n) {
+        unsigned char *sel = gs + 0x1604 + sSelectedArmy * 0x42;
+        if (*(short *)(sel + 0) == *(short *)(a + 0) && *(short *)(sel + 2) == *(short *)(a + 2))
+            return i == sSelectedArmy;
+    }
+    iHero = ((unsigned char)a[0x16] == 0x1C);
+    for (j = 0; j < n; j++) {
+        unsigned char *b = gs + 0x1604 + j * 0x42;
+        Boolean jHero;
+        if (j == i || b[0x16] == 0xFF) continue;
+        if (*(short *)(b + 0) != *(short *)(a + 0) || *(short *)(b + 2) != *(short *)(a + 2)) continue;
+        jHero = ((unsigned char)b[0x16] == 0x1C);
+        if ((jHero && !iHero) || (jHero == iHero && j < i)) return false;
+    }
+    return true;
+}
+
+/* The army a click on (x,y) selects: the original sorts the stack by group
+ * tag (+0x11) then fight order, both descending (hero +50), and takes the
+ * first (PPC FUN_10021524 / FUN_10021a3c). */
+static short StackLeadAt(short x, short y, short player)
+{
+    unsigned char *gs, *fo;
+    short n, i, best = -1;
+    long bestKey = -1;
+    if (*gGameState == 0) return -1;
+    gs = (unsigned char *)*gGameState;
+    n = *(short *)(gs + 0x1602);
+    if (n > 100) n = 100;
+    fo = gs + 0x60C + player * 0x1D;
+    for (i = 0; i < n; i++) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        long key;
+        if (a[0x16] == 0xFF || (short)(unsigned char)a[0x15] != player) continue;
+        if (*(short *)(a + 0) != x || *(short *)(a + 2) != y) continue;
+        key = (long)a[0x11] * 1000 + fo[a[0x16] % 0x1D] + (a[0x16] == 0x1C ? 50 : 0);
+        if (key > bestKey) { bestKey = key; best = i; }
+    }
+    return best;
+}
+
 static void BuildStackArrays(short leadArmyIdx)
 {
     unsigned char *gs;
@@ -11969,15 +12050,18 @@ static void BuildStackArrays(short leadArmyIdx)
             short tmpSep = sStackSep[i];
             /* Get fight order priority for this unit type */
             unsigned char *armyI = gs + 0x1604 + tmpIdx * 0x42;
-            short prioI = (short)(unsigned char)fightOrder[(unsigned char)armyI[0x16]];
+            short prioI = (short)(unsigned char)fightOrder[(unsigned char)armyI[0x16]] +
+                          ((unsigned char)armyI[0x16] == 0x1C ? 50 : 0);
 
             j = i - 1;
             while (j >= 0) {
                 unsigned char *armyJ = gs + 0x1604 + sStackArmyIdx[j] * 0x42;
-                short prioJ = (short)(unsigned char)fightOrder[(unsigned char)armyJ[0x16]];
-                /* Sort: groupId ascending, then fight priority ascending (lower = fights first) */
+                short prioJ = (short)(unsigned char)fightOrder[(unsigned char)armyJ[0x16]] +
+                              ((unsigned char)armyJ[0x16] == 0x1C ? 50 : 0);
+                /* Sort: groupId ascending, then fight order DESCENDING with the hero
+                 * bias, as the original's FUN_10021a3c (hero first) */
                 if (sStackGroupId[j] > tmpGrp ||
-                    (sStackGroupId[j] == tmpGrp && prioJ > prioI)) {
+                    (sStackGroupId[j] == tmpGrp && prioJ < prioI)) {
                     sStackArmyIdx[j + 1] = sStackArmyIdx[j];
                     sStackGroupId[j + 1] = sStackGroupId[j];
                     sStackSelected[j + 1] = sStackSelected[j];
@@ -12497,7 +12581,8 @@ static short GetMovementCost(short mapX, short mapY, short unitClass)
                 return 2;
             return 0;
         }
-        if (terrainType == 10) return 2;  /* city tile: passable, cost 2 */
+        if (terrainType == 10) return 1;  /* city tile: 1, measured on the original
+                                           * (Mirea -> 3 tiles south on the road = 3 MP) */
         if (terrainType == 11) return 2;  /* ruin/temple: passable, cost 2 */
         return 2;  /* unknown: moderate */
     }
@@ -12508,12 +12593,15 @@ static short GetMovementCost(short mapX, short mapY, short unitClass)
     cost = (short)(unsigned char)sMoveCostTable[terrainType * 29 + unitClass];
     if (cost == 0) return 0;  /* impassable */
 
-    /* Road overlay bonus: if road data exists and this tile has a road,
-     * reduce cost to 2 (68k CODE_115 wavefront: road reduces cost to 2, not 1) */
-    if (cost > 2 && *gRoadData != 0) {
+    /* Road overlay (RD & 0x1F): the tile costs as road. Measured on the
+     * original: 3 road tiles over plains cost 3 MP (the old "road reduces to
+     * 2" rule charged 6). */
+    if (*gRoadData != 0) {
         unsigned char *roadData = (unsigned char *)*gRoadData;
-        if (mapX < 112 && mapY < 156 && roadData[mapY * 112 + mapX] != 0)
-            cost = 2;
+        if (mapX < 112 && mapY < 156 && (roadData[mapY * 112 + mapX] & 0x1F) != 0) {
+            short roadCost = (short)(unsigned char)sMoveCostTable[0 * 29 + unitClass];
+            if (roadCost > 0 && roadCost < cost) cost = roadCost;
+        }
     }
 
     return cost;
@@ -29051,6 +29139,181 @@ static short ButtonAreaHit(short lx, short ly)
     return -1;
 }
 
+/* ===================================================================
+ * Stack panel — View 1006 "Stack view 2", drawn in the info area whenever an
+ * army is selected (PPC FUN_100810e8 / FUN_1000873c, measured on the
+ * original): rings arm0-7 at (2|66, 8+47i) 42x32 = ABITS ring
+ * (((player + group) & 7) + 1) * 32, 31x30 (empty: 512) with the army sprite
+ * (faded when not selected) and its moves left in ABITS digits (x 64+8d,
+ * y 30, 8x10) at (+8,+31); check/X boxes ABITS (456,16)/(456,0) 20x16 at
+ * che (46|110, 4+47i)+(8,0); "Group"/"Move" (STR# 1005) and the group's
+ * moves in TxSt 1016; Grp button ABITS (290,0|20) 32x20 at (188,77).
+ * =================================================================== */
+static void BlitAbits(short sx, short sy, short w, short h, short dx, short dy)
+{
+    GrafPtr port;
+    if (!sAbitsLoaded || sAbitsGW == NULL) return;
+    GetPort(&port);
+    {
+        PixMapHandle pm = GetGWorldPixMap(sAbitsGW);
+        Rect sr, dr;
+        RGBColor savedBg, black = {0, 0, 0};
+        LockPixels(pm);
+        GetBackColor(&savedBg);
+        RGBForeColor(&black);
+        RGBBackColor(&sAbitsBgColor);
+        SetRect(&sr, sx, sy, sx + w, sy + h);
+        SetRect(&dr, dx, dy, dx + w, dy + h);
+        CopyBits((BitMap *)*pm, &port->portBits, &sr, &dr, 36, NULL);
+        RGBBackColor(&savedBg);
+        UnlockPixels(pm);
+    }
+}
+
+static void DrawAbitsNumber(short n, short x, short y)
+{
+    char buf[8];
+    short len = 0, i;
+    if (n < 0) n = 0;
+    do { buf[len++] = (char)('0' + n % 10); n /= 10; } while (n > 0 && len < 6);
+    if (len < 2) buf[len++] = '0';          /* two digits: the original shows "08" */
+    for (i = len - 1; i >= 0; i--, x += 8)
+        BlitAbits(64 + 8 * (buf[i] - '0'), 30, 8, 10, x, y);
+}
+
+/* Army sprite at (x,y); faded = blended halfway to white (unselected unit) */
+static void DrawArmySpriteAt(short owner, short spriteIdx, short x, short y, Boolean faded)
+{
+    short sheet = (owner >= 0 && owner < 8) ? owner : 8;
+    GWorldPtr gw = sArmyGW[sheet] ? sArmyGW[sheet] : sArmyGW[0];
+    GrafPtr port;
+    PixMapHandle pm;
+    Rect sr, dr;
+    RGBColor savedBg, black = {0, 0, 0};
+    if (gw == NULL) return;
+    GetPort(&port);
+    pm = GetGWorldPixMap(gw);
+    LockPixels(pm);
+    SetRect(&sr, (spriteIdx % 16) * 32, (spriteIdx / 16) * 30,
+            (spriteIdx % 16) * 32 + 32, (spriteIdx / 16) * 30 + 29);
+    if (!faded) {
+        GetBackColor(&savedBg);
+        RGBForeColor(&black);
+        RGBBackColor(&sArmyBgColor[sheet]);
+        SetRect(&dr, x, y, x + 32, y + 29);
+        CopyBits((BitMap *)*pm, &port->portBits, &sr, &dr, 36, NULL);
+        RGBBackColor(&savedBg);
+    } else {
+        CGrafPtr sp; GDHandle sd;
+        short i, j;
+        GetGWorld(&sp, &sd);
+        for (j = 0; j < 29; j++)
+            for (i = 0; i < 32; i++) {
+                RGBColor c;
+                SetGWorld(gw, NULL);
+                GetCPixel(sr.left + i, sr.top + j, &c);
+                SetGWorld(sp, sd);
+                if (c.red == sArmyBgColor[sheet].red && c.green == sArmyBgColor[sheet].green &&
+                    c.blue == sArmyBgColor[sheet].blue) continue;
+                c.red   = (unsigned short)((c.red   + 0xFFFFUL) / 2);
+                c.green = (unsigned short)((c.green + 0xFFFFUL) / 2);
+                c.blue  = (unsigned short)((c.blue  + 0xFFFFUL) / 2);
+                SetCPixel(x + i, y + j, &c);
+            }
+        SetGWorld(sp, sd);
+    }
+    UnlockPixels(pm);
+}
+
+/* che state per slot: -1 hidden, 0 X, 1 check (PPC FUN_1005c5d4) */
+static void StackCheckStates(short C[MAX_STACK])
+{
+    short i, j, g = -1;
+    Boolean exactlyOne = true;
+    for (i = 0; i < sStackCount; i++)
+        C[i] = (i > 0 && sStackGroupId[i] == sStackGroupId[i - 1]) ? -1 : 0;
+    for (i = 0; i < sStackCount; i++)
+        if (sStackSelected[i]) { g = sStackGroupId[i]; break; }
+    if (g < 0) return;
+    for (j = 0; j < sStackCount; j++)
+        if ((sStackGroupId[j] == g) != (sStackSelected[j] != 0)) exactlyOne = false;
+    if (exactlyOne) C[i] = 1;
+}
+
+static void DrawStackPanel(WindowPtr win, Rect r)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short player = *(short *)(gs + 0x110);
+    short C[MAX_STACK], i, groupMove = 999;
+    Boolean allSel = true;
+    StackCheckStates(C);
+    for (i = 0; i < MAX_STACK; i++) {
+        short L = r.left + 8 + 47 * (i % 4), T = r.top + (i < 4 ? 2 : 66);
+        if (i < sStackCount && sStackArmyIdx[i] >= 0) {
+            unsigned char *a = gs + 0x1604 + sStackArmyIdx[i] * 0x42;
+            short spr = (short)(unsigned char)a[0x14];
+            if ((unsigned char)a[0x16] == 0x1C && IsHeroFemale(sStackArmyIdx[i])) spr = 0x1D;
+            BlitAbits((((player + sStackGroupId[i]) & 7) + 1) * 32, 0, 31, 30, L, T);
+            DrawArmySpriteAt((short)(unsigned char)a[0x15], spr, L, T, sStackSelected[i] == 0);
+            DrawAbitsNumber((short)(unsigned char)a[0x2e], L + 8, T + 31);
+            if (C[i] >= 0)
+                BlitAbits(456, C[i] ? 16 : 0, 20, 16, r.left + 4 + 47 * (i % 4) + 8, r.top + (i < 4 ? 46 : 110));
+            if (sStackSelected[i]) {
+                if ((short)(unsigned char)a[0x2e] < groupMove) groupMove = (short)(unsigned char)a[0x2e];
+            } else allSel = false;
+        } else {
+            BlitAbits(512, 0, 31, 30, L, T);
+        }
+    }
+    if (groupMove == 999) groupMove = 0;
+    {
+        Str255 s;
+        Rect v;
+        RGBColor black = {0, 0, 0};
+        RGBForeColor(&black);
+        TextFont(applFont); TextSize(9); TextFace(0);
+        SetRect(&v, r.left + 188, r.top + 44, r.left + 188 + 27, r.top + 44 + 12);
+        DrawViewText(&v, ViewString(s, 1005, 1, "\pGroup"), 1);
+        SetRect(&v, r.left + 189, r.top + 52, r.left + 189 + 25, r.top + 52 + 12);
+        DrawViewText(&v, ViewString(s, 1005, 2, "\pMove"), 1);
+        NumToString((long)groupMove, s);
+        SetRect(&v, r.left + 185, r.top + 63, r.left + 185 + 33, r.top + 63 + 12);
+        DrawViewText(&v, s, 1);
+    }
+    BlitAbits(290, allSel ? 20 : 0, 32, 20, r.left + 188, r.top + 77);
+}
+
+/* Clicks in the stack panel: ring toggles a unit, check/X selects exactly
+ * that group, Grp groups / ungroups all (PPC FUN_1005d0cc / FUN_1005cffc). */
+static Boolean StackPanelClick(short lx, short ly)
+{
+    short i, C[MAX_STACK];
+    StackCheckStates(C);
+    for (i = 0; i < sStackCount; i++) {
+        short L = 8 + 47 * (i % 4), T = (i < 4 ? 2 : 66);
+        short cl = 4 + 47 * (i % 4), ct = (i < 4 ? 46 : 110);
+        if (lx >= L && lx < L + 32 && ly >= T && ly < T + 42) {
+            StackToggleSlot(i);
+            StackCommitGroups();
+            return true;
+        }
+        if (C[i] >= 0 && lx >= cl && lx < cl + 33 && ly >= ct && ly < ct + 16) {
+            short j, g = sStackGroupId[i];
+            for (j = 0; j < sStackCount; j++) sStackSelected[j] = (sStackGroupId[j] == g);
+            StackCommitGroups();
+            return true;
+        }
+    }
+    if (lx >= 186 && lx < 218 && ly >= 77 && ly < 96) {
+        Boolean allSel = true;
+        for (i = 0; i < sStackCount; i++) if (!sStackSelected[i]) allSel = false;
+        if (allSel) StackUngroupAll(); else StackGroupAll();
+        StackCommitGroups();
+        return true;
+    }
+    return false;
+}
+
 static void HandleMouseDown(EventRecord *event)
 {
     WindowPtr   whichWindow;
@@ -29448,17 +29711,13 @@ static void HandleMouseDown(EventRecord *event)
                     /* 68k: army detection runs BEFORE city detection.
                      * Click own army → select. Re-click selected army on city → city dialog.
                      * Re-click selected army on plain tile → army inspect. */
-                    for (ai = 0; ai < armyCount; ai++) {
-                        unsigned char *army = gs + 0x1604 + ai * 0x42;
-                        short ax = *(short *)(army + 0x00);
-                        short ay = *(short *)(army + 0x02);
-                        short owner = (short)(unsigned char)army[0x15];
-                        if (ax == clickTileX && ay == clickTileY &&
-                            owner == currentPlayer) {
-                            clickedArmy = ai;
-                            break;
-                        }
+                    clickedArmy = StackLeadAt(clickTileX, clickTileY, currentPlayer);
+                    if (clickedArmy >= 0 && sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
+                        unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+                        if (*(short *)(sa + 0) == clickTileX && *(short *)(sa + 2) == clickTileY)
+                            clickedArmy = sSelectedArmy;           /* re-click on the selection */
                     }
+                    (void)ai;
 
                     if (clickedArmy >= 0) {
                         if (clickedArmy != sSelectedArmy) {
@@ -29481,7 +29740,7 @@ static void HandleMouseDown(EventRecord *event)
                                     /* Non-adjacent: switch selection */
                                     sSelectedArmy = clickedArmy;
                                     BuildStackArrays(clickedArmy);
-                                    PlaySound(SND_ARMY);
+                                    /* silent, as the original (recorded) */
                                     InvalRect(&port);
                                     goto doneMapClick;
                                 }
@@ -29489,7 +29748,7 @@ static void HandleMouseDown(EventRecord *event)
                                 /* No army selected yet: select this one */
                                 sSelectedArmy = clickedArmy;
                                 BuildStackArrays(clickedArmy);
-                                PlaySound(SND_ARMY);
+                                /* silent, as the original (recorded) */
                                 InvalRect(&port);
                                 goto doneMapClick;
                             }
@@ -29784,6 +30043,15 @@ static void HandleMouseDown(EventRecord *event)
                 }
                 doneMapClick: ;
             }
+        } else if (sMapLoaded && gStatusWindow != NULL &&
+                   whichWindow == (WindowPtr)*gStatusWindow) {
+            /* Stack panel clicks (View 1006) */
+            Point lp = event->where;
+            SetPort(whichWindow);
+            GlobalToLocal(&lp);
+            if (sControlsLive && sSelectedArmy >= 0 && sStackCount > 0 &&
+                StackPanelClick(lp.h - whichWindow->portRect.left, lp.v - whichWindow->portRect.top))
+                InvalidateAllGameWindows();
         } else if (gInfoWindow != NULL &&
                    whichWindow == (WindowPtr)*gInfoWindow) {
             /* Click in control panel (View 1008 layout).
@@ -29796,9 +30064,7 @@ static void HandleMouseDown(EventRecord *event)
             lx = localPt.h - port.left;
             ly = localPt.v - port.top;
 
-          if (sSelectedArmy >= 0 && sStackCount > 1 && *gGameState != 0) {
-            HandleInfoStackClick(lx, ly, &port);
-          } else {
+          {
             short hit = ButtonAreaHit(lx, ly);
             if (hit >= 100) {
                 /* Scroll pad: map scrolls a page-third in that direction;
@@ -30274,9 +30540,7 @@ static void HandleUpdate(EventRecord *event)
     }
     else if (gInfoWindow != NULL &&
              win == (WindowPtr)*gInfoWindow) {
-      if (sSelectedArmy >= 0 && sStackCount > 1 && *gGameState != 0) {
-        DrawInfoStackUI(win, &r);
-      } else {
+      {   /* the button area never changes; the stack shows in the info area */
         DrawButtonArea(win);
       } /* end else (normal buttons) */
     }
@@ -30296,7 +30560,9 @@ static void HandleUpdate(EventRecord *event)
                 DrawPicture(marble, &pf);
             }
         }
-        if (sControlsLive && *gGameState != 0) {
+        if (sControlsLive && *gGameState != 0 && sSelectedArmy >= 0 && sStackCount > 0) {
+            DrawStackPanel(win, r);
+        } else if (sControlsLive && *gGameState != 0) {
             unsigned char *gs = (unsigned char *)*gGameState;
             short cur = *(short *)(gs + 0x110);
             short gold = *(short *)(gs + 0x186 + cur * 0x14);
@@ -30869,6 +31135,7 @@ int main(void)
     /* === Load sprite sheets from asset folders === */
     LoadTerrainSprites();
     LoadArmySprites();
+    RefreshInitialArmyStats();
     LoadCitySprites();
     LoadShieldIcons();
     /* RemapShieldColors() disabled — raw cicn CLUT colors from terrain file
@@ -30971,6 +31238,45 @@ int main(void)
         WaitNextEvent(everyEvent, &event, 6, NULL);
         TutorialWatch();
 
+        /* Selection feedback: cycle the halo (one frame per idle tick, like
+         * MacApp's idler) and redraw the info area when the selection or its
+         * moves change (the stack panel lives there). */
+        if (*gGameState != 0 && gMainGameWindow != NULL && *gMainGameWindow != 0) {
+            static unsigned long lastHalo = 0;
+            static long lastSig = -1;
+            unsigned char *gsx = (unsigned char *)*gGameState;
+            long sig = sSelectedArmy * 7919L + sStackCount * 131L;
+            short k;
+            for (k = 0; k < sStackCount; k++)
+                if (sStackArmyIdx[k] >= 0)
+                    sig += (k + 1) * (sStackSelected[k] * 17L + sStackGroupId[k] * 3L +
+                           gsx[0x1604 + sStackArmyIdx[k] * 0x42 + 0x2e]);
+            if (sig != lastSig && gStatusWindow != NULL && *gStatusWindow != 0) {
+                GrafPtr sp;
+                lastSig = sig;
+                GetPort(&sp);
+                SetPort((WindowPtr)*gStatusWindow);
+                InvalRect(&((WindowPtr)*gStatusWindow)->portRect);
+                SetPort(sp);
+            }
+            if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gsx + 0x1602) &&
+                TickCount() - lastHalo >= 6) {
+                unsigned char *sa = gsx + 0x1604 + sSelectedArmy * 0x42;
+                WindowPtr mw = (WindowPtr)*gMainGameWindow;
+                Rect tr;
+                GrafPtr sp;
+                lastHalo = TickCount();
+                sHaloFrame = (sHaloFrame + 1) & 3;
+                tr.left = mw->portRect.left + (*(short *)(sa + 0) - sViewportX) * TERRAIN_TILE_W - sViewPixX + 8;
+                tr.top  = mw->portRect.top  + (*(short *)(sa + 2) - sViewportY) * TERRAIN_TILE_H - sViewPixY + 7;
+                tr.right = tr.left + 31; tr.bottom = tr.top + 30;
+                GetPort(&sp);
+                SetPort(mw);
+                InvalRect(&tr);
+                SetPort(sp);
+            }
+        }
+
         /* Cursor management: context-sensitive cursors */
         {
             Point cursPos;
@@ -31064,8 +31370,21 @@ int main(void)
                                     }
                                 }
                             }
+                            Boolean ownArmyHere = false;
+                            {   /* own army under the cursor: the select cursor wins
+                                 * over the city one (original, Mirea turn 1) */
+                                short ai5;
+                                for (ai5 = 0; ai5 < ac2; ai5++) {
+                                    unsigned char *a5 = gsC + 0x1604 + ai5 * 0x42;
+                                    if (a5[0x16] == 0xFF) continue;
+                                    if (*(short *)(a5 + 0) == tX && *(short *)(a5 + 2) == tY &&
+                                        (short)(unsigned char)a5[0x15] == curP2) { ownArmyHere = true; break; }
+                                }
+                            }
                             if (foundEnemy)
                                 armyCsr = sAttackCursor ? sAttackCursor : sMoveCursor;
+                            else if (ownArmyHere && sSelectCursor)
+                                armyCsr = sSelectCursor;
                             else if (foundCity2)
                                 armyCsr = sCastleCursor ? sCastleCursor : sMoveCursor;
                             else if (foundRuin2)

@@ -1,0 +1,4 @@
+{"steps":[{"audio":"start"},
+          {"click":[398,500]},{"wait":1500},{"shot":"click1"},
+          {"wait":4000},{"shot":"after4s"},
+          {"audio":"stop"}]}
