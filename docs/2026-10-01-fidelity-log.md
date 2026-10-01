@@ -153,6 +153,50 @@ Recorded on the original: VBEGIN 1.2s after Begin Game, SND_TURN 6.4s after
 that. The original also plays background music from the picker on; the remake
 has its own music system, and the two have not been compared yet.
 
+## Army selection and movement (turn 1)
+
+Scripts `select_army`, `move_army`, `step_east` (after `sound_erythea`): all
+frames 0.1–0.4% different from the original, silent in both.
+
+- Selection, stack panel (View 1006 in the info area), halo (PICT 1002),
+  cursor and keep-selected-after-move now follow the original (commit
+  60457d1).
+- **Terrain types are read at SCN+0x710, not 0x711.** The original's gs+0x711
+  is one byte off the raw scenario, like the gold field. With the 0x711
+  read, plains came out as "Shore", i.e. impassable once the real cost table
+  was in.
+- **Movement costs** are the original's hard-coded table (68k CODE_042
+  FUN_00001670 / CODE_115 FUN_00001a70):
+
+  | Terrain | Cost |
+  |---|---|
+  | Road, bridge, city | 1 |
+  | Water (naval only) | 1 |
+  | Shore (naval only) | 2 |
+  | Forest | 4 |
+  | Hills | 6 |
+  | Mountains | blocked |
+  | Plains | 2 |
+  | Marsh | 5 |
+  | Ruin | 2 |
+
+  - Road overlay makes any tile cost 1.
+  - Forest and hills drop to 2 for units with that ability (DAT bytes
+    0x38 / 0x3A).
+  - Flyers pay 1 on road/bridge/city and 2 elsewhere.
+  - There is no diagonal rule.
+- **Verified step by step:** road ×3 = 3 MP, then marsh 5, marsh 5, then a
+  refused move with 1 MP left. Identical in both versions.
+- **Kept on purpose:** foreign cities stay enterable for the remake's
+  attack code (the original blocks them except as an attack target). The
+  +20 boarding penalty isn't modelled yet.
+- **Minimap:** armies inside a city no longer draw a marker under the city
+  shield; it showed as a dark shadow on the grey shields.
+- **Random per game:** the original's starting unit varies between games
+  (city slot stats get a random adjustment); the remake doesn't model that
+  roll yet.
+- **Cursor art:** the "can't reach" cursor still differs slightly.
+
 ## Open items
 
 - City window tabs Info / Build / Vectoring (Views 3301 / 3302 / 3304).
@@ -168,8 +212,8 @@ has its own music system, and the two have not been compared yet.
 
 ## Next: play, not just look
 
-1. Turns 1–2 side by side: select and move an army, path preview, fight,
-   end turn. The AI does nothing on the first turns, which makes them a
+1. ~~Select and move an army on turn 1~~ (done, see above). Next: path
+   preview, fight, end turn and turn 2. The AI does nothing on the first turns, which makes them a
    clean test.
 2. **Multi-turn runs:** script several full turns on both emulators.
    Compare screens, sounds and the save-game state (`savedec.py`) after

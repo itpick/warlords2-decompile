@@ -889,6 +889,14 @@ static short sSelectedArmySet = 0;  /* index into sArmySetNames */
 #define UTE_STAT_FLYING   0x36  /* offset of stat[16] high byte: 1 = aerial/flying */
 #define MAX_UNIT_TYPES    29
 #define UNIT_TYPE_ENTRY   0x3E  /* 62 bytes per entry */
+/* Per-sprite terrain type table. The original's gs+0x711 is SCN+0x710: its
+ * game state is one byte off from the raw scenario (as gold at SCN+0x185),
+ * and the remake keeps the raw SCN in gs. Verified on Erythea: plains sprites
+ * 31/9 -> 7, water 39/45 -> 2, and moves into marsh tiles cost 5 as on the
+ * original (reading 0x711 gave plains = Shore, i.e. impassable). */
+#define TERRAIN_TYPE_OFS  0x710
+#define UNIT_CLASS_FLIGHT 0x40  /* GetEffectiveUnitClass: hero with a flight item
+                                 * (was 0x0E, which is a real standard type) */
 static unsigned char sUnitTypeTable[MAX_UNIT_TYPES * UNIT_TYPE_ENTRY];
 static unsigned char sUnitTypeTableBase[MAX_UNIT_TYPES * UNIT_TYPE_ENTRY]; /* original (pre-variance) */
 
@@ -2026,7 +2034,7 @@ static void GameInit(void)
                         short ny = cy + dy8[ni];
                         if (nx >= 0 && nx < sMapWidth && ny >= 0 && ny < sMapHeight) {
                             unsigned char tIdx = md[ny * 0xE0 + nx * 2];
-                            short tType = (short)(unsigned char)sd[tIdx + 0x711];
+                            short tType = (short)(unsigned char)sd[tIdx + TERRAIN_TYPE_OFS];
                             if (tType == 2 || tType == 9) {
                                 flags |= 0x08;  /* port */
                                 break;
@@ -8345,7 +8353,7 @@ static void DrawMapInWindow(WindowPtr win)
 
             /* Get terrain category from SCN properties table */
             if (hasScn) {
-                terrainType = (short)(unsigned char)scnData[terrainIdx + 0x711];
+                terrainType = (short)(unsigned char)scnData[terrainIdx + TERRAIN_TYPE_OFS];
             } else {
                 terrainType = (terrainIdx >> 4) & 0x0F;
             }
@@ -8763,7 +8771,7 @@ static void DrawMapInWindow(WindowPtr win)
             if (*gMapTiles != 0 && ArmyIsNaval(i)) {
                 unsigned char *md = (unsigned char *)*gMapTiles;
                 short tIdx = (short)(unsigned char)md[ay * 0xE0 + ax * 2];
-                short tType = (short)(unsigned char)scnData[tIdx + 0x711];
+                short tType = (short)(unsigned char)scnData[tIdx + TERRAIN_TYPE_OFS];
                 if (tType != 2 && tType != 9 && tType != 3)
                     continue;  /* not water/sea/shore: don't draw boat */
             }
@@ -9700,6 +9708,19 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
                             !FogGetBit(sFogVisible[curP], ax, ay))
                             continue;
                     }
+                    /* Armies inside a city are covered by its shield in the
+                     * original; the remake's marker peeked out as a dark
+                     * shadow on the top/left of the grey shields. */
+                    {
+                        short cc, ncity = sCityCount > 139 ? 139 : sCityCount;
+                        Boolean inCity = false;
+                        for (cc = 0; cc < ncity && !inCity; cc++) {
+                            unsigned char *ct = sCityData + cc * 0x20;
+                            short ddx = ax - *(short *)(ct + 0), ddy = ay - *(short *)(ct + 2);
+                            if (ct[0x17] < 2 && ddx >= 0 && ddx <= 1 && ddy >= 0 && ddy <= 1) inCity = true;
+                        }
+                        if (inCity) continue;
+                    }
                     /* Colored dot for army position (68k CODE_128: 7px wide, from -2 to +5) */
                     Rect px;
                     SetRect(&px, r.left + ax * scale - 2, r.top + ay * scale - 2,
@@ -9880,7 +9901,7 @@ static void DrawMinimapInRect(Rect *destRect, short highlightX, short highlightY
                     if (colorIdx >= MINIMAP_PAL_SIZE) colorIdx = 0;
                     RGBForeColor(&sMinimapPalette[colorIdx]);
                 } else if (scnData != NULL) {
-                    short terrainType = (short)(unsigned char)scnData[terrainIdx + 0x711];
+                    short terrainType = (short)(unsigned char)scnData[terrainIdx + TERRAIN_TYPE_OFS];
                     if (terrainType >= NUM_TERRAIN_COLORS) terrainType = 0;
                     RGBForeColor(&sTerrainColors[terrainType]);
                 } else {
@@ -10147,7 +10168,7 @@ static void ShowSiteInfo(short siteIndex)
                             if (colorIdx >= MINIMAP_PAL_SIZE) colorIdx = 0;
                             RGBForeColor(&sMinimapPalette[colorIdx]);
                         } else {
-                            short terrainType = (short)(unsigned char)gs[terrainIdx + 0x711];
+                            short terrainType = (short)(unsigned char)gs[terrainIdx + TERRAIN_TYPE_OFS];
                             if (terrainType >= NUM_TERRAIN_COLORS) terrainType = 0;
                             RGBForeColor(&sTerrainColors[terrainType]);
                         }
@@ -10551,7 +10572,7 @@ static void ShowCityInfo(short cityIndex)
                                     if (colorIdx >= MINIMAP_PAL_SIZE) colorIdx = 0;
                                     RGBForeColor(&sMinimapPalette[colorIdx]);
                                 } else if (scnData2 != NULL) {
-                                    short terrainType = (short)(unsigned char)scnData2[terrainIdx + 0x711];
+                                    short terrainType = (short)(unsigned char)scnData2[terrainIdx + TERRAIN_TYPE_OFS];
                                     if (terrainType >= NUM_TERRAIN_COLORS) terrainType = 0;
                                     RGBForeColor(&sTerrainColors[terrainType]);
                                 } else {
@@ -12425,7 +12446,7 @@ static short GetTerrainType(short mapX, short mapY)
     if (mapX < 0 || mapX >= sMapWidth || mapY < 0 || mapY >= sMapHeight) return -1;
     gs = (unsigned char *)*gGameState;
     mapData = (unsigned char *)*gMapTiles;
-    return (short)gs[mapData[mapY * 0xE0 + mapX * 2] + 0x711];
+    return (short)gs[mapData[mapY * 0xE0 + mapX * 2] + TERRAIN_TYPE_OFS];
 }
 
 
@@ -12437,6 +12458,15 @@ static short GetTerrainType(short mapX, short mapY)
  * "cutting corners" through difficult terrain. Flying units exempt.
  * =================================================================== */
 static Boolean IsDiagonalBlocked(short srcX, short srcY, short dstX, short dstY, short unitClass)
+{
+    /* The original has no corner-cutting rule: all 8 neighbours cost the
+     * same; 68k FUN_000014c2 is the single-step water/land check, which the
+     * cost flags in GetMovementCost already cover. */
+    (void)srcX; (void)srcY; (void)dstX; (void)dstY; (void)unitClass;
+    return false;
+}
+
+static Boolean IsDiagonalBlockedOld(short srcX, short srcY, short dstX, short dstY, short unitClass)
 {
     short dx, dy, srcTT, dstTT;
     Boolean srcRestricted, dstRestricted;
@@ -12542,69 +12572,56 @@ static Boolean HasAdjacentThreat(short x, short y, short owner)
  * =================================================================== */
 static short GetMovementCost(short mapX, short mapY, short unitClass)
 {
-    unsigned char *gs, *mapData;
-    unsigned char terrainIdx, terrainType;
-    short cost;
+    /* The original's rules are hard-coded (68k CODE_042 FUN_00001670 cost map,
+     * CODE_115 FUN_00001a70 wavefront; table at 68k 0x15cbe / PPC data
+     * 0x17576), per terrain type of gs+0x711:
+     *   Road 1, Bridge 1, Water 1 (water), Shore 2 (water), Forest 4,
+     *   Hills 6, Mountains blocked, Plains 2, Marsh 5, "Sea" 2, City 1, Ruin 2.
+     * Road overlay (RD & 0x1F) makes any tile cost 1. Land stacks can't enter
+     * water tiles; units with the hills (DAT byte 0x3A) / forest (0x38)
+     * ability cross those at 2. Flyers pay 1 on road/bridge/city, else 2.
+     * The hero has no abilities and is a land unit (no mountains).
+     * (Foreign cities, which the original blocks except as an attack target,
+     * stay enterable here so the remake's attack paths keep working.) */
+    static const unsigned char kCost[12] = {1, 1, 1, 2, 4, 6, 0, 2, 5, 2, 1, 2};
+    static const unsigned char kFlag[12] = {0x10, 0x18, 0x08, 0x08, 0x50, 0x30,
+                                            0x10, 0x10, 0x10, 0x10, 0x90, 0x10};
+    unsigned char *gs, *mapData, *ute = NULL;
+    short type, c, f;
+    Boolean road = false, flying, naval;
 
     if (*gGameState == 0 || *gMapTiles == 0)
         return 1;
     if (mapX < 0 || mapX >= sMapWidth || mapY < 0 || mapY >= sMapHeight)
         return 0;
-
     gs = (unsigned char *)*gGameState;
     mapData = (unsigned char *)*gMapTiles;
+    type = gs[mapData[mapY * 0xE0 + mapX * 2] + TERRAIN_TYPE_OFS];
+    if (type > 11) type = 7;
+    if (*gRoadData != 0 && mapX < 112 && mapY < 156)
+        road = (((unsigned char *)*gRoadData)[mapY * 112 + mapX] & 0x1F) != 0;
+    c = kCost[type];
+    f = kFlag[type];
+    if (road) c = 1;
 
-    terrainIdx = mapData[mapY * 0xE0 + mapX * 2];
-    terrainType = gs[terrainIdx + 0x711];
+    if (unitClass >= 0 && unitClass < sUnitTypeCount && sUnitTypesLoaded)
+        ute = sUnitTypeTable + unitClass * UNIT_TYPE_ENTRY;
+    flying = (unitClass == UNIT_CLASS_FLIGHT) || (ute && ute[UTE_STAT_FLYING] >= 1);
+    naval  = (ute && ute[UTE_STAT_NAVAL] >= 1);
 
-    /* Flying units (class 0x0E=14): all terrain passable, cost = min(baseCost, 2).
-     * 68k CODE_115 FUN_00001a70: if base cost is 0 (impassable) → 2,
-     * if base cost is 1 (road) → 1, otherwise capped at 2. */
-    if (unitClass == 0x0E) {
-        short flyBase;
-        if (terrainType > 8) return 2;
-        flyBase = (short)(unsigned char)sMoveCostTable[terrainType * 29 + unitClass];
-        if (flyBase <= 0 || flyBase > 2) return 2;
-        return flyBase;
+    if (flying)
+        return (type == 0 || type == 1 || type == 10 || road) ? 1 : 2;
+    if (naval) {
+        if (f & 0x08) return c;                     /* water 1, shore 2 */
+        if (type == 1 || type == 10) return 1;      /* bridge / port city */
+        return 0;
     }
-
-    /* Handle terrain types beyond the 9-entry cost table (0-8).
-     * 68k terrain types: 0=Road, 1=Bridge, 2=Water, 3=Shore, 4=Forest,
-     * 5=Hills, 6=Mountains, 7=Plains, 8=Marsh, 9=Sea, 10=City, 11=Ruin */
-    if (terrainType > 8) {
-        if (terrainType == 9) {
-            /* Deep water/ocean: passable for naval units only.
-             * Check movement cost table for water terrain (type 2);
-             * naval units have cost > 0 for water, all others have 0. */
-            if (unitClass >= 0 && unitClass <= 28 &&
-                sMoveCostTable[2 * 29 + unitClass] > 0)
-                return 2;
-            return 0;
-        }
-        if (terrainType == 10) return 1;  /* city tile: 1, measured on the original
-                                           * (Mirea -> 3 tiles south on the road = 3 MP) */
-        if (terrainType == 11) return 2;  /* ruin/temple: passable, cost 2 */
-        return 2;  /* unknown: moderate */
-    }
-
-    /* Clamp unit class */
-    if (unitClass < 0 || unitClass > 28) unitClass = 0;
-
-    cost = (short)(unsigned char)sMoveCostTable[terrainType * 29 + unitClass];
-    if (cost == 0) return 0;  /* impassable */
-
-    /* Road overlay (RD & 0x1F): the tile costs as road. Measured on the
-     * original: 3 road tiles over plains cost 3 MP (the old "road reduces to
-     * 2" rule charged 6). */
-    if (*gRoadData != 0) {
-        unsigned char *roadData = (unsigned char *)*gRoadData;
-        if (mapX < 112 && mapY < 156 && (roadData[mapY * 112 + mapX] & 0x1F) != 0) {
-            short roadCost = (short)(unsigned char)sMoveCostTable[0 * 29 + unitClass];
-            if (roadCost > 0 && roadCost < cost) cost = roadCost;
-        }
-    }
-
-    return cost;
+    if (!(f & 0x10)) return 0;                      /* land stack into water */
+    if (c == 0) return 0;                           /* mountains */
+    if (c > 2 && ute != NULL &&
+        ((ute[0x3A] && (f & 0x20)) || (ute[0x38] && (f & 0x40))))
+        c = 2;                                      /* hills / forest ability */
+    return c;
 }
 
 
@@ -12681,7 +12698,7 @@ static void ComputePathGridOnly(short srcX, short srcY, short unitClass)
                     short nc, newC;
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -12705,7 +12722,7 @@ static void ComputePathGridOnly(short srcX, short srcY, short unitClass)
                     short nc, newC;
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -12731,7 +12748,7 @@ static void ComputePathGridOnly(short srcX, short srcY, short unitClass)
                     short nc, newC;
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -12755,7 +12772,7 @@ static void ComputePathGridOnly(short srcX, short srcY, short unitClass)
                     short nc, newC;
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -12916,7 +12933,7 @@ static short ComputeWavefrontPath(short srcX, short srcY,
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
                     /* 68k FUN_000014c2: diagonal terrain restriction (types 2/3) */
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -12943,7 +12960,7 @@ static short ComputeWavefrontPath(short srcX, short srcY,
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
                     /* 68k FUN_000014c2: diagonal terrain restriction (types 2/3) */
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -12973,7 +12990,7 @@ static short ComputeWavefrontPath(short srcX, short srcY,
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
                     /* 68k FUN_000014c2: diagonal terrain restriction (types 2/3) */
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -13000,7 +13017,7 @@ static short ComputeWavefrontPath(short srcX, short srcY,
                     if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
                     if (sPathCostGrid[ny * PATH_GRID_W + nx] == PATH_COST_BLOCK) continue;
                     /* 68k FUN_000014c2: diagonal terrain restriction (types 2/3) */
-                    if ((d & 1) && unitClass != 0x0E) {
+                    if (0 && (d & 1)) {   /* no diagonal rule in the original (CODE_115) */
                         unsigned char st = sPathTerrainTypeCache[y * PATH_GRID_W + x];
                         unsigned char dt = sPathTerrainTypeCache[ny * PATH_GRID_W + nx];
                         if ((st == 2 || st == 3) != (dt == 2 || dt == 3)) continue;
@@ -13295,7 +13312,7 @@ static void RemoveArmy(short armyIndex)
                         ax >= 0 && ax < sMapWidth && ay >= 0 && ay < sMapHeight) {
                         unsigned char *md = (unsigned char *)*gMapTiles;
                         unsigned char ti = md[ay * 0xE0 + ax * 2];
-                        unsigned char tt = gs[ti + 0x711];
+                        unsigned char tt = gs[ti + TERRAIN_TYPE_OFS];
                         if (tt == 2) onWater = true;  /* 68k: terrain type 2 (Water) */
                     }
                     for (si = 0; si < ITEM_SLOTS; si++) {
@@ -13491,7 +13508,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
             if (defX >= 0 && defX < sMapWidth && defY >= 0 && defY < sMapHeight) {
                 unsigned char *mapData = (unsigned char *)*gMapTiles;
                 unsigned char terrIdx = mapData[defY * 0xE0 + defX * 2];
-                unsigned char terrType = gs[terrIdx + 0x711];
+                unsigned char terrType = gs[terrIdx + TERRAIN_TYPE_OFS];
                 /* combatOnWater detection removed: embarked cap disabled */
                 switch (terrType) {
                     case 4:             terrainDef = 2; break;  /* forest */
@@ -13532,7 +13549,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                 defY >= 0 && defY < sMapHeight) {
                 unsigned char *mapData3 = (unsigned char *)*gMapTiles;
                 unsigned char terrIdx3 = mapData3[defY * 0xE0 + defX * 2];
-                unsigned char terrType3 = gs[terrIdx3 + 0x711];
+                unsigned char terrType3 = gs[terrIdx3 + TERRAIN_TYPE_OFS];
                 if (terrType3 == 11) {
                     cityDef = 2;  /* castle/citadel: hardcoded 2 */
                 } else if (terrType3 == 10) {
@@ -18578,7 +18595,7 @@ static short GetEffectiveUnitClass(short armyIdx)
     gs = (unsigned char *)*gGameState;
     army = gs + 0x1604 + armyIdx * 0x42;
     unitClass = (short)(unsigned char)army[0x16];
-    if (ArmyHasFlightItem(armyIdx)) unitClass = 0x0E;
+    if (ArmyHasFlightItem(armyIdx)) unitClass = UNIT_CLASS_FLIGHT;
     return unitClass;
 }
 
@@ -24510,7 +24527,7 @@ static void ProcessStartOfTurn(short player)
                               if (!tileOccupied && ti2 > 0 && *gMapTiles != 0) {
                                   unsigned char *md = (unsigned char *)*gMapTiles;
                                   short tidx = (short)md[sy * 0xE0 + sx * 2];
-                                  short ttype = (short)(unsigned char)gs[tidx + 0x711];
+                                  short ttype = (short)(unsigned char)gs[tidx + TERRAIN_TYPE_OFS];
                                   short uc = prodType;
                                   if (uc < 0 || uc > 28) uc = 0;
                                   if (ttype >= 0 && ttype <= 8 &&
@@ -24867,11 +24884,11 @@ static void ProcessStartOfTurn(short player)
             ay2 = *(short *)(army + 0x02);
             if (ax2 < 0 || ax2 >= sMapWidth || ay2 < 0 || ay2 >= sMapHeight) continue;
             /* Check terrain type: fortify on plains, forest, hills, bridge, marsh, sea */
-            ttype = *(unsigned char *)(gs + 0x711 +
+            ttype = *(unsigned char *)(gs + TERRAIN_TYPE_OFS +
                      (mapData[ay2 * 0xE0 + ax2 * 2] >> 0));
             /* Actually read the terrain graphic index from the map tile */
             { unsigned char tileHi = mapData[ay2 * 0xE0 + ax2 * 2];
-              ttype = gs[0x711 + tileHi];
+              ttype = gs[TERRAIN_TYPE_OFS + tileHi];
             }
             shouldFortify = false;
             switch (ttype) {
@@ -29571,7 +29588,7 @@ static void HandleMouseDown(EventRecord *event)
                                 unsigned char *mapData = (unsigned char *)*gMapTiles;
                                 terrIdx = mapData[clickTileY * 0xE0 + clickTileX * 2];
                                 if (*gGameState != 0)
-                                    terrType = (short)(unsigned char)((unsigned char *)*gGameState)[terrIdx + 0x711];
+                                    terrType = (short)(unsigned char)((unsigned char *)*gGameState)[terrIdx + TERRAIN_TYPE_OFS];
                             }
                             TextFont(3); TextSize(9);
                             MoveTo(10, 14);
@@ -31564,7 +31581,7 @@ int main(void)
                         } else {
 
                         terrainIdx = (short)(unsigned char)mapData[(tileY * sMapWidth + tileX) * 2];
-                        short terrainType = (short)(unsigned char)gs[terrainIdx + 0x711];
+                        short terrainType = (short)(unsigned char)gs[terrainIdx + TERRAIN_TYPE_OFS];
                         short moveCost = 0;
                         const unsigned char *tName;
 
