@@ -4965,30 +4965,45 @@ static ConstStr255Param ViewString(Str255 buf, short id, short idx, ConstStr255P
     return buf[0] ? buf : fallback;
 }
 
-/* MacApp T3DButton as the original draws it (pixel-sampled from the scenario
- * picker, colours resolved through pltt 1000): 0xBBBB face, white highlight on
- * the top/left inner edge, two shadow steps (0x7777, 0x5555) on the bottom/right,
- * black outline with rounded (8px oval) corners, and
- * a Chicago 12 label in black over a 0xDDDD +1,+1 emboss. */
+static void DrawEmbossedStringIn(ConstStr255Param s, short x, short baseline, const RGBColor *fg,
+                                 unsigned short darkV, unsigned short lightV);
+
+/* MacApp T3DButton, pixel-exact from the original (Game Setup / picker),
+ * drawn over the whole view rect (L,T)-(R,B):
+ *   black outline with cut corners: rows T and B-1 span L+3..R-4, the next
+ *   rows in have L+1..L+2 / R-3..R-2, then L+1 / R-2, sides at L and R-1;
+ *   face 0xBBBB; white highlight on row T+2 and column L+2; shadows 0x7777
+ *   (column R-3, row B-3) and 0x5555 (column R-2, row B-2); 0x8888 where the
+ *   highlight meets the shadow; label Chicago 12 black over a 0xDDDD emboss. */
 static void DrawT3DButton(const Rect *r, ConstStr255Param label)
 {
     RGBColor face = {0xBBBB, 0xBBBB, 0xBBBB}, white = {0xFFFF, 0xFFFF, 0xFFFF};
     RGBColor sh1 = {0x7777, 0x7777, 0x7777}, sh2 = {0x5555, 0x5555, 0x5555};
-    RGBColor black = {0, 0, 0};
-    Rect f = *r;
+    RGBColor mid = {0x8888, 0x8888, 0x8888}, black = {0, 0, 0};
+    short L = r->left, T = r->top, R = r->right, B = r->bottom;
+    Rect f;
     short w;
 
+    SetRect(&f, L + 1, T + 1, R - 1, B - 1);
+    RGBForeColor(&face); PaintRect(&f);
     RGBForeColor(&black);
-    PaintRoundRect(&f, 8, 8);
-    InsetRect(&f, 1, 1);
-    RGBForeColor(&face);
-    PaintRoundRect(&f, 6, 6);
-    RGBForeColor(&white);                      /* highlight: second row/column */
-    MoveTo(f.left + 1, f.bottom - 3); LineTo(f.left + 1, f.top + 1); LineTo(f.right - 3, f.top + 1);
-    RGBForeColor(&sh1);                        /* inner shadow */
-    MoveTo(f.left + 1, f.bottom - 2); LineTo(f.right - 2, f.bottom - 2); LineTo(f.right - 2, f.top + 1);
-    RGBForeColor(&sh2);                        /* outer shadow */
-    MoveTo(f.left, f.bottom - 1); LineTo(f.right - 1, f.bottom - 1); LineTo(f.right - 1, f.top);
+    MoveTo(L + 3, T); LineTo(R - 4, T);           MoveTo(L + 3, B - 1); LineTo(R - 4, B - 1);
+    MoveTo(L + 1, T + 1); LineTo(L + 2, T + 1);   MoveTo(R - 3, T + 1); LineTo(R - 2, T + 1);
+    MoveTo(L + 1, B - 2); LineTo(L + 2, B - 2);   MoveTo(R - 3, B - 2); LineTo(R - 2, B - 2);
+    MoveTo(L + 1, T + 2); LineTo(L + 1, T + 2);   MoveTo(R - 2, T + 2); LineTo(R - 2, T + 2);
+    MoveTo(L + 1, B - 3); LineTo(L + 1, B - 3);   MoveTo(R - 2, B - 3); LineTo(R - 2, B - 3);
+    MoveTo(L, T + 3); LineTo(L, B - 4);           MoveTo(R - 1, T + 3); LineTo(R - 1, B - 4);
+    RGBForeColor(&white);
+    MoveTo(L + 2, T + 2); LineTo(R - 4, T + 2);   MoveTo(L + 2, T + 3); LineTo(L + 2, B - 4);
+    RGBForeColor(&sh1);
+    MoveTo(L + 3, B - 3); LineTo(R - 4, B - 3);   MoveTo(R - 3, T + 3); LineTo(R - 3, B - 4);
+    MoveTo(R - 4, B - 4); LineTo(R - 4, B - 4);
+    RGBForeColor(&sh2);
+    MoveTo(L + 3, B - 2); LineTo(R - 4, B - 2);   MoveTo(R - 2, T + 3); LineTo(R - 2, B - 4);
+    MoveTo(R - 3, B - 3); LineTo(R - 3, B - 3);
+    RGBForeColor(&mid);
+    MoveTo(R - 3, T + 2); LineTo(R - 3, T + 2);   MoveTo(R - 4, T + 3); LineTo(R - 4, T + 3);
+    MoveTo(L + 3, B - 4); LineTo(L + 3, B - 4);   MoveTo(L + 2, B - 3); LineTo(L + 2, B - 3);
 
     {   /* TxSt 1002 names Chicago explicitly; on 8.5+ font 0 is Charcoal */
         short fnum;
@@ -4997,14 +5012,8 @@ static void DrawT3DButton(const Rect *r, ConstStr255Param label)
     }
     w = StringWidth(label);
     {
-        RGBColor emboss = {0xDDDD, 0xDDDD, 0xDDDD};
         short x = (r->left + r->right - w + 1) / 2;
-        RGBForeColor(&emboss);
-        MoveTo(x + 1, r->bottom - 5);
-        DrawString(label);
-        RGBForeColor(&black);
-        MoveTo(x, r->bottom - 6);
-        DrawString(label);
+        DrawEmbossedStringIn(label, x - 1, r->bottom - 8, &black, 0x8888, 0xDDDD);
     }
 }
 
@@ -6026,47 +6035,36 @@ static void ApplyOptionsPreset(short preset)
  *
  * Weighted sum of option values.
  * =================================================================== */
+/* Options term of the 68k rating (CODE_057 FUN_0000482a): 3 x four option
+ * flags, minus one, plus one, plus the neutral-cities code (gs+0x114:
+ * 15 = +0, 1 = +3, 0 = +6), capped at 20. Default (Beginner) = -1.
+ * PROVISIONAL: which remake options are the four x3 flags (gs+0x11A, 0x11C,
+ * 0x11E, 0x124) and the -1/+1 ones (0x12A, 0x132) still has to be mapped
+ * from View 3021; this mapping reproduces Beginner's -1. */
+static short DifficultyOptionsTerm(void)
+{
+    short opt = 3 * ((sOptQuests ? 1 : 0) + (sOptDiplomacy ? 1 : 0) +
+                     (sOptHiddenMap ? 1 : 0) + (sOptIntenseCombat ? 1 : 0))
+                - (sOptViewEnemies ? 1 : 0);
+    if (sNeutralCities == 1) opt += 3;         /* Strong */
+    else if (sNeutralCities == 2) opt += 6;    /* Active */
+    return opt > 19 ? 20 : opt;
+}
+
+/* Full 68k rating with every AI at 'skillLevel' (0 Knight, 1 Lord, 2 Warlord =
+ * the gs+0xC0 level): each AI adds (level+1)*80/(count*3), >77 -> 80; with no
+ * AI players the AI term is 80. Verified on the original: Erythea opens at 79%
+ * (its SCN has no AI players yet), Knight 25%, Lord 52%. */
 static short CalcDifficultyRating(short skillLevel)
 {
-    short rating = 0;
+    short ai = (short)(((long)(skillLevel + 1) * 80) / 3);
+    if (ai > 77) ai = 80;
+    return DifficultyOptionsTerm() + ai;
+}
 
-    /* Base from Computer Skill level.
-     * Calibrated from original: Knight=25, Lord=52, Warlord=79
-     * skillLevel: 0=Knight, 1=Lord, 2=Warlord */
-    rating += 25 + skillLevel * 27;
-
-    /* Option adjustments.
-     * Calibrated: Beginner=+0, Intermediate=+13, Advanced=+21
-     * Knight+Beginner=25%, Knight+Intermediate=38%, Knight+Advanced=46%
-     * Warlord+Advanced=100% */
-
-    /* Neutral Cities: Average=0, Strong=+3, Active=+6 */
-    rating += sNeutralCities * 3;
-
-    /* Razing Cities: Always=0, OnCapture=+2, Never=+4 */
-    rating += sRazingCities * 2;
-
-    /* Hidden Map: +1 */
-    if (sOptHiddenMap) rating += 1;
-
-    /* No View Enemies: +5 */
-    if (!sOptViewEnemies) rating += 5;
-
-    /* No View Production: +1 */
-    if (!sOptViewProd) rating += 1;
-
-    /* Diplomacy: +3 */
-    if (sOptDiplomacy) rating += 3;
-
-    /* Intense Combat: +1 */
-    if (sOptIntenseCombat) rating += 1;
-
-    /* No Quests: +5 */
-    if (!sOptQuests) rating += 5;
-
-    if (rating > 100) rating = 100;
-    if (rating < 0) rating = 0;
-    return rating;
+static short CalcDifficultyRatingNoAI(void)
+{
+    return DifficultyOptionsTerm() + 80;
 }
 
 
@@ -6534,6 +6532,351 @@ static void ShowEditOptions(void)
 
 
 /* ===================================================================
+ * MacApp "3D" look helpers (pixel-verified against the original on 8.6)
+ * =================================================================== */
+
+/* Embossed text: 0x4444 at (x,y), 0xAAAA at (x+2,y+2), colour at (x+1,y+1).
+ * Used for cluster titles, radio/check labels and sunken texts. */
+static void DrawEmbossedStringIn(ConstStr255Param s, short x, short baseline, const RGBColor *fg,
+                                 unsigned short darkV, unsigned short lightV)
+{
+    RGBColor dark = {darkV, darkV, darkV}, light = {lightV, lightV, lightV};
+    RGBForeColor(&light); MoveTo(x + 2, baseline + 2); DrawString(s);
+    RGBForeColor(&dark);  MoveTo(x, baseline);         DrawString(s);
+    RGBForeColor(fg);     MoveTo(x + 1, baseline + 1); DrawString(s);
+}
+
+/* Labels and sunken texts: dark 0x4444, light 0xAAAA. Other MacApp elements
+ * use the same three layers with their own pair (cluster titles 0x5555/0xBBBB,
+ * button labels 0x8888/0xDDDD), all measured on the original. */
+static void DrawEmbossedString(ConstStr255Param s, short x, short baseline, const RGBColor *fg)
+{
+    DrawEmbossedStringIn(s, x, baseline, fg, 0x4444, 0xAAAA);
+}
+
+static short IlluriaFont(void)
+{
+    short f;
+    GetFNum("\pIlluria", &f);
+    return f ? f : 1602;
+}
+
+static short ChicagoFont(void)
+{
+    short f;
+    GetFNum("\pChicago", &f);
+    return f;
+}
+
+/* T3DCluster: 2px cream frame inset (8 top, 4 left, 2 right/bottom) from the
+ * view rect, broken at the top by an embossed (0x5555/0xBBBB) cream Illuria 17
+ * title drawn 16px in;
+ * the line resumes 13px past the title's pen end (measured on all three
+ * clusters of View 3024). */
+static void DrawT3DCluster(const Rect *v, ConstStr255Param title)
+{
+    RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
+    Rect f;
+    short tx, tw;
+    FontInfo fi;
+
+    SetRect(&f, v->left + 4, v->top + 8, v->right - 2, v->bottom - 2);
+    TextFont(IlluriaFont()); TextSize(17); TextFace(0);
+    GetFontInfo(&fi);
+    tw = StringWidth(title);
+    tx = f.left + 16;
+    RGBForeColor(&cream);
+    PenSize(2, 2);
+    MoveTo(f.left, f.top); LineTo(tx - 4, f.top);                 /* top, left of title */
+    MoveTo(tx + tw + 13, f.top); LineTo(f.right - 2, f.top);      /* resumes 13px past the title */
+    MoveTo(f.left, f.top); LineTo(f.left, f.bottom - 2);          /* left */
+    MoveTo(f.left, f.bottom - 2); LineTo(f.right - 2, f.bottom - 2);  /* bottom */
+    MoveTo(f.right - 2, f.top); LineTo(f.right - 2, f.bottom - 2);    /* right */
+    PenSize(1, 1);
+    DrawEmbossedStringIn(title, tx, v->top + fi.ascent, &cream, 0x5555, 0xBBBB);
+}
+
+/* Centred / left / right embossed text in a TSunkenText view rect. */
+static void DrawSunkenText(const Rect *v, ConstStr255Param s, short font, short size, short just)
+{
+    RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
+    FontInfo fi;
+    short w, x;
+    TextFont(font); TextSize(size); TextFace(0);
+    GetFontInfo(&fi);
+    w = StringWidth(s);
+    x = (just == 1) ? (v->left + v->right - w + 1) / 2 : (just == -1 ? v->right - w : v->left);
+    DrawEmbossedString(s, x, v->top + fi.ascent, &cream);
+}
+
+/* MacApp T3DRadio button art, lifted pixel-exact from the original (12x12,
+ * pltt 1000 indices, -1 = transparent), drawn at the view's (left+2, top+2). */
+static const short kRadioOff[12][12] = {
+    { -1, -1, -1, -1,160,160,160,160, -1, -1, -1, -1},
+    { -1, -1,160,160,  0,  0,  0,  0,160,160, -1, -1},
+    { -1,160,  0,  0,  0,  0,244,244,245,248,160, -1},
+    { -1,160,  0,  0,  0,244,244,245,245,248,160, -1},
+    {160,  0,  0,  0,244,244,245,245,247,248,249,160},
+    {160,  0,  0,244,244,245,245,245,247,248,249,160},
+    {160,  0,  0,244,245,245,245,247,247,248,249,160},
+    {160,  0,  0,244,245,245,247,247,248,248,249,160},
+    { -1,160,  0,245,245,247,247,248,248,249,160, -1},
+    { -1,160,  0,247,247,247,248,248,249,249,160, -1},
+    { -1, -1,160,160,249,249,249,249,160,160, -1, -1},
+    { -1, -1, -1, -1,160,160,160,160, -1, -1, -1, -1},
+};
+static const short kRadioOn[12][12] = {
+    { -1, -1, -1, -1,160,160,160,160, -1, -1, -1, -1},
+    { -1, -1,160,160,249,249,249,249,160,160, -1, -1},
+    { -1,160,249,249,248,248,248,248,247,247,160, -1},
+    { -1,160,249,248,160,160,160,160,247,245,160, -1},
+    {160,249,248,160,160,160,160,160,160,245,  0,160},
+    {160,249,248,160,160,160,160,160,160,244,  0,160},
+    {160,249,248,160,160,160,160,160,160,244,  0,160},
+    {160,249,248,160,160,160,160,160,160,244,  0,160},
+    { -1,160,247,247,160,160,160,160,  0,  0,160, -1},
+    { -1,160,247,245,245,244,244,244,  0,  0,160, -1},
+    { -1, -1,160,160,  0,  0,  0,  0,160,160, -1, -1},
+    { -1, -1, -1, -1,160,160,160,160, -1, -1, -1, -1},
+};
+
+static void DrawPaletteArt(const short *art, short w, short h, short x, short y)
+{
+    short i, j;
+    RGBColor c;
+    for (j = 0; j < h; j++)
+        for (i = 0; i < w; i++) {
+            short idx = art[j * w + i];
+            if (idx < 0 || sGamePal == NULL) continue;
+            GetEntryColor(sGamePal, idx, &c);
+            SetCPixel(x + i, y + j, &c);
+        }
+}
+
+/* MacApp T3DCheckBox, measured on the original: 12x12 black square filled
+ * 0xDDDD at (left+2,top+2), in a 1px bevel dark 0x5555 above/left and light
+ * 0xBBBB below/right. */
+static void DrawT3DCheckBox(short left, short top, Boolean on)
+{
+    RGBColor dark = {0x5555, 0x5555, 0x5555}, light = {0xBBBB, 0xBBBB, 0xBBBB};
+    RGBColor fill = {0xDDDD, 0xDDDD, 0xDDDD}, black = {0, 0, 0};
+    Rect b;
+    RGBForeColor(&dark);
+    MoveTo(left + 1, top + 14); LineTo(left + 1, top + 1); LineTo(left + 14, top + 1);
+    RGBForeColor(&light);
+    MoveTo(left + 2, top + 14); LineTo(left + 14, top + 14); LineTo(left + 14, top + 2);
+    SetRect(&b, left + 2, top + 2, left + 14, top + 14);
+    RGBForeColor(&black); FrameRect(&b);
+    InsetRect(&b, 1, 1);
+    RGBForeColor(&fill); PaintRect(&b);
+    if (on) {   /* corner-to-corner X across the 10x10 interior (captured) */
+        RGBForeColor(&black);
+        MoveTo(b.left, b.top); LineTo(b.right - 1, b.bottom - 1);
+        MoveTo(b.right - 1, b.top); LineTo(b.left, b.bottom - 1);
+    }
+}
+
+#include "mac_ui_art.h"
+
+/* T3DPopup: frame art from the original plus the current item in Chicago 12. */
+static void DrawT3DPopup(short left, short top, ConstStr255Param item)
+{
+    short i, j;
+    RGBColor c, black = {0, 0, 0};
+    for (j = 0; j < POPUP_ART_H; j++)
+        for (i = 0; i < POPUP_ART_W; i++) {
+            if (sGamePal == NULL) break;
+            GetEntryColor(sGamePal, kPopupArt[j][i], &c);
+            SetCPixel(left + i, top + j, &c);
+        }
+    TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+    RGBForeColor(&black);
+    {   /* the original clips the item to the text area (cuts the 'g' tail) */
+        Rect clip;
+        RgnHandle saved = NewRgn();
+        GetClip(saved);
+        SetRect(&clip, left + 4, top + 3, left + 105, top + 15);
+        ClipRect(&clip);
+        MoveTo(left + 6, top + 13);
+        DrawString(item);
+        SetClip(saved);
+        DisposeRgn(saved);
+    }
+}
+
+static void DrawT3DRadio(short left, short top, Boolean on)
+{
+    DrawPaletteArt(on ? &kRadioOn[0][0] : &kRadioOff[0][0], 12, 12, left + 2, top + 2);
+}
+
+/* ===================================================================
+ * RunEasyGameSetup — View 3024 "Easy game setup" (the original's default
+ * Game Setup). 353x286 altDBoxProc window centred below the menu bar.
+ * Radios, checkbox and popup are real Control Manager controls: on 8.6 the
+ * original's T3D controls are the Appearance (Platinum) CDEFs with labels
+ * drawn embossed by MacApp. Returns 0 = Begin Game, 1 = More Choices,
+ * 2 = cancelled (Escape).
+ * =================================================================== */
+#define EASY_W 353
+#define EASY_H 286
+static short RunEasyGameSetup(char names[][FACTION_NAME_LEN + 1], short factionCount,
+                              short *side, short *skill)
+{
+    WindowPtr win;
+    Rect wr, r;
+    short i, result = -1, mbar = GetMBarHeight();
+    Rect screen = qd.screenBits.bounds;
+    MenuHandle presetMenu;
+    Rect editR, moreR, goR, goBtn, popR;
+    Str255 s;
+    static const short compStr[3] = {13, 14, 5};   /* STR# 3020: Knight, Lord, Warlord */
+    Boolean aiAssigned = false;
+
+    /* MacApp centres the window including altDBoxProc's 2px shadow */
+    SetRect(&wr, (screen.right - (EASY_W + 2)) / 2, mbar + (screen.bottom - mbar - (EASY_H + 2)) / 2, 0, 0);
+    wr.right = wr.left + EASY_W; wr.bottom = wr.top + EASY_H;
+    win = NewCWindow(NULL, &wr, "\p", false, altDBoxProc, (WindowPtr)-1L, false, 0);
+    if (win == NULL) return 2;
+    ApplyGamePalette(win);
+    SetPort(win);
+    TextFont(ChicagoFont()); TextSize(12);     /* control titles / popup use the window font */
+
+
+    presetMenu = NewMenu(240, "\p");                 /* CMNU 70 items */
+    AppendMenu(presetMenu, "\pBeginner;Intermediate;Advanced");
+    InsertMenu(presetMenu, -1);
+    SetRect(&popR, 179 + 16, 132 + 20, 179 + 16 + 132, 132 + 20 + 19);   /* 'popu' */
+
+    SetRect(&editR, 179 + 16, 132 + 49, 179 + 16 + 132, 132 + 49 + 21);
+    SetRect(&moreR, 13, 252, 13 + 132, 252 + 21);
+    SetRect(&goR, 204, 248, 204 + 140, 248 + 29);
+    goBtn = goR; InsetRect(&goBtn, 4, 4);
+
+    ShowWindow(win);
+    FlushEvents(everyEvent, 0);
+
+    while (result < 0) {
+        EventRecord evt;
+        if (!WaitNextEvent(everyEvent, &evt, 30, NULL)) continue;
+        if (evt.what == updateEvt && (WindowPtr)evt.message == win) {
+            RGBColor black = {0, 0, 0};
+            BeginUpdate(win);
+            {   /* TPlainPicture: PICT 1001 marble at the origin */
+                PicHandle marble = GetPicture(1001);
+                if (marble != NULL) {
+                    Rect pf = (**marble).picFrame;
+                    OffsetRect(&pf, -pf.left, -pf.top);
+                    DrawPicture(marble, &pf);
+                }
+            }
+            SetRect(&r, 0, 8, EASY_W, 48);
+            DrawSunkenText(&r, ViewString(s, 3010, 20, "\pGame setup"), IlluriaFont(), 36, 1);
+
+            SetRect(&r, 9, 48, 9 + 162, 48 + 166);
+            DrawT3DCluster(&r, ViewString(s, 3020, 11, "\pSide to play"));
+            SetRect(&r, 179, 48, 179 + 162, 48 + 81);
+            DrawT3DCluster(&r, ViewString(s, 3020, 12, "\pComputer Level"));
+            SetRect(&r, 179, 132, 179 + 162, 132 + 108);
+            DrawT3DCluster(&r, ViewString(s, 3020, 4, "\pOptions"));
+
+            TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+            for (i = 0; i < factionCount && i < MAX_FACTIONS; i++) {
+                Rect sh;
+                RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
+                short n = 0;
+                SetRect(&sh, 9 + 11, 48 + 21 + 17 * i, 9 + 11 + 11, 48 + 21 + 17 * i + 14);
+                DrawSmallShieldIcon(i, &sh);           /* TPicCopyView, native 11x14 */
+                DrawT3DRadio(9 + 22, 48 + 20 + 17 * i, i == *side);
+                while (n < FACTION_NAME_LEN && names[i][n]) n++;
+                s[0] = (unsigned char)n; BlockMoveData(names[i], s + 1, n);
+                DrawEmbossedString(s, 9 + 22 + 17, 48 + 20 + 17 * i + 11, &cream);
+            }
+            for (i = 0; i < 3; i++) {
+                RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
+                DrawT3DRadio(179 + 14, 48 + 20 + 17 * i, i == *skill);
+                DrawEmbossedString(ViewString(s, 3020, compStr[i], "\p"), 179 + 14 + 17,
+                                   48 + 20 + 17 * i + 11, &cream);
+            }
+            {
+                RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
+                DrawT3DCheckBox(179 + 14, 132 + 80, sIAmGreatest);
+                DrawEmbossedString(ViewString(s, 3020, 2, "\pI am the Greatest"), 179 + 14 + 17,
+                                   132 + 80 + 11, &cream);
+            }
+            {
+                Str255 num, line;
+                /* The original rates the game state's AI players: none until a
+                 * side / level radio is clicked (SCNs ship without AIs). */
+                short rating = aiAssigned ? CalcDifficultyRating(*skill) : CalcDifficultyRatingNoAI();
+                NumToString((long)rating, num);
+                BlockMoveData("\pDifficulty Rating ", line, 19);
+                BlockMoveData(num + 1, line + 1 + line[0], num[0]); line[0] += num[0];
+                line[++line[0]] = '%';
+                SetRect(&r, 10, 220, 10 + 162, 220 + 19);
+                DrawSunkenText(&r, line, IlluriaFont(), 17, 1);
+            }
+            DrawT3DButton(&editR, ViewString(s, 3010, 9, "\pEdit Options\311"));
+            DrawT3DButton(&moreR, ViewString(s, 3010, 21, "\pMore Choices"));
+            RGBForeColor(&black);
+            PenSize(3, 3); FrameRoundRect(&goR, 16, 16); PenSize(1, 1);
+            DrawT3DButton(&goBtn, ViewString(s, 3010, 11, "\pBegin Game"));
+            {
+                Str255 item;
+                GetMenuItemText(presetMenu, sOptionsPreset + 1, item);
+                DrawT3DPopup(popR.left, popR.top, item);
+            }
+            EndUpdate(win);
+        } else if (evt.what == mouseDown) {
+            WindowPtr hit;
+            Point pt = evt.where;
+            if (FindWindow(pt, &hit) != inContent || hit != win) continue;
+            GlobalToLocal(&pt);
+            {   /* T3DRadio views: the whole 16-tall row is the hit area */
+                Rect rr;
+                for (i = 0; i < factionCount && i < MAX_FACTIONS; i++) {
+                    SetRect(&rr, 9 + 22, 48 + 20 + 17 * i, 9 + 22 + 135, 48 + 20 + 17 * i + 16);
+                    if (PtInRect(pt, &rr)) { *side = i; aiAssigned = true; InvalRect(&win->portRect); }
+                }
+                for (i = 0; i < 3; i++) {
+                    SetRect(&rr, 179 + 14, 48 + 20 + 17 * i, 179 + 14 + 140, 48 + 20 + 17 * i + 16);
+                    if (PtInRect(pt, &rr)) { *skill = i; aiAssigned = true; InvalRect(&win->portRect); }
+                }
+                SetRect(&rr, 179 + 14, 132 + 80, 179 + 14 + 138, 132 + 80 + 16);   /* 'grea' */
+                if (PtInRect(pt, &rr)) { sIAmGreatest = !sIAmGreatest; InvalRect(&win->portRect); }
+            }
+            if (PtInRect(pt, &popR)) {
+                Point g;
+                long choice;
+                g.h = popR.left; g.v = popR.top;
+                LocalToGlobal(&g);
+                choice = PopUpMenuSelect(presetMenu, g.v, g.h, sOptionsPreset + 1);
+                if ((choice & 0xFFFF) != 0) {
+                    sOptionsPreset = (short)(choice & 0xFFFF) - 1;
+                    ApplyOptionsPreset(sOptionsPreset);
+                }
+                InvalRect(&win->portRect);   /* difficulty rating may change */
+            } else if (PtInRect(pt, &goR)) {
+                result = 0;
+            } else if (PtInRect(pt, &moreR)) {
+                result = 1;
+            } else if (PtInRect(pt, &editR)) {
+                ShowEditOptions();
+                SetPort(win);
+                InvalRect(&win->portRect);
+            }
+        } else if (evt.what == keyDown) {
+            char key = evt.message & charCodeMask;
+            if (key == 0x0D || key == 0x03) result = 0;
+            else if (key == 0x1B) result = 2;
+        }
+    }
+    DisposeWindow(win);
+    DeleteMenu(240);
+    DisposeMenu(presetMenu);
+    return result;
+}
+
+/* ===================================================================
  * ShowGameSetup — Display game setup dialog
  *
  * Shows a modal window where the player chooses their faction and
@@ -6579,9 +6922,20 @@ static Boolean ShowGameSetup(void)
     if (factionCount == 0)
         factionCount = MAX_FACTIONS;
 
+    /* The original's default setup is View 3024 (easy); "More Choices" opens
+     * the expanded one, still the remake's own layout below. */
+    {
+        short easy = RunEasyGameSetup(factionNames, factionCount, &selectedSide, &computerSkill);
+        for (i = 0; i < factionCount; i++)
+            sFactionAI[i] = (i == selectedSide) ? 0 : (sIAmGreatest ? 1 : computerSkill + 1);
+        if (easy == 0)      { done = true; beginGame = true; }
+        else if (easy == 2) { done = true; }
+        else                showMoreChoices = true;
+    }
+
     /* Simple mode: 460x340 */
-    winW = 460;
-    winH = 340;
+    winW = showMoreChoices ? 560 : 460;
+    winH = showMoreChoices ? 420 : 340;
 
     SetRect(&winRect,
         (screenRect.right - winW) / 2,
@@ -6589,13 +6943,15 @@ static Boolean ShowGameSetup(void)
         (screenRect.right - winW) / 2 + winW,
         (screenRect.bottom - winH) / 2 + winH);
 
-    setupWin = NewCWindow(NULL, &winRect, "\p", false,
+    setupWin = done ? NULL : NewCWindow(NULL, &winRect, "\p", false,
                           plainDBox, (WindowPtr)-1L, false, 0);
-    if (setupWin == NULL)
+    if (setupWin == NULL && !done)
         return false;
 
-    SetPort(setupWin);
-    ShowWindow(setupWin);   /* show up front — we draw directly now (the old
+    if (setupWin != NULL) {
+        SetPort(setupWin);
+        ShowWindow(setupWin);
+    }   /* show up front — we draw directly now (the old
                              * ShowWindow lived inside the offscreen-blit block). */
 
     {
@@ -7629,7 +7985,10 @@ static Boolean ShowGameSetup(void)
         /* Set AI difficulty per-faction (Knight=1, Lord=2, Warlord=3) */
         for (i = 0; i < factionCount; i++) {
             if (sFactionAI[i] > 0) {
-                *(short *)(gs + 0xc0 + i * 2) = sFactionAI[i];  /* AI level */
+                /* 68k encoding (verified via the difficulty rating on the
+                 * original): Knight 0, Lord 1, Warlord 2; 3 = not used.
+                 * sFactionAI is 1..3 = Knight..Warlord. */
+                *(short *)(gs + 0xc0 + i * 2) = sFactionAI[i] - 1;  /* AI level */
             } else {
                 *(short *)(gs + 0xc0 + i * 2) = 0;  /* Human */
             }
@@ -7707,7 +8066,7 @@ static Boolean ShowGameSetup(void)
 
     if (offscreen != NULL)
         DisposeGWorld(offscreen);
-    DisposeWindow(setupWin);
+    if (setupWin != NULL) DisposeWindow(setupWin);
     return beginGame;
 }
 

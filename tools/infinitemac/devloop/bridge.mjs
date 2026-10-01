@@ -123,6 +123,7 @@ http.createServer(async (req, res) => {
         await page.mouse.up();
         return reply(200, 'ok');
       }
+      case '/move': await page.mouse.move(+q('x'), +q('y'), { steps: 5 }); return reply(200, 'ok');
       case '/key': await page.keyboard.press(q('k')); return reply(200, 'ok');
       case '/type': await page.keyboard.type(q('t'), { delay: 50 }); return reply(200, 'ok');
       case '/push': return reply(200, await push(path.resolve(q('path'))));

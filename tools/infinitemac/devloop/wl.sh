@@ -10,6 +10,7 @@ case "$cmd" in
   shot)   curl -s "$B/shot?name=$(enc "${1:-shot_$(date +%H%M%S)}")" ;;
   click)  curl -s "$B/click?x=$1&y=$2" ;;
   dbl)    curl -s "$B/click?x=$1&y=$2&dbl=1" ;;
+  move)   curl -s "$B/move?x=$1&y=$2" ;;
   drag)   curl -s "$B/drag?x1=$1&y1=$2&x2=$3&y2=$4" ;;
   key)    curl -s "$B/key?k=$(enc "$1")" ;;
   type)   curl -s "$B/type?t=$(enc "$1")" ;;
