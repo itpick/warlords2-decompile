@@ -1,0 +1,2 @@
+{"steps":[{"click":[608,512]},{"wait":12000},{"shot":"splash"},
+          {"click":[510,320]},{"wait":6000},{"shot":"hero"}]}
