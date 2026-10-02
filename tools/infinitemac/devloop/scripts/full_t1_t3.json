@@ -1,0 +1,782 @@
+{
+"steps": [
+{
+"rec": "start"
+},
+{
+"audio": "start"
+},
+{
+"click": [
+360,
+350
+]
+},
+{
+"wait": 800
+},
+{
+"click": [
+372,
+547
+]
+},
+{
+"wait": 10000
+},
+{
+"shot": "sound_erythea.setup"
+},
+{
+"click": [
+608,
+512
+]
+},
+{
+"wait": 12000
+},
+{
+"shot": "sound_erythea.splash"
+},
+{
+"click": [
+510,
+320
+]
+},
+{
+"wait": 8000
+},
+{
+"shot": "sound_erythea.hero"
+},
+{
+"click": [
+703,
+470
+]
+},
+{
+"wait": 6000
+},
+{
+"shot": "sound_erythea.city"
+},
+{
+"click": [
+718,
+455
+]
+},
+{
+"wait": 6000
+},
+{
+"shot": "sound_erythea.map"
+},
+{
+"shot": "select_army.before"
+},
+{
+"click": [
+398,
+380
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "select_army.selected"
+},
+{
+"click": [
+398,
+500
+]
+},
+{
+"wait": 1500
+},
+{
+"shot": "move_army.click1"
+},
+{
+"wait": 4000
+},
+{
+"shot": "move_army.after4s"
+},
+{
+"click": [
+438,
+500
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "step_east.e1"
+},
+{
+"click": [
+478,
+500
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "step_east.e2"
+},
+{
+"click": [
+518,
+500
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "step_east.e3"
+},
+{
+"click": [
+939,
+448
+]
+},
+{
+"wait": 3000
+},
+{
+"shot": "end_turn.t3s"
+},
+{
+"wait": 7000
+},
+{
+"shot": "end_turn.t10s"
+},
+{
+"wait": 10000
+},
+{
+"shot": "end_turn.t20s"
+},
+{
+"click": [
+512,
+330
+]
+},
+{
+"wait": 5000
+},
+{
+"click": [
+617,
+470
+],
+"orig": null
+},
+{
+"wait": 3000,
+"orig": null
+},
+{
+"shot": "hover_path.turn2"
+},
+{
+"click": [
+478,
+500
+]
+},
+{
+"wait": 2000
+},
+{
+"shot": "hover_path.sel"
+},
+{
+"move": [
+598,
+580
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "hover_path.hover"
+},
+{
+"down": [
+478,
+500
+]
+},
+{
+"wait": 600
+},
+{
+"up_hold": 1
+},
+{
+"move": [
+518,
+540
+]
+},
+{
+"wait": 800
+},
+{
+"move": [
+558,
+580
+]
+},
+{
+"wait": 1500
+},
+{
+"shot": "drag_test.armydrag_mid"
+},
+{
+"up": [
+558,
+580
+]
+},
+{
+"wait": 3000
+},
+{
+"shot": "drag_test.armydrag_end"
+},
+{
+"down": [
+300,
+660
+]
+},
+{
+"wait": 400
+},
+{
+"move": [
+250,
+660
+]
+},
+{
+"wait": 800
+},
+{
+"move": [
+200,
+660
+]
+},
+{
+"wait": 1500
+},
+{
+"shot": "drag_test.mapdrag_mid"
+},
+{
+"up": [
+200,
+660
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "drag_test.mapdrag_end"
+},
+{
+"down": [
+900,
+150
+]
+},
+{
+"wait": 400
+},
+{
+"move": [
+930,
+180
+]
+},
+{
+"wait": 800
+},
+{
+"move": [
+960,
+210
+]
+},
+{
+"wait": 1500
+},
+{
+"shot": "drag_test.minidrag_mid"
+},
+{
+"up": [
+960,
+210
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "drag_test.minidrag_end"
+},
+{
+"click": [
+939,
+448
+]
+},
+{
+"wait": 25000
+},
+{
+"click": [
+512,
+330
+]
+},
+{
+"wait": 5000
+},
+{
+"click": [
+617,
+470
+],
+"orig": null
+},
+{
+"wait": 3000,
+"orig": null
+},
+{
+"shot": "fight_turn3.t3"
+},
+{
+"click": [
+518,
+660
+]
+},
+{
+"wait": 2000
+},
+{
+"shot": "fight_turn3.t3sel"
+},
+{
+"click": [
+478,
+660
+]
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight00"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight01"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight02"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight03"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight04"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight05"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight06"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight07"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight08"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight09"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight10"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight11"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight12"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight13"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight14"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight15"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight16"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight17"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight18"
+},
+{
+"wait": 500
+},
+{
+"shot": "fight_turn3.fight19"
+},
+{
+"click": [
+460,
+565
+]
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b00"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b01"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b02"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b03"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b04"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b05"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b06"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b07"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b08"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b09"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b10"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b11"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b12"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b13"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b14"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b15"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b16"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b17"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b18"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b19"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b20"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b21"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b22"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b23"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b24"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b25"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b26"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b27"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b28"
+},
+{
+"wait": 350
+},
+{
+"shot": "battle.b29"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c00"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c01"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c02"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c03"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c04"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c05"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c06"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c07"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c08"
+},
+{
+"wait": 1500
+},
+{
+"shot": "battle.c09"
+},
+{
+"click": [
+510,
+300
+]
+},
+{
+"wait": 3500
+},
+{
+"shot": "battle.victory"
+},
+{
+"audio": "stop"
+},
+{
+"rec": "stop"
+}
+]
+}

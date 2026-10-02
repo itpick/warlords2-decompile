@@ -197,6 +197,68 @@ frames 0.1–0.4% different from the original, silent in both.
   roll yet.
 - **Cursor art:** the "can't reach" cursor still differs slightly.
 
+## Turns 2-3: drag, view, battle, capture (later pass)
+
+- **View follows the stack** (PPC FUN_100836dc, 68k CODE_067 FUN_00000340):
+  selecting a stack, and its moves, keep a box of up to 280px around its tile
+  on screen. If the box is visible nothing scrolls; if the tile is off screen
+  the view centres on it; otherwise it scrolls the minimum (TScroller::RevealRect).
+  Turn-3 selection went from 31% to 0.5% different.
+- **Every human turn starts centred on the capital** (turn 3 after a scrolled
+  turn 2). The earlier "one human: no recentre" reading was untestable on turn 2.
+- **A path that stops short of its destination deselects the stack** and keeps
+  its orders (turn 2 drag past Myre). Drag frames now 0.2-0.4%.
+- **Cities are 2x2**: entering any tile of a foreign or neutral city attacks the
+  whole city (every army inside defends); the attackers stay on the tile they
+  entered; an empty city is taken by a "battle" with no defenders. Before, an
+  army could stand on a neutral city's other tiles.
+- **Battle presentation** (PPC FUN_1002d93c chain), replacing the remake's
+  "Battle Results" dialog and red flashing box:
+  - WAR (PICT 10003, 128x120) drawn over the target at tile-40, snd WAR (1035)
+    played to the end (~2 s) before the window.
+  - View 4400: 320x312 altDBox; marble PICT 1001 at (-20,-10); bands at
+    (9,19) and (9,179), 302x50 (+30 per extra row of 8 defenders),
+    T3DFrameAdorner, grey 0xCCCC; shields from the big shield sheet
+    (side*32, 0, 32x36) at (16,26)/(16,186), neutral = column 8.
+  - Units: rows of 8, full row x = 50+32i, a row of m centred at
+    x = 178-16m+32i; sprite at (x, y+4); y 26/56/86/116 (defenders), 186.
+  - Kills: 25 ticks, then each: PICT 30010 (32,0) 32x29 explosion, snd ARMY
+    (attacker unit died) / ARMY2 (defender unit died), 25 ticks, cell refilled,
+    40 ticks. A click or key makes the rest silent and fast (10+15 ticks).
+  - Result in lin1/lin2 (Illuria 17 cream, y 251/271): "%s has won the
+    battle!" / "Your armies have won the city!" / "You are victorious!" /
+    "You have lost!", the loot line, or a "garrison has fled" line first for
+    an empty city. Waits for a click (AI attacks close by themselves).
+  - Recorded on the original: SND_WAR at 0.5 s, ARMY2 at 3.2 s, nothing else.
+- **Victory (View 3800, PPC FUN_100472f4)** replaces the remake's capture
+  notice and keep/pillage/raze box: PICT 1016 frame, PICT 3800 art,
+  "Victory!", "%s, you have triumphed" (random of 4, hero or player name),
+  "in the battle of %s" (random of 3, city), "The city is yours!",
+  "Will you...", buttons Occupy (default) / Pillage / Sack / Raze.
+  - Occupy opens the city window (confirmed on the original).
+  - Pillage: half the buy price (stat 4) of the last production slot; that
+    slot is removed. Dimmed when that is 0.
+  - Sack: half the buy price of every slot but the first; those slots go.
+    Dimmed with fewer than two slots.
+  - Raze: View 1020 "%s is in ruins!", the city turns neutral, ruin tiles
+    0xA0 + 2*capturer. Dimmed when razing is not allowed.
+  - Losing a city has no window in the original.
+- **Music** (PPC FUN_10092484, tunes by name from DAT 1002 groups): human
+  turns loop one of RINT 0/4/6/9/10/16/17/23; AI turns play one of RINT
+  2/3/5/7/13 once; game won RINT12/RINT21; hero offer RINT11; temple RINT1/8;
+  sage 14; promotion 15; medal 18; peace offer 19 / rejected 20. There is no
+  battle music. The remake played a random tune from all 24, including the
+  game-won tune during play.
+- **Movies:** `compare.mjs` steps `{"rec":"start"}` / `{"rec":"stop"}`
+  screenshot each emulator at ~12 fps with real timestamps and build
+  `.devloop/movies/<script>_{orig,remake,sbs}.mp4` (the canvas can't be
+  captured with MediaRecorder). `scripts/full_t1_t3.json` plays turns 1-3,
+  the attack on Myre and the Victory screen.
+
+Still open from this pass: the pillage/sack result window (View 3810), medals
+(View 4410, skipped for now), AI-attack status-bar messages, paid hero offers
+on turns 2-3 that the original doesn't make, and a boat sprite seen on land.
+
 ## Open items
 
 - City window tabs Info / Build / Vectoring (Views 3301 / 3302 / 3304).
@@ -218,5 +280,7 @@ frames 0.1–0.4% different from the original, silent in both.
 2. **Multi-turn runs:** script several full turns on both emulators.
    Compare screens, sounds and the save-game state (`savedec.py`) after
    each turn.
-3. **A complete game:** once the above holds, play one game to the end in
+3. **Water:** board a boat from a port, move at sea, land again, and fight
+   at sea, side by side (boarding penalty, boat sprites, naval combat).
+4. **A complete game:** once the above holds, play one game to the end in
    both (a small scenario), checking the victory flow, history and reports.

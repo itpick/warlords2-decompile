@@ -207,10 +207,19 @@ static void CleanupSoundSystem(void)
 
 /* ===== Music System (QuickTime Tune Player) ===== */
 /* Music state constants for LoadAndPlayMusic dispatcher */
-#define MUSIC_STATE_TITLE    0
-#define MUSIC_STATE_TURN     1
-#define MUSIC_STATE_BATTLE   3
-#define MUSIC_STATE_VICTORY  4
+/* The original's music states (PPC FUN_10092484 SelectMusic, tunes by name
+ * from the DAT 1002 groups 0x08-0x13; Tune/Head 1000+n = RINTn, 1024 RSTARTUP) */
+#define MUSIC_STATE_TITLE    0   /* RSTARTUP, loops */
+#define MUSIC_STATE_TURN     1   /* human turn: RINT 0/4/6/9/10/16/17/23, loops */
+#define MUSIC_STATE_AITURN   2   /* computer turn: RINT 2/3/5/7/13, once */
+#define MUSIC_STATE_VICTORY  3   /* game won: RINT12 (2 in 3) / RINT21, loops */
+#define MUSIC_STATE_HERO     4   /* hero offer: RINT11 */
+#define MUSIC_STATE_TEMPLE   5   /* RINT1 / RINT8 */
+#define MUSIC_STATE_SAGE     6   /* RINT14 */
+#define MUSIC_STATE_PROMOTE  7   /* RINT15 */
+#define MUSIC_STATE_MEDAL    8   /* RINT18 */
+#define MUSIC_STATE_PEACE    9   /* RINT19 */
+#define MUSIC_STATE_PEACENO 10   /* RINT20 */
 
 /* Types and forward declarations for Component Manager / QTMA
  * (not in Retro68 multiversal headers) */
@@ -310,38 +319,41 @@ static void CleanupMusicSystem(void)
 #define TUNE_RINT_BASE 1000  /* RINT0=1000 .. RINT23=1023 */
 #define TUNE_RINT_COUNT 24
 
+static Boolean gMusicLoop = false;
+
 static void LoadAndPlayMusic(short state)
 {
+    static const short kTurn[8] = {0, 4, 6, 9, 10, 16, 17, 23};
+    static const short kAI[5] = {2, 3, 5, 7, 13};
+    static const short kWon[3] = {12, 21, 12};
     Handle tuneH, headH;
     long fixedVol;
     short tuneID;
 
-    if (!gMusicEnabled || sSoundMusic == 0) return;
+    if (!gMusicEnabled || sSoundMusic == 0) { gCurrentMusicState = state; return; }
     if (gTunePlayer == NULL) return;
-    if (state == gCurrentMusicState) return;
+    if (state == gCurrentMusicState && gTuneDataH != NULL) return;   /* already playing */
 
-    /* Stop current music */
     StopMusic();
     gCurrentMusicState = state;
+    gMusicLoop = (state != MUSIC_STATE_AITURN);
 
-    /* Pick tune resource ID based on game state */
+#define RND(n) ((short)((unsigned short)Random() % (n)))
     switch (state) {
-        case MUSIC_STATE_TITLE:
-            tuneID = TUNE_RSTARTUP;  /* 1024 = RSTARTUP */
-            break;
-        case MUSIC_STATE_TURN:
-            /* Random from RINT0-RINT23 (24 in-game tracks) */
-            tuneID = TUNE_RINT_BASE + (short)(TickCount() % TUNE_RINT_COUNT);
-            break;
-        case MUSIC_STATE_BATTLE:
-            tuneID = TUNE_RINT_BASE + 8;  /* RINT8 */
-            break;
-        case MUSIC_STATE_VICTORY:
-            tuneID = TUNE_RINT_BASE + 9;  /* RINT9 */
-            break;
-        default:
-            return;
+        case MUSIC_STATE_TITLE:   tuneID = TUNE_RSTARTUP; break;
+        case MUSIC_STATE_TURN:    tuneID = TUNE_RINT_BASE + kTurn[RND(8)]; break;
+        case MUSIC_STATE_AITURN:  tuneID = TUNE_RINT_BASE + kAI[RND(5)]; break;
+        case MUSIC_STATE_VICTORY: tuneID = TUNE_RINT_BASE + kWon[RND(3)]; break;
+        case MUSIC_STATE_HERO:    tuneID = TUNE_RINT_BASE + 11; break;
+        case MUSIC_STATE_TEMPLE:  tuneID = TUNE_RINT_BASE + (RND(2) ? 8 : 1); break;
+        case MUSIC_STATE_SAGE:    tuneID = TUNE_RINT_BASE + 14; break;
+        case MUSIC_STATE_PROMOTE: tuneID = TUNE_RINT_BASE + 15; break;
+        case MUSIC_STATE_MEDAL:   tuneID = TUNE_RINT_BASE + 18; break;
+        case MUSIC_STATE_PEACE:   tuneID = TUNE_RINT_BASE + 19; break;
+        case MUSIC_STATE_PEACENO: tuneID = TUNE_RINT_BASE + 20; break;
+        default: return;
     }
+#undef RND
 
     /* Load Tune and Head resources by ID (searches all open resource files) */
     tuneH = GetResource('Tune', tuneID);
@@ -395,6 +407,23 @@ static void LoadAndPlayMusic(short state)
 
     /* Set volume again after queue (matches original pattern) */
     TuneSetVolume(gTunePlayer, fixedVol);
+}
+
+
+/* FUN_100929a0: a looping state re-queues the same tune when it ends. */
+typedef struct { unsigned long *tune; unsigned long *tunePtr; long time;
+                 short queueCount; short queueSpots; long queueTime; long reserved[3]; } WLTuneStatus;
+extern pascal ComponentResult TuneGetStatus(ComponentInstance tp, WLTuneStatus *status);
+static void MusicIdle(void)
+{
+    static unsigned long last = 0;
+    WLTuneStatus st;
+    if (!gMusicEnabled || gTunePlayer == NULL || gTuneDataH == NULL || !gMusicLoop) return;
+    if (TickCount() - last < 30) return;
+    last = TickCount();
+    if (TuneGetStatus(gTunePlayer, &st) == 0 && st.queueCount == 0)
+        TuneQueue(gTunePlayer, (unsigned long *)*gTuneDataH, (Fixed)0x10000L, 0,
+                  (unsigned long)-1L, 0, (TuneCallBackUPP)NULL, 0);
 }
 
 /* PlayVoice — play a voice narration snd on the voice channel */
@@ -1407,6 +1436,9 @@ static void DrawArmyGhostAt(short owner, short spriteIdx, short x, short y);
 static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
+static void DrawT3DFrame(const Rect *v);
+static void GetDATRawString(short rawIdx, Str255 out);
+static void FormatHeroLine(ConstStr255Param fmt, ConstStr255Param city, short num, Str255 out);
 #define kOvFrame    1   /* viewport frame (overview window) */
 #define kOvOverlays 2   /* shields, ruins, armies (not in the city window) */
 static void DrawOverviewTo(GrafPtr port, Rect r, short flags);
@@ -1558,6 +1590,51 @@ static void CenterViewportOn(short tx, short ty)
     if (py < 0) py = 0;
     sViewportX = (short)(px / TERRAIN_TILE_W);  sViewPixX = (short)(px % TERRAIN_TILE_W);
     sViewportY = (short)(py / TERRAIN_TILE_H);  sViewPixY = (short)(py % TERRAIN_TILE_H);
+}
+
+/* RevealTile — PPC FUN_100836dc / 68k CODE_067 FUN_00000340 (TMapView), run
+ * when a stack is selected and after it moves.  Keeps a box of up to 280px
+ * centred on the tile inside the view: if the box is already visible nothing
+ * scrolls; if the tile itself is off screen the view centres on it; otherwise
+ * it scrolls the minimum (MacApp TScroller::RevealRect) to show the box. */
+static void RevealTile(short tx, short ty)
+{
+    long viewW, viewH, vl, vt, bw, bh, bl, bt, tl, tt, maxX, maxY;
+    Rect p;
+    if (*gMainGameWindow == 0) { CenterViewportOn(tx, ty); return; }
+    p = ((WindowPtr)*gMainGameWindow)->portRect;
+    viewW = p.right - p.left - SCROLLBAR_W;
+    viewH = p.bottom - p.top - SCROLLBAR_H;
+    vl = (long)sViewportX * TERRAIN_TILE_W + sViewPixX;
+    vt = (long)sViewportY * TERRAIN_TILE_H + sViewPixY;
+    bw = viewW < 280 ? viewW : 280;
+    bh = viewH < 280 ? viewH : 280;
+    tl = (long)tx * TERRAIN_TILE_W;  tt = (long)ty * TERRAIN_TILE_H;
+    bl = tl + (TERRAIN_TILE_W - bw) / 2;
+    bt = tt + (TERRAIN_TILE_H - bh) / 2;
+    if (bl >= vl && bt >= vt && bl + bw <= vl + viewW && bt + bh <= vt + viewH)
+        return;                                         /* box already visible */
+    if (!(tl >= vl && tt >= vt && tl + TERRAIN_TILE_W <= vl + viewW &&
+          tt + TERRAIN_TILE_H <= vt + viewH)) {
+        vl = tl + (TERRAIN_TILE_W - viewW) / 2;         /* tile off screen: centre */
+        vt = tt + (TERRAIN_TILE_H - viewH) / 2;
+    } else {
+        long d;
+        d = bl + bw - (vl + viewW);                     /* RevealRect, per axis */
+        if (d < 1) { d = bl + bw - bw - vl; if (d > 0) d = 0; }
+        vl += d;
+        d = bt + bh - (vt + viewH);
+        if (d < 1) { d = bt + bh - bh - vt; if (d > 0) d = 0; }
+        vt += d;
+    }
+    maxX = (long)sMapWidth  * TERRAIN_TILE_W - viewW;
+    maxY = (long)sMapHeight * TERRAIN_TILE_H - viewH;
+    if (vl > maxX) vl = maxX;
+    if (vt > maxY) vt = maxY;
+    if (vl < 0) vl = 0;
+    if (vt < 0) vt = 0;
+    sViewportX = (short)(vl / TERRAIN_TILE_W);  sViewPixX = (short)(vl % TERRAIN_TILE_W);
+    sViewportY = (short)(vt / TERRAIN_TILE_H);  sViewPixY = (short)(vt % TERRAIN_TILE_H);
 }
 
 /* A player's capital: pstat+0x0E/0x10 (written by GameInit), else the SCN
@@ -13455,6 +13532,13 @@ static void RemoveArmy(short armyIndex)
  * Shows a result dialog summarizing the battle.
  * Returns: 1 = attacker wins, 0 = defender wins, -1 = mutual destruction
  * =================================================================== */
+/* Battle presentation (ShowBattle) runs the fights quietly and replays the
+ * kills: 0 = a defending unit died, 1 = an attacking unit died, in order. */
+static Boolean       sBattleQuiet = false;
+static unsigned char sBattleKill[128];
+static unsigned char sBattleKillT[128];   /* the unit type that died */
+static short         sBattleKillN = 0;
+
 static short ResolveCombat(short attackerIdx, short defenderIdx)
 {
     unsigned char *gs, *attArmy, *defArmy;
@@ -13829,6 +13913,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                         /* Normal: attacker hit */
                         attCombatHP[aiIdx]--;
                         if (attCombatHP[aiIdx] < 0) {
+                            if (sBattleKillN < 128) { sBattleKillT[sBattleKillN] = (unsigned char)attType[aiIdx]; sBattleKill[sBattleKillN++] = 1; }
                             attType[aiIdx] = 0xFF;
                             attHits[aiIdx] = 0;
                             aiIdx++;
@@ -13838,6 +13923,7 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
                     /* Defender hit: decrement combat HP, die at < 0 (68k) */
                     defCombatHP[diIdx]--;
                     if (defCombatHP[diIdx] < 0) {
+                        if (sBattleKillN < 128) { sBattleKillT[sBattleKillN] = (unsigned char)defType[diIdx]; sBattleKill[sBattleKillN++] = 0; }
                         defType[diIdx] = 0xFF;
                         defHits[diIdx] = 0;
                         diIdx++;
@@ -13897,6 +13983,8 @@ static short ResolveCombat(short attackerIdx, short defenderIdx)
         }
         RecalcArmyStrength(defArmy);
     }
+
+    if (sBattleQuiet) return result;   /* ShowBattle presents it */
 
     /* === Medal award for surviving units (small chance after combat) === */
     {
@@ -14693,6 +14781,721 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
 }
 
 
+/* A capture waiting for its notices/choice (shown after the battle window). */
+static Boolean sCapPend = false;
+static short   sCapOwner, sCapPrev, sCapX, sCapY, sCapCity;
+static short   sCaptureLoot = 0;   /* gold looted by the last capture */
+static Str255  sCapWho;            /* hero (or player) named on the Victory screen */
+
+/* ===================================================================
+ * CaptureCityAt — the city whose anchor tile is (mx,my) passes to mOwner
+ * (gold transfer, production reset, notices, raze choice, elimination).
+ * =================================================================== */
+static void CaptureCityAt(short mOwner, short mx, short my)
+{
+    unsigned char *gs;
+    short armyCount, turnNum;
+    if (*gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+    armyCount = *(short *)(gs + 0x1602);
+    if (armyCount > 100) armyCount = 100;
+    turnNum = *(short *)(gs + 0x136);
+                {
+                    short cityCount = sCityCount;
+                    short ci;
+                    if (cityCount > 139) cityCount = 139;
+                    for (ci = 0; ci < cityCount; ci++) {
+                        unsigned char *city = sCityData +ci * 0x20;
+                        if (*(short *)(city + 0x00) == mx &&
+                            *(short *)(city + 0x02) == my) {
+                            short prevOwner = *(short *)(city + 0x04);
+
+                            /* 68k CODE_133: track origin player at city+0x0A.
+                             * If capturing player == origin, reset to 0x0F.
+                             * Otherwise save previous owner as origin. */
+                            if (prevOwner != 0x0F && prevOwner >= 0 && prevOwner < 8) {
+                                short curOrigin = *(short *)(city + 0x0A);
+                                if (mOwner == curOrigin)
+                                    *(short *)(city + 0x0A) = 0x0F;
+                                else
+                                    *(short *)(city + 0x0A) = prevOwner;
+                            }
+
+                            *(short *)(city + 0x04) = mOwner;  /* capture city */
+
+                            /* Update map tiles to new owner (68k CODE_133: only update owner
+                             * nibble in byte+1, preserve existing tile type in byte+0). */
+                            if (*gMapTiles != 0) {
+                                unsigned char *capMap = (unsigned char *)*gMapTiles;
+                                short cdx, cdy;
+                                for (cdy = 0; cdy < 2; cdy++) {
+                                    for (cdx = 0; cdx < 2; cdx++) {
+                                        short ctx = mx + cdx, cty = my + cdy;
+                                        if (ctx >= 0 && ctx < sMapWidth && cty >= 0 && cty < sMapHeight) {
+                                            unsigned short coff = cty * 0xE0 + ctx * 2;
+                                            /* Preserve tile type byte, only update owner nibble */
+                                            capMap[coff + 1] = (capMap[coff + 1] & 0xF0) | (mOwner & 0x0F);
+                                        }
+                                    }
+                                }
+                            }
+
+                            /* Gold transfer on capture (68k CODE_133 FUN_00000046):
+                             * No gold from neutrals.
+                             * If defender has < 2 cities remaining: goldPerCity = all gold.
+                             * Else: goldPerCity = defender_gold / defender_city_count.
+                             * Winner gets goldPerCity / 2.
+                             * Loser loses goldPerCity (2x what winner gains). */
+                            if (prevOwner >= 0 && prevOwner < 8 && prevOwner != 0x0F &&
+                                mOwner >= 0 && mOwner < 8) {
+                                short defGold = *(short *)(gs + 0x186 + prevOwner * 0x14);
+                                short defCities = 0;
+                                short ci2;
+                                short goldPerCity;
+                                for (ci2 = 0; ci2 < cityCount; ci2++) {
+                                    unsigned char *c2 = sCityData +ci2 * 0x20;
+                                    if (*(short *)(c2 + 0x04) == prevOwner) defCities++;
+                                }
+                                /* 68k: defCities < 2 → take ALL gold; else proportional */
+                                if (defCities < 2)
+                                    goldPerCity = defGold;
+                                else
+                                    goldPerCity = defGold / defCities;
+                                {
+                                    short goldTaken = goldPerCity / 2;
+                                    if (goldTaken < 0) goldTaken = 0;
+                                    if (goldTaken > 0) {
+                                        sCaptureLoot = goldTaken;
+                                        short newGold = *(short *)(gs + 0x186 + mOwner * 0x14) + goldTaken;
+                                        if (newGold > 30000) newGold = 30000;
+                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold;
+                                        /* 68k: loser loses goldPerCity (2x goldTaken) */
+                                        {
+                                            short loserGold = *(short *)(gs + 0x186 + prevOwner * 0x14) - goldPerCity;
+                                            if (loserGold < 0) loserGold = 0;
+                                            *(short *)(gs + 0x186 + prevOwner * 0x14) = loserGold;
+                                        }
+                                    }
+                                }
+                            }
+
+                            /* 68k CODE_133: clear vectoring targets pointing to captured city.
+                             * Armies owned by the previous owner that were vectoring to this
+                             * city should have their movement orders cleared. */
+                            if (prevOwner >= 0 && prevOwner < 8 && *gExtState != 0) {
+                                unsigned char *ext = (unsigned char *)*gExtState;
+                                short ci3;
+                                short cityCount3 = sCityCount;
+                                if (cityCount3 > 139) cityCount3 = 139;
+                                for (ci3 = 0; ci3 < cityCount3; ci3++) {
+                                    unsigned char *extCity3 = ext + 0x24c + ci3 * 0x5c;
+                                    short vecTgt = *(short *)(extCity3 + 0x3e);
+                                    if (vecTgt == ci) {
+                                        /* Clear vectoring: production stays, target cleared */
+                                        *(short *)(extCity3 + 0x3e) = -1;
+                                    }
+                                }
+                            }
+
+                            /* 68k CODE_133: clear production and defend state on capture.
+                             * New owner must set their own production. */
+                            if (*gExtState != 0) {
+                                unsigned char *extC = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+                                *(short *)(extC + 0x02) = -1;  /* clear production timer */
+                                extC[0x00] = 0;                /* clear current production type */
+                            }
+                            /* 68k CODE_133: clear army defend state at captured city */
+                            {
+                                short armyCount2 = *(short *)(gs + 0x1602);
+                                short ai2;
+                                for (ai2 = 0; ai2 < armyCount2; ai2++) {
+                                    unsigned char *ar2 = gs + 0x1604 + ai2 * 0x42;
+                                    if (*(short *)(ar2 + 0x00) == mx &&
+                                        *(short *)(ar2 + 0x02) == my) {
+                                        ar2[0x2d] = 0;  /* clear defend/fortify */
+                                    }
+                                }
+                            }
+
+                            RecordEvent(turnNum, HIST_EVT_CAPTURE, mOwner,
+                                "Captured a city");
+                            sCapPend = true; sCapOwner = mOwner; sCapPrev = prevOwner;
+                            sCapX = mx; sCapY = my; sCapCity = ci;
+                            break;
+                        }
+                    }
+                }
+}
+
+/* ===================================================================
+ * Victory (View 3800, PPC FUN_100472f4): after a human takes a city.
+ *   396x276 on WDEF 128 variant 7 (0x0807), placed like View 3200 (centred
+ *   across, a third of the way down); PICT 1016 frame at (0,0), PICT 3800 at
+ *   (38,38); 'head' (38,42) 320x39 TxSt 1005 "Victory!"; str1..str4 at
+ *   y 88/108/128/148, 320 wide, TxSt 1015: random 370-373 with the hero's
+ *   name (else the player's name), random 374-376 with the city name,
+ *   "The city is yours!", "Will you...".  T3DButtons (STR# 3800) occu
+ *   (51,204) 64x21 default, pill (128,205), sack (205,204), raze (281,204)
+ *   64x20, keys o/p/s/r.  Pillage is dimmed when the last production slot
+ *   is worth nothing, Sack when fewer than two slots, Raze when razing is
+ *   not allowed.
+ * =================================================================== */
+#define VICT_W 396
+#define VICT_H 276
+
+static void CityNameP(short ci, Str255 out)
+{
+    short n = 0;
+    out[0] = 0;
+    if (ci < 0 || ci >= sCityNameCount) return;
+    while (n < MAX_CITY_NAME && sCityNames[ci][n]) { out[n + 1] = sCityNames[ci][n]; n++; }
+    out[0] = (unsigned char)n;
+}
+
+/* production slots of a city (ext +0x06), filled ones first */
+static short CitySlots(short ci, short *slot)
+{
+    unsigned char *ext = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+    short i, n = 0;
+    for (i = 0; i < 4; i++) {
+        short t = *(short *)(ext + 0x06 + i * 2);
+        if (t < 0 || t >= MAX_UNIT_TYPES) break;
+        slot[n++] = t;
+    }
+    return n;
+}
+
+/* FUN_1004645c: half the buy price (stat 4) of the last slot */
+static short PillageValue(short ci)
+{
+    short slot[4], n;
+    if (*gExtState == 0) return 0;
+    n = CitySlots(ci, slot);
+    return n > 0 ? GetUnitTypeStat(slot[n - 1], 4) / 2 : 0;
+}
+
+/* FUN_1004639c: half the buy price of every slot but the first */
+static short SackValue(short ci)
+{
+    short slot[4], n, i, g = 0;
+    if (*gExtState == 0) return 0;
+    n = CitySlots(ci, slot);
+    if (n < 2) return 0;
+    for (i = 1; i < n; i++) g += GetUnitTypeStat(slot[i], 4) / 2;
+    return g;
+}
+
+static void DrawT3DButtonDim(const Rect *r, ConstStr255Param label)
+{
+    RGBColor grey = {0x8888, 0x8888, 0x8888};
+    short fnum, w;
+    DrawT3DBevel(r);
+    GetFNum("\pChicago", &fnum);
+    TextFont(fnum); TextSize(12); TextFace(0);
+    w = StringWidth(label);
+    RGBForeColor(&grey);
+    MoveTo((r->left + r->right - w + 1) / 2 - 1, r->bottom - 8);
+    DrawString(label);
+}
+
+static WindowPtr NewMacAppWindow(short w, short h)
+{
+    WindowPtr win;
+    Rect wr;
+    short sw = qd.screenBits.bounds.right, sh = qd.screenBits.bounds.bottom, mb = GetMBarHeight();
+    short left = (sw - (w + 6)) / 2, top = mb + (sh - mb - (h + 6)) / 3;
+    SetRect(&wr, left, top, left + w, top + h);
+    win = NewCWindow(NULL, &wr, "\p", false, 0x0807, (WindowPtr)-1L, false, 0);
+    if (win == NULL) return NULL;
+    {
+        Handle wctb = GetResource('wctb', 1000);
+        if (wctb != NULL) SetWinColor(win, (CTabHandle)wctb);
+    }
+    if (*gMainGameWindow != 0) {
+        PaletteHandle pal = GetPalette((WindowPtr)*gMainGameWindow);
+        if (pal != NULL) SetPalette(win, pal, false);
+    }
+    ShowWindow(win);
+    SetPort(win);
+    return win;
+}
+
+static void DrawPictAt(short id, short x, short y)
+{
+    PicHandle p = GetPicture(id);
+    Rect r;
+    if (p == NULL) return;
+    r = (**p).picFrame;
+    OffsetRect(&r, x - r.left, y - r.top);
+    DrawPicture(p, &r);
+}
+
+static void CloseMacAppWindow(WindowPtr win)
+{
+    DisposeWindow(win);
+    if (*gMainGameWindow != 0) {
+        HiliteWindow((WindowPtr)*gMainGameWindow, true);
+        ActivatePalette((WindowPtr)*gMainGameWindow);
+    }
+    InvalidateAllGameWindows();
+    DrainUpdates();
+}
+
+/* returns 0 Occupy, 1 Pillage, 2 Sack, 3 Raze */
+static short ShowCityVictory(short ci, ConstStr255Param who)
+{
+    static const short bx[4] = {51, 128, 205, 281}, by[4] = {204, 205, 204, 204}, bh[4] = {21, 20, 20, 20};
+    static const char keys[4] = {'o', 'p', 's', 'r'};
+    WindowPtr win;
+    Rect br[4], v;
+    Boolean en[4];
+    Str255 s, fmt, cname, label[4];
+    short i, choice = -1;
+    EventRecord e;
+    Handle strs;
+
+    en[0] = true;
+    en[1] = PillageValue(ci) > 0;
+    en[2] = SackValue(ci) > 0;
+    en[3] = (sRazingCities != 2);
+    for (i = 0; i < 4; i++) SetRect(&br[i], bx[i], by[i], bx[i] + 64, by[i] + bh[i]);
+    strs = GetResource('STR#', 3800);
+    for (i = 0; i < 4; i++) {
+        if (strs != NULL) GetIndString(label[i], 3800, i + 1); else label[i][0] = 0;
+    }
+    CityNameP(ci, cname);
+
+    win = NewMacAppWindow(VICT_W, VICT_H);
+    if (win == NULL) return 0;
+    DrawPictAt(1016, 0, 0);
+    DrawPictAt(3800, 38, 38);
+    GetDATRawString(367, s);
+    SetRect(&v, 38, 42, 38 + 320, 42 + 39);
+    DrawSunkenText(&v, s, IlluriaFont(), 36, 1);
+    GetDATRawString(370 + (short)((unsigned short)Random() % 4), fmt);
+    FormatHeroLine(fmt, who, 0, s);
+    SetRect(&v, 38, 88, 358, 107);   DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    GetDATRawString(374 + (short)((unsigned short)Random() % 3), fmt);
+    FormatHeroLine(fmt, cname, 0, s);
+    SetRect(&v, 38, 108, 358, 127);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    GetDATRawString(368, s);
+    SetRect(&v, 38, 128, 358, 147);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    GetDATRawString(369, s);
+    SetRect(&v, 38, 148, 358, 167);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    {
+        RGBColor black = {0, 0, 0};
+        Rect ring = br[0];
+        InsetRect(&ring, -4, -4);
+        RGBForeColor(&black);
+        PenSize(3, 3);
+        FrameRoundRect(&ring, 16, 16);
+        PenSize(1, 1);
+    }
+    for (i = 0; i < 4; i++) {
+        if (en[i]) DrawT3DButton(&br[i], label[i]);
+        else DrawT3DButtonDim(&br[i], label[i]);
+    }
+
+    FlushEvents(mDownMask | keyDownMask | autoKeyMask, 0);
+    while (choice < 0) {
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == mouseDown) {
+            Point pt = e.where;
+            SetPort(win);
+            GlobalToLocal(&pt);
+            for (i = 0; i < 4; i++) if (en[i] && PtInRect(pt, &br[i])) choice = i;
+        } else {
+            char c = (char)(e.message & charCodeMask);
+            if (c == '\r' || c == 0x03) choice = 0;
+            for (i = 0; i < 4; i++) if (en[i] && (c == keys[i] || c == keys[i] - 32)) choice = i;
+        }
+    }
+    CloseMacAppWindow(win);
+    return choice;
+}
+
+/* View 1020: 392x94, marble PICT 1001 at (7,7) with edge PICTs 1004 (top),
+ * 1005 (left), 1006 (bottom), 1009 (right); '1str' (19,35) 352x19 TxSt 1015. */
+static void ShowRuinsNotice(ConstStr255Param cname)
+{
+    WindowPtr win = NewMacAppWindow(392, 94);
+    Str255 s;
+    Rect v;
+    EventRecord e;
+    if (win == NULL) return;
+    DrawPictAt(1001, 7, 7);
+    DrawPictAt(1004, 0, 0);
+    DrawPictAt(1005, 0, 7);
+    DrawPictAt(1006, 0, 87);
+    DrawPictAt(1009, 385, 0);
+    FormatHeroLine("\p%s is in ruins!", cname, 0, s);
+    SetRect(&v, 19, 35, 19 + 352, 35 + 19);
+    DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) if (WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) break;
+    CloseMacAppWindow(win);
+}
+
+static void AddPlayerGold(short p, short g)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    long ng = (long)*(short *)(gs + 0x186 + p * 0x14) + g;
+    if (ng > 30000) ng = 30000;
+    *(short *)(gs + 0x186 + p * 0x14) = (short)ng;
+}
+
+/* Apply the Victory choice (PPC FUN_1004653c / FUN_10046d7c / FUN_1004702c /
+ * FUN_10047190).  The infamy counter at gs+0x1122+p*2 grows by 1-5 / 6-15 /
+ * 11-25 for pillage / sack / raze. */
+static void ApplyVictoryChoice(short choice, short ci, short owner)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    unsigned char *city = sCityData + ci * 0x20;
+    unsigned char *ext = *gExtState ? (unsigned char *)*gExtState + 0x24c + ci * 0x5c : NULL;
+    short slot[4], n = ext ? CitySlots(ci, slot) : 0, i;
+    short *infamy = (short *)(gs + 0x1122 + owner * 2);
+    switch (choice) {
+    case 0:                                     /* Occupy: the city window */
+        ShowCityBuildSelection(ci);
+        break;
+    case 1:                                     /* Pillage: the last slot */
+        AddPlayerGold(owner, PillageValue(ci));
+        if (ext && n > 0) *(short *)(ext + 0x06 + (n - 1) * 2) = -1;
+        *infamy += 1 + (short)((unsigned short)Random() % 5);
+        break;
+    case 2:                                     /* Sack: all but the first */
+        AddPlayerGold(owner, SackValue(ci));
+        if (ext) for (i = 1; i < n; i++) *(short *)(ext + 0x06 + i * 2) = -1;
+        *infamy += 6 + (short)((unsigned short)Random() % 10);
+        break;
+    case 3: {                                   /* Raze: a neutral ruin */
+        Str255 cname;
+        CityNameP(ci, cname);
+        ShowRuinsNotice(cname);
+        *(short *)(city + 0x04) = 0x0F;
+        if (*gMapTiles != 0) {
+            unsigned char *m = (unsigned char *)*gMapTiles;
+            short cx = *(short *)(city + 0x00), cy = *(short *)(city + 0x02), dx, dy;
+            for (dy = 0; dy < 2; dy++)
+                for (dx = 0; dx < 2; dx++)
+                    if (cx + dx < sMapWidth && cy + dy < sMapHeight) {
+                        unsigned short o = (cy + dy) * 0xE0 + (cx + dx) * 2;
+                        m[o] = (unsigned char)(0xA0 + 2 * owner + dx + dy * 0x10);
+                        m[o + 1] = (m[o + 1] & 0xF0) | 0x0F;
+                    }
+        }
+        *infamy += 11 + (short)((unsigned short)Random() % 15);
+        InvalidateAllGameWindows();
+        break;
+    }
+    }
+}
+
+/* CaptureCityFinish — the part of a capture that talks to the player (notice,
+ * pillage/raze choice) plus quest and elimination checks; runs once the
+ * battle window is closed. */
+static void CaptureCityFinish(void)
+{
+    unsigned char *gs, *city;
+    short armyCount, turnNum, cityCount, mOwner, prevOwner, mx, my, ci;
+    if (!sCapPend || *gGameState == 0) { sCapPend = false; return; }
+    sCapPend = false;
+    gs = (unsigned char *)*gGameState;
+    armyCount = *(short *)(gs + 0x1602);
+    if (armyCount > 100) armyCount = 100;
+    turnNum = *(short *)(gs + 0x136);
+    cityCount = sCityCount;
+    if (cityCount > 139) cityCount = 139;
+    mOwner = sCapOwner; prevOwner = sCapPrev; mx = sCapX; my = sCapY; ci = sCapCity;
+    city = sCityData + ci * 0x20;
+    {
+                            /* View 3800 for a human capturer; losing a city has no window */
+                            if (mOwner >= 0 && mOwner < 8 && *(short *)(gs + 0xd0 + mOwner * 2) == 0)
+                                ApplyVictoryChoice(ShowCityVictory(ci, sCapWho), ci, mOwner);
+
+                            /* Check quest progress after city capture */
+                            CheckQuestProgress(mOwner);
+
+                            /* Check if previous owner lost all cities (eliminated) */
+                            if (prevOwner >= 0 && prevOwner < 8 && prevOwner != mOwner) {
+                                short cj, prevCities = 0;
+                                for (cj = 0; cj < cityCount; cj++) {
+                                    unsigned char *c2 = sCityData +cj * 0x20;
+                                    short sType = (short)(unsigned char)c2[0x17];
+                                    if (*(short *)(c2 + 0x04) == prevOwner &&
+                                        sType != 2 && sType != 5 && sType != 6)
+                                        prevCities++;
+                                }
+                                if (prevCities == 0) {
+                                    /* 68k CODE_130: eliminated players become AI-controlled.
+                                     * Armies remain as remnants (NOT removed). */
+                                    *(short *)(gs + 0x138 + prevOwner * 2) = 0;
+                                    *(short *)(gs + 0x148 + prevOwner * 2) = 0;
+                                    *(short *)(gs + 0xd0 + prevOwner * 2) = 1; /* convert to AI */
+                                    RecordEvent(turnNum, HIST_EVT_DEFEAT, prevOwner,
+                                        "Eliminated!");
+                                    ShowEliminationNotification(prevOwner, mOwner);
+                                }
+                            }
+    }
+}
+
+
+/* ===================================================================
+ * Battle presentation — PPC 1.0.7 FUN_1002d93c and helpers:
+ *   FUN_1002cfbc  WAR graphic on the map (PICT 10003, 128x120) + snd WAR,
+ *                 played synchronously (~2 s), only for a human mover;
+ *   FUN_10031594  View 4400: 320x312 altDBox, marble PICT 1001 at (-20,-10),
+ *                 bands 'patd' (19,9) / 'pata' (179,9) 302 wide, 50 high
+ *                 (+30 per extra defender row), T3DFrameAdorner, ppat 1001
+ *                 (grey 0xCCCC); shields 'shed' (16,26) / 'shea' (16,186) from
+ *                 the big shield sheet (side*32, 0, 32x36), neutral = side 8;
+ *   slots         rows of 8 at y 26/56/86/116 (defenders) and 186 (attackers);
+ *                 a full row uses x 50+32i, a row of m < 8 is centred at
+ *                 x = 178 - 16m + 32i; the unit is drawn at (x, y+4);
+ *   FUN_100313d8  kills: 25 ticks, then per kill the ATRANS2 explosion
+ *                 (PICT 30010 (32,0) 32x29) at (x,y), snd ARMY (attacker unit
+ *                 died) / ARMY2 (defender unit died), 25 ticks, slot refilled
+ *                 (x, y+3)-(x+32, y+33), 40 ticks.  A click or key makes the
+ *                 rest silent with 10 + 15 tick waits;
+ *   FUN_1002f97c  result lines in 'lin1'/'lin2' (TxSt 1015, Illuria 17
+ *                 cream, centred, y 251/271); the window waits for a click.
+ * =================================================================== */
+#define BATTLE_W 320
+#define BATTLE_H 312
+#define BATTLE_MAXU 40
+
+static GWorldPtr sWarGW = NULL;      /* PICT 10003 "WAR" */
+
+static void BlitKeyedColor(GWorldPtr gw, const RGBColor *key, short sx, short sy,
+                           short w, short h, short dx, short dy)
+{
+    GrafPtr port;
+    PixMapHandle pm;
+    Rect sr, dr;
+    RGBColor savedBg, black = {0, 0, 0};
+    if (gw == NULL) return;
+    GetPort(&port);
+    pm = GetGWorldPixMap(gw);
+    LockPixels(pm);
+    SetRect(&sr, sx, sy, sx + w, sy + h);
+    SetRect(&dr, dx, dy, dx + w, dy + h);
+    GetBackColor(&savedBg);
+    RGBForeColor(&black);
+    RGBBackColor(key);
+    CopyBits((BitMap *)*pm, &port->portBits, &sr, &dr, 36, NULL);
+    RGBBackColor(&savedBg);
+    UnlockPixels(pm);
+}
+
+static void GWorldKeyColor(GWorldPtr gw, RGBColor *key)
+{
+    CGrafPtr sp; GDHandle sd;
+    GetGWorld(&sp, &sd);
+    SetGWorld(gw, NULL);
+    GetCPixel(0, 0, key);
+    SetGWorld(sp, sd);
+}
+
+/* Wait n ticks; a click or key (consumed) cuts the wait and sets *fast. */
+static void BattleWait(short n, Boolean *fast)
+{
+    unsigned long end = TickCount() + n;
+    EventRecord e;
+    while (TickCount() < end) {
+        if (WaitNextEvent(mDownMask | keyDownMask | autoKeyMask, &e, 1, NULL)) {
+            *fast = true;
+            return;
+        }
+    }
+}
+
+/* Unit slot position inside the battle window (PPC slot tables). */
+static void BattleSlotXY(Boolean attacker, short i, short n, short *x, short *y)
+{
+    static const short kRowY[4] = {26, 56, 86, 116};
+    short row = attacker ? 0 : i / 8, inRow = n - row * 8, k = i % 8;
+    if (inRow > 8) inRow = 8;
+    *x = (inRow >= 8) ? 50 + 32 * k : 178 - 16 * inRow + 32 * k;
+    *y = attacker ? 186 : kRowY[row & 3];
+}
+
+static void DrawBattleWarOnMap(short tx, short ty)
+{
+    WindowPtr mw;
+    Rect clip, savedClipR;
+    RgnHandle savedClip;
+    RGBColor key;
+    short h, v;
+    if (*gMainGameWindow == 0) return;
+    if (sWarGW == NULL) sWarGW = LoadPICTIntoGWorld(10003);
+    if (sWarGW == NULL) return;
+    mw = (WindowPtr)*gMainGameWindow;
+    SetPort(mw);
+    h = (tx - sViewportX) * TERRAIN_TILE_W - sViewPixX - 40;
+    v = (ty - sViewportY) * TERRAIN_TILE_H - sViewPixY - 40;
+    savedClip = NewRgn();
+    GetClip(savedClip);
+    clip = mw->portRect;
+    clip.right -= SCROLLBAR_W;
+    clip.bottom -= SCROLLBAR_H;
+    ClipRect(&clip);
+    GWorldKeyColor(sWarGW, &key);
+    BlitKeyedColor(sWarGW, &key, 0, 0, 128, 120, h, v);
+    SetClip(savedClip);
+    DisposeRgn(savedClip);
+    (void)savedClipR;
+}
+
+static void FillBattleCell(const Rect *r)
+{
+    RGBColor grey = {0xCCCC, 0xCCCC, 0xCCCC};
+    RGBForeColor(&grey);
+    PaintRect(r);
+}
+
+static void DrawBattleBand(short top, short height)
+{
+    Rect b, f;
+    SetRect(&b, 9, top, 9 + 302, top + height);
+    DrawT3DFrame(&b);
+    f = b;
+    InsetRect(&f, 2, 2);
+    FillBattleCell(&f);
+}
+
+/* side: owner 0-7, neutral = 8 */
+static void DrawBattleShield(short side, short x, short y)
+{
+    RGBColor key;
+    if (sShieldBigGW == NULL) return;
+    GWorldKeyColor(sShieldBigGW, &key);
+    BlitKeyedColor(sShieldBigGW, &key, side * 32, 0, 32, 36, x, y);
+}
+
+/* ShowBattle — present a battle that has already been resolved.
+ * def/att: unit sprites in display order (the dead first, in the order they
+ * fell); kills: sBattleKill[0..nKills).  lin1/lin2: result lines. */
+static void ShowBattle(short tx, short ty, Boolean humanAttacker,
+                       short defSide, const short *defSpr, short defOwner, short nDef,
+                       short attSide, const short *attSpr, short attOwner, short nAtt,
+                       ConstStr255Param lin1, ConstStr255Param lin2)
+{
+    WindowPtr bw;
+    Rect wr, v;
+    short sw = qd.screenBits.bounds.right, sh = qd.screenBits.bounds.bottom;
+    short mb = GetMBarHeight(), left, top, i, k, di = 0, ai = 0, bandH;
+    Boolean fast = false;
+    EventRecord e;
+    PicHandle marble;
+
+    if (nDef > 32) nDef = 32;
+    if (nAtt > 8) nAtt = 8;
+
+    /* WAR over the target tile, held for the length of its sound */
+    if (humanAttacker) {
+        DrawBattleWarOnMap(tx, ty);
+        if (sSoundMaster != 0 && sSoundEffects != 0) {
+            Boolean dummy = false;
+            PlaySound(SND_WAR);
+            BattleWait(123, &dummy);
+        }
+    }
+
+    left = (sw - (BATTLE_W + 4)) / 2 + 1;
+    top = mb + (sh - mb - (BATTLE_H + 4)) / 3 + 1;
+    SetRect(&wr, left, top, left + BATTLE_W, top + BATTLE_H);
+    bw = NewCWindow(NULL, &wr, "\p", true, altDBoxProc, (WindowPtr)-1L, false, 0);
+    if (bw == NULL) return;
+    if (*gMainGameWindow != 0) {
+        PaletteHandle pal = GetPalette((WindowPtr)*gMainGameWindow);
+        if (pal != NULL) SetPalette(bw, pal, false);
+    }
+    SetPort(bw);
+
+    marble = GetPicture(1001);
+    if (marble != NULL) {
+        Rect pr = (**marble).picFrame;
+        OffsetRect(&pr, -20 - pr.left, -10 - pr.top);
+        DrawPicture(marble, &pr);
+    }
+    bandH = 50 + ((nDef > 0 ? nDef - 1 : 0) / 8) * 30;
+    DrawBattleBand(19, bandH);
+    DrawBattleBand(179, 50);
+    DrawBattleShield(defSide, 16, 26);
+    DrawBattleShield(attSide, 16, 186);
+    for (i = 0; i < nDef; i++) {
+        short x, y;
+        BattleSlotXY(false, i, nDef, &x, &y);
+        DrawArmySpriteAt(defOwner, defSpr[i], x, y + 4, false);
+    }
+    for (i = 0; i < nAtt; i++) {
+        short x, y;
+        BattleSlotXY(true, i, nAtt, &x, &y);
+        DrawArmySpriteAt(attOwner, attSpr[i], x, y + 4, false);
+    }
+
+    /* the kills, in the order they happened */
+    if (sBattleKillN > 0) BattleWait(25, &fast);
+    for (k = 0; k < sBattleKillN; k++) {
+        Boolean attDied = sBattleKill[k] != 0;
+        short x, y;
+        Rect cell;
+        if (attDied) { if (ai >= nAtt) continue; BattleSlotXY(true, ai++, nAtt, &x, &y); }
+        else         { if (di >= nDef) continue; BattleSlotXY(false, di++, nDef, &x, &y); }
+        SetPort(bw);
+        BlitKeyedColor(sMasterSpriteGW, &sMasterSpriteBgColor, 32, 0, 32, 29, x, y);
+        if (!fast) {
+            PlaySound(attDied ? SND_ARMY : SND_ARMY2);
+            BattleWait(25, &fast);
+        } else {
+            Boolean dummy;
+            BattleWait(10, &dummy);
+        }
+        SetPort(bw);
+        SetRect(&cell, x, y + 3, x + 32, y + 33);
+        FillBattleCell(&cell);
+        if (!fast) BattleWait(40, &fast);
+        else { Boolean dummy; BattleWait(15, &dummy); }
+    }
+
+    SetPort(bw);
+    SetRect(&v, 0, 251, BATTLE_W, 251 + 19);
+    if (lin1 && lin1[0]) DrawSunkenText(&v, lin1, IlluriaFont(), 17, 1);
+    SetRect(&v, 0, 271, BATTLE_W, 271 + 19);
+    if (lin2 && lin2[0]) DrawSunkenText(&v, lin2, IlluriaFont(), 17, 1);
+
+    if (humanAttacker) {
+        FlushEvents(mDownMask | keyDownMask | autoKeyMask, 0);
+        for (;;)
+            if (WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) break;
+    } else {
+        Boolean dummy = false;
+        BattleWait(50, &dummy);
+    }
+    DisposeWindow(bw);
+    if (*gMainGameWindow != 0) {
+        HiliteWindow((WindowPtr)*gMainGameWindow, true);
+        ActivatePalette((WindowPtr)*gMainGameWindow);
+    }
+    InvalidateAllGameWindows();
+    DrainUpdates();
+}
+
+/* Sprite of each unit of an army record, in slot order. */
+static short ArmyUnitSprites(short armyIdx, short *out, short max)
+{
+    unsigned char *a = (unsigned char *)*gGameState + 0x1604 + armyIdx * 0x42;
+    short i, n = 0;
+    for (i = 0; i < 4 && n < max; i++) {
+        short t = (short)(unsigned char)a[0x16 + i];
+        if (t == 0xFF || (unsigned char)a[0x1e + i] == 0) continue;
+        if (t == 0x1C && IsHeroFemale(armyIdx)) t = 0x1D;
+        out[n++] = t;
+    }
+    return n;
+}
+
 /* ===================================================================
  * CheckAndResolveCombat — Check if army at (x,y) meets an enemy,
  * and if so, resolve combat.  Called after each movement step.
@@ -14700,8 +15503,13 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
  * =================================================================== */
 static Boolean CheckAndResolveCombat(short movingArmyIdx)
 {
-    unsigned char *gs, *movArmy;
-    short armyCount, mx, my, mOwner, i;
+    unsigned char *gs, *movArmy, *other;
+    short armyCount, mx, my, mOwner, i, oOwner;
+    short cityIdx = -1, cx = 0, cy = 0, firstDef = -1, mv = movingArmyIdx;
+    short defSpr[BATTLE_MAXU], attSpr[BATTLE_MAXU], nDefDead = 0, nAttDead = 0;
+    short defOwner, heroArmy = -1;
+    Boolean humanAtt, humanDef, won, showIt;
+    short turnNum;
 
     if (*gGameState == 0) return false;
     gs = (unsigned char *)*gGameState;
@@ -14712,37 +15520,62 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
     mx = *(short *)(movArmy + 0x00);
     my = *(short *)(movArmy + 0x02);
     mOwner = (short)(unsigned char)movArmy[0x15];
+    turnNum = *(short *)(gs + 0x136);
 
-    /* Look for any enemy army at the same tile */
+    /* A foreign or neutral city whose 2x2 holds the tile: the attack is on
+     * the whole city (every army in it defends), and an empty city is still
+     * taken by a "battle".  An army never stands on an enemy city. */
+    {
+        short ci, cc = sCityCount;
+        if (cc > 139) cc = 139;
+        for (ci = 0; ci < cc; ci++) {
+            unsigned char *city = sCityData + ci * 0x20;
+            short x0 = *(short *)(city + 0x00), y0 = *(short *)(city + 0x02);
+            if (city[0x17] >= 2) continue;                  /* ruin / temple */
+            if (mx < x0 || mx > x0 + 1 || my < y0 || my > y0 + 1) continue;
+            if (*(short *)(city + 0x04) != mOwner) { cityIdx = ci; cx = x0; cy = y0; }
+            break;
+        }
+    }
+#define IN_BATTLE_ZONE(ox, oy) (((ox) == mx && (oy) == my) || \
+        (cityIdx >= 0 && (ox) >= cx && (ox) <= cx + 1 && (oy) >= cy && (oy) <= cy + 1))
+
     for (i = 0; i < armyCount; i++) {
-        unsigned char *other;
-        short ox, oy, oOwner, combatResult;
-
-        if (i == movingArmyIdx) continue;
         other = gs + 0x1604 + i * 0x42;
-        ox = *(short *)(other + 0x00);
-        oy = *(short *)(other + 0x02);
+        if (i == movingArmyIdx) continue;
+        if ((short)(unsigned char)other[0x15] == mOwner) continue;
+        if (IN_BATTLE_ZONE(*(short *)(other + 0x00), *(short *)(other + 0x02))) { firstDef = i; break; }
+    }
+    if (firstDef < 0 && cityIdx < 0) return false;
+
+    if (firstDef >= 0) {
+        other = gs + 0x1604 + firstDef * 0x42;
         oOwner = (short)(unsigned char)other[0x15];
+    } else {
+        other = NULL;
+        oOwner = *(short *)(sCityData + cityIdx * 0x20 + 0x04);
+        if (oOwner < 0 || oOwner > 7) oOwner = 0x0F;
+    }
+    defOwner = oOwner;
 
-        if (ox == mx && oy == my && oOwner != mOwner) {
-            /* 68k CODE_115 FUN_000003c4: auto-declare war when entering tile
-             * occupied by another player's army. Peace/alliance → war.
-             * Neutrals (owner outside 0-7) always fight. */
-            if (mOwner >= 0 && mOwner < 8 && oOwner >= 0 && oOwner < 8) {
-                short dipState = DIPLO_GET_STATE(*(gs + 0x1582 + mOwner * 8 + oOwner));
-                if (dipState != DIPLO_WAR) {
-                    /* Auto-declare war (68k CODE_115 line 254-289) */
-                    unsigned char wv1 = *(gs + 0x1582 + mOwner * 8 + oOwner);
-                    unsigned char wv2 = *(gs + 0x1582 + oOwner * 8 + mOwner);
-                    wv1 = DIPLO_SET_STATE(wv1, DIPLO_WAR);
-                    wv1 = (wv1 & 0xFC) | DIPLO_WAR;
-                    wv2 = DIPLO_SET_STATE(wv2, DIPLO_WAR);
-                    wv2 = (wv2 & 0xFC) | DIPLO_WAR;
-                    *(gs + 0x1582 + mOwner * 8 + oOwner) = wv1;
-                    *(gs + 0x1582 + oOwner * 8 + mOwner) = wv2;
-                }
-            }
+    /* 68k CODE_115 FUN_000003c4: auto-declare war when entering tile
+     * occupied by another player's army. Peace/alliance → war.
+     * Neutrals (owner outside 0-7) always fight. */
+    if (mOwner >= 0 && mOwner < 8 && oOwner >= 0 && oOwner < 8) {
+        short dipState = DIPLO_GET_STATE(*(gs + 0x1582 + mOwner * 8 + oOwner));
+        if (dipState != DIPLO_WAR) {
+            unsigned char wv1 = *(gs + 0x1582 + mOwner * 8 + oOwner);
+            unsigned char wv2 = *(gs + 0x1582 + oOwner * 8 + mOwner);
+            wv1 = DIPLO_SET_STATE(wv1, DIPLO_WAR);
+            wv1 = (wv1 & 0xFC) | DIPLO_WAR;
+            wv2 = DIPLO_SET_STATE(wv2, DIPLO_WAR);
+            wv2 = (wv2 & 0xFC) | DIPLO_WAR;
+            *(gs + 0x1582 + mOwner * 8 + oOwner) = wv1;
+            *(gs + 0x1582 + oOwner * 8 + mOwner) = wv2;
+        }
+    }
 
+    if (other != NULL) {
             /* Military Advisor: show assessment before combat for human attacker */
             if (sOptMilAdvisor && mOwner >= 0 && mOwner < 8 &&
                 *(short *)(gs + 0xd0 + mOwner * 2) == 0) {
@@ -14869,519 +15702,158 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                     return true;  /* combat "occurred" so caller won't try merge */
                 }
             }
+    }
 
-            /* At war: flash combat tile on map */
-            if (*gMainGameWindow != 0 && sGameSpeed < 3) {
-                WindowPtr mw = (WindowPtr)*gMainGameWindow;
-                short tileX = mx - sViewportX;
-                short tileY = my - sViewportY;
-                short vpW = (mw->portRect.right - mw->portRect.left) / TERRAIN_TILE_W;
-                short vpH = (mw->portRect.bottom - mw->portRect.top) / TERRAIN_TILE_H;
-                if (tileX >= 0 && tileX < vpW &&
-                    tileY >= 0 && tileY < vpH) {
-                    Rect flashR;
-                    RGBColor flashClr;
-                    short flashPass;
-                    unsigned long flashEnd;
-                    SetPort(mw);
-                    SetRect(&flashR,
-                            tileX * TERRAIN_TILE_W, tileY * TERRAIN_TILE_H,
-                            tileX * TERRAIN_TILE_W + TERRAIN_TILE_W,
-                            tileY * TERRAIN_TILE_H + TERRAIN_TILE_H);
-                    OffsetRect(&flashR, -sViewPixX, -sViewPixY);
-                    for (flashPass = 0; flashPass < 3; flashPass++) {
-                        flashClr.red = 0xFFFF;
-                        flashClr.green = (flashPass & 1) ? 0xFFFF : 0x0000;
-                        flashClr.blue = 0x0000;
-                        RGBForeColor(&flashClr);
-                        PaintRect(&flashR);
-                        flashEnd = TickCount() + SpeedTicks(4);
-                        while (TickCount() < flashEnd) {
-                            EventRecord dEvt;
-                            WaitNextEvent(0, &dEvt, 1, NULL);
-                        }
-                    }
+    humanAtt = (mOwner >= 0 && mOwner < 8 && *(short *)(gs + 0xd0 + mOwner * 2) == 0);
+    humanDef = (oOwner >= 0 && oOwner < 8 && *(short *)(gs + 0xd0 + oOwner * 2) == 0);
+    showIt = (humanAtt || humanDef) && sGameSpeed < 3;
+
+    /* Fight: the attacking stack (the mover first, then the rest of its
+     * tile) against every defender in the zone, one army record at a time. */
+    sBattleKillN = 0;
+    sBattleQuiet = true;
+    for (;;) {
+        short a = -1, d = -1, r, n = *(short *)(gs + 0x1602);
+        if (n > 100) n = 100;
+        for (i = 0; i < n; i++) {
+            other = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)other[0x15] != mOwner &&
+                IN_BATTLE_ZONE(*(short *)(other + 0x00), *(short *)(other + 0x02))) { d = i; break; }
+        }
+        if (d < 0) break;
+        if (mv >= 0) a = mv;
+        else for (i = 0; i < n; i++) {
+            other = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)other[0x15] == mOwner &&
+                *(short *)(other + 0x00) == mx && *(short *)(other + 0x02) == my) { a = i; break; }
+        }
+        if (a < 0) break;
+        r = ResolveCombat(a, d);
+        if (r == 1 || r == -1) {
+            RemoveArmy(d);
+            if (mv > d) mv--;
+            if (sSelectedArmy > d) sSelectedArmy--; else if (sSelectedArmy == d) sSelectedArmy = -1;
+            if (a > d) a--;
+        }
+        if (r == 0 || r == -1) {
+            RemoveArmy(a);
+            if (mv == a) mv = -1; else if (mv > a) mv--;
+            if (sSelectedArmy == a) sSelectedArmy = -1; else if (sSelectedArmy > a) sSelectedArmy--;
+        }
+        if (r != 0 && r != 1 && r != -1) break;
+    }
+    sBattleQuiet = false;
+
+    /* survivors */
+    armyCount = *(short *)(gs + 0x1602);
+    if (armyCount > 100) armyCount = 100;
+    {
+        short nDefLive = 0, nAttLive = 0;
+        short liveDef[BATTLE_MAXU], liveAtt[BATTLE_MAXU];
+        for (i = 0; i < armyCount; i++) {
+            other = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)other[0x15] == mOwner) {
+                if (*(short *)(other + 0x00) == mx && *(short *)(other + 0x02) == my) {
+                    short j, nn = ArmyUnitSprites(i, liveAtt + nAttLive, BATTLE_MAXU - nAttLive);
+                    for (j = 0; j < nn; j++)
+                        if (liveAtt[nAttLive + j] == 0x1C || liveAtt[nAttLive + j] == 0x1D)
+                            if (heroArmy < 0) heroArmy = i;
+                    nAttLive += nn;
                 }
-            }
-
-            /* Resolve combat */
-            PlaySound(SND_WAR);
-            LoadAndPlayMusic(MUSIC_STATE_BATTLE);
-            {
-            short turnNum = *(short *)(gs + 0x136);
-            combatResult = ResolveCombat(movingArmyIdx, i);
-
-            /* Record battle event */
-            RecordEvent(turnNum, HIST_EVT_BATTLE, mOwner,
-                combatResult == 1 ? "Won battle" :
-                combatResult == 0 ? "Lost battle" : "Mutual destruction");
-
-            if (combatResult == 1) {
-                /* Attacker wins: remove defender */
-                RemoveArmy(i);
-                /* Deduct movement points from winner (68k CODE_108 FUN_00000164):
-                 * Combat costs terrain movement cost at the battle tile.
-                 * Adjust army index since RemoveArmy may shift the array. */
-                {
-                    short winIdx = (i < movingArmyIdx) ? movingArmyIdx - 1 : movingArmyIdx;
-                    unsigned char *winner = gs + 0x1604 + winIdx * 0x42;
-                    short mp = (short)(unsigned char)winner[0x2e];
-                    short combatCost = GetMovementCost(mx, my, GetEffectiveUnitClass(winIdx));
-                    if (combatCost <= 0) combatCost = 2;
-                    mp -= combatCost;
-                    if (mp < 0) mp = 0;
-                    winner[0x2e] = (unsigned char)mp;
-                    /* Clear movement orders after combat (68k CODE_108: dest → -1) */
-                    *(short *)(winner + 0x34) = -1;
-                    *(short *)(winner + 0x36) = -1;
-                    *(short *)(winner + 0x32) = 0;
-                }
-                /* Check city capture */
-                {
-                    short cityCount = sCityCount;
-                    short ci;
-                    if (cityCount > 139) cityCount = 139;
-                    for (ci = 0; ci < cityCount; ci++) {
-                        unsigned char *city = sCityData +ci * 0x20;
-                        if (*(short *)(city + 0x00) == mx &&
-                            *(short *)(city + 0x02) == my) {
-                            short prevOwner = *(short *)(city + 0x04);
-
-                            /* 68k CODE_133: track origin player at city+0x0A.
-                             * If capturing player == origin, reset to 0x0F.
-                             * Otherwise save previous owner as origin. */
-                            if (prevOwner != 0x0F && prevOwner >= 0 && prevOwner < 8) {
-                                short curOrigin = *(short *)(city + 0x0A);
-                                if (mOwner == curOrigin)
-                                    *(short *)(city + 0x0A) = 0x0F;
-                                else
-                                    *(short *)(city + 0x0A) = prevOwner;
-                            }
-
-                            *(short *)(city + 0x04) = mOwner;  /* capture city */
-
-                            /* Update map tiles to new owner (68k CODE_133: only update owner
-                             * nibble in byte+1, preserve existing tile type in byte+0). */
-                            if (*gMapTiles != 0) {
-                                unsigned char *capMap = (unsigned char *)*gMapTiles;
-                                short cdx, cdy;
-                                for (cdy = 0; cdy < 2; cdy++) {
-                                    for (cdx = 0; cdx < 2; cdx++) {
-                                        short ctx = mx + cdx, cty = my + cdy;
-                                        if (ctx >= 0 && ctx < sMapWidth && cty >= 0 && cty < sMapHeight) {
-                                            unsigned short coff = cty * 0xE0 + ctx * 2;
-                                            /* Preserve tile type byte, only update owner nibble */
-                                            capMap[coff + 1] = (capMap[coff + 1] & 0xF0) | (mOwner & 0x0F);
-                                        }
-                                    }
-                                }
-                            }
-
-                            /* Gold transfer on capture (68k CODE_133 FUN_00000046):
-                             * No gold from neutrals.
-                             * If defender has < 2 cities remaining: goldPerCity = all gold.
-                             * Else: goldPerCity = defender_gold / defender_city_count.
-                             * Winner gets goldPerCity / 2.
-                             * Loser loses goldPerCity (2x what winner gains). */
-                            if (prevOwner >= 0 && prevOwner < 8 && prevOwner != 0x0F &&
-                                mOwner >= 0 && mOwner < 8) {
-                                short defGold = *(short *)(gs + 0x186 + prevOwner * 0x14);
-                                short defCities = 0;
-                                short ci2;
-                                short goldPerCity;
-                                for (ci2 = 0; ci2 < cityCount; ci2++) {
-                                    unsigned char *c2 = sCityData +ci2 * 0x20;
-                                    if (*(short *)(c2 + 0x04) == prevOwner) defCities++;
-                                }
-                                /* 68k: defCities < 2 → take ALL gold; else proportional */
-                                if (defCities < 2)
-                                    goldPerCity = defGold;
-                                else
-                                    goldPerCity = defGold / defCities;
-                                {
-                                    short goldTaken = goldPerCity / 2;
-                                    if (goldTaken < 0) goldTaken = 0;
-                                    if (goldTaken > 0) {
-                                        short newGold = *(short *)(gs + 0x186 + mOwner * 0x14) + goldTaken;
-                                        if (newGold > 30000) newGold = 30000;
-                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold;
-                                        /* 68k: loser loses goldPerCity (2x goldTaken) */
-                                        {
-                                            short loserGold = *(short *)(gs + 0x186 + prevOwner * 0x14) - goldPerCity;
-                                            if (loserGold < 0) loserGold = 0;
-                                            *(short *)(gs + 0x186 + prevOwner * 0x14) = loserGold;
-                                        }
-                                    }
-                                }
-                            }
-
-                            /* 68k CODE_133: clear vectoring targets pointing to captured city.
-                             * Armies owned by the previous owner that were vectoring to this
-                             * city should have their movement orders cleared. */
-                            if (prevOwner >= 0 && prevOwner < 8 && *gExtState != 0) {
-                                unsigned char *ext = (unsigned char *)*gExtState;
-                                short ci3;
-                                short cityCount3 = sCityCount;
-                                if (cityCount3 > 139) cityCount3 = 139;
-                                for (ci3 = 0; ci3 < cityCount3; ci3++) {
-                                    unsigned char *extCity3 = ext + 0x24c + ci3 * 0x5c;
-                                    short vecTgt = *(short *)(extCity3 + 0x3e);
-                                    if (vecTgt == ci) {
-                                        /* Clear vectoring: production stays, target cleared */
-                                        *(short *)(extCity3 + 0x3e) = -1;
-                                    }
-                                }
-                            }
-
-                            /* 68k CODE_133: clear production and defend state on capture.
-                             * New owner must set their own production. */
-                            if (*gExtState != 0) {
-                                unsigned char *extC = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
-                                *(short *)(extC + 0x02) = -1;  /* clear production timer */
-                                extC[0x00] = 0;                /* clear current production type */
-                            }
-                            /* 68k CODE_133: clear army defend state at captured city */
-                            {
-                                short armyCount2 = *(short *)(gs + 0x1602);
-                                short ai2;
-                                for (ai2 = 0; ai2 < armyCount2; ai2++) {
-                                    unsigned char *ar2 = gs + 0x1604 + ai2 * 0x42;
-                                    if (*(short *)(ar2 + 0x00) == mx &&
-                                        *(short *)(ar2 + 0x02) == my) {
-                                        ar2[0x2d] = 0;  /* clear defend/fortify */
-                                    }
-                                }
-                            }
-
-                            RecordEvent(turnNum, HIST_EVT_CAPTURE, mOwner,
-                                "Captured a city");
-                            /* Only when a human takes or loses the city (an AI
-                             * taking a neutral city is silent in the original) */
-                            if ((mOwner >= 0 && mOwner < 8 && *(short *)(gs + 0xd0 + mOwner * 2) == 0) ||
-                                (prevOwner >= 0 && prevOwner < 8 && *(short *)(gs + 0xd0 + prevOwner * 2) == 0))
-                                ShowCityCaptureNotification(mOwner, prevOwner, mx, my);
-
-                            /* Pillage/Raze choice for human player */
-                            if (sRazingCities != 2 && mOwner >= 0 && mOwner < 8 &&
-                                *(short *)(gs + 0xd0 + mOwner * 2) == 0) {
-                                WindowPtr rzWin;
-                                Rect rzR;
-                                SetRect(&rzR, 0, 0, 300, 110);
-                                OffsetRect(&rzR, 180, 200);
-                                rzWin = NewCWindow(NULL, &rzR, "\p", true,
-                                                   plainDBox, (WindowPtr)-1, false, 0);
-                                if (rzWin) {
-                                    RGBColor rbg = {0x2000, 0x1800, 0x1000};
-                                    RGBColor rgold = {0xFFFF, 0xDDDD, 0x3333};
-                                    RGBColor rwh = {0xFFFF, 0xFFFF, 0xFFFF};
-                                    RGBColor rred = {0xFFFF, 0x4444, 0x4444};
-                                    RGBColor rgrn = {0x4444, 0xFFFF, 0x4444};
-                                    Rect keepR, pillR, razeR;
-                                    Boolean rzDone = false;
-                                    short choice = 0;  /* 0=keep, 1=pillage, 2=raze */
-                                    EventRecord rzEvt;
-
-                                    SetRect(&keepR, 15, 78, 95, 98);
-                                    SetRect(&pillR, 110, 78, 200, 98);
-                                    SetRect(&razeR, 210, 78, 285, 98);
-
-                                    SetPort(rzWin);
-                                    RGBForeColor(&rbg); PaintRect(&rzWin->portRect);
-                                    RGBForeColor(&rgold); PenSize(2,2); FrameRect(&rzWin->portRect); PenNormal();
-                                    TextFont(3); TextSize(11); TextFace(bold);
-                                    RGBForeColor(&rgold);
-                                    MoveTo(15, 20);
-                                    DrawString(GetCachedString(STR_MISC, 8, "\pVictory!"));
-                                    TextFace(0); TextSize(10);
-                                    RGBForeColor(&rwh);
-                                    MoveTo(15, 38);
-                                    DrawString(GetCachedString(STR_MISC, 9, "\pThe city is yours!"));
-                                    MoveTo(15, 54);
-                                    DrawString(GetCachedString(STR_MISC, 10, "\pWill you..."));
-
-                                    /* Buttons */
-                                    RGBForeColor(&rgrn);
-                                    FrameRoundRect(&keepR, 6, 6);
-                                    MoveTo(30, 92);
-                                    DrawString(GetCachedString(STR_CITY_CAPTURE, 0, "\pKeep"));
-                                    RGBForeColor(&rgold);
-                                    FrameRoundRect(&pillR, 6, 6);
-                                    MoveTo(120, 92);
-                                    DrawString(GetCachedString(STR_CITY_CAPTURE, 1, "\pPillage!"));
-                                    if (sRazingCities == 0) {
-                                        RGBForeColor(&rred);
-                                        FrameRoundRect(&razeR, 6, 6);
-                                        MoveTo(225, 92);
-                                        DrawString(GetCachedString(STR_CITY_CAPTURE, 3, "\pRaze!"));
-                                    }
-
-                                    while (!rzDone) {
-                                        if (WaitNextEvent(mDownMask | keyDownMask, &rzEvt, 30, NULL)) {
-                                            if (rzEvt.what == keyDown) {
-                                                char ch = rzEvt.message & charCodeMask;
-                                                if (ch == 'k' || ch == 'K' || ch == '\r') { choice = 0; rzDone = true; }
-                                                else if (ch == 'p' || ch == 'P') { choice = 1; rzDone = true; }
-                                                else if ((ch == 'r' || ch == 'R') && sRazingCities == 0) { choice = 2; rzDone = true; }
-                                                else if (ch == 27) { choice = 0; rzDone = true; }
-                                            } else if (rzEvt.what == mouseDown) {
-                                                Point rp = rzEvt.where;
-                                                SetPort(rzWin);
-                                                GlobalToLocal(&rp);
-                                                if (PtInRect(rp, &keepR)) { choice = 0; rzDone = true; }
-                                                else if (PtInRect(rp, &pillR)) { choice = 1; rzDone = true; }
-                                                else if (sRazingCities == 0 && PtInRect(rp, &razeR)) { choice = 2; rzDone = true; }
-                                            }
-                                        }
-                                    }
-                                    DisposeWindow(rzWin);
-
-                                    if (choice == 1) {
-                                        /* Pillage: gain gold based on city income + defense (68k) */
-                                        short cDef = *(short *)(city + 0x06);
-                                        short cInc = *(short *)(city + 0x08);
-                                        short pillGold = cInc * 4 + cDef * 2 + ((unsigned short)Random() % 20);
-                                        short curGold = *(short *)(gs + 0x186 + mOwner * 0x14);
-                                        short newGold = curGold + pillGold;
-                                        if (newGold > 30000) newGold = 30000; /* 68k gold cap */
-                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold;
-                                        /* Reduce city defense by 1 */
-                                        {
-                                            short def = *(short *)(city + 0x06);
-                                            if (def > 0) *(short *)(city + 0x06) = def - 1;
-                                        }
-                                        /* Show pillage result */
-                                        {
-                                            WindowPtr plWin;
-                                            Rect plR;
-                                            SetRect(&plR, 0, 0, 260, 60);
-                                            OffsetRect(&plR, 190, 220);
-                                            plWin = NewCWindow(NULL, &plR, "\p", true,
-                                                               plainDBox, (WindowPtr)-1, false, 0);
-                                            if (plWin) {
-                                                Str255 ns;
-                                                EventRecord plEvt;
-                                                unsigned long plT;
-                                                SetPort(plWin);
-                                                RGBForeColor(&rbg); PaintRect(&plWin->portRect);
-                                                RGBForeColor(&rgold); PenSize(2,2); FrameRect(&plWin->portRect); PenNormal();
-                                                TextFont(3); TextSize(10);
-                                                RGBForeColor(&rgold);
-                                                MoveTo(15, 20);
-                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 1, "\pPillage!"));
-                                                RGBForeColor(&rwh);
-                                                MoveTo(15, 40);
-                                                DrawString(GetCachedString(STR_MISC, 11, "\pYou looted "));
-                                                NumToString((long)pillGold, ns); DrawString(ns);
-                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 4, "\p gold!"));
-                                                plT = TickCount() + SpeedTicks(90);
-                                                while (TickCount() < plT) {
-                                                    if (WaitNextEvent(mDownMask | keyDownMask, &plEvt, 5, NULL)) break;
-                                                }
-                                                DisposeWindow(plWin);
-                                            }
-                                        }
-                                    } else if (choice == 2) {
-                                        /* Raze: destroy city, gain gold based on income (68k) */
-                                        short cInc2 = *(short *)(city + 0x08);
-                                        short razeGold = cInc2 * 2 + ((unsigned short)Random() % 10);
-                                        short curGold = *(short *)(gs + 0x186 + mOwner * 0x14);
-                                        short newGold2 = curGold + razeGold;
-                                        if (newGold2 > 30000) newGold2 = 30000; /* 68k gold cap */
-                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold2;
-                                        /* 68k CODE_139: raze sets owner to neutral (0x0F),
-                                         * NOT -1. City persists as neutral on the map. */
-                                        *(short *)(city + 0x04) = 0x0F;  /* neutral owner */
-                                        *(short *)(city + 0x06) = 0;     /* no defense */
-                                        /* Show raze result */
-                                        {
-                                            WindowPtr rzWin2;
-                                            Rect rzR2;
-                                            SetRect(&rzR2, 0, 0, 260, 60);
-                                            OffsetRect(&rzR2, 190, 220);
-                                            rzWin2 = NewCWindow(NULL, &rzR2, "\p", true,
-                                                                plainDBox, (WindowPtr)-1, false, 0);
-                                            if (rzWin2) {
-                                                EventRecord rz2Evt;
-                                                unsigned long rz2T;
-                                                SetPort(rzWin2);
-                                                RGBForeColor(&rbg); PaintRect(&rzWin2->portRect);
-                                                RGBForeColor(&rred); PenSize(2,2); FrameRect(&rzWin2->portRect); PenNormal();
-                                                TextFont(3); TextSize(10);
-                                                RGBForeColor(&rred);
-                                                MoveTo(15, 20);
-                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 5, "\pDestroyed!"));
-                                                RGBForeColor(&rwh);
-                                                MoveTo(15, 40);
-                                                DrawString(GetCachedString(STR_CITY_CAPTURE, 6, "\pThe city has been razed to the ground!"));
-                                                rz2T = TickCount() + SpeedTicks(90);
-                                                while (TickCount() < rz2T) {
-                                                    if (WaitNextEvent(mDownMask | keyDownMask, &rz2Evt, 5, NULL)) break;
-                                                }
-                                                DisposeWindow(rzWin2);
-                                            }
-                                        }
-                                        /* 68k CODE_139 FUN_000000f8: update map tiles for razed city.
-                                         * Uses faction-colored razed terrain: base = prevOwner*2 + 0xA0
-                                         * 2x2 grid: (0,0)=base, (1,0)=base+1, (0,1)=base+0x10, (1,1)=base+0x11 */
-                                        if (*gMapTiles != 0) {
-                                            unsigned char *rzMap = (unsigned char *)*gMapTiles;
-                                            short rcx = *(short *)(city + 0x00);
-                                            short rcy = *(short *)(city + 0x02);
-                                            short razeTileBase = (prevOwner >= 0 && prevOwner < 8)
-                                                ? prevOwner * 2 + 0xA0 : 0xA0;
-                                            short rdx, rdy;
-                                            for (rdy = 0; rdy < 2; rdy++) {
-                                                for (rdx = 0; rdx < 2; rdx++) {
-                                                    short rtx = rcx + rdx, rty = rcy + rdy;
-                                                    if (rtx >= 0 && rtx < sMapWidth && rty >= 0 && rty < sMapHeight) {
-                                                        unsigned short toff = rty * 0xE0 + rtx * 2;
-                                                        rzMap[toff] = (unsigned char)(razeTileBase + rdx + rdy * 0x10);
-                                                        rzMap[toff + 1] = (rzMap[toff + 1] & 0xF0) | 0x0F;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        /* 68k CODE_139: clear army orders pointing at razed city */
-                                        {
-                                            short rcx2 = *(short *)(city + 0x00);
-                                            short rcy2 = *(short *)(city + 0x02);
-                                            short rai;
-                                            for (rai = 0; rai < armyCount; rai++) {
-                                                unsigned char *ra = gs + 0x1604 + rai * 0x42;
-                                                if (*(short *)(ra + 0x32) != 0 &&
-                                                    *(short *)(ra + 0x34) == rcx2 &&
-                                                    *(short *)(ra + 0x36) == rcy2) {
-                                                    *(short *)(ra + 0x32) = 0;
-                                                    *(short *)(ra + 0x34) = -1;
-                                                    *(short *)(ra + 0x36) = -1;
-                                                }
-                                            }
-                                        }
-                                        /* Clear vectoring on other cities targeting razed city.
-                                         * 68k CODE_139: also clears production type and timer
-                                         * on cities that were vectoring to the razed city. */
-                                        if (*gExtState != 0) {
-                                            unsigned char *rzExt = (unsigned char *)*gExtState;
-                                            short rCityCount = sCityCount;
-                                            short rcj;
-                                            if (rCityCount > 139) rCityCount = 139;
-                                            for (rcj = 0; rcj < rCityCount; rcj++) {
-                                                unsigned char *rzExtCity = rzExt + 0x24c + rcj * 0x5c;
-                                                short rvi;
-                                                for (rvi = 0; rvi < 4; rvi++) {
-                                                    if (*(short *)(rzExtCity + 0x3e + rvi * 2) == ci) {
-                                                        *(short *)(rzExtCity + 0x3e + rvi * 2) = -1;
-                                                        /* 68k: clear production and timer too */
-                                                        *(short *)(rzExtCity + 0x02) = -1;  /* no production */
-                                                        *(short *)(rzExtCity + 0x58) = 0;   /* timer = 0 */
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            /* Reset production and vectoring for captured city
-                             * (68k CODE_045: city capture clears all production state) */
-                            if (*gExtState != 0) {
-                                unsigned char *ext = (unsigned char *)*gExtState;
-                                unsigned char *extCity = ext + 0x24c + ci * 0x5c;
-                                *(short *)(extCity + 0x02) = -1;  /* clear production */
-                                *(short *)(extCity + 0x58) = 0;   /* clear timer */
-                                { short vi; for (vi = 0; vi < 4; vi++)
-                                    *(short *)(extCity + 0x3e + vi * 2) = -1; } /* clear vectoring */
-
-                                /* 68k CODE_139: clear previous owner's army orders
-                                 * targeting the captured city. Armies sent to a now-enemy
-                                 * city should stop. */
-                                if (prevOwner >= 0 && prevOwner < 8) {
-                                    short ccx = *(short *)(city + 0x00);
-                                    short ccy = *(short *)(city + 0x02);
-                                    short cai;
-                                    for (cai = 0; cai < armyCount; cai++) {
-                                        unsigned char *ca = gs + 0x1604 + cai * 0x42;
-                                        if ((short)(unsigned char)ca[0x15] == prevOwner &&
-                                            *(short *)(ca + 0x32) != 0 &&
-                                            *(short *)(ca + 0x34) == ccx &&
-                                            *(short *)(ca + 0x36) == ccy) {
-                                            *(short *)(ca + 0x32) = 0;
-                                            *(short *)(ca + 0x34) = -1;
-                                            *(short *)(ca + 0x36) = -1;
-                                        }
-                                    }
-                                    /* Clear previous owner's city vectoring targeting
-                                     * the captured city (68k CODE_139 pattern). */
-                                    {
-                                        short ccj;
-                                        for (ccj = 0; ccj < cityCount; ccj++) {
-                                            unsigned char *cc = sCityData +ccj * 0x20;
-                                            if (*(short *)(cc + 0x04) != prevOwner) continue;
-                                            {
-                                                unsigned char *ccExt = ext + 0x24c + ccj * 0x5c;
-                                                short cvi;
-                                                for (cvi = 0; cvi < 4; cvi++) {
-                                                    if (*(short *)(ccExt + 0x3e + cvi * 2) == ci)
-                                                        *(short *)(ccExt + 0x3e + cvi * 2) = -1;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                /* Show production dialog for human player */
-                                if (mOwner >= 0 && mOwner < 8 &&
-                                    *(short *)(gs + 0xd0 + mOwner * 2) == 0) {
-                                    ShowCityBuildSelection(ci);
-                                }
-                            }
-
-                            /* Check quest progress after city capture */
-                            CheckQuestProgress(mOwner);
-
-                            /* Check if previous owner lost all cities (eliminated) */
-                            if (prevOwner >= 0 && prevOwner < 8 && prevOwner != mOwner) {
-                                short cj, prevCities = 0;
-                                for (cj = 0; cj < cityCount; cj++) {
-                                    unsigned char *c2 = sCityData +cj * 0x20;
-                                    short sType = (short)(unsigned char)c2[0x17];
-                                    if (*(short *)(c2 + 0x04) == prevOwner &&
-                                        sType != 2 && sType != 5 && sType != 6)
-                                        prevCities++;
-                                }
-                                if (prevCities == 0) {
-                                    /* 68k CODE_130: eliminated players become AI-controlled.
-                                     * Armies remain as remnants (NOT removed). */
-                                    *(short *)(gs + 0x138 + prevOwner * 2) = 0;
-                                    *(short *)(gs + 0x148 + prevOwner * 2) = 0;
-                                    *(short *)(gs + 0xd0 + prevOwner * 2) = 1; /* convert to AI */
-                                    RecordEvent(turnNum, HIST_EVT_DEFEAT, prevOwner,
-                                        "Eliminated!");
-                                    ShowEliminationNotification(prevOwner, mOwner);
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-            } else if (combatResult == 0) {
-                /* Defender wins: remove attacker */
-                RemoveArmy(movingArmyIdx);
-            } else {
-                /* Mutual destruction */
-                if (movingArmyIdx > i) {
-                    RemoveArmy(movingArmyIdx);
-                    RemoveArmy(i);
-                } else {
-                    RemoveArmy(i);
-                    RemoveArmy(movingArmyIdx);
-                }
-            }
-            return true;
+            } else if (IN_BATTLE_ZONE(*(short *)(other + 0x00), *(short *)(other + 0x02))) {
+                nDefLive += ArmyUnitSprites(i, liveDef + nDefLive, BATTLE_MAXU - nDefLive);
             }
         }
+        won = (nDefLive == 0 && nAttLive > 0);
+
+        /* display order: the fallen first, in the order they fell */
+        for (i = 0; i < sBattleKillN; i++) {
+            if (sBattleKill[i]) { if (nAttDead < BATTLE_MAXU) attSpr[nAttDead++] = sBattleKillT[i]; }
+            else                { if (nDefDead < BATTLE_MAXU) defSpr[nDefDead++] = sBattleKillT[i]; }
+        }
+        for (i = 0; i < nAttLive && nAttDead + i < BATTLE_MAXU; i++) attSpr[nAttDead + i] = liveAtt[i];
+        for (i = 0; i < nDefLive && nDefDead + i < BATTLE_MAXU; i++) defSpr[nDefDead + i] = liveDef[i];
+        nAttLive += nAttDead; nDefLive += nDefDead;
+
+        RecordEvent(turnNum, HIST_EVT_BATTLE, mOwner, won ? "Won battle" : "Lost battle");
+
+        /* the winning stack: movement cost of the battle tile, orders end */
+        if (won) {
+            for (i = 0; i < armyCount; i++) {
+                unsigned char *w = gs + 0x1604 + i * 0x42;
+                if ((short)(unsigned char)w[0x15] != mOwner ||
+                    *(short *)(w + 0x00) != mx || *(short *)(w + 0x02) != my) continue;
+                if (i == mv) {
+                    short mp = (short)(unsigned char)w[0x2e];
+                    short cost = GetMovementCost(mx, my, GetEffectiveUnitClass(i));
+                    if (cost <= 0) cost = 2;
+                    mp -= cost;
+                    if (mp < 0) mp = 0;
+                    w[0x2e] = (unsigned char)mp;
+                }
+                *(short *)(w + 0x34) = -1;
+                *(short *)(w + 0x36) = -1;
+                *(short *)(w + 0x32) = 0;
+            }
+        }
+
+        sCaptureLoot = 0;
+        if (won && cityIdx >= 0)
+            CaptureCityAt(mOwner, cx, cy);
+
+        if (showIt) {
+            Str255 l1, l2, fmt, hname;
+            l1[0] = l2[0] = 0;
+            hname[0] = 0;
+            if (heroArmy >= 0) {
+                unsigned char *hn = gs + 0x1604 + heroArmy * 0x42 + 0x04;
+                short len = 0;
+                while (len < 15 && hn[len] != 0) len++;
+                hname[0] = (unsigned char)len;
+                BlockMoveData(hn, hname + 1, len);
+            }
+            if (!won) {
+                GetDATRawString(752, l1);                       /* You have lost! */
+            } else if (cityIdx >= 0) {
+                Str255 *wonLine = (firstDef < 0) ? &l2 : &l1;
+                if (firstDef < 0)                               /* the garrison fled */
+                    GetDATRawString(743 + (short)((unsigned short)Random() % 4), l1);
+                if (heroArmy >= 0) { GetDATRawString(747, fmt); FormatHeroLine(fmt, hname, 0, *wonLine); }
+                else GetDATRawString(748, *wonLine);            /* Your armies have won the city! */
+                if (firstDef >= 0 && sCaptureLoot > 0) {
+                    GetDATRawString(753, fmt);                  /* Your armies loot %d gp! */
+                    FormatHeroLine(fmt, hname, sCaptureLoot, l2);
+                }
+            } else if (heroArmy >= 0) {
+                GetDATRawString(749, fmt); FormatHeroLine(fmt, hname, 0, l1);
+                GetDATRawString(750, l2);
+            } else {
+                GetDATRawString(751, l1);                       /* You are victorious! */
+            }
+            ShowBattle(mx, my, humanAtt,
+                       (defOwner >= 0 && defOwner < 8) ? defOwner : 8, defSpr, defOwner, nDefLive,
+                       mOwner, attSpr, mOwner, nAttLive, l1, l2);
+        }
+        {
+            sCapWho[0] = 0;
+            if (heroArmy >= 0) {
+                unsigned char *hn = gs + 0x1604 + heroArmy * 0x42 + 0x04;
+                short len = 0;
+                while (len < 15 && hn[len] != 0) len++;
+                sCapWho[0] = (unsigned char)len;
+                BlockMoveData(hn, sCapWho + 1, len);
+            } else if (mOwner >= 0 && mOwner < 8) {
+                unsigned char *fn = gs + mOwner * FACTION_NAME_LEN;
+                short len = 0;
+                while (len < 14 && fn[len] != 0) len++;
+                sCapWho[0] = (unsigned char)len;
+                BlockMoveData(fn, sCapWho + 1, len);
+            }
+        }
+        CaptureCityFinish();
     }
-    return false;
+#undef IN_BATTLE_ZONE
+    return true;
 }
 
 
@@ -21179,6 +21651,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
     }
 
     /* WDEF 128 variant 7: no frame, soft drop shadow (as the tutorial window) */
+    LoadAndPlayMusic(MUSIC_STATE_HERO);   /* RINT11; stays until the next state */
     hireWin = NewCWindow(NULL, &winRect, "\p", false,
                           0x0807, (WindowPtr)-1L, false, 0);
     if (hireWin == NULL)
@@ -23963,6 +24436,7 @@ static void ShowTurnSplash(short playerIdx)
         ActivatePalette((WindowPtr)*gMainGameWindow);
     }
     InvalidateAllGameWindows();
+    DrainUpdates();   /* the original repaints the map as the banner goes */
 }
 
 /* ===================================================================
@@ -25279,9 +25753,9 @@ static void AdvanceToNextPlayer(void)
                     for (hp = 0; hp < 8; hp++)
                         if (*(short *)(gs + 0x138 + hp * 2) != 0 && *(short *)(gs + 0xd0 + hp * 2) == 0)
                             humans++;
-                    /* One human: the original leaves the view where it was
-                     * (turn 1 -> 2, measured); only hot-seat games recentre. */
-                    if (humans <= 1) centered = true;
+                    /* Every human turn starts centred on the capital
+                     * (turn 3 after a scrolled turn 2, measured). */
+                    (void)humans;
                     GetCapitalXY(nextPlayer, &cx2, &cy2);
 
                     /* Check if capital is still owned by this player */
@@ -25327,6 +25801,7 @@ static void AdvanceToNextPlayer(void)
                  * buttons and shows the faction's name and flag strip in the
                  * info area while it plays (measured, turn 1 -> 2). */
                 sAITurnPlayer = nextPlayer;
+                LoadAndPlayMusic(MUSIC_STATE_AITURN);
                 sSelectedArmy = -1; sStackCount = 0;
                 sControlsLive = false;
                 InvalidateAllGameWindows();
@@ -25763,7 +26238,7 @@ static void AdvanceToNextPlayer(void)
 
                 if (*(short *)(gs + 0xd0 + curPlayer * 2) == 0) {
                     short newGold = *(short *)(gs + 0x186 + curPlayer * 0x14);
-                    ShowIncomeSummary(cityIncome, totalUpkeep, newGold);
+                    (void)ShowIncomeSummary;   /* remake-only report: the original shows none */
                     CheckQuestProgress(curPlayer);
 
                     /* Bankruptcy check: warn if gold below -100 */
@@ -26014,7 +26489,6 @@ static void AdvanceToNextPlayer(void)
             } else if (victoryResult == -1) {
                 /* Current player lost — 68k CODE_130 FUN_000006d2: convert to AI
                  * spectator, do NOT set game-over flag. Game continues. */
-                LoadAndPlayMusic(MUSIC_STATE_VICTORY);
                 ShowVictoryDialog(false);
                 /* Mark player as dead and convert to AI */
                 *(short *)(gs + 0x138 + curPlayer * 2) = 0;
@@ -29924,6 +30398,7 @@ static void HandleMouseDown(EventRecord *event)
                                     /* Non-adjacent: switch selection */
                                     sSelectedArmy = clickedArmy;
                                     BuildStackArrays(clickedArmy);
+                                    RevealTile(clickTileX, clickTileY);
                                     /* silent, as the original (recorded) */
                                     InvalRect(&port);
                                     goto doneMapClick;
@@ -29932,6 +30407,7 @@ static void HandleMouseDown(EventRecord *event)
                                 /* No army selected yet: select this one */
                                 sSelectedArmy = clickedArmy;
                                 BuildStackArrays(clickedArmy);
+                                RevealTile(clickTileX, clickTileY);
                                 /* silent, as the original (recorded) */
                                 InvalRect(&port);
                                 goto doneMapClick;
@@ -30085,14 +30561,14 @@ static void HandleMouseDown(EventRecord *event)
                                     if (CheckAndResolveCombat(sSelectedArmy)) {
                                         /* If attacker destroyed, auto-advance */
                                         if (sSelectedArmy < 0)
-                                            SelectNextArmy();
+                                            { sSelectedArmy = -1; sStackCount = 0; InvalidateAllGameWindows(); }  /* original: deselect, no jump to the next army */
                                     }
 
                                     /* Try merging with friendly army at destination */
                                     if (sSelectedArmy >= 0) {
                                         if (TryMergeArmies(sSelectedArmy)) {
                                             sSelectedArmy = -1; sPreviewPathLen = 0; sPreviewGridValid = false; sInfoStackBackupSaved = false; { GrafPtr _sp; GetPort(&_sp); if (gInfoWindow && *gInfoWindow) { SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect); } SetPort(_sp); }
-                                            SelectNextArmy();
+                                            { sSelectedArmy = -1; sStackCount = 0; InvalidateAllGameWindows(); }  /* original: deselect, no jump to the next army */
                                         }
                                     }
 
@@ -30111,7 +30587,7 @@ static void HandleMouseDown(EventRecord *event)
                                             selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
                                             if ((short)(unsigned char)selArmy[0x2e] <= 0 &&
                                                 *(short *)(selArmy + 0x32) == 0) {
-                                                SelectNextArmy();
+                                                { sSelectedArmy = -1; sStackCount = 0; InvalidateAllGameWindows(); }  /* original: deselect, no jump to the next army */
                                             }
                                         }
                                     }
@@ -30166,18 +30642,25 @@ static void HandleMouseDown(EventRecord *event)
                                         (void)took;
                                         /* Combat may have removed the army */
                                         if (sSelectedArmy < 0)
-                                            SelectNextArmy();
+                                            { sSelectedArmy = -1; sStackCount = 0; InvalidateAllGameWindows(); }  /* original: deselect, no jump to the next army */
                                         /* Refresh stack-group arrays at the new tile
                                          * (the nearby-move path does this; without it a
                                          * multi-army destination stack is uninteractable). */
                                         if (sSelectedArmy >= 0)
                                             BuildStackArrays(sSelectedArmy);
-                                        /* Out of moves: the original drops the
-                                         * selection (turn 2 drag past the city) */
-                                        if (sSelectedArmy >= 0 &&
-                                            (unsigned char)(gs + 0x1604 + sSelectedArmy * 0x42)[0x2e] == 0) {
-                                            sSelectedArmy = -1; sStackCount = 0;
+                                        /* The view follows the stack (PPC FUN_10008418 ->
+                                         * RevealTile); a stack that stops short of its
+                                         * destination is deselected, keeping its orders
+                                         * (turn 2 drag past the city). */
+                                        if (sSelectedArmy >= 0) {
+                                            unsigned char *ma = gs + 0x1604 + sSelectedArmy * 0x42;
+                                            RevealTile(*(short *)(ma + 0x00), *(short *)(ma + 0x02));
                                             InvalidateAllGameWindows();
+                                            if (*(short *)(ma + 0x00) != clickTileX ||
+                                                *(short *)(ma + 0x02) != clickTileY ||
+                                                ma[0x2e] == 0) {
+                                                sSelectedArmy = -1; sStackCount = 0;
+                                            }
                                         }
                                     } else if (pathLen < 0) {
                                         /* Unreachable: cancel orders */
@@ -31455,6 +31938,7 @@ int main(void)
         /* "Let the war begin!" voice after game setup completes; the original
          * lets it finish before the turn banner and its chime (recorded:
          * VBEGIN 12.3s, SND_TURN 18.7s). */
+        LoadAndPlayMusic(MUSIC_STATE_TURN);   /* FUN_10029ac0: game start */
         PlayVoice(SND_VBEGIN);
         WaitVoiceDone();
 
@@ -31541,6 +32025,7 @@ int main(void)
                 }
                 SetPort(sp);
             }
+            MusicIdle();
             if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gsx + 0x1602) &&
                 TickCount() - lastHalo >= 6) {
                 unsigned char *sa = gsx + 0x1604 + sSelectedArmy * 0x42;
