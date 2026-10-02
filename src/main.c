@@ -1446,6 +1446,8 @@ static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
 static void DrawT3DFrame(const Rect *v);
+static void DrawSunkenText2(const Rect *v, ConstStr255Param s);
+static void FormatTwoNums(ConstStr255Param fmt, short a, short b, Str255 out);
 static short GetMedals(const unsigned char *a, short k);
 static void SetMedals(unsigned char *a, short k, short v);
 static void DrawProdView(short L, short T, short owner, short unitType);
@@ -19638,479 +19640,202 @@ static void ShowItemsDialog(short armyIdx)
  * level, experience), item list, and left/right nav arrows to cycle
  * between player's heroes.
  * =================================================================== */
+/* TSunkenText that word-wraps to its width (Illuria 17, left aligned) */
+static void DrawWrappedSunken(const Rect *v, ConstStr255Param s)
+{
+    short i = 1, line = 0, w = v->right - v->left;
+    TextFont(IlluriaFont()); TextSize(17); TextFace(0);
+    while (i <= s[0]) {
+        Str255 ln; short j = i, lastBreak = -1;
+        ln[0] = 0;
+        while (j <= s[0]) {
+            ln[++ln[0]] = s[j];
+            if (s[j] == ' ') lastBreak = j;
+            if (StringWidth(ln) > w && lastBreak >= i) { ln[0] = (unsigned char)(lastBreak - i); j = lastBreak + 1; break; }
+            j++;
+        }
+        {
+            Rect r = *v;
+            r.top = v->top + 20 * line; r.bottom = r.top + 19;
+            while (ln[0] && ln[ln[0]] == ' ') ln[0]--;
+            DrawSunkenText(&r, ln, IlluriaFont(), 17, -2);
+        }
+        i = j; line++;
+        while (i <= s[0] && s[i] == ' ') i++;
+    }
+}
+
 static void ShowHeroInspect(void)
 {
-    WindowPtr heroWin;
-    GWorldPtr offGW;
-    Rect winRect, gwRect;
-    Boolean heroDone;
-
-    #define HINSP_W 420
-    #define HINSP_H 380
+    /* View 4000 "Inspect Heroes" (508x352 on WDEF 128 variant 7, placed like
+     * the city window): marble with edge PICTs 1004/1005/1006/1008; minimap
+     * (18,20) 224x312 in a T3DFrameAdorner; hero name (245,20) Illuria 36;
+     * the hero's stack as rings arm0-7 at (245+32i, 66); "In:"/"Near:" city
+     * (right edge 328 / text from 331, y 101); Battle: / Command: (y 121/141)
+     * and Level: / Experience: (right edge 471, values from 475); the items
+     * carried (290,162) 207x76 and on the ground (290,244) 207x58 lists in
+     * T3D frames with labels at (245,162)/(245,244); "%d of %d" (245,311);
+     * left/right arrows (310,329)/(310,377) 30x21; OK (420,307) 72x29. */
+    unsigned char *gs;
+    short cur, ac, heroArmy[40], heroSlot[40], nh = 0, idx = 0, i, k;
+    WindowPtr win;
+    Rect r, okR, okRing, leftR, rightR, overR, carrR, grouR;
+    Boolean done = false, redraw = true;
+    EventRecord e;
+    Str255 s, fmt;
+    RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
 
     if (*gGameState == 0) return;
-
-    {
-        unsigned char *gs = (unsigned char *)*gGameState;
-        short curPlayer = *(short *)(gs + 0x110);
-        short armyCount = *(short *)(gs + 0x1602);
-        short heroArmyIds[20]; /* army indices containing heroes */
-        short heroSlots[20];   /* which unit slot (0-3) is the hero */
-        short heroCount = 0;
-        short curHeroIdx = 0;  /* which hero we're viewing */
-        Boolean needsRedraw = true;
-        short ai, u;
-
-        if (armyCount > 100) armyCount = 100;
-
-        /* Collect all heroes for this player */
-        for (ai = 0; ai < armyCount && heroCount < 20; ai++) {
-            unsigned char *army = gs + 0x1604 + ai * 0x42;
-            short owner = (short)(unsigned char)army[0x15];
-            if (owner != curPlayer) continue;
-            for (u = 0; u < 4; u++) {
-                if ((short)(unsigned char)army[0x16 + u] == 0x1C) {
-                    heroArmyIds[heroCount] = ai;
-                    heroSlots[heroCount] = u;
-                    heroCount++;
-                    break;
-                }
+    gs = (unsigned char *)*gGameState;
+    cur = *(short *)(gs + 0x110);
+    ac = *(short *)(gs + 0x1602);
+    if (ac > 100) ac = 100;
+    for (i = 0; i < ac && nh < 40; i++) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        if ((short)(unsigned char)a[0x15] != cur) continue;
+        for (k = 0; k < 4; k++)
+            if (a[0x16 + k] == 0x1C) {
+                if (i == sSelectedArmy) idx = nh;
+                heroArmy[nh] = i; heroSlot[nh++] = k; break;
             }
-        }
-
-        Rect screenRect = qd.screenBits.bounds;
-        SetRect(&winRect,
-            (screenRect.right - HINSP_W) / 2,
-            (screenRect.bottom - HINSP_H) / 2,
-            (screenRect.right - HINSP_W) / 2 + HINSP_W,
-            (screenRect.bottom - HINSP_H) / 2 + HINSP_H);
-        heroWin = NewCWindow(NULL, &winRect, "\p", true,
-                             plainDBox, (WindowPtr)-1, false, 0);
-        SetRect(&gwRect, 0, 0, HINSP_W, HINSP_H);
-        NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
-        if (heroWin == NULL || offGW == NULL) {
-            if (offGW) DisposeGWorld(offGW);
-            if (heroWin) DisposeWindow(heroWin);
-            return;
-        }
-
-        /* Button rects */
-        Rect leftArrowR, rightArrowR, doneR, itemsR;
-        SetRect(&leftArrowR,  10, HINSP_H - 36, 50, HINSP_H - 12);
-        SetRect(&rightArrowR, HINSP_W - 50, HINSP_H - 36, HINSP_W - 10, HINSP_H - 12);
-        SetRect(&doneR,       (HINSP_W - 80) / 2, HINSP_H - 36, (HINSP_W + 80) / 2, HINSP_H - 12);
-        SetRect(&itemsR,      HINSP_W - 130, 220, HINSP_W - 20, 242);
-
-        heroDone = false;
-        while (!heroDone) {
-            if (needsRedraw) {
-                CGrafPtr savePort;
-                GDHandle saveGD;
-                needsRedraw = false;
-
-                GetGWorld(&savePort, &saveGD);
-                SetGWorld(offGW, NULL);
-                LockPixels(GetGWorldPixMap(offGW));
-
-                /* Background */
-                DrawMarbleBackground(&gwRect);
-
-                /* Border */
-                {
-                    RGBColor border = {0x6666, 0x6666, 0x9999};
-                    RGBForeColor(&border);
-                    PenSize(2, 2);
-                    FrameRect(&gwRect);
-                    PenSize(1, 1);
-                }
-
-                if (heroCount == 0) {
-                    /* No heroes */
-                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    RGBForeColor(&white);
-                    TextFont(2); TextSize(14); TextFace(bold);
-                    MoveTo(120, HINSP_H / 2);
-                    DrawString(GetCachedString(STR_MISC, 48, "\pNo heroes in service."));
-                } else {
-                    unsigned char *army = gs + 0x1604 + heroArmyIds[curHeroIdx] * 0x42;
-                    short heroU = heroSlots[curHeroIdx];
-                    short heroAX = *(short *)(army + 0x00);
-                    short heroAY = *(short *)(army + 0x02);
-                    short heroStr = (short)(unsigned char)army[0x1e + heroU];
-                    short heroMov = (short)(unsigned char)army[0x1a + heroU];
-                    short heroCmd = (short)(unsigned char)army[0x22 + heroU];
-                    short heroXP  = (short)(unsigned char)army[0x26 + heroU];
-                    short heroLevel = GetHeroLevel(heroXP);
-                    Boolean female = IsHeroFemale(heroArmyIds[curHeroIdx]);
-                    Str255 hname, title, numStr;
-                    RGBColor black = {0, 0, 0};
-                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
-                    RGBColor labelC = {0xBBBB, 0xBBBB, 0xBBBB};
-                    RGBColor valueC = {0xFFFF, 0xFFFF, 0xFFFF};
-
-                    /* Hero name from names table */
-                    {
-                        unsigned char *nameData = gs + 0x1604 + heroArmyIds[curHeroIdx] * 0x42 + 0x04;
-                        short nlen = 0;
-                        while (nlen < 15 && nameData[nlen] != 0) nlen++;
-                        hname[0] = (unsigned char)nlen;
-                        BlockMoveData(nameData, hname + 1, nlen);
-                    }
-
-                    /* ---- Minimap (top-left, 120x100) ---- */
-                    {
-                        Rect mmR;
-                        SetRect(&mmR, 12, 12, 132, 112);
-                        DrawMinimapInRect(&mmR, heroAX, heroAY);
-                    }
-
-                    /* ---- Hero name (bold, gold, top center) ---- */
-                    RGBForeColor(&gold);
-                    TextFont(2); TextSize(14); TextFace(bold);
-                    MoveTo(144, 30);
-                    DrawString(hname);
-
-                    /* ---- Title (below name) ---- */
-                    GetHeroTitle(heroLevel, female, title);
-                    RGBForeColor(&white);
-                    TextFont(3); TextSize(10); TextFace(0);
-                    MoveTo(144, 46);
-                    DrawString(title);
-                    if (heroCount > 1) {
-                        /* Hero counter */
-                        RGBForeColor(&labelC);
-                        DrawString("\p  (");
-                        NumToString((long)(curHeroIdx + 1), numStr);
-                        DrawString(numStr);
-                        DrawString("\p/");
-                        NumToString((long)heroCount, numStr);
-                        DrawString(numStr);
-                        DrawString("\p)");
-                    }
-
-                    /* ---- Army composition (8 unit slots) ---- */
-                    {
-                        short si;
-                        short slotX = 144, slotY = 60;
-                        RGBColor emptyC = {0x4444, 0x4444, 0x5555};
-
-                        TextFont(3); TextSize(9); TextFace(0);
-                        for (si = 0; si < 4; si++) {
-                            Rect slotR;
-                            short uType = (short)(unsigned char)army[0x16 + si];
-                            SetRect(&slotR, slotX + si * 68, slotY,
-                                            slotX + si * 68 + 60, slotY + 36);
-
-                            if (uType != 0xFF) {
-                                /* Draw unit info box */
-                                RGBColor unitBg = {0x2222, 0x2222, 0x3333};
-                                short hp = (short)(unsigned char)army[0x1e + si];
-                                short mv = (short)(unsigned char)army[0x1a + si];
-                                Str255 ns;
-
-                                RGBForeColor(&unitBg);
-                                PaintRoundRect(&slotR, 4, 4);
-                                RGBForeColor(&black);
-                                FrameRoundRect(&slotR, 4, 4);
-
-                                /* Unit type name */
-                                RGBForeColor(uType == 0x1C ? &gold : &white);
-                                MoveTo(slotR.left + 4, slotR.top + 12);
-                                {
-                                    Str255 uname;
-                                    if (uType == 0x1C) {
-                                        unsigned char *hn = army + 0x04; short nl = 0;
-                                        while (nl < 15 && hn[nl]) nl++;
-                                        uname[0] = (unsigned char)nl;
-                                        BlockMoveData(hn, uname + 1, nl);
-                                    } else {
-                                        GetUnitTypeName(uType, uname);
-                                    }
-                                    /* Truncate long names to fit slot */
-                                    if (uname[0] > 8) uname[0] = 8;
-                                    DrawString(uname);
-                                }
-
-                                /* HP/Mv below */
-                                RGBForeColor(&labelC);
-                                MoveTo(slotR.left + 4, slotR.top + 26);
-                                NumToString((long)hp, ns); DrawString(ns);
-                                DrawString("\p/");
-                                NumToString((long)mv, ns); DrawString(ns);
-                            } else {
-                                /* Empty slot */
-                                RGBForeColor(&emptyC);
-                                PaintRoundRect(&slotR, 4, 4);
-                                RGBForeColor(&labelC);
-                                FrameRoundRect(&slotR, 4, 4);
-                            }
-                        }
-                    }
-
-                    /* ---- Stats block (below minimap/army) ---- */
-                    {
-                        short yBase = 126;
-                        short labelX = 20, valueX = 130;
-                        short rightLabelX = 230, rightValueX = 340;
-
-                        TextFont(3); TextSize(10); TextFace(0);
-
-                        /* Left column */
-                        RGBForeColor(&labelC);
-                        MoveTo(labelX, yBase);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 14, "\pStrength:"));
-                        RGBForeColor(&valueC);
-                        MoveTo(valueX, yBase);
-                        NumToString((long)heroStr, numStr); DrawString(numStr);
-
-                        RGBForeColor(&labelC);
-                        MoveTo(labelX, yBase + 18);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 15, "\pMovement:"));
-                        RGBForeColor(&valueC);
-                        MoveTo(valueX, yBase + 18);
-                        NumToString((long)heroMov, numStr); DrawString(numStr);
-
-                        RGBForeColor(&labelC);
-                        MoveTo(labelX, yBase + 36);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 16, "\pCommand:"));
-                        RGBForeColor(&valueC);
-                        MoveTo(valueX, yBase + 36);
-                        DrawString("\p+");
-                        NumToString((long)heroCmd, numStr); DrawString(numStr);
-
-                        /* Right column */
-                        RGBForeColor(&labelC);
-                        MoveTo(rightLabelX, yBase);
-                        DrawString("\pLevel:");
-                        RGBForeColor(&valueC);
-                        MoveTo(rightValueX, yBase);
-                        NumToString((long)heroLevel, numStr); DrawString(numStr);
-
-                        RGBForeColor(&labelC);
-                        MoveTo(rightLabelX, yBase + 18);
-                        DrawString("\pExperience:");
-                        RGBForeColor(&valueC);
-                        MoveTo(rightValueX, yBase + 18);
-                        NumToString((long)heroXP, numStr); DrawString(numStr);
-
-                        RGBForeColor(&labelC);
-                        MoveTo(rightLabelX, yBase + 36);
-                        DrawString("\pBattles:");
-                        RGBForeColor(&valueC);
-                        MoveTo(rightValueX, yBase + 36);
-                        /* Battles = XP for heroes (approx) */
-                        NumToString((long)(heroXP / 3), numStr); DrawString(numStr);
-
-                        /* Near: city name */
-                        RGBForeColor(&labelC);
-                        MoveTo(labelX, yBase + 60);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 20, "\pNear:"));
-                        RGBForeColor(&valueC);
-                        MoveTo(valueX, yBase + 60);
-                        {
-                            /* Find nearest city */
-                            short cityCount = sCityCount;
-                            short ci, bestDist = 9999;
-                            short bestCI = -1;
-                            if (cityCount > 139) cityCount = 139;
-                            for (ci = 0; ci < cityCount; ci++) {
-                                unsigned char *city = sCityData +ci * 0x20;
-                                short cx = *(short *)(city + 0x00);
-                                short cy = *(short *)(city + 0x02);
-                                short dist = (heroAX - cx) * (heroAX - cx) + (heroAY - cy) * (heroAY - cy);
-                                if (dist < bestDist) {
-                                    bestDist = dist;
-                                    bestCI = ci;
-                                }
-                            }
-                            if (bestCI >= 0) {
-                                unsigned char *cname = sCityData +bestCI * 0x20 + 0x0A;
-                                Str255 pName;
-                                short nlen = 0;
-                                while (nlen < 14 && cname[nlen] != 0) nlen++;
-                                pName[0] = (unsigned char)nlen;
-                                BlockMoveData(cname, pName + 1, nlen);
-                                DrawString(pName);
-                            }
-                        }
-                    }
-
-                    /* ---- Items section ---- */
-                    {
-                        short yItem = 220;
-                        short si;
-                        RGBColor gold2 = {0xCCCC, 0x9999, 0x0000};
-                        short itemCount = 0;
-
-                        RGBForeColor(&gold);
-                        TextFace(bold);
-                        MoveTo(20, yItem);
-                        DrawString("\pItems Carried:");
-                        TextFace(0);
-
-                        for (si = 0; si < ITEM_SLOTS; si++) {
-                            short itemId = *(short *)(army + 0x3A + si * 2);
-                            short yp = yItem + 18 + si * 18;
-                            if (itemId > 0 && itemId <= MAX_ITEMS) {
-                                const ItemDef *item = &sItemTable[itemId - 1];
-                                RGBForeColor(&white);
-                                MoveTo(30, yp);
-                                {
-                                    Str255 iname;
-                                    short nlen = 0;
-                                    while (item->name[nlen] != '\0') nlen++;
-                                    iname[0] = (unsigned char)nlen;
-                                    BlockMoveData(item->name, iname + 1, nlen);
-                                    DrawString(iname);
-                                }
-                                /* Bonus */
-                                if (item->value > 0) {
-                                    RGBForeColor(&gold2);
-                                    DrawString("\p +");
-                                    NumToString((long)item->value, numStr);
-                                    DrawString(numStr);
-                                }
-                                itemCount++;
-                            } else {
-                                RGBForeColor(&labelC);
-                                MoveTo(30, yp);
-                                DrawString("\p-");
-                            }
-                        }
-
-                        /* Items button (opens full item dialog) */
-                        {
-                            RGBColor btnBg = {0x3333, 0x3333, 0x5555};
-                            RGBForeColor(&btnBg);
-                            PaintRoundRect(&itemsR, 6, 6);
-                            RGBForeColor(&black);
-                            FrameRoundRect(&itemsR, 6, 6);
-                            RGBForeColor(&white);
-                            TextFace(bold);
-                            MoveTo(itemsR.left + 16, itemsR.bottom - 6);
-                            DrawString("\pView Items...");
-                            TextFace(0);
-                        }
-                    }
-                }
-
-                /* ---- Navigation: left/right arrows and Done button ---- */
-                {
-                    RGBColor black = {0, 0, 0};
-                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    RGBColor btnBg = {0x3333, 0x3333, 0x5555};
-
-                    /* Left arrow */
-                    if (heroCount > 1) {
-                        RGBForeColor(&btnBg);
-                        PaintRoundRect(&leftArrowR, 6, 6);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&leftArrowR, 6, 6);
-                        RGBForeColor(&white);
-                        TextFont(3); TextSize(12); TextFace(bold);
-                        MoveTo(leftArrowR.left + 14, leftArrowR.bottom - 7);
-                        DrawString("\p<");
-                        TextSize(10);
-                    }
-
-                    /* Right arrow */
-                    if (heroCount > 1) {
-                        RGBForeColor(&btnBg);
-                        PaintRoundRect(&rightArrowR, 6, 6);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&rightArrowR, 6, 6);
-                        RGBForeColor(&white);
-                        TextFont(3); TextSize(12); TextFace(bold);
-                        MoveTo(rightArrowR.left + 14, rightArrowR.bottom - 7);
-                        DrawString("\p>");
-                        TextSize(10);
-                    }
-
-                    /* Done button */
-                    RGBForeColor(&btnBg);
-                    PaintRoundRect(&doneR, 8, 8);
-                    RGBForeColor(&black);
-                    FrameRoundRect(&doneR, 8, 8);
-                    PenSize(2, 2);
-                    FrameRoundRect(&doneR, 8, 8);
-                    PenSize(1, 1);
-                    RGBForeColor(&white);
-                    TextFace(bold);
-                    MoveTo(doneR.left + 22, doneR.bottom - 7);
-                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 2, "\pDone"));
-                    TextFace(0);
-                }
-
-                UnlockPixels(GetGWorldPixMap(offGW));
-                SetGWorld(savePort, saveGD);
-
-                SetPort(heroWin);
-                {
-                    Rect dr = heroWin->portRect;
-                    LockPixels(GetGWorldPixMap(offGW));
-                    CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                             &((GrafPtr)heroWin)->portBits,
-                             &gwRect, &dr, srcCopy, NULL);
-                    UnlockPixels(GetGWorldPixMap(offGW));
-                }
-            }
-
-            {
-                EventRecord heroEvt;
-                if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &heroEvt, 30, NULL)) {
-                    if (heroEvt.what == keyDown) {
-                        char key = heroEvt.message & charCodeMask;
-                        if (key == 0x1B || key == 0x0D || key == 0x03) {
-                            heroDone = true;
-                        } else if (key == 0x1C && heroCount > 1) {
-                            /* Left arrow key → previous hero */
-                            curHeroIdx = (curHeroIdx + heroCount - 1) % heroCount;
-                            needsRedraw = true;
-                        } else if (key == 0x1D && heroCount > 1) {
-                            /* Right arrow key → next hero */
-                            curHeroIdx = (curHeroIdx + 1) % heroCount;
-                            needsRedraw = true;
-                        }
-                    } else if (heroEvt.what == mouseDown) {
-                        Point clickPt = heroEvt.where;
-                        SetPort(heroWin);
-                        GlobalToLocal(&clickPt);
-
-                        if (PtInRect(clickPt, &doneR)) {
-                            heroDone = true;
-                        } else if (heroCount > 1 && PtInRect(clickPt, &leftArrowR)) {
-                            curHeroIdx = (curHeroIdx + heroCount - 1) % heroCount;
-                            needsRedraw = true;
-                        } else if (heroCount > 1 && PtInRect(clickPt, &rightArrowR)) {
-                            curHeroIdx = (curHeroIdx + 1) % heroCount;
-                            needsRedraw = true;
-                        } else if (heroCount > 0 && PtInRect(clickPt, &itemsR)) {
-                            /* Open item dialog for current hero */
-                            UnlockPixels(GetGWorldPixMap(offGW));
-                            ShowItemsDialog(heroArmyIds[curHeroIdx]);
-                            needsRedraw = true;
-                        }
-                    } else if (heroEvt.what == updateEvt &&
-                               (WindowPtr)heroEvt.message == heroWin) {
-                        Rect dr;
-                        BeginUpdate(heroWin);
-                        SetPort(heroWin);
-                        dr = heroWin->portRect;
-                        LockPixels(GetGWorldPixMap(offGW));
-                        CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                                 &((GrafPtr)heroWin)->portBits,
-                                 &gwRect, &dr, srcCopy, NULL);
-                        UnlockPixels(GetGWorldPixMap(offGW));
-                        EndUpdate(heroWin);
-                    }
-                }
-            }
-        }
-
-        DisposeGWorld(offGW);
-        DisposeWindow(heroWin);
     }
+    if (nh == 0) { SysBeep(1); return; }
+    SetRect(&okRing, 420, 307, 492, 336);
+    okR = okRing; InsetRect(&okR, 4, 4);
+    SetRect(&leftR, 329, 310, 359, 331);
+    SetRect(&rightR, 377, 310, 407, 331);
+    SetRect(&overR, 18, 20, 242, 332);
+    SetRect(&carrR, 290, 162, 497, 238);
+    SetRect(&grouR, 290, 244, 497, 302);
+    win = NewMacAppWindow(508, 352);
+    if (win == NULL) return;
+    while (!done) {
+        if (redraw) {
+            unsigned char *a = gs + 0x1604 + heroArmy[idx] * 0x42;
+            short u = heroSlot[idx], hx = *(short *)(a + 0), hy = *(short *)(a + 2);
+            short bB, cB, gB, n = 0, ci, near = -1, inCity = 0;
+            Boolean fB, mB;
+            long bd = 0x7FFFFFFFL;
+            GetHeroItemBonus(heroArmy[idx], &bB, &cB, &gB, &fB, &mB);
+            SetPort(win);
+            DrawPictAt(1001, 7, 7);
+            DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 345); DrawPictAt(1008, 501, 0);
+            r = overR; InsetRect(&r, -1, -1);
+            DrawT3DFrame(&r);
+            DrawOverviewTo((GrafPtr)win, overR, 0);
+            SetPort(win);
+            {
+                unsigned char *nm = a + 0x04; short len = 0;
+                while (len < 15 && nm[len]) len++;
+                s[0] = (unsigned char)len; BlockMoveData(nm, s + 1, len);
+                SetRect(&r, 245, 20, 501, 59); DrawSunkenText(&r, s, IlluriaFont(), 36, 1);
+            }
+            /* the stack: every unit on the hero's tile, hero first */
+            {
+                short slots[8], owners[8], q;
+                for (q = 0; q < ac && n < 8; q++) {
+                    unsigned char *b = gs + 0x1604 + q * 0x42;
+                    if ((short)(unsigned char)b[0x15] != cur || *(short *)(b + 0) != hx || *(short *)(b + 2) != hy) continue;
+                    for (k = 0; k < 4 && n < 8; k++) if (b[0x16 + k] != 0xFF) { slots[n] = b[0x16 + k]; owners[n++] = cur; }
+                }
+                for (k = 0; k < 8; k++) DrawProdView(245 + 32 * k, 66, cur, k < n ? slots[k] : -1);
+                (void)owners;
+            }
+            for (ci = 0; ci < sCityCount && ci < 99; ci++) {
+                unsigned char *c = sCityData + ci * 0x20;
+                long dx = hx - *(short *)(c + 0), dy = hy - *(short *)(c + 2);
+                if (c[0x17] >= 2) continue;
+                if (dx >= 0 && dx <= 1 && dy >= 0 && dy <= 1) { near = ci; inCity = 1; break; }
+                if (dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; near = ci; }
+            }
+            GetDATRawString(inCity ? 679 : 678, s);
+            SetRect(&r, 245, 101, 328, 120); DrawSunkenText(&r, s, IlluriaFont(), 17, -1);
+            CityNameP(near, s);
+            SetRect(&r, 331, 101, 499, 120); DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+            GetDATRawString(680, s);
+            SetRect(&r, 245, 121, 328, 140); DrawSunkenText(&r, s, IlluriaFont(), 17, -1);
+            NumToString((long)bB, fmt); s[0] = 1; s[1] = '+'; BlockMoveData(fmt + 1, s + 2, fmt[0]); s[0] += fmt[0];
+            SetRect(&r, 331, 121, 361, 140); DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+            GetDATRawString(681, s);
+            SetRect(&r, 245, 141, 328, 160); DrawSunkenText(&r, s, IlluriaFont(), 17, -1);
+            NumToString((long)(a[0x22 + u] + cB), fmt); s[0] = 1; s[1] = '+'; BlockMoveData(fmt + 1, s + 2, fmt[0]); s[0] += fmt[0];
+            SetRect(&r, 331, 141, 361, 160); DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+            GetDATRawString(682, s);
+            SetRect(&r, 388, 121, 471, 140); DrawSunkenText(&r, s, IlluriaFont(), 17, -1);
+            NumToString((long)GetHeroLevel(a[0x26 + u]), s);
+            SetRect(&r, 475, 121, 499, 140); DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+            SetRect(&r, 368, 141, 471, 160); DrawSunkenText(&r, "\pExperience:", IlluriaFont(), 17, -1);
+            NumToString((long)a[0x26 + u], s);
+            SetRect(&r, 475, 141, 499, 160); DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+            /* item lists: white list area + a 16px scroll bar inside a T3D frame */
+            {
+                short row = 0, it;
+                Rect upR;
+                for (k = 0; k < 2; k++) {
+                    Rect f = k ? grouR : carrR, sb;
+                    DrawT3DFrame(&f);
+                    InsetRect(&f, 1, 1);
+                    RGBForeColor(&white); PaintRect(&f);
+                    SetRect(&sb, f.right - 16, f.top, f.right, f.bottom);
+                    RGBForeColor(&black); FrameRect(&sb);
+                    {   RGBColor g = {0xEEEE, 0xEEEE, 0xEEEE}; Rect in = sb; InsetRect(&in, 1, 16);
+                        RGBForeColor(&g); PaintRect(&in); RGBForeColor(&black);
+                        MoveTo(sb.left, sb.top + 15); LineTo(sb.right - 1, sb.top + 15);
+                        MoveTo(sb.left, sb.bottom - 16); LineTo(sb.right - 1, sb.bottom - 16); }
+                }
+                GetIndString(s, 4000, 3);
+                SetRect(&r, 245, 162, 290, 209); DrawWrappedSunken(&r, s[0] ? s : "\pItems being carried");
+                GetIndString(s, 4000, 4);
+                SetRect(&r, 245, 244, 290, 291); DrawWrappedSunken(&r, s[0] ? s : "\pOn ground");
+                SetRect(&upR, 257, 209, 278, 239);
+                DrawT3DIconButton(&upR, CachedCIcon(1012), false);
+                TextFont(IlluriaFont()); TextSize(17); TextFace(0); RGBForeColor(&black);
+                for (it = 0; it < ITEM_SLOTS; it++) {
+                    short id = *(short *)(a + 0x3A + it * 2);
+                    unsigned char *ir;
+                    short nl = 0;
+                    if (id < 1 || id > 22) continue;
+                    ir = gs + 0xD12 + (id - 1) * 0x1E;
+                    while (nl < 19 && ir[nl]) { s[nl + 1] = ir[nl]; nl++; }
+                    s[0] = (unsigned char)nl;
+                    if (sItemTable[id - 1].type == ITEM_TYPE_BATTLE || sItemTable[id - 1].type == ITEM_TYPE_COMMAND) {
+                        Str255 v; short j;
+                        const char *tag = sItemTable[id - 1].type == ITEM_TYPE_BATTLE ? " (bat +" : " (com +";
+                        for (j = 0; tag[j]; j++) s[++s[0]] = tag[j];
+                        NumToString((long)sItemTable[id - 1].value, v);
+                        for (j = 1; j <= v[0]; j++) s[++s[0]] = v[j];
+                        s[++s[0]] = ')';
+                    }
+                    MoveTo(carrR.left + 4, carrR.top + 14 + 20 * row++);
+                    DrawString(s);
+                }
+            }
+            GetDATRawString(684, fmt);
+            FormatTwoNums(fmt, idx + 1, nh, s);
+            SetRect(&r, 245, 311, 317, 330); DrawSunkenText(&r, s, IlluriaFont(), 17, 1);
+            DrawT3DIconButton(&leftR, CachedCIcon(1014), idx > 0);
+            DrawT3DIconButton(&rightR, CachedCIcon(1016), idx < nh - 1);
+            RGBForeColor(&black);
+            PenSize(3, 3); FrameRoundRect(&okRing, 16, 16); PenSize(1, 1);
+            GetIndString(s, 1000, 2);
+            DrawT3DButton(&okR, s[0] ? s : "\pOK");
+            redraw = false;
+        }
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == keyDown) {
+            char c = e.message & charCodeMask;
+            if (c == '\r' || c == 3 || c == 27) done = true;
+            continue;
+        }
+        {
+            Point pt = e.where;
+            SetPort(win); GlobalToLocal(&pt);
+            if (PtInRect(pt, &okRing)) done = true;
+            else if (PtInRect(pt, &leftR) && idx > 0) { idx--; redraw = true; }
+            else if (PtInRect(pt, &rightR) && idx < nh - 1) { idx++; redraw = true; }
+        }
+    }
+    CloseMacAppWindow(win);
 }
 
 
