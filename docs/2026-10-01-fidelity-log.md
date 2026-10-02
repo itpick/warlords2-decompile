@@ -317,6 +317,25 @@ Behaviour noted for the remake:
   "thou hast triumphed!" and "Congratulations - You have conquered the
   world!" (the game then continues), "And the hero brings N allies!".
 
+## Backend review (Oct 2, Fable reviewers) — open items
+
+Economy (fixed: produced units no longer get cost/2 as combat strength, new
+units move on their first turn, merging no longer freezes a stack, spawning
+only on the city's 2x2 tiles, slots sorted by buy price, stalled AI cities
+restart). Still open:
+- Vectored units take 2 turns in transit (state 'e' -> 'f'), arrive only if
+  the destination still belongs to the player with < 8 units there, else go
+  back (or die if source = destination); no upkeep in transit; vector to a
+  hero (PPC_0002.c:9899-10022).
+- Per-city slot stats randomised at game start (10% str +-1, 20% moves
+  +-2/4 min 6, 10% cost +-25%, 10% turns +-1; PPC_0002.c:2095-2214), used for
+  countdown/strength/moves/upkeep; upkeep stored per unit.
+- "Enhanced" per-player checkbox (enh1..8, gs+0xF0, +2 strength) missing.
+- Neutral "Active" production (FUN_1002ce38): end of round, countdown on
+  the city's slot, <4 units, neutrals never move; remake's random garrisons
+  and marching neutrals are inventions.
+- Embarked upkeep min(upkeep, 4).
+
 ## Open items
 
 - City window tabs Info / Build / Vectoring (Views 3301 / 3302 / 3304).

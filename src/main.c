@@ -2201,11 +2201,11 @@ static void GameInit(void)
             { short a2, b2;
               for (a2 = 1; a2 < 4; a2++) {
                   short keyType = *(short *)(extCity + 0x06 + a2 * 2);
-                  short keyCost = (keyType >= 0) ? GetUnitTypeStat(keyType, 2) : 9999;
+                  short keyCost = (keyType >= 0) ? UnitStatLE(keyType, 4) : 9999;
                   b2 = a2 - 1;
                   while (b2 >= 0) {
                       short bType = *(short *)(extCity + 0x06 + b2 * 2);
-                      short bCost = (bType >= 0) ? GetUnitTypeStat(bType, 2) : 9999;
+                      short bCost = (bType >= 0) ? UnitStatLE(bType, 4) : 9999;
                       if (bCost <= keyCost) break;
                       *(short *)(extCity + 0x06 + (b2 + 1) * 2) = bType;
                       b2--;
@@ -3668,9 +3668,10 @@ static void FinalizeCitySlots(void)
             if (!port && sUnitTypeTable[pt * UNIT_TYPE_ENTRY + UTE_STAT_NAVAL] >= 1) continue;
             t[n++] = pt;
         }
-        for (k = 1; k < n; k++) {                    /* stable, ascending by stat 2 */
-            short key = t[k], kc = GetUnitTypeStat(key, 2);
-            for (j = k - 1; j >= 0 && GetUnitTypeStat(t[j], 2) > kc; j--) t[j + 1] = t[j];
+        for (k = 1; k < n; k++) {                    /* stable, ascending by |stat 4| (FUN_100496c8) */
+            short key = t[k], kc = UnitStatLE(key, 4);
+            if (kc < 0) kc = -kc;
+            for (j = k - 1; j >= 0 && (UnitStatLE(t[j], 4) < 0 ? -UnitStatLE(t[j], 4) : UnitStatLE(t[j], 4)) > kc; j--) t[j + 1] = t[j];
             t[j + 1] = key;
         }
         for (k = 0; k < 4; k++) *(short *)(ec + 0x06 + k * 2) = (k < n) ? t[k] : -1;
@@ -13903,987 +13904,421 @@ static void RemoveArmy(short armyIndex)
 
 
 /* ===================================================================
- * ResolveCombat — Auto-resolve combat between attacker and defender
+ * Battle resolution — the original's one battle per attack (PPC 1.0.7
+ * FUN_100ac0cc setup, FUN_1002d654 rounds, FUN_1002e7d4 aftermath;
+ * 68k CODE_104).
  *
- * Called when an army moves onto a tile occupied by an enemy army.
- * Uses simplified Warlords II combat: each unit in the attacker
- * fights each unit in the defender based on strength + random roll.
- * Shows a result dialog summarizing the battle.
- * Returns: 1 = attacker wins, 0 = defender wins, -1 = mutual destruction
+ * Attackers: every unit of the moving stack's tile (at most 8, across
+ * the remake's army records).  Defenders: every enemy unit on the target
+ * tile, or in all four tiles of a city.  Each side is sorted once by fight
+ * order, every unit has combat HP 1 (dies when it goes below 0), and the
+ * first live unit of each side fights until one dies.
+ *
+ * Battle presentation (ShowBattle) replays the kills recorded here:
+ * sBattleKill[k] = 0 a defending unit died, 1 an attacking unit died,
+ * sBattleKillT[k] = its unit type, in order.
  * =================================================================== */
-/* Battle presentation (ShowBattle) runs the fights quietly and replays the
- * kills: 0 = a defending unit died, 1 = an attacking unit died, in order. */
 static Boolean       sBattleQuiet = false;
 static unsigned char sBattleKill[128];
 static unsigned char sBattleKillT[128];   /* the unit type that died */
 static short         sBattleKillN = 0;
 
-static short ResolveCombat(short attackerIdx, short defenderIdx)
+#define BATTLE_ATT_MAX 8
+#define BATTLE_DEF_MAX 64
+
+typedef struct {
+    short   rec;        /* army record index */
+    short   slot;       /* unit slot 0..3 */
+    short   type;       /* unit type (0x1C hero) */
+    short   str;        /* the unit's strength byte */
+    short   order;      /* fight order (lower fights first) */
+    short   value;      /* battle value (1..15) */
+    short   hp;         /* combat HP: 1, dead when < 0 */
+    Boolean embarked;   /* carried on water: value 4, no bonuses */
+} BattleUnit;
+
+typedef struct {
+    short mOwner, defOwner;         /* attacking player; defender (0x0F neutral) */
+    short mx, my;                   /* battle tile */
+    short cityIdx, cx, cy;          /* city attacked (-1 none) */
+    short terr;                     /* terrain type of the battle tile */
+    short cls;                      /* terrain class 0 site, 1 open, 2 forest, 3 hills */
+    short nAtt, nDef;
+    BattleUnit att[BATTLE_ATT_MAX];
+    BattleUnit def[BATTLE_DEF_MAX];
+} Battle;
+
+static Battle sBattle;      /* the battle being fought */
+static Battle sBattleSim;   /* the Military Advisor's rehearsals */
+
+/* FUN_100abd8c / 68k FUN_00001592: tower bit (map byte+1 & 0x20) -> 0;
+ * forest 4 -> 2; hills 5 / mountains 6 -> 3; city 10 / ruin 11 -> 0; else 1 */
+static short BattleTerrainClass(short x, short y, short *terrOut, Boolean *towerOut)
 {
-    unsigned char *gs, *attArmy, *defArmy;
-    short attSlots, defSlots, attStrength, defStrength;
-    short attHits[4], defHits[4];
-    short attType[4], defType[4];
-    short attOrigType[4], defOrigType[4];
-    short attOrigHits[4], defOrigHits[4];
-    short i, round;
-    short attAlive, defAlive;
-    short result;
-    short terrainDef_out = 1, cityDef_out = 0, fortDef_out = 0;
-    short defHeroBonus_out = 0;
-    long attTotal, defTotal;
+    unsigned char *gs = (unsigned char *)*gGameState;
+    unsigned char *md;
+    short terr = 7;
+    Boolean tower = false;
+    if (*gMapTiles != 0 && x >= 0 && x < sMapWidth && y >= 0 && y < sMapHeight) {
+        md = (unsigned char *)*gMapTiles;
+        terr = gs[md[y * 0xE0 + x * 2] + TERRAIN_TYPE_OFS];
+        tower = (md[y * 0xE0 + x * 2 + 1] & 0x20) != 0;
+    }
+    if (terrOut) *terrOut = terr;
+    if (towerOut) *towerOut = tower;
+    if (tower) return 0;
+    switch (terr) {
+        case 4:             return 2;
+        case 5: case 6:     return 3;
+        case 10: case 11:   return 0;
+        default:            return 1;
+    }
+}
 
-    /* Modal result dialog variables */
-    WindowPtr combatWin;
-    GWorldPtr offGW;
-    Rect winRect, gwRect;
-    Boolean combatDone;
-    EventRecord combatEvt;
+static Boolean UnitTypeFlies(short t)
+{
+    if (!sUnitTypesLoaded || t < 0 || t >= sUnitTypeCount) return false;
+    return sUnitTypeTable[t * UNIT_TYPE_ENTRY + UTE_STAT_FLYING] >= 1;
+}
 
-    if (*gGameState == 0) return -1;
-    gs = (unsigned char *)*gGameState;
-    attArmy = gs + 0x1604 + attackerIdx * 0x42;
-    defArmy = gs + 0x1604 + defenderIdx * 0x42;
+static Boolean UnitTypeNaval(short t)
+{
+    if (!sUnitTypesLoaded || t < 0 || t >= sUnitTypeCount) return false;
+    return sUnitTypeTable[t * UNIT_TYPE_ENTRY + UTE_STAT_NAVAL] >= 1;
+}
 
-    /* ============================================================
-     * Combat system based on decompiled 68k CODE_104 (a1Fight1Possibly)
-     *
-     * Per-stack attack values computed from:
-     *   base strength (HP) + combat bonus (XP) + terrain defense +
-     *   hero leader bonus + item bonuses + city/fortification defense.
-     * All values capped at scenario max (gs+0x112, default 15).
-     *
-     * Die-roll mechanic: rand(20) or rand(24) (intense combat).
-     * XOR logic: exactly one side must fail per round.
-     * 68k HP system: each combatant starts with combat HP=1,
-     * dies when HP goes below 0 (2 hits to kill).
-     * ============================================================ */
+/* add the live units of record rec to a side (the moving record first) */
+static void BattleAddRecord(BattleUnit *side, short *n, short max, short rec, Boolean onWater)
+{
+    unsigned char *a = (unsigned char *)*gGameState + 0x1604 + rec * 0x42;
+    Boolean naval = ArmyIsNaval(rec);
+    short k;
+    for (k = 0; k < 4 && *n < max; k++) {
+        short t = (short)(unsigned char)a[0x16 + k];
+        BattleUnit *u;
+        if (t == 0xFF || (unsigned char)a[0x1e + k] == 0) continue;
+        u = side + (*n)++;
+        u->rec = rec; u->slot = k; u->type = t;
+        u->str = (short)(unsigned char)a[0x1e + k];
+        u->order = 0; u->value = 0; u->hp = 1;
+        /* the remake's proxy for the original's "embarked" unit flag: a unit
+         * carried in a boat's record, fighting on water or shore */
+        u->embarked = (onWater && naval && !UnitTypeNaval(t));
+    }
+}
 
-    /* Per-stack attack/defense values (capped at 15) */
-    {
-        short attValue[4], defValue[4];
-        short terrainDef = 1;   /* default terrain defense */
-        short cityDef = 0;
-        short fortDef = 0;
-        /* combatOnWater removed: embarked cap disabled (port system not implemented) */
-        short attHeroBonus = 0, defHeroBonus = 0;
-        short attItemBonus = 0, defItemBonus = 0;
-        short dieRange = (*(short *)(gs + 0x126) == 0) ? 20 : 24;  /* 68k CODE_104: gs+0x126 controls die range (was wrongly sOptIntenseCombat) */
+/* Gather both sides.  movingIdx: the moving record (-1: any of mOwner's
+ * records on the tile); cityIdx >= 0: the whole city (cx,cy) defends. */
+static void BattleGather(Battle *b, short movingIdx, short mOwner, short mx, short my,
+                         short cityIdx, short cx, short cy, short defOwner)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short n = *(short *)(gs + 0x1602), i;
+    Boolean onWater;
+    if (n > 100) n = 100;
+    b->mOwner = mOwner; b->defOwner = defOwner;
+    b->mx = mx; b->my = my;
+    b->cityIdx = cityIdx; b->cx = cx; b->cy = cy;
+    b->cls = BattleTerrainClass(mx, my, &b->terr, NULL);
+    onWater = (b->terr == 2 || b->terr == 3);
+    b->nAtt = b->nDef = 0;
+    if (movingIdx >= 0 && movingIdx < n)
+        BattleAddRecord(b->att, &b->nAtt, BATTLE_ATT_MAX, movingIdx, onWater);
+    for (i = 0; i < n; i++) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        if (i == movingIdx || (short)(unsigned char)a[0x15] != mOwner) continue;
+        if (*(short *)(a + 0x00) != mx || *(short *)(a + 0x02) != my) continue;
+        BattleAddRecord(b->att, &b->nAtt, BATTLE_ATT_MAX, i, onWater);
+    }
+    /* the original walks the unit table from the end */
+    for (i = n - 1; i >= 0; i--) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        short ox = *(short *)(a + 0x00), oy = *(short *)(a + 0x02);
+        if ((short)(unsigned char)a[0x15] == mOwner) continue;
+        if (!((ox == mx && oy == my) ||
+              (cityIdx >= 0 && ox >= cx && ox <= cx + 1 && oy >= cy && oy <= cy + 1)))
+            continue;
+        BattleAddRecord(b->def, &b->nDef, BATTLE_DEF_MAX, i, onWater);
+    }
+}
 
-        /* Gather unit stats */
-        attSlots = 0;
-        defSlots = 0;
-        attTotal = 0;
-        defTotal = 0;
-
-        for (i = 0; i < 4; i++) {
-            attType[i] = (short)(unsigned char)attArmy[0x16 + i];
-            attHits[i] = (short)(unsigned char)attArmy[0x1e + i];
-            attOrigType[i] = attType[i];
-            attOrigHits[i] = attHits[i];
-            if (attType[i] != 0xFF && attHits[i] > 0) attSlots++;
-
-            defType[i] = (short)(unsigned char)defArmy[0x16 + i];
-            defHits[i] = (short)(unsigned char)defArmy[0x1e + i];
-            defOrigType[i] = defType[i];
-            defOrigHits[i] = defHits[i];
-            if (defType[i] != 0xFF && defHits[i] > 0) defSlots++;
-        }
-
-        if (attSlots == 0 || defSlots == 0)
-            return (attSlots > 0) ? 1 : ((defSlots > 0) ? 0 : -1);
-
-        /* Terrain defense for defender (68k CODE_104 FUN_00001592):
-         * Uses gs+0x711 terrain type table.
-         * Type 4 (forest) → +2, types 5/6 (hills/mountains) → +3,
-         * types 10/11 (city/ruin) → +0 (city bonus separate),
-         * all others → +1. Roads (bit 0x20 set) → +0. */
-        if (*gMapTiles != 0) {
-            short defX = *(short *)(defArmy + 0x00);
-            short defY = *(short *)(defArmy + 0x02);
-            if (defX >= 0 && defX < sMapWidth && defY >= 0 && defY < sMapHeight) {
-                unsigned char *mapData = (unsigned char *)*gMapTiles;
-                unsigned char terrIdx = mapData[defY * 0xE0 + defX * 2];
-                unsigned char terrType = gs[terrIdx + TERRAIN_TYPE_OFS];
-                /* combatOnWater detection removed: embarked cap disabled */
-                switch (terrType) {
-                    case 4:             terrainDef = 2; break;  /* forest */
-                    case 5: case 6:     terrainDef = 3; break;  /* hills/mountains */
-                    case 10: case 11:   terrainDef = 0; break;  /* city/ruin (separate) */
-                    default:            terrainDef = 1; break;  /* plains, road, etc. */
-                }
-                /* Road on tile: remove terrain defense (68k: road bit → return 0) */
-                if (terrainDef > 0 && *gRoadData != 0) {
-                    unsigned char *rd = (unsigned char *)*gRoadData;
-                    if (defX < 112 && defY < 156 && rd[defY * 112 + defX] != 0)
-                        terrainDef = 0;
-                }
-            }
-        }
-
-        /* 68k CODE_104: fortification (map byte & 0x20) gives +2 defense.
-         * Check if defender tile has the fortification/road bit set. */
-        if (*gMapTiles != 0) {
-            short defX2 = *(short *)(defArmy + 0x00);
-            short defY2 = *(short *)(defArmy + 0x02);
-            if (defX2 >= 0 && defX2 < sMapWidth && defY2 >= 0 && defY2 < sMapHeight) {
-                unsigned char *mapData2 = (unsigned char *)*gMapTiles;
-                unsigned char tileByte = mapData2[defY2 * 0xE0 + defX2 * 2 + 1];
-                if (tileByte & 0x20)
-                    fortDef = 2;
-            }
-        }
-
-        /* City defense bonus (68k CODE_104 FUN_0000161a):
-         * - Terrain type 10 (city): use city_record+0x06 (defense value) directly
-         * - Terrain type 11 (castle/citadel): hardcoded 2
-         * - Neutral defenders: defense halved */
-        {
-            short defX = *(short *)(defArmy + 0x00);
-            short defY = *(short *)(defArmy + 0x02);
-            if (*gMapTiles != 0 && defX >= 0 && defX < sMapWidth &&
-                defY >= 0 && defY < sMapHeight) {
-                unsigned char *mapData3 = (unsigned char *)*gMapTiles;
-                unsigned char terrIdx3 = mapData3[defY * 0xE0 + defX * 2];
-                unsigned char terrType3 = gs[terrIdx3 + TERRAIN_TYPE_OFS];
-                if (terrType3 == 11) {
-                    cityDef = 2;  /* castle/citadel: hardcoded 2 */
-                } else if (terrType3 == 10) {
-                    /* City: read defense from city record */
-                    short cityCount = sCityCount;
-                    short ci;
-                    if (cityCount > 139) cityCount = 139;
-                    for (ci = 0; ci < cityCount; ci++) {
-                        unsigned char *city = sCityData + ci * 0x20;
-                        if (*(short *)(city + 0x00) == defX &&
-                            *(short *)(city + 0x02) == defY) {
-                            cityDef = *(short *)(city + 0x06);
-                            break;
-                        }
-                    }
-                }
-                /* 68k CODE_104: neutral defenders get halved city defense */
-                if (cityDef > 0 && (short)(unsigned char)defArmy[0x15] == 0x0F)
-                    cityDef /= 2;
-            }
-        }
-
-        /* Item bonuses (68k CODE_104): must compute before hero command bonus
-         * because battle items feed into hero command strength rating. */
-        {
-            short attBattleB, attCmdB, attGoldB;
-            short defBattleB, defCmdB, defGoldB;
-            Boolean attFlyB, attMoveB, defFlyB, defMoveB;
-            GetHeroItemBonus(attackerIdx, &attBattleB, &attCmdB, &attGoldB, &attFlyB, &attMoveB);
-            GetHeroItemBonus(defenderIdx, &defBattleB, &defCmdB, &defGoldB, &defFlyB, &defMoveB);
-            attItemBonus = attCmdB;  /* command items (type 2+8) boost all stacked units */
-            defItemBonus = defCmdB;
-
-            /* Hero leader bonus: 68k CODE_104 DAT_00015b54[min(hero_strength + battle_items, 9)].
-             * Cap the raw sum at 9 FIRST, then divide by 2. Max leader bonus = 4. */
-            for (i = 0; i < 4; i++) {
-                if (attType[i] == 0x1C && attHits[i] > 0) {
-                    short hs = (short)(unsigned char)attArmy[0x1e + i] + attBattleB;
-                    if (hs > 9) hs = 9;
-                    { short bonus = hs / 2;
-                      if (bonus > attHeroBonus) attHeroBonus = bonus;
-                    }
-                }
-                if (defType[i] == 0x1C && defHits[i] > 0) {
-                    short hs = (short)(unsigned char)defArmy[0x1e + i] + defBattleB;
-                    if (hs > 9) hs = 9;
-                    { short bonus = hs / 2;
-                      if (bonus > defHeroBonus) defHeroBonus = bonus;
-                    }
-                }
-            }
-
-            /* 68k CODE_104: Two-stage bonus capping.
-             * Stage 1: cap combined bonuses at gs[0x112] (scenario max).
-             * Stage 2: add per-unit strength + XP, then final cap at 15 (0x0F).
-             * For defender, fortDef is added AFTER the stage 1 cap. */
-            {
-                short scenarioMax = *(short *)(gs + 0x112);
-                short defOwnerByte = (short)(unsigned char)defArmy[0x15];
-                if (scenarioMax < 1) scenarioMax = 15;  /* fallback */
-
-                /* Stage 1: cap bonus sums at scenario max */
-                {
-                    short attBonusCapped = attHeroBonus + attItemBonus;
-                    short defTerrAdj = terrainDef;
-                    short defBonusCapped;
-                    if (defOwnerByte == 0x0F)
-                        defTerrAdj = terrainDef / 2;
-                    defBonusCapped = defHeroBonus + defItemBonus + defTerrAdj + cityDef;
-                    if (attBonusCapped > scenarioMax) attBonusCapped = scenarioMax;
-                    if (defBonusCapped > scenarioMax) defBonusCapped = scenarioMax;
-                    /* 68k: fortDef added AFTER the cap */
-                    defBonusCapped += fortDef;
-
-                    for (i = 0; i < 4; i++) {
-                        /* Attacker: base HP + XP bonus + capped bonuses */
-                        attValue[i] = (short)(unsigned char)attArmy[0x1e + i]
-                                    + (short)(unsigned char)attArmy[0x22 + i]
-                                    + attBonusCapped;
-                        /* Hero-specific: battle item bonus applies only to hero unit */
-                        if (attType[i] == 0x1C)
-                            attValue[i] += attBattleB;
-                        if (attValue[i] < 1) attValue[i] = 1;
-                        if (attValue[i] > 15) attValue[i] = 15;  /* 68k: final cap 0x0F */
-
-                        /* Defender: base HP + XP bonus + capped bonuses */
-                        defValue[i] = (short)(unsigned char)defArmy[0x1e + i]
-                                    + (short)(unsigned char)defArmy[0x22 + i]
-                                    + defBonusCapped;
-                        if (defType[i] == 0x1C)
-                            defValue[i] += defBattleB;
-                        if (defValue[i] < 1) defValue[i] = 1;
-                        if (defValue[i] > 15) defValue[i] = 15;  /* 68k: final cap 0x0F */
-                    }
-                }
-            }
-            /* Export bonuses for display in combat dialog */
-            terrainDef_out = terrainDef;
-            cityDef_out = cityDef;
-            fortDef_out = fortDef;
-            defHeroBonus_out = defHeroBonus;
-        }
-
-        /* Sort unit slots by fight order priority (from CODE_060/CODE_104).
-         * Fight order table at gs + (player * 0x1D) + 0x60C.
-         * Lower value = fights first.
-         * 68k CODE_104 FUN_0000161a: heroes always get +50 (0x32) to fight
-         * order priority, making them fight LAST in all combat. */
-        {
-            short attOwner = (short)(unsigned char)attArmy[0x15];
-            short defOwner = (short)(unsigned char)defArmy[0x15];
-            short attOrder[4], defOrder[4];
-            short j, k;
-
-            for (i = 0; i < 4; i++) {
-                if (attType[i] != 0xFF && attType[i] < 29 && attOwner < 9) {
-                    attOrder[i] = (short)(unsigned char)gs[attType[i] + attOwner * 0x1D + 0x60C];
-                    /* 68k: heroes fight last (+50 to priority) */
-                    if (attType[i] == 0x1C) attOrder[i] += 50;
-                } else {
-                    attOrder[i] = 999; /* empty/dead slots sort to end */
-                }
-                if (defType[i] != 0xFF && defType[i] < 29 && defOwner < 9) {
-                    defOrder[i] = (short)(unsigned char)gs[defType[i] + defOwner * 0x1D + 0x60C];
-                    if (defType[i] == 0x1C) defOrder[i] += 50;
-                } else {
-                    defOrder[i] = 999;
-                }
-            }
-
-            /* 68k CODE_104: insertion sort with stable ordering (no random jitter).
-             * Ties are broken by natural array position (earlier units fight first). */
-
-            /* Insertion sort attacker slots by fight order */
-            for (j = 1; j < 4; j++) {
-                short keyOrd = attOrder[j];
-                short keyType = attType[j], keyHits = attHits[j];
-                short keyOType = attOrigType[j], keyOHits = attOrigHits[j];
-                short keyVal = attValue[j];
-                k = j - 1;
-                while (k >= 0 && attOrder[k] > keyOrd) {
-                    attOrder[k + 1] = attOrder[k];
-                    attType[k + 1] = attType[k];
-                    attHits[k + 1] = attHits[k];
-                    attOrigType[k + 1] = attOrigType[k];
-                    attOrigHits[k + 1] = attOrigHits[k];
-                    attValue[k + 1] = attValue[k];
-                    k--;
-                }
-                attOrder[k + 1] = keyOrd;
-                attType[k + 1] = keyType;
-                attHits[k + 1] = keyHits;
-                attOrigType[k + 1] = keyOType;
-                attOrigHits[k + 1] = keyOHits;
-                attValue[k + 1] = keyVal;
-            }
-
-            /* Insertion sort defender slots by fight order */
-            for (j = 1; j < 4; j++) {
-                short keyOrd = defOrder[j];
-                short keyType = defType[j], keyHits = defHits[j];
-                short keyOType = defOrigType[j], keyOHits = defOrigHits[j];
-                short keyVal = defValue[j];
-                k = j - 1;
-                while (k >= 0 && defOrder[k] > keyOrd) {
-                    defOrder[k + 1] = defOrder[k];
-                    defType[k + 1] = defType[k];
-                    defHits[k + 1] = defHits[k];
-                    defOrigType[k + 1] = defOrigType[k];
-                    defOrigHits[k + 1] = defOrigHits[k];
-                    defValue[k + 1] = defValue[k];
-                    k--;
-                }
-                defOrder[k + 1] = keyOrd;
-                defType[k + 1] = keyType;
-                defHits[k + 1] = keyHits;
-                defOrigType[k + 1] = keyOType;
-                defOrigHits[k + 1] = keyOHits;
-                defValue[k + 1] = keyVal;
-            }
-        }
-
-        /* Combat rounds: die-roll based (from decompiled FUN_000003d2).
-         * Each round picks the first alive attacker and defender stack.
-         * Each side rolls rand(20 or 24) against their OWN stat.
-         * Rolling ABOVE your stat = you fail (get hit).
-         * XOR logic: exactly one side must fail per round.
-         * If both fail or both succeed, the round is skipped (reroll).
-         *
-         * 68k HP system: each combatant has combat HP initialized to 1.
-         * A hit decrements HP. Unit dies when HP < 0 (signed), meaning
-         * each unit effectively takes 2 hits to die (1 → 0 → -1=dead).
-         * Combat HP is separate from the unit's strength stat. */
-        {
-            short attCombatHP[4], defCombatHP[4];  /* combat HP: init 1, die at <0 */
-            short aiIdx = 0, diIdx = 0;  /* advancing indices like 68k */
-            for (i = 0; i < 4; i++) {
-                attCombatHP[i] = (attType[i] != 0xFF && attHits[i] > 0) ? 1 : -1;
-                defCombatHP[i] = (defType[i] != 0xFF && defHits[i] > 0) ? 1 : -1;
-            }
-            for (round = 0; round < 10000; round++) {
-                short attRoll, defRoll;
-                Boolean attFail, defFail;
-
-                /* Advance to next alive unit (68k uses advancing counters) */
-                while (aiIdx < 4 && attCombatHP[aiIdx] < 0) aiIdx++;
-                while (diIdx < 4 && defCombatHP[diIdx] < 0) diIdx++;
-                if (aiIdx >= 4 || diIdx >= 4) break;
-
-                /* Emergency escape: 68k forces attRoll=0, defRoll=100 at round 10000,
-                 * which always kills the defender (defRoll=100 > any stat). */
-                if (round >= 10000) {
-                    defCombatHP[diIdx] = -1;
-                    defType[diIdx] = 0xFF;
-                    diIdx++;
-                    continue;
-                }
-
-                /* Each side rolls against own stat (68k FUN_000003d2).
-                 * Roll > stat = fail (you get hit). */
-                attRoll = (short)((unsigned short)Random() % dieRange);
-                defRoll = (short)((unsigned short)Random() % dieRange);
-
-                attFail = (attRoll > attValue[aiIdx]);
-                defFail = (defRoll > defValue[diIdx]);
-
-                /* XOR logic: exactly one side must fail.
-                 * Both fail or neither fail = skip (reroll). */
-                if (attFail == defFail) continue;
-
-                if (attFail) {
-                    /* 68k CODE_104 FUN_000003d2: hero vs neutral protection.
-                     * In tutorial games (gs+0x12E), a human player's hero attacking
-                     * neutral armies is protected from failed die rolls.
-                     * 68k enters the defender-hit branch via OR, but the inner
-                     * guard (defFail && attSucceed) prevents actual damage.
-                     * Net effect: round is skipped, no damage to either side. */
-                    if (*(short *)(gs + 0x12e) != 0 &&
-                        attType[aiIdx] == 0x1C &&
-                        *(short *)(gs + 0xd0 + (short)(unsigned char)attArmy[0x15] * 2) == 0 &&
-                        (short)(unsigned char)defArmy[0x15] == 0x0F) {
-                        continue;  /* Hero protected: skip round */
-                    } else {
-                        /* Normal: attacker hit */
-                        attCombatHP[aiIdx]--;
-                        if (attCombatHP[aiIdx] < 0) {
-                            if (sBattleKillN < 128) { sBattleKillT[sBattleKillN] = (unsigned char)attType[aiIdx]; sBattleKill[sBattleKillN++] = 1; }
-                            attType[aiIdx] = 0xFF;
-                            attHits[aiIdx] = 0;
-                            aiIdx++;
-                        }
-                    }
-                } else {
-                    /* Defender hit: decrement combat HP, die at < 0 (68k) */
-                    defCombatHP[diIdx]--;
-                    if (defCombatHP[diIdx] < 0) {
-                        if (sBattleKillN < 128) { sBattleKillT[sBattleKillN] = (unsigned char)defType[diIdx]; sBattleKill[sBattleKillN++] = 0; }
-                        defType[diIdx] = 0xFF;
-                        defHits[diIdx] = 0;
-                        diIdx++;
-                    }
-                }
-            }
+/* fight order, the flyer's +80, the stable sort of a side */
+static void BattleOrderSide(BattleUnit *side, short n, short table, Boolean waterish)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    Boolean hasHero = false;
+    short i, j;
+    for (i = 0; i < n; i++) {
+        side[i].order = (side[i].type < 29) ? (short)(unsigned char)gs[0x60C + table * 0x1D + side[i].type] : 0;
+        if (side[i].type == 0x1C) hasHero = true;
+    }
+    /* on water / shore / mountains a side with a hero sends its first
+     * (unembarked) flyer last */
+    if (waterish && hasHero) {
+        for (i = 0; i < n; i++) {
+            if (!side[i].embarked && UnitTypeFlies(side[i].type)) { side[i].order += 80; break; }
         }
     }
-
-    /* Count survivors */
-    attAlive = 0;
-    defAlive = 0;
-    for (i = 0; i < 4; i++) {
-        if (attType[i] != 0xFF && attHits[i] > 0) attAlive++;
-        if (defType[i] != 0xFF && defHits[i] > 0) defAlive++;
-    }
-
-    if (attAlive > 0 && defAlive == 0) result = 1;
-    else if (defAlive > 0 && attAlive == 0) result = 0;
-    else if (attAlive == 0 && defAlive == 0) result = -1;
-    else result = (attAlive >= defAlive) ? 1 : 0;  /* shouldn't happen */
-
-    /* Write surviving HP back to winner's army */
-    if (result == 1) {
-        for (i = 0; i < 4; i++) {
-            attArmy[0x16 + i] = (unsigned char)(attType[i] & 0xFF);
-            attArmy[0x1e + i] = (unsigned char)(attHits[i] > 0 ? attHits[i] : 0);
-            /* XP gain: 68k CODE_042 FUN_00000a3a (AddHeroXP) — ONLY heroes
-             * (type 0x1C) earn XP. Non-heroes do NOT gain XP or combat bonuses.
-             * 1 XP per combat win, capped at 60. Level thresholds: 15/30/60.
-             * 68k: level-up (+2 movement, ceremony) happens at turn start,
-             * NOT during combat. See ProcessStartOfTurn section 0d. */
-            if (attType[i] == 0x1C && attHits[i] > 0) {
-                short xp = (short)(unsigned char)attArmy[0x26 + i];
-                if (xp < 60) {
-                    xp += 1;
-                    if (xp > 60) xp = 60;
-                    attArmy[0x26 + i] = (unsigned char)xp;
-                }
-            }
+    for (i = 1; i < n; i++) {
+        for (j = i; j > 0 && side[j].order < side[j - 1].order; j--) {
+            BattleUnit t = side[j]; side[j] = side[j - 1]; side[j - 1] = t;
         }
-        /* Recalculate attacker strength display */
-        RecalcArmyStrength(attArmy);
-    } else if (result == 0) {
-        for (i = 0; i < 4; i++) {
-            defArmy[0x16 + i] = (unsigned char)(defType[i] & 0xFF);
-            defArmy[0x1e + i] = (unsigned char)(defHits[i] > 0 ? defHits[i] : 0);
-            /* 68k: only heroes earn XP from combat. Level-up at turn start. */
-            if (defType[i] == 0x1C && defHits[i] > 0) {
-                short xp = (short)(unsigned char)defArmy[0x26 + i];
-                if (xp < 60) {
-                    xp += 1;
-                    if (xp > 60) xp = 60;
-                    defArmy[0x26 + i] = (unsigned char)xp;
-                }
-            }
-        }
-        RecalcArmyStrength(defArmy);
     }
+}
 
-    if (sBattleQuiet) return result;   /* ShowBattle presents it */
+/* FUN_100ac0cc: the battle values of both sides */
+static void BattleValues(Battle *b)
+{
+    static const short kLead[10] = {0, 0, 0, 0, 1, 1, 1, 2, 2, 3};
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short attTable = (b->mOwner >= 0 && b->mOwner < 8) ? b->mOwner : 8;
+    short defTable = (b->defOwner >= 0 && b->defOwner < 8) ? b->defOwner : 8;
+    short cls = b->cls, maxBonus = *(short *)(gs + 0x112);
+    Boolean waterish = (b->terr == 2 || b->terr == 3 || b->terr == 6);
+    short attHeroStr = 0, defHeroStr = 0, attCmd = 0, defCmd = 0;
+    short attStackTerr = 0, defStackTerr = 0, attPen = 0, defPen = 0;
+    Boolean attSp1 = false, attSp2 = false, attSp3 = false, attSp4 = false;
+    Boolean defSp1 = false, defSp2 = false, defSp3 = false, defSp4 = false;
+    short attLead, defLead, attBonus, defBonus, site = 0, i;
 
-    /* === Medal award for surviving units (small chance after combat) === */
-    {
-        static const unsigned char *sMedalNames[] = {
-            "\pStar of Battle", "\pWarriors Cross",
-            "\pShield of Courage", "\pHeart of Virtue"
-        };
-        unsigned char *winArmy = (result == 1) ? attArmy : (result == 0) ? defArmy : NULL;
-        short winOwner = winArmy ? (short)(unsigned char)winArmy[0x15] : -1;
+    if (maxBonus < 1) maxBonus = 15;
+    BattleOrderSide(b->att, b->nAtt, attTable, waterish);
+    BattleOrderSide(b->def, b->nDef, defTable, waterish);
 
-        if (winArmy != NULL && result != 2) {
-            short rng = (short)((unsigned short)Random() % 100);
-            /* ~15% chance of medal after each victory */
-            if (rng < 15) {
-                /* Pick a random surviving unit */
-                short candidates[4], nc = 0;
-                short *winType = (result == 1) ? attType : defType;
-                short *winHits = (result == 1) ? attHits : defHits;
-                for (i = 0; i < 4; i++) {
-                    if (winType[i] != 0xFF && winHits[i] > 0) candidates[nc++] = i;
-                }
-                if (nc > 0) {
-                    short slot = candidates[(unsigned short)Random() % nc];
-                    short medalType = (unsigned short)Random() % 4;
-                    short oldVal, newVal;
-                    Boolean isStr = (medalType < 2);  /* 0,1 = str; 2,3 = move */
+    for (i = 0; i < b->nAtt; i++) {
+        BattleUnit *u = b->att + i;
+        short sp = UnitStatLE(u->type, 15), st = UnitStatLE(u->type, 9 + cls), pen = UnitStatLE(u->type, 14);
+        if (u->type == 0x1C) {
+            short bat, cmd, gold, hs; Boolean fly, dbl;
+            GetHeroItemBonus(u->rec, &bat, &cmd, &gold, &fly, &dbl);
+            hs = u->str + bat;
+            if (hs > 9) hs = 9;
+            if (hs > attHeroStr) attHeroStr = hs;
+            attCmd += cmd;
+        }
+        if (sp == 1) attSp1 = true;
+        if (sp == 2) attSp2 = true;
+        if (sp == 3) attSp3 = true;
+        if (sp == 4) attSp4 = true;
+        if (pen != 0 && pen < attPen) attPen = pen;
+        if (st != 0 && st > attStackTerr) attStackTerr = st;
+    }
+    for (i = 0; i < b->nDef; i++) {
+        BattleUnit *u = b->def + i;
+        short sp = UnitStatLE(u->type, 15), st = UnitStatLE(u->type, 9 + cls), pen = UnitStatLE(u->type, 14);
+        if (u->type == 0x1C) {
+            short bat, cmd, gold, hs; Boolean fly, dbl;
+            GetHeroItemBonus(u->rec, &bat, &cmd, &gold, &fly, &dbl);
+            hs = u->str + bat;
+            if (hs > 9) hs = 9;
+            if (hs > defHeroStr) defHeroStr = hs;
+            defCmd += cmd;
+        }
+        if (sp == 1) defSp1 = true;
+        if (sp == 2) defSp2 = true;
+        if (sp == 3) defSp3 = true;
+        if (sp == 4) defSp4 = true;
+        if (pen != 0 && pen < defPen) defPen = pen;
+        if (st != 0 && st > defStackTerr) defStackTerr = st;
+    }
+    attLead = kLead[attHeroStr] + attCmd;
+    defLead = kLead[defHeroStr] + defCmd;
 
-                    if (isStr) {
-                        oldVal = (short)(unsigned char)winArmy[0x1e + slot];
-                        newVal = oldVal + 1;
-                        if (newVal > 9) newVal = 9;
-                        winArmy[0x1e + slot] = (unsigned char)newVal;
-                        RecalcArmyStrength(winArmy);
-                    } else {
-                        oldVal = (short)(unsigned char)winArmy[0x1a + slot];
-                        newVal = oldVal + 2;
-                        if (newVal > 20) newVal = 20;
-                        winArmy[0x1a + slot] = (unsigned char)newVal;
-                    }
-
-                    /* Show medal notification for human player */
-                    if (winOwner >= 0 && winOwner < 8 &&
-                        *(short *)(gs + 0xd0 + winOwner * 2) == 0) {
-                        WindowPtr mWin;
-                        Rect mR;
-                        PicHandle medalPict = GetPicture(4410 + medalType);
-                        short mW = 310, mH = 90;
-                        if (medalPict) {
-                            Rect pf = (**medalPict).picFrame;
-                            mW = pf.right - pf.left;
-                            mH = pf.bottom - pf.top;
-                        }
-                        SetRect(&mR, 0, 0, mW, mH);
-                        OffsetRect(&mR,
-                            (qd.screenBits.bounds.right - mW) / 2,
-                            (qd.screenBits.bounds.bottom - mH) / 2);
-                        mWin = NewCWindow(NULL, &mR, "\p", true,
-                                          plainDBox, (WindowPtr)-1, false, 0);
-                        if (mWin) {
-                            RGBColor mbg = {0x2000, 0x1800, 0x0800};
-                            RGBColor mgold = {0xFFFF, 0xDDDD, 0x3333};
-                            RGBColor mwh = {0xFFFF, 0xFFFF, 0xFFFF};
-                            EventRecord mEvt;
-                            unsigned long mTk;
-                            Str255 uName, ns;
-                            if ((unsigned char)winArmy[0x16 + slot] == 0x1C) {
-                                /* Hero: use individual name from army record */
-                                unsigned char *hn = winArmy + 0x04;
-                                short nl = 0;
-                                while (nl < 15 && hn[nl]) nl++;
-                                uName[0] = (unsigned char)nl;
-                                BlockMoveData(hn, uName + 1, nl);
-                            } else {
-                                GetUnitTypeName((short)(unsigned char)winArmy[0x16 + slot], uName);
-                            }
-                            SetPort(mWin);
-                            if (medalPict) DrawPicture(medalPict, &mWin->portRect);
-                            else { RGBForeColor(&mbg); PaintRect(&mWin->portRect); }
-                            RGBForeColor(&mgold); PenSize(2,2); FrameRect(&mWin->portRect); PenNormal();
-                            TextFont(3); TextSize(12); TextFace(bold);
-                            RGBForeColor(&mgold);
-                            MoveTo(15, 20);
-                            DrawString(GetCachedString(STR_COMBAT, 5, "\pA Medal!"));
-                            TextFace(0); TextSize(10);
-                            RGBForeColor(&mwh);
-                            MoveTo(15, 40);
-                            DrawString(GetCachedString(STR_COMBAT, 6, "\pYour "));
-                            DrawString(uName);
-                            DrawString(GetCachedString(STR_COMBAT, 7, "\p has been awarded"));
-                            MoveTo(15, 56);
-                            DrawString(GetCachedString(STR_COMBAT, 8, "\pthe "));
-                            RGBForeColor(&mgold);
-                            DrawString(sMedalNames[medalType]);
-                            RGBForeColor(&mwh);
-                            DrawString("\p!");
-                            MoveTo(15, 76);
-                            if (isStr) {
-                                DrawString(GetCachedString(STR_COMBAT, 9, "\pStrength increased from "));
-                                NumToString((long)oldVal, ns); DrawString(ns);
-                                DrawString(GetCachedString(STR_COMBAT, 10, "\p to "));
-                                NumToString((long)newVal, ns); DrawString(ns);
-                                DrawString("\p!");
-                            } else {
-                                DrawString(GetCachedString(STR_COMBAT, 11, "\pMovement increased from "));
-                                NumToString((long)oldVal, ns); DrawString(ns);
-                                DrawString(GetCachedString(STR_COMBAT, 10, "\p to "));
-                                NumToString((long)newVal, ns); DrawString(ns);
-                                DrawString("\p!");
-                            }
-                            mTk = TickCount() + SpeedTicks(120);
-                            while (TickCount() < mTk) {
-                                if (WaitNextEvent(mDownMask | keyDownMask, &mEvt, 5, NULL)) break;
-                            }
-                            DisposeWindow(mWin);
-                        }
+    /* the defender's site bonus: a tower 1, a ruin 2, a city its defence;
+     * special 4 is +1 in the open; the attacker's special 1 cancels it;
+     * neutrals get half */
+    if (!attSp1 && (cls == 0 || defSp4)) {
+        Boolean tower = false;
+        unsigned char *md = (*gMapTiles != 0) ? (unsigned char *)*gMapTiles : NULL;
+        short tx = (b->cityIdx >= 0) ? b->cx : b->mx, ty = (b->cityIdx >= 0) ? b->cy : b->my;
+        if (md && tx >= 0 && tx < sMapWidth && ty >= 0 && ty < sMapHeight)
+            tower = (md[ty * 0xE0 + tx * 2 + 1] & 0x20) != 0;
+        site = defSp4 ? 1 : 0;
+        if (tower) site = 1;
+        else if (b->terr == 11) site = 2;
+        else if (b->terr == 10) {
+            if (b->cityIdx >= 0) site = *(short *)(sCityData + b->cityIdx * 0x20 + 0x06);
+            else {
+                short ci, cc = sCityCount > 139 ? 139 : sCityCount;
+                for (ci = 0; ci < cc; ci++) {
+                    unsigned char *c = sCityData + ci * 0x20;
+                    short x0 = *(short *)(c + 0x00), y0 = *(short *)(c + 0x02);
+                    if (c[0x17] >= 2) continue;
+                    if (b->mx >= x0 && b->mx <= x0 + 1 && b->my >= y0 && b->my <= y0 + 1) {
+                        site = *(short *)(c + 0x06); break;
                     }
                 }
             }
         }
+        if (b->defOwner == 0x0F) site >>= 1;
     }
 
-    /* === Show combat result dialog (only for battles involving human player) === */
-    {
-        short attOwnerChk = (short)(unsigned char)attArmy[0x15];
-        short defOwnerChk = (short)(unsigned char)defArmy[0x15];
-        short curPlayer = *(short *)(gs + 0x110);
-        Boolean showDialog = (attOwnerChk == curPlayer || defOwnerChk == curPlayer);
-        /* Also show if either side is human (with bounds check for neutrals) */
-        if (!showDialog) {
-            if ((attOwnerChk >= 0 && attOwnerChk < 8 &&
-                 *(short *)(gs + 0xd0 + attOwnerChk * 2) == 0) ||
-                (defOwnerChk >= 0 && defOwnerChk < 8 &&
-                 *(short *)(gs + 0xd0 + defOwnerChk * 2) == 0))
-                showDialog = true;
+    /* side bonuses: capped at the scenario maximum, then the enemy penalty */
+    attBonus = (defSp2 ? 0 : attLead) + (defSp3 ? 0 : attStackTerr) + ((attSp4 && !defSp1) ? 1 : 0);
+    if (attBonus > maxBonus) attBonus = maxBonus;
+    attBonus += defPen;
+    defBonus = (attSp2 ? 0 : defLead) + (attSp3 ? 0 : defStackTerr) + site;
+    if (defBonus > maxBonus) defBonus = maxBonus;
+    defBonus += attPen;
+
+    for (i = 0; i < b->nAtt + b->nDef; i++) {
+        BattleUnit *u = (i < b->nAtt) ? b->att + i : b->def + (i - b->nAtt);
+        short v;
+        if (u->embarked) { u->value = 4; continue; }
+        v = u->str + ((i < b->nAtt) ? attBonus : defBonus);
+        if (u->type == 0x1C) {
+            short bat, cmd, gold; Boolean fly, dbl;
+            GetHeroItemBonus(u->rec, &bat, &cmd, &gold, &fly, &dbl);
+            v += bat;
         }
-        if (!showDialog) return result;
+        v += UnitStatLE(u->type, 5 + cls);
+        if (v > 15) v = 15;
+        u->value = v;
     }
-    SetRect(&winRect, 0, 0, 400, 340);
-    OffsetRect(&winRect, 150, 100);
-    combatWin = NewCWindow(NULL, &winRect, "\p", true,
-                           plainDBox, (WindowPtr)-1L, false, 0);
-    SetRect(&gwRect, 0, 0, 400, 340);
-    NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
+}
 
-    if (combatWin != NULL && offGW != NULL) {
-        CGrafPtr savePort;
-        GDHandle saveGD;
-        GetGWorld(&savePort, &saveGD);
-        SetGWorld(offGW, NULL);
-        LockPixels(GetGWorldPixMap(offGW));
+/* FUN_1002d654: the rounds.  Returns true when the attacker won.  With
+ * record, the kills go to sBattleKill/sBattleKillT. */
+static Boolean BattleRounds(Battle *b, Boolean record)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short N = (*(short *)(gs + 0x126) == 0) ? 20 : 24;
+    Boolean tutorial = *(short *)(gs + 0x12e) != 0;
+    Boolean humanAtt = (b->mOwner >= 0 && b->mOwner < 8 && *(short *)(gs + 0xd0 + b->mOwner * 2) == 0);
+    short ai = 0, di = 0;
 
-        /* Background */
-        DrawMarbleBackground(&gwRect);
-        /* Gold border */
-        {
-            RGBColor bdr = {0xCCCC, 0xAAAA, 0x3333};
-            RGBForeColor(&bdr);
-            PenSize(2, 2);
-            FrameRect(&gwRect);
-            PenSize(1, 1);
-        }
-
-        /* Title */
-        {
-            RGBColor gold = {0xFFFF, 0xDDDD, 0x5555};
-            RGBForeColor(&gold);
-            TextFont(2); TextSize(14); TextFace(bold);
-            MoveTo(130, 24);
-            DrawString(GetCachedString(STR_COMBAT, 12, "\pBattle Results"));
-            TextFace(0); TextFont(3); TextSize(10);
-        }
-
-        /* Divider line under title */
-        {
-            RGBColor divCol = {0x6666, 0x5555, 0x4444};
-            RGBForeColor(&divCol);
-            MoveTo(10, 30); LineTo(390, 30);
-        }
-
-        /* Per-unit details: two columns (attacker left, defender right) */
-        {
-            short attOwner = (short)(unsigned char)attArmy[0x15];
-            short defOwner = (short)(unsigned char)defArmy[0x15];
-            RGBColor attColor = sPlayerColors[attOwner < 8 ? attOwner + 1 : 8];
-            RGBColor defColor = sPlayerColors[defOwner < 8 ? defOwner + 1 : 8];
-            RGBColor deadCol = {0xFFFF, 0x4444, 0x4444};
-            RGBColor aliveCol = {0x4444, 0xFFFF, 0x4444};
-            RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-            RGBColor gray = {0x8888, 0x8888, 0x8888};
-            short yPos;
-            Str255 numStr;
-
-            /* Attacker column (left) */
-            RGBForeColor(&attColor);
-            TextFace(bold);
-            MoveTo(20, 48);
-            DrawString(GetCachedString(STR_COMBAT, 13, "\pAttacker"));
-            {
-                /* Faction name */
-                char *fname = (char *)(gs + attOwner * FACTION_NAME_LEN);
-                short fi;
-                Str255 pname;
-                for (fi = 0; fi < 14 && fname[fi]; fi++)
-                    pname[fi + 1] = fname[fi];
-                pname[0] = fi;
-                MoveTo(90, 48);
-                DrawString("\p(");
-                DrawString(pname);
-                DrawString("\p)");
-            }
-            TextFace(0);
-
-            yPos = 66;
-            for (i = 0; i < 4; i++) {
-                Str255 uName;
-                if (attOrigType[i] == 0xFF) continue;
-                /* Show hero's individual name + title instead of generic "Hero" */
-                if (attOrigType[i] == 0x1C) {
-                    unsigned char *hn = attArmy + 0x04;
-                    short nl = 0;
-                    Str255 htitle;
-                    short xp = (short)(unsigned char)attArmy[0x26];
-                    short lvl = GetHeroLevel(xp);
-                    Boolean fem = IsHeroFemale(attackerIdx);
-                    while (nl < 15 && hn[nl]) nl++;
-                    uName[0] = (unsigned char)nl;
-                    BlockMoveData(hn, uName + 1, nl);
-                    GetHeroTitle(lvl, fem, htitle);
-                    if (uName[0] + htitle[0] + 2 < 250) {
-                        uName[uName[0] + 1] = ','; uName[uName[0] + 2] = ' ';
-                        BlockMoveData(htitle + 1, uName + uName[0] + 3, htitle[0]);
-                        uName[0] += htitle[0] + 2;
+    if (b->nAtt == 0 || b->nDef == 0) return b->nDef == 0;
+    for (;;) {
+        BattleUnit *a = b->att + ai, *d = b->def + di;
+        short av = a->value < 1 ? 1 : a->value, dv = d->value < 1 ? 1 : d->value;
+        short cnt = 0;
+        Boolean died = false;
+        while (!died) {
+            short ra = 1 + (short)((unsigned short)Random() % N);
+            short rd = 1 + (short)((unsigned short)Random() % N);
+            Boolean attFail, defFail;
+            /* the emergency escape: the attacker takes the hit */
+            if (cnt > 10000) { rd = 0; ra = 100; }
+            defFail = dv < rd;
+            attFail = av < ra;
+            if (defFail != attFail) {
+                if (defFail) {
+                    if (--d->hp < 0) {
+                        if (record && sBattleKillN < 128) {
+                            sBattleKillT[sBattleKillN] = (unsigned char)((d->type == 0x1C && IsHeroFemale(d->rec)) ? 0x1D : d->type);
+                            sBattleKill[sBattleKillN++] = 0;
+                        }
+                        di++; died = true;
                     }
-                } else {
-                    GetUnitTypeName(attOrigType[i], uName);
-                }
-
-                /* Unit sprite */
-                {
-                    short sSheet = (attOwner >= 0 && attOwner < ARMY_SHEETS) ? attOwner : 0;
-                    GWorldPtr sGW = sArmyGW[sSheet] ? sArmyGW[sSheet] : sArmyGW[0];
-                    if (sArmyLoaded && sGW != NULL) {
-                        short sprIdx = attOrigType[i];
-                        short sprCol2, sprRow2;
-                        Rect srcR2, dstR2;
-                        if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
-                            unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
-                            sprIdx = (short)ute[0x00];
+                } else if (!(tutorial && a->type == 0x1C && humanAtt && b->defOwner == 0x0F) || cnt > 20000) {
+                    /* (a human's hero is spared against neutrals in the tutorial) */
+                    if (--a->hp < 0) {
+                        if (record && sBattleKillN < 128) {
+                            sBattleKillT[sBattleKillN] = (unsigned char)((a->type == 0x1C && IsHeroFemale(a->rec)) ? 0x1D : a->type);
+                            sBattleKill[sBattleKillN++] = 1;
                         }
-                        sprCol2 = sprIdx % 16;
-                        sprRow2 = sprIdx / 16;
-                        SetRect(&srcR2, sprCol2 * 32, sprRow2 * 30,
-                                sprCol2 * 32 + 29, sprRow2 * 30 + 28);
-                        SetRect(&dstR2, 14, yPos - 12, 14 + 20, yPos + 6);
-                        LockPixels(GetGWorldPixMap(sGW));
-                        {
-                            RGBColor savedBg;
-                            GetBackColor(&savedBg);
-                            RGBBackColor(&sArmyBgColor[sSheet]);
-                            CopyBits((BitMap *)*GetGWorldPixMap(sGW),
-                                     (BitMap *)*GetGWorldPixMap(offGW),
-                                     &srcR2, &dstR2, 36, NULL);
-                            RGBBackColor(&savedBg);
-                        }
-                        UnlockPixels(GetGWorldPixMap(sGW));
+                        ai++; died = true;
                     }
                 }
-
-                MoveTo(38, yPos);
-                if (attType[i] == 0xFF || attHits[i] <= 0) {
-                    RGBForeColor(&deadCol);
-                    DrawString(uName);
-                    MoveTo(160, yPos);
-                    DrawString(GetCachedString(STR_COMBAT, 14, "\pKILLED"));
-                } else {
-                    RGBForeColor(&aliveCol);
-                    DrawString(uName);
-                    MoveTo(160, yPos);
-                    RGBForeColor(&white);
-                    NumToString((long)attHits[i], numStr);
-                    DrawString(numStr);
-                    DrawString("\p/");
-                    NumToString((long)attOrigHits[i], numStr);
-                    DrawString(numStr);
-                    DrawString(GetCachedString(STR_COMBAT, 15, "\p HP"));
-                }
-                yPos += 22;
             }
-
-            /* Separator */
-            {
-                RGBColor divCol = {0x6666, 0x5555, 0x4444};
-                RGBForeColor(&divCol);
-                MoveTo(10, yPos + 4);
-                LineTo(390, yPos + 4);
-            }
-            yPos += 16;
-
-            /* Defender column */
-            RGBForeColor(&defColor);
-            TextFace(bold);
-            MoveTo(20, yPos);
-            DrawString(GetCachedString(STR_COMBAT, 16, "\pDefender"));
-            {
-                char *fname = (char *)(gs + defOwner * FACTION_NAME_LEN);
-                short fi;
-                Str255 pname;
-                for (fi = 0; fi < 14 && fname[fi]; fi++)
-                    pname[fi + 1] = fname[fi];
-                pname[0] = fi;
-                MoveTo(90, yPos);
-                DrawString("\p(");
-                DrawString(pname);
-                DrawString("\p)");
-            }
-            TextFace(0);
-            yPos += 18;
-
-            for (i = 0; i < 4; i++) {
-                Str255 uName;
-                if (defOrigType[i] == 0xFF) continue;
-                /* Show hero's individual name + title instead of generic "Hero" */
-                if (defOrigType[i] == 0x1C) {
-                    unsigned char *hn = defArmy + 0x04;
-                    short nl = 0;
-                    Str255 htitle;
-                    short xp = (short)(unsigned char)defArmy[0x26];
-                    short lvl = GetHeroLevel(xp);
-                    Boolean fem = IsHeroFemale(defenderIdx);
-                    while (nl < 15 && hn[nl]) nl++;
-                    uName[0] = (unsigned char)nl;
-                    BlockMoveData(hn, uName + 1, nl);
-                    GetHeroTitle(lvl, fem, htitle);
-                    if (uName[0] + htitle[0] + 2 < 250) {
-                        uName[uName[0] + 1] = ','; uName[uName[0] + 2] = ' ';
-                        BlockMoveData(htitle + 1, uName + uName[0] + 3, htitle[0]);
-                        uName[0] += htitle[0] + 2;
-                    }
-                } else {
-                    GetUnitTypeName(defOrigType[i], uName);
-                }
-
-                /* Unit sprite */
-                {
-                    short sSheet = (defOwner >= 0 && defOwner < ARMY_SHEETS) ? defOwner : 0;
-                    GWorldPtr sGW = sArmyGW[sSheet] ? sArmyGW[sSheet] : sArmyGW[0];
-                    if (sArmyLoaded && sGW != NULL) {
-                        short sprIdx = defOrigType[i];
-                        short sprCol2, sprRow2;
-                        Rect srcR2, dstR2;
-                        if (sUnitTypesLoaded && sprIdx < sUnitTypeCount) {
-                            unsigned char *ute = sUnitTypeTable + sprIdx * UNIT_TYPE_ENTRY;
-                            sprIdx = (short)ute[0x00];
-                        }
-                        sprCol2 = sprIdx % 16;
-                        sprRow2 = sprIdx / 16;
-                        SetRect(&srcR2, sprCol2 * 32, sprRow2 * 30,
-                                sprCol2 * 32 + 29, sprRow2 * 30 + 28);
-                        SetRect(&dstR2, 14, yPos - 12, 14 + 20, yPos + 6);
-                        LockPixels(GetGWorldPixMap(sGW));
-                        {
-                            RGBColor savedBg;
-                            GetBackColor(&savedBg);
-                            RGBBackColor(&sArmyBgColor[sSheet]);
-                            CopyBits((BitMap *)*GetGWorldPixMap(sGW),
-                                     (BitMap *)*GetGWorldPixMap(offGW),
-                                     &srcR2, &dstR2, 36, NULL);
-                            RGBBackColor(&savedBg);
-                        }
-                        UnlockPixels(GetGWorldPixMap(sGW));
-                    }
-                }
-
-                MoveTo(38, yPos);
-                if (defType[i] == 0xFF || defHits[i] <= 0) {
-                    RGBForeColor(&deadCol);
-                    DrawString(uName);
-                    MoveTo(160, yPos);
-                    DrawString(GetCachedString(STR_COMBAT, 14, "\pKILLED"));
-                } else {
-                    RGBForeColor(&aliveCol);
-                    DrawString(uName);
-                    MoveTo(160, yPos);
-                    RGBForeColor(&white);
-                    NumToString((long)defHits[i], numStr);
-                    DrawString(numStr);
-                    DrawString("\p/");
-                    NumToString((long)defOrigHits[i], numStr);
-                    DrawString(numStr);
-                    DrawString(GetCachedString(STR_COMBAT, 15, "\p HP"));
-                }
-                yPos += 22;
-            }
-
-            /* Terrain/bonus info line */
-            MoveTo(20, yPos + 12);
-            RGBForeColor(&gray);
-            TextSize(9);
-            DrawString(GetCachedString(STR_COMBAT, 17, "\pRounds: "));
-            NumToString((long)round, numStr);
-            DrawString(numStr);
-            /* Show defender's bonuses */
-            {
-                short bonusX = 20;
-                short bonusY = yPos + 24;
-                RGBColor bonusCol = {0x8888, 0xAAAA, 0xCCCC};
-                RGBForeColor(&bonusCol);
-                MoveTo(bonusX, bonusY);
-                DrawString("\pDef bonuses: ");
-                if (terrainDef_out > 0) {
-                    DrawString("\pTerrain +");
-                    NumToString((long)terrainDef_out, numStr); DrawString(numStr);
-                    DrawString("\p  ");
-                }
-                if (cityDef_out > 0) {
-                    DrawString("\pCity +");
-                    NumToString((long)cityDef_out, numStr); DrawString(numStr);
-                    DrawString("\p  ");
-                }
-                if (fortDef_out > 0) {
-                    DrawString("\pFort +");
-                    NumToString((long)fortDef_out, numStr); DrawString(numStr);
-                    DrawString("\p  ");
-                }
-                if (defHeroBonus_out > 0) {
-                    DrawString("\pHero +");
-                    NumToString((long)defHeroBonus_out, numStr); DrawString(numStr);
-                }
-                if (terrainDef_out == 0 && cityDef_out == 0 && fortDef_out == 0 && defHeroBonus_out == 0)
-                    DrawString("\pNone");
-            }
-            TextSize(10);
+            cnt++;
         }
+        if (di >= b->nDef || ai >= b->nAtt) return di >= b->nDef;
+    }
+}
 
-        /* Outcome banner */
-        {
-            Rect bannerR;
-            RGBColor bannerBg, bannerText;
-            SetRect(&bannerR, 20, 280, 380, 304);
+/* a hero fell but its record survives: items drop, the hero record clears */
+static void BattleHeroFell(short rec)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    unsigned char *army = gs + 0x1604 + rec * 0x42;
+    short owner = (short)(unsigned char)army[0x15];
+    DropHeroItems(rec);
+    if (owner >= 0 && owner < 8) {
+        unsigned char *heroRec = gs + 0x1422 + owner * 0x2C;
+        short turn = *(short *)(gs + 0x136), hn;
+        char heroName[40];
+        heroRec[0x00] = 0;
+        for (hn = 0; hn < 15 && army[0x04 + hn]; hn++) heroName[hn] = army[0x04 + hn];
+        heroName[hn] = 0;
+        RecordEvent(turn, HIST_EVT_HERO_KILL, owner, heroName);
+    }
+}
 
-            if (result == 1) {
-                bannerBg.red = 0x0000; bannerBg.green = 0x4444; bannerBg.blue = 0x0000;
-                bannerText.red = 0x4444; bannerText.green = 0xFFFF; bannerText.blue = 0x4444;
-            } else if (result == 0) {
-                bannerBg.red = 0x4444; bannerBg.green = 0x0000; bannerBg.blue = 0x0000;
-                bannerText.red = 0xFFFF; bannerText.green = 0x4444; bannerText.blue = 0x4444;
-            } else {
-                bannerBg.red = 0x3333; bannerBg.green = 0x3333; bannerBg.blue = 0x3333;
-                bannerText.red = 0xFFFF; bannerText.green = 0xFFFF; bannerText.blue = 0xFFFF;
-            }
-            RGBForeColor(&bannerBg);
-            PaintRoundRect(&bannerR, 6, 6);
-            RGBForeColor(&bannerText);
-            TextFace(bold);
-            if (result == 1) {
-                MoveTo(110, 297);
-                DrawString(GetCachedString(STR_COMBAT, 18, "\pAttacker is VICTORIOUS!"));
-            } else if (result == 0) {
-                MoveTo(110, 297);
-                DrawString(GetCachedString(STR_COMBAT, 19, "\pDefender holds the field!"));
-            } else {
-                MoveTo(110, 297);
-                DrawString(GetCachedString(STR_COMBAT, 20, "\pBoth armies destroyed!"));
-            }
-            TextFace(0);
-        }
+/* FUN_1002e7d4 (the units' part): the dead leave their records, surviving
+ * heroes gain experience (+2 attacking a city, else +1; cap 60), emptied
+ * records go.  *movingIdx follows the moving record. */
+static void BattleApply(Battle *b, short *movingIdx)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short touched[BATTLE_ATT_MAX + BATTLE_DEF_MAX], nTouched = 0, i, j, k;
+    Boolean cityBattle = (b->cityIdx >= 0 || b->terr == 10);
 
-        /* OK button */
-        {
-            Rect okRect;
-            RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-            SetRect(&okRect, 160, 310, 240, 332);
-            RGBForeColor(&white);
-            FrameRoundRect(&okRect, 8, 8);
-            MoveTo(186, 326);
-            DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
-        }
-
-        UnlockPixels(GetGWorldPixMap(offGW));
-        SetGWorld(savePort, saveGD);
-
-        /* Blit to window */
-        SetPort(combatWin);
-        {
-            Rect dr = combatWin->portRect;
-            LockPixels(GetGWorldPixMap(offGW));
-            CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                     &((GrafPtr)combatWin)->portBits,
-                     &gwRect, &dr, srcCopy, NULL);
-            UnlockPixels(GetGWorldPixMap(offGW));
+    for (i = 0; i < b->nAtt + b->nDef; i++) {
+        Boolean attacker = i < b->nAtt;
+        BattleUnit *u = attacker ? b->att + i : b->def + (i - b->nAtt);
+        unsigned char *a = gs + 0x1604 + u->rec * 0x42;
+        for (j = 0; j < nTouched && touched[j] != u->rec; j++) ;
+        if (j == nTouched) touched[nTouched++] = u->rec;
+        if (u->hp < 0) {
+            k = u->slot;
+            a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0;
+            SetMedals(a, k, 0);
+        } else if (u->type == 0x1C) {
+            short xp = (short)(unsigned char)a[0x26 + u->slot] + ((attacker && cityBattle) ? 2 : 1);
+            if (xp > 60) xp = 60;
+            a[0x26 + u->slot] = (unsigned char)xp;
         }
     }
-
-    /* Modal event loop for combat result */
-    combatDone = false;
-    while (!combatDone) {
-        if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &combatEvt, 30, NULL)) {
-            if (combatEvt.what == mouseDown || combatEvt.what == keyDown) {
-                combatDone = true;
-            } else if (combatEvt.what == updateEvt) {
-                if ((WindowPtr)combatEvt.message == combatWin && offGW != NULL) {
-                    Rect dr;
-                    BeginUpdate(combatWin);
-                    SetPort(combatWin);
-                    dr = combatWin->portRect;
-                    LockPixels(GetGWorldPixMap(offGW));
-                    CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                             &((GrafPtr)combatWin)->portBits,
-                             &gwRect, &dr, srcCopy, NULL);
-                    UnlockPixels(GetGWorldPixMap(offGW));
-                    EndUpdate(combatWin);
-                }
+    /* compact the touched records; the fallen hero of a surviving record */
+    for (i = 0; i < nTouched; i++) {
+        unsigned char *a = gs + 0x1604 + touched[i] * 0x42;
+        short put = 0, live = 0;
+        for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) live++;
+        if (live == 0) continue;
+        for (j = 0; j < b->nAtt + b->nDef; j++) {
+            BattleUnit *u = (j < b->nAtt) ? b->att + j : b->def + (j - b->nAtt);
+            if (u->rec == touched[i] && u->hp < 0 && u->type == 0x1C) { BattleHeroFell(u->rec); break; }
+        }
+        for (k = 0; k < 4; k++) {
+            if (a[0x16 + k] == 0xFF) continue;
+            if (put != k) {
+                a[0x16 + put] = a[0x16 + k]; a[0x1a + put] = a[0x1a + k]; a[0x1e + put] = a[0x1e + k];
+                a[0x22 + put] = a[0x22 + k]; a[0x26 + put] = a[0x26 + k];
+                SetMedals(a, put, GetMedals(a, k));
+                a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0;
+                SetMedals(a, k, 0);
             }
+            put++;
+        }
+        a[0x14] = (sUnitTypesLoaded && a[0x16] < sUnitTypeCount) ? sUnitTypeTable[a[0x16] * UNIT_TYPE_ENTRY] : a[0x16];
+        RecalcArmyStrength(a);
+    }
+    /* remove the emptied records, highest index first */
+    for (i = 1; i < nTouched; i++)
+        for (j = i; j > 0 && touched[j] > touched[j - 1]; j--) { short t = touched[j]; touched[j] = touched[j - 1]; touched[j - 1] = t; }
+    for (i = 0; i < nTouched; i++) {
+        unsigned char *a = gs + 0x1604 + touched[i] * 0x42;
+        for (k = 0; k < 4 && a[0x16 + k] == 0xFF; k++) ;
+        if (k < 4) continue;
+        RemoveArmy(touched[i]);
+        if (movingIdx) {
+            if (*movingIdx == touched[i]) *movingIdx = -1;
+            else if (*movingIdx > touched[i]) (*movingIdx)--;
         }
     }
+}
 
-    if (offGW != NULL) DisposeGWorld(offGW);
-    if (combatWin != NULL) DisposeWindow(combatWin);
-
-    return result;
+/* FUN_10030e0c: the Military Advisor rehearses the battle 19 times and
+ * reports wins/2 (0..9) */
+static short BattleAdvisorIndex(const Battle *b)
+{
+    short wins = 0, i;
+    for (i = 0; i < 19; i++) {
+        sBattleSim = *b;
+        if (BattleRounds(&sBattleSim, false)) wins++;
+    }
+    return wins / 2;
 }
 
 
@@ -15094,6 +14529,17 @@ static void CaptureCityAt(short mOwner, short mx, short my)
                         if (*(short *)(city + 0x00) == mx &&
                             *(short *)(city + 0x02) == my) {
                             short prevOwner = *(short *)(city + 0x04);
+                            short prevCities = 0;   /* the loser's cities, this one included */
+
+                            /* PPC FUN_1002e7d4: the loot divides the loser's gold by its
+                             * city count as it stands BEFORE the city changes hands */
+                            {
+                                short ci0;
+                                for (ci0 = 0; ci0 < cityCount; ci0++) {
+                                    unsigned char *c0 = sCityData + ci0 * 0x20;
+                                    if (c0[0x17] < 2 && *(short *)(c0 + 0x04) == prevOwner) prevCities++;
+                                }
+                            }
 
                             /* 68k CODE_133: track origin player at city+0x0A.
                              * If capturing player == origin, reset to 0x0F.
@@ -15125,42 +14571,29 @@ static void CaptureCityAt(short mOwner, short mx, short my)
                                 }
                             }
 
-                            /* Gold transfer on capture (68k CODE_133 FUN_00000046):
-                             * No gold from neutrals.
-                             * If defender has < 2 cities remaining: goldPerCity = all gold.
-                             * Else: goldPerCity = defender_gold / defender_city_count.
-                             * Winner gets goldPerCity / 2.
-                             * Loser loses goldPerCity (2x what winner gains). */
+                            /* Gold transfer on capture (PPC FUN_1002e7d4 / 68k CODE_133):
+                             * no gold from neutrals; loot = (cities < 2 ? gold : gold / cities) / 2
+                             * with the loser's city count taken before the capture;
+                             * the winner gains loot (cap 30000), the loser pays 2*loot (floor 0). */
                             if (prevOwner >= 0 && prevOwner < 8 && prevOwner != 0x0F &&
                                 mOwner >= 0 && mOwner < 8) {
                                 short defGold = *(short *)(gs + 0x186 + prevOwner * 0x14);
-                                short defCities = 0;
-                                short ci2;
-                                short goldPerCity;
-                                for (ci2 = 0; ci2 < cityCount; ci2++) {
-                                    unsigned char *c2 = sCityData +ci2 * 0x20;
-                                    if (*(short *)(c2 + 0x04) == prevOwner) defCities++;
-                                }
-                                /* 68k: defCities < 2 → take ALL gold; else proportional */
-                                if (defCities < 2)
+                                short goldPerCity, goldTaken;
+                                if (prevCities < 2)
                                     goldPerCity = defGold;
                                 else
-                                    goldPerCity = defGold / defCities;
+                                    goldPerCity = defGold / prevCities;
+                                goldTaken = goldPerCity / 2;
+                                if (goldTaken < 0) goldTaken = 0;
+                                sCaptureLoot = goldTaken;
                                 {
-                                    short goldTaken = goldPerCity / 2;
-                                    if (goldTaken < 0) goldTaken = 0;
-                                    if (goldTaken > 0) {
-                                        sCaptureLoot = goldTaken;
-                                        short newGold = *(short *)(gs + 0x186 + mOwner * 0x14) + goldTaken;
-                                        if (newGold > 30000) newGold = 30000;
-                                        *(short *)(gs + 0x186 + mOwner * 0x14) = newGold;
-                                        /* 68k: loser loses goldPerCity (2x goldTaken) */
-                                        {
-                                            short loserGold = *(short *)(gs + 0x186 + prevOwner * 0x14) - goldPerCity;
-                                            if (loserGold < 0) loserGold = 0;
-                                            *(short *)(gs + 0x186 + prevOwner * 0x14) = loserGold;
-                                        }
-                                    }
+                                    long newGold = (long)*(short *)(gs + 0x186 + mOwner * 0x14) + goldTaken;
+                                    short loserGold;
+                                    if (newGold > 30000) newGold = 30000;
+                                    *(short *)(gs + 0x186 + mOwner * 0x14) = (short)newGold;
+                                    loserGold = *(short *)(gs + 0x186 + prevOwner * 0x14) - (short)(goldTaken * 2);
+                                    if (loserGold < 0) loserGold = 0;
+                                    *(short *)(gs + 0x186 + prevOwner * 0x14) = loserGold;
                                 }
                             }
 
@@ -16094,34 +15527,36 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         }
     }
 
+    /* the battle: both sides gathered and valued once (PPC FUN_100ac0cc) */
+    BattleGather(&sBattle, mv, mOwner, mx, my, cityIdx, cx, cy, defOwner);
+    BattleValues(&sBattle);
+
     if (other != NULL) {
-            /* Military Advisor: show assessment before combat for human attacker */
+            /* Military Advisor (PPC FUN_10030e90 / FUN_10030e0c): the battle
+             * is rehearsed 19 times; wins/2 picks the verdict.  The advisor
+             * only informs — the attack proceeds. */
             if (sOptMilAdvisor && mOwner >= 0 && mOwner < 8 &&
                 *(short *)(gs + 0xd0 + mOwner * 2) == 0) {
-                short attStr = *(short *)(movArmy + 0x2a);
-                short defStr = *(short *)(other + 0x2a);
-                short ratio;
+                static const unsigned char *kAdvice[10] = {
+                    "\pcomplete and utter suicide!",
+                    "\psheerest folly!",
+                    "\pa foolish decision!",
+                    "\pa brave choice! I leave it to thee!",
+                    "\pdifficult but not impossible to win!",
+                    "\pvery evenly matched!",
+                    "\pa hard-fought victory!",
+                    "\pa comfortable victory!",
+                    "\pan easy victory!",
+                    "\pas simple as butchering sleeping cattle!"
+                };
+                short advIdx = BattleAdvisorIndex(&sBattle);
                 const unsigned char *advice;
                 WindowPtr advWin;
                 Rect advR;
-                Boolean doAttack = true;
 
-                /* Add terrain/fortification defense bonus estimate */
-                defStr += (short)(unsigned char)other[0x2d];
-
-                if (attStr <= 0) attStr = 1;
-                ratio = (defStr > 0) ? (attStr * 100) / defStr : 999;
-
-                if      (ratio < 25)  advice = "\pcomplete and utter suicide!";
-                else if (ratio < 40)  advice = "\psheerest folly!";
-                else if (ratio < 60)  advice = "\pa foolish decision!";
-                else if (ratio < 80)  advice = "\pa brave choice! I leave it to thee!";
-                else if (ratio < 100) advice = "\pdifficult but not impossible to win!";
-                else if (ratio < 120) advice = "\pvery evenly matched!";
-                else if (ratio < 160) advice = "\pa hard-fought victory!";
-                else if (ratio < 220) advice = "\pa comfortable victory!";
-                else if (ratio < 350) advice = "\pan easy victory!";
-                else                  advice = "\pas simple as butchering sleeping cattle!";
+                if (advIdx < 0) advIdx = 0;
+                if (advIdx > 9) advIdx = 9;
+                advice = kAdvice[advIdx];
 
                 {
                     PicHandle advPict = GetPicture(4420);
@@ -16144,15 +15579,13 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                     RGBColor agold = {0xFFFF, 0xDDDD, 0x3333};
                     RGBColor awh = {0xFFFF, 0xFFFF, 0xFFFF};
                     RGBColor agreen = {0x4444, 0xFFFF, 0x4444};
-                    RGBColor ared = {0xFFFF, 0x4444, 0x4444};
-                    Rect yesR, noR;
+                    Rect okR;
                     Boolean advDone = false;
                     EventRecord advEvt;
                     short advW2 = advR.right - advR.left;
                     short advH2 = advR.bottom - advR.top;
 
-                    SetRect(&yesR, advW2 - 160, advH2 - 28, advW2 - 90, advH2 - 8);
-                    SetRect(&noR, advW2 - 80, advH2 - 28, advW2 - 15, advH2 - 8);
+                    SetRect(&okR, advW2 - 80, advH2 - 28, advW2 - 15, advH2 - 8);
 
                     SetPort(advWin);
                     if (advPict2) DrawPicture(advPict2, &advWin->portRect);
@@ -16169,56 +15602,18 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                     MoveTo(15, 52);
                     RGBForeColor(&agold);
                     DrawString(advice);
-                    /* Attack/Retreat buttons */
                     RGBForeColor(&agreen);
-                    FrameRoundRect(&yesR, 6, 6);
-                    MoveTo(yesR.left + 12, yesR.bottom - 5);
+                    FrameRoundRect(&okR, 6, 6);
+                    MoveTo(okR.left + 12, okR.bottom - 5);
                     DrawString(GetCachedString(STR_MISC, 6, "\pAttack!"));
-                    RGBForeColor(&ared);
-                    FrameRoundRect(&noR, 6, 6);
-                    MoveTo(noR.left + 8, noR.bottom - 5);
-                    DrawString(GetCachedString(STR_MISC, 7, "\pRetreat"));
 
                     while (!advDone) {
                         if (WaitNextEvent(mDownMask | keyDownMask, &advEvt, 30, NULL)) {
-                            if (advEvt.what == keyDown) {
-                                char ch = advEvt.message & charCodeMask;
-                                if (ch == '\r' || ch == 'a' || ch == 'A' || ch == 'y' || ch == 'Y') {
-                                    doAttack = true;
-                                    advDone = true;
-                                } else if (ch == 27 || ch == 'n' || ch == 'N' || ch == 'r' || ch == 'R') {
-                                    doAttack = false;
-                                    advDone = true;
-                                }
-                            } else if (advEvt.what == mouseDown) {
-                                Point ap = advEvt.where;
-                                SetPort(advWin);
-                                GlobalToLocal(&ap);
-                                if (PtInRect(ap, &yesR)) {
-                                    doAttack = true;
-                                    advDone = true;
-                                } else if (PtInRect(ap, &noR)) {
-                                    doAttack = false;
-                                    advDone = true;
-                                }
-                            }
+                            if (advEvt.what == keyDown || advEvt.what == mouseDown)
+                                advDone = true;
                         }
                     }
                     DisposeWindow(advWin);
-                }
-
-                if (!doAttack) {
-                    /* Retreat: move army back to previous tile.
-                     * The army has already been moved onto the enemy tile
-                     * by the caller, so restore from undo state. */
-                    if (sUndoArmyIdx >= 0) {
-                        *(short *)(movArmy + 0x00) = sUndoFromX;
-                        *(short *)(movArmy + 0x02) = sUndoFromY;
-                        movArmy[0x2e] = (unsigned char)sUndoMovePts;
-                        sUndoArmyIdx = -1;
-                    }
-                    *(short *)(movArmy + 0x32) = 0;  /* clear orders */
-                    return true;  /* combat "occurred" so caller won't try merge */
                 }
             }
     }
@@ -16249,38 +15644,12 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         while (TickCount() < until) WaitNextEvent(0, &ev, 1, NULL);
     }
 
-    /* Fight: the attacking stack (the mover first, then the rest of its
-     * tile) against every defender in the zone, one army record at a time. */
+    /* Fight: one battle, the whole attacking stack against every defender
+     * in the zone (PPC FUN_1002d654), then the records take the result. */
     sBattleKillN = 0;
     sBattleQuiet = true;
-    for (;;) {
-        short a = -1, d = -1, r, n = *(short *)(gs + 0x1602);
-        if (n > 100) n = 100;
-        for (i = 0; i < n; i++) {
-            other = gs + 0x1604 + i * 0x42;
-            if ((short)(unsigned char)other[0x15] != mOwner &&
-                IN_BATTLE_ZONE(*(short *)(other + 0x00), *(short *)(other + 0x02))) { d = i; break; }
-        }
-        if (d < 0) break;
-        if (mv >= 0) a = mv;
-        else for (i = 0; i < n; i++) {
-            other = gs + 0x1604 + i * 0x42;
-            if ((short)(unsigned char)other[0x15] == mOwner &&
-                *(short *)(other + 0x00) == mx && *(short *)(other + 0x02) == my) { a = i; break; }
-        }
-        if (a < 0) break;
-        r = ResolveCombat(a, d);
-        if (r == 1 || r == -1) {
-            RemoveArmy(d);
-            if (mv > d) mv--;
-            if (a > d) a--;
-        }
-        if (r == 0 || r == -1) {
-            RemoveArmy(a);
-            if (mv == a) mv = -1; else if (mv > a) mv--;
-        }
-        if (r != 0 && r != 1 && r != -1) break;
-    }
+    BattleRounds(&sBattle, true);
+    BattleApply(&sBattle, &mv);
     sBattleQuiet = false;
 
     /* survivors */
@@ -24190,7 +23559,7 @@ static void ExecuteAITurn(short aiPlayer)
                  * 68k CODE_118 FUN_000001a6: AI selects best unit by scoring.
                  * Score = strength * 3 + (10 - min(turns,10)) * 2.
                  * Simplified from 68k context-dependent weights. */
-                if (producing < 0) {
+                if (producing < 0 || prodTurns <= 0) {   /* idle or stalled (FUN_1001e4b0) */
                     short sType = (short)(unsigned char)city[0x17];
                     if (sType == 0 || sType == 1) {
                         short bestProd = -1;
@@ -26113,16 +25482,16 @@ static void ProcessStartOfTurn(short player)
                         }
                     }
 
-                    /* Look for an existing army to merge into — 68k func_0x000049c0:
-                     * search city tile first, then 8 adjacent tiles. */
+                    /* Look for an existing army to merge into: only on the
+                     * city's own 2x2 tiles (PPC FUN_1004a350) */
                     short mergeIdx = -1;
                     short newIdx = -1;
                     short spawnX = cx, spawnY = cy;
                     short ai;
-                    { static const short adjDX[9] = {0, 1,-1, 0, 0, 1,-1, 1,-1};
-                      static const short adjDY[9] = {0, 0, 0, 1,-1, 1, 1,-1,-1};
+                    { static const short adjDX[4] = {0, 1, 0, 1};
+                      static const short adjDY[4] = {0, 0, 1, 1};
                       short ti;
-                      for (ti = 0; ti < 9 && mergeIdx < 0; ti++) {
+                      for (ti = 0; ti < 4 && mergeIdx < 0; ti++) {
                           short tx = cx + adjDX[ti];
                           short ty = cy + adjDY[ti];
                           if (tx < 0 || tx >= sMapWidth || ty < 0 || ty >= sMapHeight) continue;
@@ -26160,9 +25529,9 @@ static void ProcessStartOfTurn(short player)
                                     a[0x1a + slot] = 8;
                                     a[0x1e + slot] = 3;
                                 }
-                                /* 68k CODE_080 FUN_00001858: initial combat bonus = cost/2 */
-                                { short ucost = GetUnitTypeStat(prodType, 2);
-                                  a[0x22 + slot] = (unsigned char)(ucost > 0 ? ucost / 2 : 0); }
+                                /* PPC FUN_1004a5f0: cost/2 is the unit's UPKEEP (+0xB),
+                                 * never a combat value */
+                                a[0x22 + slot] = 0;
                                 a[0x26 + slot] = 0;  /* experience: fresh unit */
                                 /* Tech upgrade bonus (68k CODE_080 FUN_00001858):
                                  * If player's tech flag at gs+0xf0+player*2 is nonzero,
@@ -26172,21 +25541,21 @@ static void ProcessStartOfTurn(short player)
                                     if (hp > 9) hp = 9;
                                     a[0x1e + slot] = (unsigned char)hp;
                                 }
-                                /* 68k: merged army can't move on spawn turn */
-                                a[0x2e] = 0;
+                                /* a new unit has full MP (FUN_1004a5f0); the stack's
+                                 * MP is not reduced by it */
                                 /* Recalculate stack strength */
                                 RecalcArmyStrength(a);
                                 break;
                             }
                         }
                     } else if (armyCount < 100) {
-                        /* Create new army — 68k func_0x000049c0: try city tile
-                         * first, then adjacent tiles if city tile is occupied. */
-                        { static const short adjDX2[9] = {0, 1,-1, 0, 0, 1,-1, 1,-1};
-                          static const short adjDY2[9] = {0, 0, 0, 1,-1, 1, 1,-1,-1};
+                        /* Create new army — PPC FUN_1004a350(city,0): only the
+                         * city's own 2x2 tiles, never outside the walls. */
+                        { static const short adjDX2[4] = {0, 1, 0, 1};
+                          static const short adjDY2[4] = {0, 0, 1, 1};
                           short ti2;
                           Boolean foundSpawn = false;
-                          for (ti2 = 0; ti2 < 9 && !foundSpawn; ti2++) {
+                          for (ti2 = 0; ti2 < 4 && !foundSpawn; ti2++) {
                               short sx = cx + adjDX2[ti2];
                               short sy = cy + adjDY2[ti2];
                               short ai2; Boolean tileOccupied = false;
@@ -26256,9 +25625,7 @@ static void ProcessStartOfTurn(short player)
                         }
                         a[0x1b] = 0; a[0x1c] = 0; a[0x1d] = 0;
                         a[0x1f] = 0; a[0x20] = 0; a[0x21] = 0;
-                        /* 68k CODE_080 FUN_00001858: initial combat bonus = cost/2 */
-                        { short ucost2 = GetUnitTypeStat(prodType, 2);
-                          a[0x22] = (unsigned char)(ucost2 > 0 ? ucost2 / 2 : 0); }
+                        a[0x22] = 0;   /* cost/2 is upkeep in the original, not strength */
                         a[0x23] = 0; a[0x24] = 0; a[0x25] = 0;
 
                         /* Tech upgrade bonus (68k CODE_080 FUN_00001858) */
@@ -26271,10 +25638,10 @@ static void ProcessStartOfTurn(short player)
                         RecalcArmyStrength(a);
                         a[0x2f] = (unsigned char)player;
 
-                        /* Set current MP = 0 (68k CODE_080 FUN_00001cfe: movement
-                         * reset runs BEFORE production, so it doesn't touch newly
-                         * produced units. They keep 0 MP; they act next turn.) */
-                        a[0x2e] = 0;
+                        /* PPC FUN_1004a5f0: base and current MP = the unit's moves;
+                         * a new unit can move on the turn it appears (AI: production
+                         * runs before the MP reset, which adds up to 2 more) */
+                        a[0x2e] = a[0x1a];
 
                         armyCount++;
                         *(short *)(gs + 0x1602) = armyCount;
