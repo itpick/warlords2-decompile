@@ -26586,7 +26586,7 @@ static void AdvanceToNextPlayer(void)
             RecordTurnSnapshot();
 
             /* Show brief end-of-round summary every 5 turns */
-            if (turn > 1 && turn % 5 == 0) {
+            if (0 && turn > 1 && turn % 5 == 0) {   /* remake-only summary: the original shows none */
                 WindowPtr sumWin;
                 Rect sumR;
                 GWorldPtr sumGW = NULL;
