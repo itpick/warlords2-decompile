@@ -20,7 +20,7 @@ const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../.
 const OUT = path.join(REPO, '.devloop', 'compare', name);
 fs.mkdirSync(OUT, { recursive: true });
 
-const SIDES = { orig: 3200, remake: 3201 };
+const SIDES = { orig: Number(process.env.WL_ORIG_PORT || 3200), remake: Number(process.env.WL_PORT || 3201) };
 // Movies: while recording, each side screenshots as fast as its bridge allows
 // (~12 fps); frames keep their real times and ffmpeg turns them into a video.
 const MOVIES = path.join(REPO, '.devloop', 'movies');
