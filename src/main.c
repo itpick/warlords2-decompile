@@ -1146,9 +1146,11 @@ static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
  * (the original's ~1.75 s per computer player) to speed up test iterations. */
 #define DEV_FAST_TURNS 1
 #define DEV_SHIP_PROBE 0   /* DEV: temporary ship-on-land probe */
-static short     sAIProgress = 0;         /* its flag strip as a progress bar, 0-100 */
+static short     sAIProgress = 0;
+static Str255    sInfoMsg;                /* info-area message over the AI turn display */         /* its flag strip as a progress bar, 0-100 */
 static Boolean   sDragPreview = false;
-static Boolean   sClickWasDrag = false;   /* the last map press was a drag */     /* mouse held on the map with an army selected */
+static Boolean   sClickWasDrag = false;
+static GWorldPtr sMapBufGW = NULL;   /* the map window's offscreen copy (DrawMapInWindow) */   /* the last map press was a drag */     /* mouse held on the map with an army selected */
 static short     sPathTargetX = -1, sPathTargetY = -1;  /* current path search target */
 static RGBColor  sHaloKey;
 static short     sHaloFrame = 0;
@@ -1537,6 +1539,8 @@ static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
 static void DrawT3DFrame(const Rect *v);
+static void DisposeOverMap(WindowPtr win);
+static Boolean AIMovesShown(void);
 static void DrawSunkenText2(const Rect *v, ConstStr255Param s);
 static void FormatTwoNums(ConstStr255Param fmt, short a, short b, Str255 out);
 static short GetMedals(const unsigned char *a, short k);
@@ -8617,7 +8621,6 @@ static void DrawMapInWindow(WindowPtr win)
      * drawn straight to the window the layers showed one after another,
      * which blinked while a path was dragged. */
     {
-        static GWorldPtr sMapBufGW = NULL;
         static short sBufW = 0, sBufH = 0;
         short bw = win->portRect.right - win->portRect.left;
         short bh = win->portRect.bottom - win->portRect.top;
@@ -15380,8 +15383,15 @@ static WindowPtr NewMacAppWindow(short w, short h)
         PaletteHandle pal = GetPalette((WindowPtr)*gMainGameWindow);
         if (pal != NULL) SetPalette(win, pal, false);
     }
-    ShowWindow(win);
+    /* paint the window's area with the marble before it shows, so it never
+     * flashes white while its pictures decode */
     SetPort(win);
+    ShowWindow(win);
+    {
+        PicHandle m = GetPicture(1001);
+        if (m != NULL) { Rect pf = (**m).picFrame; OffsetRect(&pf, -pf.left, -pf.top); DrawPicture(m, &pf); }
+        ValidRect(&win->portRect);
+    }
     return win;
 }
 
@@ -15395,9 +15405,35 @@ static void DrawPictAt(short id, short x, short y)
     DrawPicture(p, &r);
 }
 
+/* Close a game dialog without the white flash: the map area it uncovered
+ * is refilled at once from the map's offscreen copy, then the rest updates. */
+static void DisposeOverMap(WindowPtr win)
+{
+    Rect gr = win->portRect;
+    GrafPtr sp;
+    GetPort(&sp);
+    SetPort(win); LocalToGlobal((Point *)&gr.top); LocalToGlobal((Point *)&gr.bottom);
+    InsetRect(&gr, -8, -8);   /* frame and shadow */
+    DisposeWindow(win);
+    if (*gMainGameWindow != 0 && sMapBufGW != NULL) {
+        WindowPtr mw = (WindowPtr)*gMainGameWindow;
+        Rect lr = gr, mr = mw->portRect;
+        SetPort(mw);
+        GlobalToLocal((Point *)&lr.top); GlobalToLocal((Point *)&lr.bottom);
+        mr.right -= SCROLLBAR_W; mr.bottom -= SCROLLBAR_H;
+        if (SectRect(&lr, &mr, &lr) && LockPixels(GetGWorldPixMap(sMapBufGW))) {
+            RGBColor bk = {0, 0, 0}, wh = {0xFFFF, 0xFFFF, 0xFFFF};
+            RGBForeColor(&bk); RGBBackColor(&wh);
+            CopyBits((BitMap *)*GetGWorldPixMap(sMapBufGW), &mw->portBits, &lr, &lr, srcCopy, NULL);
+            UnlockPixels(GetGWorldPixMap(sMapBufGW));
+        }
+    }
+    SetPort(sp);
+}
+
 static void CloseMacAppWindow(WindowPtr win)
 {
-    DisposeWindow(win);
+    DisposeOverMap(win);
     if (*gMainGameWindow != 0) {
         HiliteWindow((WindowPtr)*gMainGameWindow, true);
         ActivatePalette((WindowPtr)*gMainGameWindow);
@@ -15926,9 +15962,10 @@ static void ShowBattle(short tx, short ty, Boolean humanAttacker,
     if (nDef > 32) nDef = 32;
     if (nAtt > 8) nAtt = 8;
 
-    /* WAR over the target tile, held for the length of its sound */
+    /* WAR over the target tile (also for computer attacks), held for the
+     * length of its sound when the mover is human */
+    DrawBattleWarOnMap(tx, ty);
     if (humanAttacker) {
-        DrawBattleWarOnMap(tx, ty);
         if (sSoundMaster != 0 && sSoundEffects != 0) {
             Boolean dummy = false;
             PlaySound(SND_WAR);
@@ -15939,13 +15976,23 @@ static void ShowBattle(short tx, short ty, Boolean humanAttacker,
     left = (sw - (BATTLE_W + 4)) / 2 + 1;
     top = mb + (sh - mb - (BATTLE_H + 4)) / 3 + 1;
     SetRect(&wr, left, top, left + BATTLE_W, top + BATTLE_H);
-    bw = NewCWindow(NULL, &wr, "\p", true, altDBoxProc, (WindowPtr)-1L, false, 0);
+    bw = NewCWindow(NULL, &wr, "\p", false, altDBoxProc, (WindowPtr)-1L, false, 0);
     if (bw == NULL) return;
     if (*gMainGameWindow != 0) {
         PaletteHandle pal = GetPalette((WindowPtr)*gMainGameWindow);
         if (pal != NULL) SetPalette(bw, pal, false);
     }
     SetPort(bw);
+    {   /* compose the window offscreen, then show it in one go (drawn in
+         * place it showed white while the pictures decoded) */
+        GWorldPtr gw = NULL;
+        CGrafPtr sp; GDHandle sd;
+        Rect pr0 = bw->portRect;
+        Handle ct = (Handle)sGameCTab;
+        if (ct == NULL || HandToHand(&ct) != noErr) ct = NULL;
+        if (NewGWorld(&gw, 8, &pr0, (CTabHandle)ct, NULL, 0) != noErr) gw = NULL;
+        GetGWorld(&sp, &sd);
+        if (gw != NULL) { LockPixels(GetGWorldPixMap(gw)); SetGWorld(gw, NULL); }
 
     marble = GetPicture(1001);
     if (marble != NULL) {
@@ -15967,6 +16014,19 @@ static void ShowBattle(short tx, short ty, Boolean humanAttacker,
         short x, y;
         BattleSlotXY(true, i, nAtt, &x, &y);
         DrawArmySpriteAt(attOwner, attSpr[i], x, y + 4, false);
+    }
+
+        SetGWorld(sp, sd);
+        ShowWindow(bw);
+        SetPort(bw);
+        if (gw != NULL) {
+            RGBColor bk = {0, 0, 0}, wh = {0xFFFF, 0xFFFF, 0xFFFF};
+            RGBForeColor(&bk); RGBBackColor(&wh);
+            CopyBits((BitMap *)*GetGWorldPixMap(gw), &bw->portBits, &pr0, &pr0, srcCopy, NULL);
+            UnlockPixels(GetGWorldPixMap(gw));
+            DisposeGWorld(gw);
+        }
+        ValidRect(&pr0);
     }
 
     /* the kills, in the order they happened */
@@ -16015,7 +16075,7 @@ static void ShowBattle(short tx, short ty, Boolean humanAttacker,
         Boolean dummy = false;
         BattleWait(50, &dummy);
     }
-    DisposeWindow(bw);
+    DisposeOverMap(bw);
     if (*gMainGameWindow != 0) {
         HiliteWindow((WindowPtr)*gMainGameWindow, true);
         ActivatePalette((WindowPtr)*gMainGameWindow);
@@ -16248,7 +16308,29 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
 
     humanAtt = (mOwner >= 0 && mOwner < 8 && *(short *)(gs + 0xd0 + mOwner * 2) == 0);
     humanDef = (oOwner >= 0 && oOwner < 8 && *(short *)(gs + 0xd0 + oOwner * 2) == 0);
-    showIt = (humanAtt || humanDef) && sGameSpeed < 3;
+    /* computer battles are shown when a human defends or AI moves are
+     * shown (Observe; PPC FUN_10030490) */
+    showIt = (humanAtt || humanDef || AIMovesShown()) && sGameSpeed < 3;
+    if (showIt && !humanAtt) {
+        /* "<defender>, you are being attacked!" in the info area, 15 ticks */
+        Str255 fmt, nm;
+        unsigned long until;
+        EventRecord ev;
+        if (oOwner >= 0 && oOwner < 8) {
+            unsigned char *fn = gs + oOwner * FACTION_NAME_LEN; short len = 0;
+            while (len < 14 && fn[len]) len++;
+            nm[0] = (unsigned char)len; BlockMoveData(fn, nm + 1, len);
+            GetDATRawString(754, fmt); FormatHeroLine(fmt, nm, 0, sInfoMsg);
+        } else GetDATRawString(755, sInfoMsg);
+        if (gInfoWindow != NULL && *gInfoWindow != 0) {
+            GrafPtr sp; GetPort(&sp);
+            SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
+            SetPort(sp);
+        }
+        DrainUpdates();
+        until = TickCount() + 15;
+        while (TickCount() < until) WaitNextEvent(0, &ev, 1, NULL);
+    }
 
     /* Fight: the attacking stack (the mover first, then the rest of its
      * tile) against every defender in the zone, one army record at a time. */
@@ -16352,7 +16434,18 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                 hname[0] = (unsigned char)len;
                 BlockMoveData(hn, hname + 1, len);
             }
-            if (!won) {
+            if (!humanAtt) {
+                /* the attacker's side: "%s, you are victorious!" / "%s, you have
+                 * lost!" (neutrals: "Neutrals are victorious!" / "have lost!"),
+                 * a hero: "%s has won the battle!" */
+                if (won && heroArmy >= 0) { GetDATRawString(747, fmt); FormatHeroLine(fmt, hname, 0, l1); }
+                else if (mOwner >= 0 && mOwner < 8) {
+                    Str255 an; unsigned char *fn = gs + mOwner * FACTION_NAME_LEN; short len = 0;
+                    while (len < 14 && fn[len]) len++;
+                    an[0] = (unsigned char)len; BlockMoveData(fn, an + 1, len);
+                    GetDATRawString(won ? 756 : 758, fmt); FormatHeroLine(fmt, an, 0, l1);
+                } else GetDATRawString(won ? 757 : 759, l1);
+            } else if (!won) {
                 GetDATRawString(752, l1);                       /* You have lost! */
             } else if (cityIdx >= 0) {
                 Str255 *wonLine = (firstDef < 0) ? &l2 : &l1;
@@ -16393,6 +16486,14 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         if (won && sGameSpeed < 3)
             AwardMedal(mOwner, mx, my, nAttLive, nDefLive, nDefLive > 0 ? defSpr[0] : -1, humanAtt);
         CaptureCityFinish();
+    }
+    if (sInfoMsg[0]) {
+        sInfoMsg[0] = 0;
+        if (gInfoWindow != NULL && *gInfoWindow != 0) {
+            GrafPtr sp; GetPort(&sp);
+            SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
+            SetPort(sp);
+        }
     }
     sPreviewPathLen = 0; sPreviewGridValid = false;   /* the old path's rings go */
 #undef IN_BATTLE_ZONE
@@ -22505,7 +22606,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
         ReleaseResource((Handle)heroPict);
     if (offscreen != NULL)
         DisposeGWorld(offscreen);
-    DisposeWindow(hireWin);
+    DisposeOverMap(hireWin);
     if (*gMainGameWindow != 0)
         ActivatePalette((WindowPtr)*gMainGameWindow);
     InvalidateAllGameWindows();
@@ -23715,7 +23816,7 @@ cityLoop:
         }
     }
 
-    DisposeWindow(win);
+    DisposeOverMap(win);
     if (*gMainGameWindow != 0) {
         ActivatePalette((WindowPtr)*gMainGameWindow);
         InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
@@ -25568,7 +25669,7 @@ static void ShowTurnSplash(short playerIdx)
         SetRect(&winRect, left, top, left + winW, top + winH);
     }
 
-    splashWin = NewCWindow(NULL, &winRect, "\p", true,
+    splashWin = NewCWindow(NULL, &winRect, "\p", false,
                             altDBoxProc, (WindowPtr)-1L, false, 0);
     if (splashWin == NULL) return;
     if (*gMainGameWindow != 0)
@@ -25584,11 +25685,20 @@ static void ShowTurnSplash(short playerIdx)
     }
 
     SetPort(splashWin);
+    {   /* draw it all offscreen, then show the window and copy it in at once
+         * (drawn in place, the window showed white while the PICT decoded) */
+        GWorldPtr gw = NULL;
+        CGrafPtr sp; GDHandle sd;
+        Rect pr = splashWin->portRect;
+        Handle ct = (Handle)sGameCTab;
+        if (ct == NULL || HandToHand(&ct) != noErr) ct = NULL;
+        if (NewGWorld(&gw, 8, &pr, (CTabHandle)ct, NULL, 0) != noErr) gw = NULL;
+        GetGWorld(&sp, &sd);
+        if (gw != NULL) { LockPixels(GetGWorldPixMap(gw)); SetGWorld(gw, NULL); EraseRect(&pr); }
 
     /* Play turn bong immediately when splash appears. 68k CODE_080:1547 plays
      * 0x3ef directly with no prior quietCmd — the quiet was silencing the
      * channel so the gong never sounded on the new-turn splash. */
-    PlaySound(SND_TURN);
 
     gatePict = GetPicture(3100);
     if (gatePict != NULL) {
@@ -25618,6 +25728,21 @@ static void ShowTurnSplash(short playerIdx)
         DrawSunkenTextColor(&v, tline, IlluriaFont(), 36, 1, &red);
     }
 
+        SetGWorld(sp, sd);
+        ShowWindow(splashWin);
+        SetPort(splashWin);
+        if (gw != NULL) {
+            RGBColor bk = {0, 0, 0}, wh = {0xFFFF, 0xFFFF, 0xFFFF};
+            RGBForeColor(&bk); RGBBackColor(&wh);
+            CopyBits((BitMap *)*GetGWorldPixMap(gw), &splashWin->portBits, &pr, &pr, srcCopy, NULL);
+            UnlockPixels(GetGWorldPixMap(gw));
+            DisposeGWorld(gw);
+        }
+        ValidRect(&pr);
+    }
+    /* Play turn bong immediately when splash appears (68k CODE_080:1547) */
+    PlaySound(SND_TURN);
+
     TextFace(0); TextFont(3); TextSize(9);
 
     /* Wait for a click or key: the original's turn banner stays up until
@@ -25629,7 +25754,7 @@ static void ShowTurnSplash(short playerIdx)
             break;
     }
 
-    DisposeWindow(splashWin);
+    DisposeOverMap(splashWin);
     if (*gMainGameWindow != 0) {
         HiliteWindow((WindowPtr)*gMainGameWindow, true);
         ActivatePalette((WindowPtr)*gMainGameWindow);
@@ -31893,6 +32018,25 @@ static void HandleUpdate(EventRecord *event)
             pname[0] = (unsigned char)len;
             BlockMoveData(fname, pname + 1, len);
             SetRect(&v, r.left, r.top + 10, r.right, r.top + 29);
+            if (sInfoMsg[0]) {
+                /* "<Faction>, you are being attacked!": dark, centred, wrapped */
+                RGBColor dk = {0x1111, 0x1111, 0x1111};
+                Str255 a, b; short sp = -1, q, w;
+                TextFont(IlluriaFont()); TextSize(17); TextFace(0);
+                a[0] = b[0] = 0;
+                for (q = 1; q <= sInfoMsg[0]; q++) {
+                    Str255 t; BlockMoveData(sInfoMsg, t, q + 1); t[0] = (unsigned char)q;
+                    if (sInfoMsg[q] == ' ') { if (StringWidth(t) <= (r.right - r.left) - 20) sp = q; }
+                }
+                if (StringWidth(sInfoMsg) <= (r.right - r.left) - 20 || sp < 0) BlockMoveData(sInfoMsg, a, sInfoMsg[0] + 1);
+                else {
+                    a[0] = (unsigned char)(sp - 1); BlockMoveData(sInfoMsg + 1, a + 1, sp - 1);
+                    b[0] = (unsigned char)(sInfoMsg[0] - sp); BlockMoveData(sInfoMsg + 1 + sp, b + 1, b[0]);
+                }
+                (void)w;
+                DrawSunkenTextColor(&v, a, IlluriaFont(), 17, 1, &dk);
+                if (b[0]) { Rect v2 = v; OffsetRect(&v2, 0, 20); DrawSunkenTextColor(&v2, b, IlluriaFont(), 17, 1, &dk); }
+            } else
             {   /* name colour = the strip's dominant colour (Stone Giants
                  * yellow, Kingdoms blue on the original) */
                 RGBColor col = sPlayerColors[(sAITurnPlayer + 1) % 9];
@@ -31927,8 +32071,23 @@ static void HandleUpdate(EventRecord *event)
                 GetBackColor(&savedBg);
                 RGBForeColor(&black);
                 RGBBackColor(&sFlagBgColor);
-                {   /* the strip is a 'prog' control (PPC FUN_10080cf0), max 100 */
-                    short w = (short)(182L * sAIProgress / 100);
+                {   /* the strip is a 'prog' control (PPC FUN_10080cf0), max 100:
+                     * the whole strip pale, the done part in full colour */
+                    short w = (short)(182L * sAIProgress / 100), x, y;
+                    CGrafPtr sp2; GDHandle sd2;
+                    for (y = 0; y < 18; y++)
+                        for (x = w; x < 182; x++) {
+                            RGBColor c;
+                            GetGWorld(&sp2, &sd2);
+                            SetGWorld(sFlagGW[sAITurnPlayer], NULL);
+                            GetCPixel(133 + x, y, &c);
+                            SetGWorld(sp2, sd2);
+                            if (c.red == sFlagBgColor.red && c.green == sFlagBgColor.green && c.blue == sFlagBgColor.blue) continue;
+                            c.red = (unsigned short)((c.red + 0xDDDDUL) / 2);
+                            c.green = (unsigned short)((c.green + 0xDDDDUL) / 2);
+                            c.blue = (unsigned short)((c.blue + 0xFFFFUL) / 2);
+                            SetCPixel(r.left + 21 + x, r.top + 90 + y, &c);
+                        }
                     SetRect(&sr, 133, 0, 133 + w, 18);
                     SetRect(&dr, r.left + 21, r.top + 90, r.left + 21 + w, r.top + 108);
                 }
