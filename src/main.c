@@ -31213,6 +31213,17 @@ static void HandleMouseDown(EventRecord *event)
                                  * Info pane instead of moving (original turn 1,
                                  * Crescent). */
                                 if (!sClickWasDrag) {
+                                    /* an enemy army beyond a single step: the click does
+                                     * nothing (original, Tutoria turn 5) */
+                                    short q, nq = *(short *)(gs + 0x1602);
+                                    for (q = 0; q < nq && q < 100; q++) {
+                                        unsigned char *qa = gs + 0x1604 + q * 0x42;
+                                        if (qa[0x16] == 0xFF || (short)(unsigned char)qa[0x15] == currentPlayer) continue;
+                                        if (*(short *)(qa + 0) == clickTileX && *(short *)(qa + 2) == clickTileY)
+                                            goto doneMapClick;
+                                    }
+                                }
+                                if (!sClickWasDrag) {
                                     short ci, cc = sCityCount > 99 ? 99 : sCityCount;
                                     for (ci = 0; ci < cc; ci++) {
                                         unsigned char *c = sCityData + ci * 0x20;
