@@ -1,0 +1,5 @@
+{"steps":[{"audio":"start"},
+          {"click":[939,448]},{"wait":3000},{"shot":"t3s"},
+          {"wait":7000},{"shot":"t10s"},
+          {"wait":10000},{"shot":"t20s"},
+          {"audio":"stop"}]}

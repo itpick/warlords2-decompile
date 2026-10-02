@@ -1,0 +1,9 @@
+{"steps":[{"audio":"start"},
+          {"down":[478,500]},{"wait":600},{"up_hold":1},
+          {"move":[518,540]},{"wait":800},{"move":[558,580]},{"wait":1500},{"shot":"armydrag_mid"},
+          {"up":[558,580]},{"wait":3000},{"shot":"armydrag_end"},
+          {"down":[300,660]},{"wait":400},{"move":[250,660]},{"wait":800},{"move":[200,660]},{"wait":1500},{"shot":"mapdrag_mid"},
+          {"up":[200,660]},{"wait":2500},{"shot":"mapdrag_end"},
+          {"down":[900,150]},{"wait":400},{"move":[930,180]},{"wait":800},{"move":[960,210]},{"wait":1500},{"shot":"minidrag_mid"},
+          {"up":[960,210]},{"wait":2500},{"shot":"minidrag_end"},
+          {"audio":"stop"}]}

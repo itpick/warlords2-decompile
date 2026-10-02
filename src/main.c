@@ -1018,6 +1018,9 @@ static unsigned long sTooltipHoverStart = 0;
 static WindowPtr sTooltipWin = NULL;
 static Boolean   sShowCityLabels = false;  /* remake debug overlay; off = original */
 static GWorldPtr sHaloGW = NULL;          /* PICT 1002 selection halo frames */
+static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
+static Boolean   sDragPreview = false;     /* mouse held on the map with an army selected */
+static short     sPathTargetX = -1, sPathTargetY = -1;  /* current path search target */
 static RGBColor  sHaloKey;
 static short     sHaloFrame = 0;
 static Boolean sControlsLive = false;   /* off from the turn banner until the
@@ -1395,9 +1398,12 @@ static short CalcCityDefense(unsigned char *extCity)
 #define TURN_VIEW_W    199  /* TTurnView width at runtime (h scroll bar starts here) */
 #define TURN_TEXT_X    3    /* "Turn N" pen x (Chicago 12) */
 static void LayoutMapScrollBars(WindowPtr w);
+static void ComputePathGridOnly(short srcX, short srcY, short unitClass);
+static void TracePreviewPath(short srcX, short srcY, short dstX, short dstY);
 static Boolean ArmyShownOnTile(short i);
 static void RefreshInitialArmyStats(void);
 static void DrawArmySpriteAt(short owner, short spriteIdx, short x, short y, Boolean faded);
+static void DrawArmyGhostAt(short owner, short spriteIdx, short x, short y);
 static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
@@ -3084,7 +3090,7 @@ static void TryLoadScenario(void)
             for (i = 1; i <= len; i++)
                 title[++title[0]] = src[i];
         }
-        SetWTitle((WindowPtr)*gMainGameWindow, title);
+        (void)title;   /* the original's map window stays "untitled" */
     }
 
     /* Force redraw of all windows */
@@ -9048,19 +9054,65 @@ static void DrawMapInWindow(WindowPtr win)
      * were not aligned with the terrain tile artwork's dither pattern,
      * creating a visual mismatch. */
 
-    /* --- Draw hover path preview --- */
-    if (sPreviewPathLen > 1 && sSelectedArmy >= 0) {
-        RGBColor pathColor = {0xFFFF, 0xCCCC, 0x0000};  /* amber */
-        short pi;
-        RGBForeColor(&pathColor);
+    /* --- Path preview while dragging (original: the mouse held down with an
+     * army selected): each intermediate step gets a 14x14 ring at (+17,+13),
+     * plain while affordable this turn, crossed beyond the moves left; the
+     * last tile shows the army's ghost. No preview on plain hover. */
+    /* A selected army with a pending order shows its remaining path the same
+     * way (original turn 3: selecting the hero drew rings to its ghost). */
+    if (!sDragPreview && sSelectedArmy >= 0 && hasScn &&
+        sSelectedArmy < *(short *)(scnData + 0x1602)) {
+        static long lastSig = -1;
+        unsigned char *sa = scnData + 0x1604 + sSelectedArmy * 0x42;
+        long sig = -1;
+        if (*(short *)(sa + 0x32) != 0)
+            sig = (((long)sSelectedArmy * 160 + *(short *)(sa + 0)) * 160 + *(short *)(sa + 2)) * 160L * 160L +
+                  *(short *)(sa + 0x34) * 160L + *(short *)(sa + 0x36);
+        if (sig != lastSig || (sig >= 0 && sPreviewPathLen <= 1)) {
+            lastSig = sig;
+            sPreviewPathLen = 0;
+            if (sig >= 0) {
+                short ax = *(short *)(sa + 0), ay = *(short *)(sa + 2);
+                sPathTargetX = *(short *)(sa + 0x34); sPathTargetY = *(short *)(sa + 0x36);
+                ComputePathGridOnly(ax, ay, GetEffectiveUnitClass(sSelectedArmy));
+                TracePreviewPath(ax, ay, sPathTargetX, sPathTargetY);
+                sPreviewGridValid = false;
+            }
+        }
+    }
+    if ((sDragPreview || (sSelectedArmy >= 0 && hasScn &&
+         *(short *)(scnData + 0x1604 + sSelectedArmy * 0x42 + 0x32) != 0)) &&
+        sPreviewPathLen > 1 && sSelectedArmy >= 0 && hasScn) {
+        static const char *ringArt[14] = {
+            "....######....", "...########...", "..###....###..", ".###......###.",
+            "###........###", "##..........##", "##..........##", "##..........##",
+            "##..........##", "###........###", ".###......###.", "..###....###..",
+            "...########...", "....######...." };
+        static const char *crossArt[14] = {
+            "....######....", "...########...", "..###....###..", ".####....####.",
+            "######..######", "##..######..##", "##...####...##", "##...####...##",
+            "##..######..##", "######..######", ".####....####.", "..###....###..",
+            "...########...", "....######...." };
+        unsigned char *selA = scnData + 0x1604 + sSelectedArmy * 0x42;
+        short mp = (short)(unsigned char)selA[0x2e], cum = 0, pi, cls = GetEffectiveUnitClass(sSelectedArmy);
+        RGBColor black = {0, 0, 0};
+        RGBForeColor(&black);
         for (pi = 1; pi < sPreviewPathLen; pi++) {
-            short px = winRect.left + (sPreviewPathX[pi] - sViewportX) * TERRAIN_TILE_W + TERRAIN_TILE_W / 2;
-            short py = winRect.top  + (sPreviewPathY[pi] - sViewportY) * TERRAIN_TILE_H + TERRAIN_TILE_H / 2;
-            if (px >= winRect.left && px < winRect.right - SCROLLBAR_W &&
-                py >= winRect.top  && py < winRect.bottom - SCROLLBAR_H) {
-                Rect dot;
-                SetRect(&dot, px - 2, py - 2, px + 2, py + 2);
-                PaintRect(&dot);
+            short tx = sPreviewPathX[pi], ty = sPreviewPathY[pi];
+            short px = winRect.left + (tx - sViewportX) * TERRAIN_TILE_W;
+            short py = winRect.top  + (ty - sViewportY) * TERRAIN_TILE_H;
+            short c = GetMovementCost(tx, ty, cls);
+            cum += (c > 0 ? c : 99);
+            if (pi == sPreviewPathLen - 1) {
+                short spr = (short)(unsigned char)selA[0x14];
+                if (spr == 0x1C && IsHeroFemale(sSelectedArmy)) spr = 0x1D;
+                DrawArmyGhostAt((short)(unsigned char)selA[0x15], spr, px + 8, py + 7);
+            } else {
+                const char **art = (cum <= mp) ? ringArt : crossArt;
+                short i, j;
+                for (j = 0; j < 14; j++)
+                    for (i = 0; i < 14; i++)
+                        if (art[j][i] == '#') { MoveTo(px + 17 + i, py + 13 + j); LineTo(px + 17 + i, py + 13 + j); }
             }
         }
     }
@@ -9112,61 +9164,21 @@ static void DrawMapInWindow(WindowPtr win)
                 DrawArmySpriteAt(selOwner, selSprite, screenX + 8, screenY + 7, false);
             }
 
-            /* Draw movement target indicator if army has orders */
+            /* Destination of a pending order: the original draws a ghost of
+             * the army's sprite there (black outline kept, other pixels white
+             * on a checkerboard; measured turn 1 at Mirea), no box or line. */
             if (*(short *)(selArmy + 0x32) != 0) {
                 short tx = *(short *)(selArmy + 0x34);
                 short ty = *(short *)(selArmy + 0x36);
                 short tScreenX = winRect.left + (tx - sViewportX) * TERRAIN_TILE_W;
                 short tScreenY = winRect.top  + (ty - sViewportY) * TERRAIN_TILE_H;
-
-                if (tScreenX >= winRect.left - TERRAIN_TILE_W &&
-                    tScreenX < winRect.right &&
-                    tScreenY >= winRect.top - TERRAIN_TILE_H &&
-                    tScreenY < winRect.bottom) {
-                    RGBColor targetColor = {0xFFFF, 0x6666, 0x0000};  /* orange */
-                    Rect targetRect;
-                    SetRect(&targetRect, tScreenX + 4, tScreenY + 4,
-                            tScreenX + TERRAIN_TILE_W - 4,
-                            tScreenY + TERRAIN_TILE_H - 4);
-                    RGBForeColor(&targetColor);
-                    PenSize(2, 2);
-                    FrameRect(&targetRect);
-                    PenSize(1, 1);
-                    /* Draw X in target square */
-                    MoveTo(targetRect.left, targetRect.top);
-                    LineTo(targetRect.right, targetRect.bottom);
-                    MoveTo(targetRect.right, targetRect.top);
-                    LineTo(targetRect.left, targetRect.bottom);
-                }
-
-                /* Draw dotted path line from army center to target center */
-                {
-                    short armCX = screenX + TERRAIN_TILE_W / 2;
-                    short armCY = screenY + TERRAIN_TILE_H / 2;
-                    short tgtCX = tScreenX + TERRAIN_TILE_W / 2;
-                    short tgtCY = tScreenY + TERRAIN_TILE_H / 2;
-                    short dx = tgtCX - armCX;
-                    short dy = tgtCY - armCY;
-                    short steps, si;
-                    RGBColor pathColor = {0xFFFF, 0xCCCC, 0x0000};
-
-                    /* Determine step count from manhattan-ish distance */
-                    steps = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
-                    steps = steps / 6;
-                    if (steps < 4) steps = 4;
-                    if (steps > 80) steps = 80;
-
-                    RGBForeColor(&pathColor);
-                    for (si = 0; si < steps; si++) {
-                        if (si % 2 == 0) {
-                            short px = armCX + (dx * si) / steps;
-                            short py = armCY + (dy * si) / steps;
-                            Rect dot;
-                            SetRect(&dot, px - 1, py - 1, px + 1, py + 1);
-                            PaintRect(&dot);
-                        }
-                    }
-                }
+                short spr = (short)(unsigned char)selArmy[0x14];
+                if (spr == 0x1C && IsHeroFemale(sSelectedArmy)) spr = 0x1D;
+                if (sPreviewPathLen <= 1 && (tx != sx || ty != sy) &&
+                    tScreenX >= winRect.left - TERRAIN_TILE_W && tScreenX < winRect.right &&
+                    tScreenY >= winRect.top - TERRAIN_TILE_H && tScreenY < winRect.bottom)
+                    DrawArmyGhostAt((short)(unsigned char)selArmy[0x15], spr,
+                                    tScreenX + 8, tScreenY + 7);
             }
         }
     }
@@ -9683,8 +9695,11 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
             }
         }
 
-        /* Draw army dots on minimap (drawn first, cities go on top) */
-        if (*gGameState != 0) {
+        /* Draw army dots on minimap (drawn first, cities go on top).
+         * Off: the original's overview showed no marker even for the human's
+         * hero outside a city (turn 2, Erythea); kept for the remake's
+         * debug overlays. */
+        if (*gGameState != 0 && sShowCityLabels) {
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short armyCount = *(short *)(gs2 + 0x1602);
             short ai;
@@ -12609,6 +12624,23 @@ static short GetMovementCost(short mapX, short mapY, short unitClass)
     flying = (unitClass == UNIT_CLASS_FLIGHT) || (ute && ute[UTE_STAT_FLYING] >= 1);
     naval  = (ute && ute[UTE_STAT_NAVAL] >= 1);
 
+    /* Foreign and neutral cities block movement unless the city itself is the
+     * destination (the original routes around them: drag past a neutral
+     * city on turn 2 stopped beside it; attacking it targets its footprint). */
+    if (type == 10) {
+        short ci, n = sCityCount > 139 ? 139 : sCityCount, me = *(short *)(gs + 0x110);
+        for (ci = 0; ci < n; ci++) {
+            unsigned char *ct = sCityData + ci * 0x20;
+            short ddx = mapX - *(short *)(ct + 0), ddy = mapY - *(short *)(ct + 2);
+            if (ct[0x17] >= 2 || ddx < 0 || ddx > 1 || ddy < 0 || ddy > 1) continue;
+            if (*(short *)(ct + 4) != me) {
+                short tdx = sPathTargetX - *(short *)(ct + 0), tdy = sPathTargetY - *(short *)(ct + 2);
+                if (!(tdx >= 0 && tdx <= 1 && tdy >= 0 && tdy <= 1)) return 0;
+            }
+            break;
+        }
+    }
+
     if (flying)
         return (type == 0 || type == 1 || type == 10 || road) ? 1 : 2;
     if (naval) {
@@ -12858,6 +12890,7 @@ static short ComputeWavefrontPath(short srcX, short srcY,
                                    short unitClass)
 {
     short x, y, d, pass;
+    sPathTargetX = dstX; sPathTargetY = dstY;    /* a foreign city is enterable only as the target */
     short maxX, maxY;
     Boolean changed;
 
@@ -15022,7 +15055,11 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
 
                             RecordEvent(turnNum, HIST_EVT_CAPTURE, mOwner,
                                 "Captured a city");
-                            ShowCityCaptureNotification(mOwner, prevOwner, mx, my);
+                            /* Only when a human takes or loses the city (an AI
+                             * taking a neutral city is silent in the original) */
+                            if ((mOwner >= 0 && mOwner < 8 && *(short *)(gs + 0xd0 + mOwner * 2) == 0) ||
+                                (prevOwner >= 0 && prevOwner < 8 && *(short *)(gs + 0xd0 + prevOwner * 2) == 0))
+                                ShowCityCaptureNotification(mOwner, prevOwner, mx, my);
 
                             /* Pillage/Raze choice for human player */
                             if (sRazingCities != 2 && mOwner >= 0 && mOwner < 8 &&
@@ -22809,6 +22846,48 @@ static void ExecuteAITurn(short aiPlayer)
             ax = *(short *)(army + 0x00);
             ay = *(short *)(army + 0x02);
 
+            /* City reserve (PPC FUN_10018b14 / 68k CODE_090 FUN_0000029e): an
+             * AI city keeps R order-free units home,
+             *   R = (nearest foreign army < 5 ? 2 : 0) + (< 15 ? 1 : 0)
+             *     + (Knight level ? 2 : 0)   (+ grievances, 0 here)
+             * and only units beyond the first R may leave. Turn 1: unit + hero
+             * = 2 = R for a Knight, so nobody moves (as observed). */
+            if (*(short *)(army + 0x32) == 0) {
+                short cc2, ncity = sCityCount > 139 ? 139 : sCityCount, cityHere = -1;
+                for (cc2 = 0; cc2 < ncity; cc2++) {
+                    unsigned char *ct = sCityData + cc2 * 0x20;
+                    short ddx = ax - *(short *)(ct + 0), ddy = ay - *(short *)(ct + 2);
+                    if (ct[0x17] < 2 && *(short *)(ct + 4) == aiPlayer &&
+                        ddx >= 0 && ddx <= 1 && ddy >= 0 && ddy <= 1) { cityHere = cc2; break; }
+                }
+                if (cityHere >= 0) {
+                    unsigned char *ct = sCityData + cityHere * 0x20;
+                    short cx0 = *(short *)(ct + 0), cy0 = *(short *)(ct + 2);
+                    long bestD2 = 1000L * 1000L;
+                    short R, before = 0, mine = 0, aj2, u2, d;
+                    for (aj2 = 0; aj2 < armyCount; aj2++) {
+                        unsigned char *b = gs + 0x1604 + aj2 * 0x42;
+                        short bo = (short)(unsigned char)b[0x15];
+                        long ddx, ddy;
+                        if (b[0x16] == 0xFF || bo == aiPlayer || bo >= 8) continue;
+                        ddx = *(short *)(b + 0) - cx0; ddy = *(short *)(b + 2) - cy0;
+                        if (ddx * ddx + ddy * ddy < bestD2) bestD2 = ddx * ddx + ddy * ddy;
+                    }
+                    for (d = 0; (long)(d + 1) * (d + 1) <= bestD2 && d < 1000; d++) ;
+                    R = (d < 5 ? 2 : 0) + (d < 15 ? 1 : 0) +
+                        (*(short *)(gs + 0xC0) == 0 ? 2 : 0);
+                    for (aj2 = 0; aj2 <= ai; aj2++) {
+                        unsigned char *b = gs + 0x1604 + aj2 * 0x42;
+                        short bx = *(short *)(b + 0) - cx0, by = *(short *)(b + 2) - cy0, n = 0;
+                        if ((short)(unsigned char)b[0x15] != aiPlayer || b[0x16] == 0xFF) continue;
+                        if (bx < 0 || bx > 1 || by < 0 || by > 1 || *(short *)(b + 0x32) != 0) continue;
+                        for (u2 = 0; u2 < 4; u2++) if (b[0x16 + u2] != 0xFF) n++;
+                        if (aj2 < ai) before += n; else mine = n;
+                    }
+                    if (before + mine <= R) continue;      /* part of the reserve */
+                }
+            }
+
             /* 68k CODE_082 FUN_00001992: If army has hero, prioritize
              * nearby unsearched ruins. Check visited bitmask and active flag. */
             {
@@ -23412,7 +23491,7 @@ static void ExecuteAITurn(short aiPlayer)
                       "War declared");
                 }
                 /* Notify human player of war declaration */
-                if (pjType == 0) {
+                if (pjType == 0 && sOptDiplomacy) {   /* no diplomacy: no war/peace notices (original: silent) */
                     WindowPtr wwWin;
                     Rect wwR;
                     PlaySound(SND_DRAMATIC);
@@ -23462,7 +23541,7 @@ static void ExecuteAITurn(short aiPlayer)
                       "Peace negotiated");
                 }
                 /* Notify human player of peace */
-                if (pjType == 0) {
+                if (pjType == 0 && sOptDiplomacy) {   /* no diplomacy: no war/peace notices (original: silent) */
                     WindowPtr pwWin;
                     Rect pwR;
                     PlaySound(SND_CHORD);
@@ -25196,9 +25275,17 @@ static void AdvanceToNextPlayer(void)
                     short cx2 = *(short *)(ps + 0x04);
                     short cy2 = *(short *)(ps + 0x06);
                     Boolean centered = false;
+                    short humans = 0, hp;
+                    for (hp = 0; hp < 8; hp++)
+                        if (*(short *)(gs + 0x138 + hp * 2) != 0 && *(short *)(gs + 0xd0 + hp * 2) == 0)
+                            humans++;
+                    /* One human: the original leaves the view where it was
+                     * (turn 1 -> 2, measured); only hot-seat games recentre. */
+                    if (humans <= 1) centered = true;
+                    GetCapitalXY(nextPlayer, &cx2, &cy2);
 
                     /* Check if capital is still owned by this player */
-                    if (cx2 > 0 || cy2 > 0) {
+                    if (!centered && (cx2 > 0 || cy2 > 0)) {
                         short cci;
                         short ccc = sCityCount;
                         if (ccc > 139) ccc = 139;
@@ -25207,8 +25294,7 @@ static void AdvanceToNextPlayer(void)
                             if (*(short *)(city + 0x00) == cx2 &&
                                 *(short *)(city + 0x02) == cy2 &&
                                 *(short *)(city + 0x04) == nextPlayer) {
-                                sViewportX = cx2 - 7;
-                                sViewportY = cy2 - 5;
+                                CenterViewportOn(cx2, cy2);
                                 centered = true;
                                 break;
                             }
@@ -25237,38 +25323,24 @@ static void AdvanceToNextPlayer(void)
                 }
                 foundHuman = true;
             } else {
-                /* AI player: show thinking banner, then execute turn */
-                if (*gMainGameWindow != 0) {
-                    WindowPtr mw = (WindowPtr)*gMainGameWindow;
-                    Rect bannerR;
-                    short colorIdx = (nextPlayer >= 0 && nextPlayer < 8) ? nextPlayer + 1 : 0;
-                    RGBColor bannerBg = {0x2222, 0x2222, 0x2222};
-                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                    SetPort(mw);
-                    SetRect(&bannerR, mw->portRect.left, mw->portRect.top,
-                            mw->portRect.right, mw->portRect.top + 18);
-                    RGBForeColor(&bannerBg);
-                    PaintRect(&bannerR);
-                    RGBForeColor(&sPlayerColors[colorIdx]);
-                    PenSize(2, 2);
-                    FrameRect(&bannerR);
-                    PenNormal();
-                    RGBForeColor(&white);
-                    TextFont(3);
-                    TextSize(9);
-                    MoveTo(bannerR.left + 10, bannerR.top + 13);
-                    {
-                        unsigned char *fname = gs + nextPlayer * FACTION_NAME_LEN;
-                        Str255 pname;
-                        short len = 0;
-                        while (len < 12 && fname[len] != 0) len++;
-                        pname[0] = (unsigned char)len;
-                        BlockMoveData(fname, pname + 1, len);
-                        DrawString(pname);
-                    }
-                    DrawString(GetCachedString(STR_MISC, 14, "\p is thinking..."));
+                /* AI player: the original clears the selection, greys the
+                 * buttons and shows the faction's name and flag strip in the
+                 * info area while it plays (measured, turn 1 -> 2). */
+                sAITurnPlayer = nextPlayer;
+                sSelectedArmy = -1; sStackCount = 0;
+                sControlsLive = false;
+                InvalidateAllGameWindows();
+                DrainUpdates();
+                {
+                    unsigned long aiStart = TickCount();
+                    EventRecord ev;
+                    ExecuteAITurn(nextPlayer);
+                    /* The original's AI turns each take ~1.75 s on screen
+                     * (turn 1 -> 2: seven AIs, banner after 14 s) */
+                    while (TickCount() - aiStart < 105)
+                        WaitNextEvent(0, &ev, 2, NULL);
                 }
-                ExecuteAITurn(nextPlayer);
+                sAITurnPlayer = -1;
                 /* Redraw map after AI turn */
                 if (*gMainGameWindow != 0) {
                     SetPort((WindowPtr)*gMainGameWindow);
@@ -25362,7 +25434,7 @@ static void AdvanceToNextPlayer(void)
                     wTitle[++wTitle[0]] = tns[ti];
             }
             wTitle[++wTitle[0]] = ')';
-            SetWTitle(mw, wTitle);
+            (void)mw;      /* the original's map window stays "untitled" */
         }
 
         /* Random turn events: DISABLED (not in original 68k game).
@@ -25522,8 +25594,10 @@ static void AdvanceToNextPlayer(void)
             }
         }
 
-        /* Auto-move armies with movement orders toward their targets */
-        if (*(short *)(gs + 0xd0 + curPlayer * 2) == 0) {
+        /* Auto-move armies with movement orders toward their targets.
+         * Off: the original leaves a human's pending orders pending at turn
+         * start (turn 2: the hero stayed, its order shown as a ghost). */
+        if (0 && *(short *)(gs + 0xd0 + curPlayer * 2) == 0) {
             /* Human player only: execute queued movement orders */
             short armyCount = *(short *)(gs + 0x1602);
             short ai;
@@ -25846,7 +25920,8 @@ static void AdvanceToNextPlayer(void)
                 if (*(short *)(pCity + 0x04) != curPlayer) continue;
                 {
                     unsigned char *pExtCity = pExt + 0x24c + pCI * 0x5c;
-                    if (*(short *)(pExtCity + 0x02) < 0) {
+                    if (0 && *(short *)(pExtCity + 0x02) < 0) {   /* original: no prompt for an
+                                                                  * idle city at turn start (turn 2, Mirea) */
                         ShowCityBuildSelection(pCI);
                     }
                 }
@@ -28427,7 +28502,8 @@ static void HandleMenuChoice(long menuResult)
                         unmovedCount++;
                     }
                 }
-                if (unmovedCount > 0) {
+                if (0 && unmovedCount > 0) {   /* remake-only prompt: the original
+                                                * ends the turn without asking */
                     WindowPtr confWin;
                     Rect confR;
                     SetRect(&confR, 0, 0, 300, 80);
@@ -28490,8 +28566,8 @@ static void HandleMenuChoice(long menuResult)
             if (doEnd) {
                 sSelectedArmy = -1; sPreviewPathLen = 0; sPreviewGridValid = false; sInfoStackBackupSaved = false; { GrafPtr _sp; GetPort(&_sp); if (gInfoWindow && *gInfoWindow) { SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect); } SetPort(_sp); }
                 sUndoArmyIdx = -1;
-                /* Execute all queued army orders before ending turn */
-                MoveAllArmies();
+                /* The original does not run pending orders on End Turn (turn 1
+                 * -> 2: the hero's order stayed pending, shown as a ghost). */
                 AdvanceToNextPlayer();
             }
         }
@@ -28500,8 +28576,7 @@ static void HandleMenuChoice(long menuResult)
             DoSave();
             sSelectedArmy = -1; sPreviewPathLen = 0; sPreviewGridValid = false; sInfoStackBackupSaved = false; { GrafPtr _sp; GetPort(&_sp); if (gInfoWindow && *gInfoWindow) { SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect); } SetPort(_sp); }
             sUndoArmyIdx = -1;
-            /* Execute all queued army orders before ending turn */
-            MoveAllArmies();
+            /* no MoveAllArmies: the original keeps pending orders on End Turn */
             AdvanceToNextPlayer();
             break;
         case 4: /* Strategy Map (cmd 0x76F) — toggle overview window */
@@ -29096,9 +29171,37 @@ static Boolean PanelButtonEnabled(short which)
     Boolean hasSel = (sSelectedArmy >= 0);
     if (!sControlsLive || *gGameState == 0) return false;
     gs = (unsigned char *)*gGameState;
+    /* Measured on the original (turn 1): Move and the cancel-path button light
+     * only when the selected army has a path pending; Search only for a hero
+     * standing on a ruin/temple; the rest with any selection. */
+    {
+        Boolean hasPath = false, heroOnSite = false;
+        if (hasSel && sSelectedArmy < *(short *)(gs + 0x1602)) {
+            unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+            short k, sx = *(short *)(sa + 0), sy = *(short *)(sa + 2);
+            hasPath = *(short *)(sa + 0x32) != 0;
+            for (k = 0; k < sStackCount; k++) {
+                unsigned char *a = (sStackArmyIdx[k] >= 0) ? gs + 0x1604 + sStackArmyIdx[k] * 0x42 : NULL;
+                if (a && sStackSelected[k] && (unsigned char)a[0x16] == 0x1C) {
+                    short ci;
+                    for (ci = 0; ci < sCityCount && ci < 139; ci++) {
+                        unsigned char *c = sCityData + ci * 0x20;
+                        if (c[0x17] >= 2 && *(short *)(c + 0) == sx && *(short *)(c + 2) == sy)
+                            heroOnSite = true;
+                    }
+                }
+            }
+        }
+        if (which == kBtnMove || which == kBtnDele) return hasPath;
+        if (which >= kBtnSlot0) {
+            short cmdIdx = sShortcutSlot[which - kBtnSlot0];
+            if (cmdIdx >= 0 && cmdIdx < NUM_SHORTCUT_ICONS && sButtonCommands[cmdIdx] == 0x0643)
+                return heroOnSite;                 /* Search */
+        }
+    }
     switch (which) {
-    case kBtnMove: case kBtnLeave: case kBtnGuard: case kBtnDesel:
-    case kBtnPath: case kBtnDele:
+    case kBtnLeave: case kBtnGuard: case kBtnDesel:
+    case kBtnPath:
         return hasSel;
     case kBtnNext: case kBtnHelp:
         return true;
@@ -29240,6 +29343,32 @@ static void DrawArmySpriteAt(short owner, short spriteIdx, short x, short y, Boo
         SetGWorld(sp, sd);
     }
     UnlockPixels(pm);
+}
+
+/* Ghost of an army sprite (pending-order destination): black stays black,
+ * every other sprite pixel is white on a checkerboard, the rest see-through. */
+static void DrawArmyGhostAt(short owner, short spriteIdx, short x, short y)
+{
+    short sheet = (owner >= 0 && owner < 8) ? owner : 8;
+    GWorldPtr gw = sArmyGW[sheet] ? sArmyGW[sheet] : sArmyGW[0];
+    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF}, black = {0, 0, 0};
+    CGrafPtr sp; GDHandle sd;
+    short i, j, sx, sy;
+    if (gw == NULL) return;
+    sx = (spriteIdx % 16) * 32; sy = (spriteIdx / 16) * 30;
+    GetGWorld(&sp, &sd);
+    for (j = 0; j < 29; j++)
+        for (i = 0; i < 32; i++) {
+            RGBColor c;
+            SetGWorld(gw, NULL);
+            GetCPixel(sx + i, sy + j, &c);
+            SetGWorld(sp, sd);
+            if (c.red == sArmyBgColor[sheet].red && c.green == sArmyBgColor[sheet].green &&
+                c.blue == sArmyBgColor[sheet].blue) continue;
+            if ((c.red | c.green | c.blue) < 0x1000) SetCPixel(x + i, y + j, &black);
+            else if (((x + i + y + j) & 1) == 0) SetCPixel(x + i, y + j, &white);
+        }
+    SetGWorld(sp, sd);
 }
 
 /* che state per slot: -1 hidden, 0 X, 1 check (PPC FUN_1005c5d4) */
@@ -29405,8 +29534,10 @@ static void HandleMouseDown(EventRecord *event)
             KeepFloatsInFront();
         } else if (sMapLoaded && gOverviewWindow != NULL &&
                    whichWindow == (WindowPtr)*gOverviewWindow) {
-            /* Click-and-drag in the overview: centre the map on that tile */
-            {
+            /* Click-and-drag in the overview: centre the map on that tile.
+             * Off: the original's overview did not scroll the map on a click,
+             * double-click or drag (turn 2, measured). */
+            if (sShowCityLabels) {
                 Rect  oPort = whichWindow->portRect;
                 short oldVX, oldVY, oldPX, oldPY;
                 Point dragPt;
@@ -29728,6 +29859,42 @@ static void HandleMouseDown(EventRecord *event)
                     /* 68k: army detection runs BEFORE city detection.
                      * Click own army → select. Re-click selected army on city → city dialog.
                      * Re-click selected army on plain tile → army inspect. */
+                    /* Press and drag with an army selected: the original shows the
+                     * path to the tile under the mouse while the button is held and
+                     * moves there on release (measured, turn 2). */
+                    if (sSelectedArmy >= 0 && sSelectedArmy < armyCount && StillDown()) {
+                        unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+                        if ((short)(unsigned char)sa[0x15] == currentPlayer) {
+                            short ax0 = *(short *)(sa + 0), ay0 = *(short *)(sa + 2);
+                            short lastX = clickTileX, lastY = clickTileY;
+                            Boolean dragged = false;
+                            ComputePathGridOnly(ax0, ay0, GetEffectiveUnitClass(sSelectedArmy));
+                            SetPort(whichWindow);
+                            while (StillDown()) {
+                                Point mp;
+                                short tx, ty;
+                                GetMouse(&mp);
+                                tx = sViewportX + (mp.h - port.left + sViewPixX) / TERRAIN_TILE_W;
+                                ty = sViewportY + (mp.v - port.top + sViewPixY) / TERRAIN_TILE_H;
+                                if (tx != clickTileX || ty != clickTileY) dragged = true;
+                                if (dragged && (tx != lastX || ty != lastY) &&
+                                    tx >= 0 && tx < sMapWidth && ty >= 0 && ty < sMapHeight) {
+                                    lastX = tx; lastY = ty;
+                                    sPathTargetX = tx; sPathTargetY = ty;
+                                    ComputePathGridOnly(ax0, ay0, GetEffectiveUnitClass(sSelectedArmy));
+                                    TracePreviewPath(ax0, ay0, tx, ty);
+                                    sDragPreview = (tx != ax0 || ty != ay0);
+                                    DrawMapInWindow(whichWindow);
+                                    SetPort(whichWindow);
+                                }
+                            }
+                            sDragPreview = false;
+                            sPreviewPathLen = 0;
+                            sPreviewGridValid = false;
+                            if (dragged) { clickTileX = lastX; clickTileY = lastY; }
+                        }
+                    }
+                    sPathTargetX = clickTileX; sPathTargetY = clickTileY;
                     clickedArmy = StackLeadAt(clickTileX, clickTileY, currentPlayer);
                     if (clickedArmy >= 0 && sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
                         unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
@@ -29948,6 +30115,23 @@ static void HandleMouseDown(EventRecord *event)
                                             }
                                         }
                                     }
+                                } else if (leadCost > 0) {
+                                    /* Passable but not affordable now: the original keeps the
+                                     * order (Move / Cancel Path light up) for next turn. */
+                                    short gi5;
+                                    for (gi5 = 0; gi5 < sStackCount; gi5++) {
+                                        if (sStackSelected[gi5] && sStackArmyIdx[gi5] >= 0) {
+                                            unsigned char *g5 = gs + 0x1604 + sStackArmyIdx[gi5] * 0x42;
+                                            *(short *)(g5 + 0x32) = 1;
+                                            *(short *)(g5 + 0x34) = clickTileX;
+                                            *(short *)(g5 + 0x36) = clickTileY;
+                                        }
+                                    }
+                                    if (sStackCount == 0) {
+                                        *(short *)(selArmy + 0x32) = 1;
+                                        *(short *)(selArmy + 0x34) = clickTileX;
+                                        *(short *)(selArmy + 0x36) = clickTileY;
+                                    }
                                 }
                             } else {
                                 /* Distant tile: set movement target for all selected group members */
@@ -29988,6 +30172,13 @@ static void HandleMouseDown(EventRecord *event)
                                          * multi-army destination stack is uninteractable). */
                                         if (sSelectedArmy >= 0)
                                             BuildStackArrays(sSelectedArmy);
+                                        /* Out of moves: the original drops the
+                                         * selection (turn 2 drag past the city) */
+                                        if (sSelectedArmy >= 0 &&
+                                            (unsigned char)(gs + 0x1604 + sSelectedArmy * 0x42)[0x2e] == 0) {
+                                            sSelectedArmy = -1; sStackCount = 0;
+                                            InvalidateAllGameWindows();
+                                        }
                                     } else if (pathLen < 0) {
                                         /* Unreachable: cancel orders */
                                         *(short *)(selArmy + 0x32) = 0;
@@ -30119,7 +30310,7 @@ static void HandleMouseDown(EventRecord *event)
                 case kBtnGuard: HandleMenuChoice((4L << 16) | 10); break;  /* Defend */
                 case kBtnDesel: HandleMenuChoice((4L << 16) | 11); break;  /* Deselect */
                 case kBtnPath:  HandleMenuChoice((4L << 16) | 6);  break;  /* Cancel Path */
-                case kBtnDele:  HandleMenuChoice((4L << 16) | 17); break;  /* Disband */
+                case kBtnDele:  HandleMenuChoice((4L << 16) | 6);  break;  /* Cancel Path (cicn 1006: X over the path) */
                 case kBtnDipl:  HandleMenuChoice((5L << 16) | 9);  break;  /* Diplomacy */
                 case kBtnHelp:  SysBeep(1); break;                         /* TODO: help */
                 default: {
@@ -30577,7 +30768,60 @@ static void HandleUpdate(EventRecord *event)
                 DrawPicture(marble, &pf);
             }
         }
-        if (sControlsLive && *gGameState != 0 && sSelectedArmy >= 0 && sStackCount > 0) {
+        if (sAITurnPlayer >= 0 && *gGameState != 0) {
+            /* AI turn: faction name centred (Illuria 17, faction colour) and
+             * its flag strip PICT 30030+p shown from x 133, clipped to
+             * (21,90)-(203,108) */
+            unsigned char *gs = (unsigned char *)*gGameState;
+            unsigned char *fname = gs + sAITurnPlayer * FACTION_NAME_LEN;
+            Str255 pname;
+            Rect v;
+            short len = 0;
+            while (len < 14 && fname[len] != 0) len++;
+            pname[0] = (unsigned char)len;
+            BlockMoveData(fname, pname + 1, len);
+            SetRect(&v, r.left, r.top + 10, r.right, r.top + 29);
+            {   /* name colour = the strip's dominant colour (Stone Giants
+                 * yellow, Kingdoms blue on the original) */
+                RGBColor col = sPlayerColors[(sAITurnPlayer + 1) % 9];
+                if (sAITurnPlayer < 8 && sFlagGW[sAITurnPlayer] != NULL) {
+                    RGBColor seen[16]; short cnt[16], ns = 0, x, k, best = -1;
+                    CGrafPtr sp; GDHandle sd;
+                    GetGWorld(&sp, &sd);
+                    SetGWorld(sFlagGW[sAITurnPlayer], NULL);
+                    for (x = 133; x < 315; x++) {
+                        RGBColor c;
+                        GetCPixel(x, 9, &c);
+                        if (c.red == sFlagBgColor.red && c.green == sFlagBgColor.green &&
+                            c.blue == sFlagBgColor.blue) continue;
+                        if ((c.red | c.green | c.blue) < 0x2000) continue;              /* black */
+                        if (c.red > 0xE000 && c.green > 0xE000 && c.blue > 0xE000) continue; /* white */
+                        for (k = 0; k < ns; k++)
+                            if (seen[k].red == c.red && seen[k].green == c.green && seen[k].blue == c.blue) break;
+                        if (k == ns && ns < 16) { seen[ns] = c; cnt[ns++] = 0; }
+                        if (k < ns) cnt[k]++;
+                    }
+                    SetGWorld(sp, sd);
+                    for (k = 0; k < ns; k++) if (best < 0 || cnt[k] > cnt[best]) best = k;
+                    if (best >= 0) col = seen[best];
+                }
+                DrawSunkenTextColor(&v, pname, IlluriaFont(), 17, 1, &col);
+            }
+            if (sAITurnPlayer < 8 && sFlagGW[sAITurnPlayer] != NULL) {
+                PixMapHandle pm = GetGWorldPixMap(sFlagGW[sAITurnPlayer]);
+                Rect sr, dr;
+                RGBColor savedBg, black = {0, 0, 0};
+                LockPixels(pm);
+                GetBackColor(&savedBg);
+                RGBForeColor(&black);
+                RGBBackColor(&sFlagBgColor);
+                SetRect(&sr, 133, 0, 133 + 182, 18);
+                SetRect(&dr, r.left + 21, r.top + 90, r.left + 21 + 182, r.top + 108);
+                CopyBits((BitMap *)*pm, &win->portBits, &sr, &dr, 36, NULL);
+                RGBBackColor(&savedBg);
+                UnlockPixels(pm);
+            }
+        } else if (sControlsLive && *gGameState != 0 && sSelectedArmy >= 0 && sStackCount > 0) {
             DrawStackPanel(win, r);
         } else if (sControlsLive && *gGameState != 0) {
             unsigned char *gs = (unsigned char *)*gGameState;
@@ -31195,6 +31439,19 @@ int main(void)
          * Without this, gold shows as 0 (raw SCN value) on turn 1. */
         ProcessStartOfTurn(startPlayer);
 
+        /* The starting player has taken its slot in the turn order: point the
+         * order index (gs+0x174) past it, or End Turn picks it again and the
+         * AI players never move (turn 1 stayed turn 1). */
+        {
+            short k;
+            for (k = 0; k < 8; k++)
+                if (*(short *)(gs + 0x164 + k * 2) == startPlayer) {
+                    *(short *)(gs + 0x174) = k + 1;
+                    if (k + 1 > 7) *(short *)(gs + 0x118) = 1;
+                    break;
+                }
+        }
+
         /* "Let the war begin!" voice after game setup completes; the original
          * lets it finish before the turn banner and its chime (recorded:
          * VBEGIN 12.3s, SND_TURN 18.7s). */
@@ -31262,7 +31519,11 @@ int main(void)
             static unsigned long lastHalo = 0;
             static long lastSig = -1;
             unsigned char *gsx = (unsigned char *)*gGameState;
-            long sig = sSelectedArmy * 7919L + sStackCount * 131L;
+            long sig = sSelectedArmy * 7919L + sStackCount * 131L + (sControlsLive ? 1 : 0);
+            if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gsx + 0x1602)) {
+                unsigned char *sa0 = gsx + 0x1604 + sSelectedArmy * 0x42;
+                sig += *(short *)(sa0 + 0x32) * 31L + *(short *)(sa0 + 0) * 977L + *(short *)(sa0 + 2) * 53L;
+            }
             short k;
             for (k = 0; k < sStackCount; k++)
                 if (sStackArmyIdx[k] >= 0)
@@ -31274,6 +31535,10 @@ int main(void)
                 GetPort(&sp);
                 SetPort((WindowPtr)*gStatusWindow);
                 InvalRect(&((WindowPtr)*gStatusWindow)->portRect);
+                if (gInfoWindow != NULL && *gInfoWindow != 0) {   /* button enables */
+                    SetPort((WindowPtr)*gInfoWindow);
+                    InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
+                }
                 SetPort(sp);
             }
             if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gsx + 0x1602) &&

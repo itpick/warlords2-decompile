@@ -1,0 +1,2 @@
+{"steps":[{"click":[900,150]},{"wait":2500},{"shot":"after1"},
+          {"dbl":[900,150]},{"wait":2500},{"shot":"afterdbl"}]}

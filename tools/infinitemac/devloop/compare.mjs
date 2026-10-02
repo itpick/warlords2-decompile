@@ -3,7 +3,7 @@
 //   node compare.mjs <script.json> [--reuse-orig]
 // --reuse-orig replays only the remake and pairs it with the original frames from the
 // previous run of the same script (capture the original once per screen, then iterate).
-// Step: {click:[x,y]} {dbl:[x,y]} {key:"Enter"} {type:"Tutoria"} {wait:ms} {shot:"label"}
+// Step: {click:[x,y]} {dbl:[x,y]} {move:[x,y]} {down:[x,y]} {up:[x,y]} (press, move while held, release) {key:"Enter"} {type:"Tutoria"} {wait:ms} {shot:"label"}
 //       {audio:"start"} / {audio:"stop"} -> .devloop/audio/<port>/<script>_<side>.wav
 // Any step may carry "orig": {...} / "remake": {...} to override it per side
 // (layouts differ); "orig": null or "remake": null skips the step on that side.
@@ -32,6 +32,9 @@ async function run(side) {
     const s = { ...base, ...(base[side] || {}) };
     if (s.click) await call(port, 'click', { x: s.click[0], y: s.click[1] });
     if (s.dbl) await call(port, 'click', { x: s.dbl[0], y: s.dbl[1], dbl: 1 });
+    if (s.move) await call(port, 'move', { x: s.move[0], y: s.move[1] });
+    if (s.down) await call(port, 'down', { x: s.down[0], y: s.down[1] });
+    if (s.up) await call(port, 'up', { x: s.up[0], y: s.up[1] });
     if (s.key) await call(port, 'key', { k: s.key });
     if (s.type) await call(port, 'type', { t: s.type });
     if (s.wait) await new Promise(r => setTimeout(r, s.wait));

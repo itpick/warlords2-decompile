@@ -12,8 +12,10 @@ def decode(p):
     img=Image.new('RGB',(fr-fl,fb-ft),(255,0,255))
     i=10
     while True:
-        i=p.find(b'\x00\x98',i)
-        if i<0: break
+        i98=p.find(b'\x00\x98',i); i99=p.find(b'\x00\x99',i)
+        cands=[x for x in (i98,i99) if x>=0]
+        if not cands: break
+        i=min(cands); op99=(i==i99)
         k=i+2; rbf=struct.unpack('>H',p[k:k+2])[0]
         if not rbf&0x8000: i+=2; continue
         rb=rbf&0x3fff; t,l,b_,r=struct.unpack('>4h',p[k+2:k+10])
@@ -25,6 +27,7 @@ def decode(p):
             v,R,G,B=struct.unpack('>4H',p[ct+8+e*8:ct+16+e*8]); pal[(e if flags&0x8000 else v)&255]=(R>>8,G>>8,B>>8)
         j=ct+8+(size+1)*8
         st,sl,sb,sr=struct.unpack('>4h',p[j:j+8]); dt,dl,db,dr=struct.unpack('>4h',p[j+8:j+16]); j+=18
+        if op99: j+=struct.unpack('>H',p[j:j+2])[0]   # PackBitsRgn: skip the mask region
         w,h=r-l,b_-t
         for y in range(h):
             if rb>250: n=struct.unpack('>H',p[j:j+2])[0]; j+=2
