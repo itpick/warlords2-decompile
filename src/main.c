@@ -1054,7 +1054,8 @@ static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
 #define DEV_FAST_TURNS 1
 #define DEV_SHIP_PROBE 0   /* DEV: temporary ship-on-land probe */
 static short     sAIProgress = 0;         /* its flag strip as a progress bar, 0-100 */
-static Boolean   sDragPreview = false;     /* mouse held on the map with an army selected */
+static Boolean   sDragPreview = false;
+static Boolean   sClickWasDrag = false;   /* the last map press was a drag */     /* mouse held on the map with an army selected */
 static short     sPathTargetX = -1, sPathTargetY = -1;  /* current path search target */
 static RGBColor  sHaloKey;
 static short     sHaloFrame = 0;
@@ -2954,8 +2955,11 @@ static void LoadCityNames(void)
                     di = 0;
                     while (p < sz && buf[p] != '\r' && buf[p] != '\n') {
                         if (buf[p] == '|') {
-                            /* Replace '|' with space (unless at start or already have space) */
-                            if (di > 0 && desc[di - 1] != ' ' && di < MAX_CITY_DESC - 1)
+                            /* keep the '|' line breaks: the city window's Info pane
+                             * shows the segments verbatim, one per line */
+                            if (resPass == 0) {
+                                if (di > 0 && di < MAX_CITY_DESC - 1) desc[di++] = '|';
+                            } else if (di > 0 && desc[di - 1] != ' ' && di < MAX_CITY_DESC - 1)
                                 desc[di++] = ' ';
                             p++;
                         } else {
@@ -2964,8 +2968,8 @@ static void LoadCityNames(void)
                             p++;
                         }
                     }
-                    /* Trim trailing space */
-                    while (di > 0 && desc[di - 1] == ' ') di--;
+                    /* Trim trailing space / separators */
+                    while (di > 0 && (desc[di - 1] == ' ' || desc[di - 1] == '|')) di--;
                     desc[di] = '\0';
 
                     if (resPass == 0) sCityNameCount++;
@@ -9544,9 +9548,33 @@ static void DrawMapInWindow(WindowPtr win)
 
 #if DEV_SHIP_PROBE
     {   /* DEV: which army is selected */
-        char b[48]; Str255 ps; short n;
+        char b[160]; Str255 ps; short n;
         RGBColor yel = {0xFFFF, 0xFFFF, 0}, blk = {0, 0, 0}, w = {0xFFFF, 0xFFFF, 0xFFFF};
         sprintf(b, "sel=%d n=%d", sSelectedArmy, hasScn ? *(short *)(scnData + 0x1602) : -1);
+        if (hasScn) {   /* units, records and moving records per player */
+            short pl, q, nn = *(short *)(scnData + 0x1602);
+            char *o = b; short len = 0;
+            while (o[len]) len++;
+            for (pl = 0; pl < 8 && len < 140; pl++) {
+                short u = 0, recs = 0, ord = 0, kk;
+                for (q = 0; q < nn && q < 100; q++) {
+                    unsigned char *qa = scnData + 0x1604 + q * 0x42;
+                    if (qa[0x15] != pl || qa[0x16] == 0xFF) continue;
+                    recs++; if (*(short *)(qa + 0x32)) ord++;
+                    for (kk = 0; kk < 4; kk++) if (qa[0x16 + kk] != 0xFF) u++;
+                }
+                {   short pc = 0, tmr = -9, ci;
+                    unsigned char *ex = *gExtState ? (unsigned char *)*gExtState : NULL;
+                    for (ci = 0; ex && ci < sCityCount && ci < 99; ci++) {
+                        unsigned char *c = sCityData + ci * 0x20, *e = ex + 0x24c + ci * 0x5c;
+                        if (c[0x17] >= 2 || *(short *)(c + 4) != pl) continue;
+                        if (*(short *)(e + 2) >= 0) pc++;
+                        tmr = *(short *)(e + 0x58);
+                    }
+                    len += sprintf(o + len, " %d:%d/%d/%d p%d t%d", pl, u, recs, ord, pc, tmr);
+                }
+            }
+        }
         if (hasScn) {   /* every army whose sprite is the ship */
             short q, nn = *(short *)(scnData + 0x1602), yy = 24;
             for (q = 0; q < nn && q < 100; q++) {
@@ -9563,7 +9591,7 @@ static void DrawMapInWindow(WindowPtr win)
                 }
             }
         }
-        for (n = 0; b[n] && n < 40; n++) ps[n + 1] = b[n];
+        for (n = 0; b[n] && n < 150; n++) ps[n + 1] = b[n];
         ps[0] = (unsigned char)n;
         TextFont(4); TextSize(9); TextMode(srcCopy);
         RGBForeColor(&yel); RGBBackColor(&blk);
@@ -10687,8 +10715,11 @@ static void ShowSiteInfo(short siteIndex)
  * - Armies at city: list of armies stationed here
  * cityIndex is the index into the SCN city table at gs+0x812.
  * =================================================================== */
+static void ShowCityWindow(short cityIndex, short startTab);
 static void ShowCityInfo(short cityIndex)
 {
+    /* the original's city window on its Info pane (View 3301) */
+    if (1) { ShowCityWindow(cityIndex, 0); return; }
     WindowPtr  cityWin;
     GWorldPtr  offscreen = NULL;
     Rect       winRect;
@@ -11157,7 +11188,10 @@ static void ShowCityInfo(short cityIndex)
 
                     /* City description text from CTY resource */
                     if (cityIndex < sCityNameCount && sCityDescs[cityIndex][0] != '\0') {
-                        char *desc = sCityDescs[cityIndex];
+                        char descBuf[MAX_CITY_DESC], *desc = descBuf;
+                        { short q; for (q = 0; q < MAX_CITY_DESC; q++) {
+                              descBuf[q] = sCityDescs[cityIndex][q] == '|' ? ' ' : sCityDescs[cityIndex][q];
+                              if (!descBuf[q]) break; } }
                         short di = 0;
                         short descLen = 0;
                         short lineY = CITY_WIN_H - 70;  /* bottom area */
@@ -22769,11 +22803,13 @@ static void DrawProdView(short L, short T, short owner, short unitType)
     }
 }
 
-static void ShowCityBuildSelection(short cityIndex)
+static void ShowCityWindow(short cityIndex, short startTab)
 {
-    WindowPtr      win;
+    WindowPtr      win = NULL;
     unsigned char *gs, *ext, *extCity, *city;
-    short          curPlayer, selectedType, typeList[4], typeCount = 0, tab = 2, i;
+    short          curPlayer, selectedType, typeList[4], typeCount = 0, tab = startTab, i;
+    short          owner;
+    Boolean        mine;
     short          cityX, cityY;
     Boolean        done = false, cancelled = false, redraw = true, tutorialChecked = false;
     Rect           winRect, overR, tabR[4], doneOuter, doneBtn, armR[4], stopR;
@@ -22784,13 +22820,17 @@ static void ShowCityBuildSelection(short cityIndex)
     gs        = (unsigned char *)*gGameState;
     ext       = (unsigned char *)*gExtState;
     curPlayer = *(short *)(gs + 0x110);
+reloadCity:
     city      = sCityData + cityIndex * 0x20;
-    if (*(short *)(city + 0x04) != curPlayer) return;
+    owner     = *(short *)(city + 0x04);
+    mine      = (owner == curPlayer);
+    if (!mine && tab != 0) tab = 0;          /* a foreign city opens on Info */
     cityX = *(short *)(city + 0x00);
     cityY = *(short *)(city + 0x02);
 
     /* Production slots in slot order (arm1..arm4), naval types only in ports */
     extCity = ext + 0x24c + cityIndex * 0x5c;
+    typeCount = 0;
     {
         Boolean isPort = (*(short *)(extCity + 0x5A) & 0x08) != 0;
         for (i = 0; i < 4; i++) {
@@ -22805,6 +22845,7 @@ static void ShowCityBuildSelection(short cityIndex)
     selectedType = *(short *)(extCity + 0x02);
     if (selectedType < 0 || selectedType >= MAX_UNIT_TYPES) selectedType = -1;
 
+    if (win != NULL) { redraw = true; goto cityLoop; }
     {
         short sw = qd.screenBits.bounds.right, sh = qd.screenBits.bounds.bottom, mb = GetMBarHeight();
         short left = (sw - (CITY_WIN_W + 6)) / 2;
@@ -22833,6 +22874,7 @@ static void ShowCityBuildSelection(short cityIndex)
     SetRect(&stopR, CITY_PANE_L + 200, CITY_PANE_T + 80, CITY_PANE_L + 236, CITY_PANE_T + 116);
 
     FlushEvents(mDownMask | keyDownMask, 0);
+cityLoop:
     while (!done) {
         EventRecord evt;
 
@@ -22911,6 +22953,54 @@ static void ShowCityBuildSelection(short cityIndex)
             PenSize(1, 1);
             DrawT3DButton(&doneBtn, ViewString(s, 1000, 5, "\pDone"));
 
+            if (tab == 0) {
+                /* View 3301 Info (pane origin (245,20)): owner shields 'sid1'
+                 * (8,42) / 'sid2' (208,42); "Income: %d gold" (52,46),
+                 * "Defence: %d" (52,66), owner line (52,90) (DAT 1000 602-606);
+                 * the slot rings arm1-4 (28/84/140/196, 130) in the owner's
+                 * colours; the CTY description segments verbatim at y 199/219/239. */
+                short P = CITY_PANE_L, T = CITY_PANE_T, side = (owner >= 0 && owner < 8) ? owner : 8;
+                Str255 fmt;
+                if (sShieldBigGW != NULL) {
+                    RGBColor key;
+                    CGrafPtr sp; GDHandle sd;
+                    Rect b = (*GetGWorldPixMap(sShieldBigGW))->bounds;
+                    GetGWorld(&sp, &sd); SetGWorld(sShieldBigGW, NULL);
+                    GetCPixel(b.right - 1, b.bottom - 1, &key);
+                    SetGWorld(sp, sd);
+                    SetPort(win);
+                    BlitKeyedColor(sShieldBigGW, &key, side * 32, 0, 32, 36, P + 8 + 4, T + 42 + 2);
+                    BlitKeyedColor(sShieldBigGW, &key, side * 32, 0, 32, 36, P + 208 + 4, T + 42 + 2);
+                }
+                GetDATRawString(602, fmt); FormatHeroLine(fmt, "\p", *(short *)(city + 0x08), s);
+                SetRect(&r, P + 52, T + 46, P + 52 + 150, T + 46 + 19);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                GetDATRawString(603, fmt); FormatHeroLine(fmt, "\p", *(short *)(city + 0x06), s);
+                SetRect(&r, P + 52, T + 66, P + 52 + 150, T + 66 + 19);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                if (owner >= 0 && owner < 8) {
+                    Str255 pn; unsigned char *fn = gs + owner * FACTION_NAME_LEN; short len = 0;
+                    while (len < 14 && fn[len]) len++;
+                    pn[0] = (unsigned char)len; BlockMoveData(fn, pn + 1, len);
+                    GetDATRawString(606, fmt); FormatHeroLine(fmt, pn, 0, s);
+                } else GetDATRawString(605, s);
+                SetRect(&r, P + 52, T + 90, P + 52 + 203, T + 90 + 19);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                for (i = 0; i < 4; i++) {
+                    short t = *(short *)(extCity + 0x06 + i * 2);
+                    DrawProdView(P + 28 + 56 * i, T + 130, owner, (t >= 0 && t < MAX_UNIT_TYPES) ? t : -1);
+                }
+                if (cityIndex < sCityNameCount) {
+                    const char *d = sCityDescs[cityIndex];
+                    short line = 0, n;
+                    while (*d && line < 3) {
+                        n = 0;
+                        while (d[n] && d[n] != '|' && n < 250) { s[n + 1] = d[n]; n++; }
+                        s[0] = (unsigned char)n;
+                        SetRect(&r, P + 6, T + 199 + 20 * line, P + 6 + 249, T + 199 + 20 * line + 19);
+                        DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                        d += n; if (*d == '|') d++;
+                        line++;
+                    }
+                }
+            }
             if (tab == 2) {
                 short P = CITY_PANE_L, T = CITY_PANE_T;
                 /* Capital banner / shield */
@@ -23011,8 +23101,28 @@ static void ShowCityBuildSelection(short cityIndex)
             } else {
                 for (i = 0; i < 4; i++)
                     if (PtInRect(lp, &tabR[i]) && i != tab) {
-                        /* TODO: info / build / vectoring panes (Views 3301/3302/3304) */
-                        SysBeep(1);
+                        if (i == 0) { tab = 0; redraw = true; }
+                        else if (i == 2) {
+                            /* panes 1-3 show the player's own city nearest to the
+                             * one viewed (PPC FUN_1002bf64) */
+                            if (!mine) {
+                                short ci, best = -1; long bd = 0x7FFFFFFFL;
+                                for (ci = 0; ci < sCityCount && ci < 99; ci++) {
+                                    unsigned char *c2 = sCityData + ci * 0x20;
+                                    long dx, dy;
+                                    if (c2[0x17] >= 2 || *(short *)(c2 + 4) != curPlayer) continue;
+                                    dx = *(short *)(c2 + 0) - cityX; dy = *(short *)(c2 + 2) - cityY;
+                                    if (dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; best = ci; }
+                                }
+                                if (best < 0) { SysBeep(1); break; }
+                                cityIndex = best; tab = 2;
+                                goto reloadCity;
+                            }
+                            tab = 2; redraw = true;
+                        } else {
+                            /* TODO: Build (View 3302) and Vectoring (View 3304) panes */
+                            SysBeep(1);
+                        }
                     }
                 if (tab == 2)
                     for (i = 0; i < typeCount; i++)
@@ -23038,7 +23148,7 @@ static void ShowCityBuildSelection(short cityIndex)
 
     /* Commit: setting production costs nothing (stat[4] is the price of
      * buying a new type into a slot, CODE_072 FUN_000006b0). */
-    if (!cancelled) {
+    if (!cancelled && mine) {
         if (selectedType >= 0) {
             *(short *)(extCity + 0x02) = selectedType;
             *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
@@ -23059,6 +23169,8 @@ static void ShowCityBuildSelection(short cityIndex)
     /* Tutorial: TSELECT once the production screen closes (68k CODE_045). */
     ShowTutorialScreen("\pTSELECT", 0x04);
 }
+
+static void ShowCityBuildSelection(short cityIndex) { ShowCityWindow(cityIndex, 2); }
 
 
 /* ===================================================================
@@ -23458,6 +23570,84 @@ static void AIShowStack(short armyIdx)
     while (TickCount() - t < 1) WaitNextEvent(0, &ev, 0, NULL);
 }
 
+/* SplitUnitsOff — move the last nLeave units of an army record into a new
+ * record on the same tile (the original's units are separate armies; the
+ * remake packs up to four per record). Returns the new index or -1. */
+static short SplitUnitsOff(short idx, short nLeave)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short n = *(short *)(gs + 0x1602), have = 0, k, put = 0;
+    unsigned char *a, *b;
+    if (n >= 100 || nLeave <= 0) return -1;
+    a = gs + 0x1604 + idx * 0x42;
+    for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) have++;
+    if (nLeave >= have) return -1;
+    b = gs + 0x1604 + n * 0x42;
+    for (k = 0; k < 0x42; k++) b[k] = 0;
+    *(short *)(b + 0) = *(short *)(a + 0);
+    *(short *)(b + 2) = *(short *)(a + 2);
+    b[0x15] = a[0x15]; b[0x2f] = a[0x2f]; b[0x2e] = a[0x2e];
+    *(short *)(b + 0x34) = -1; *(short *)(b + 0x36) = -1;
+    for (k = 0; k < 4; k++) b[0x16 + k] = 0xFF;
+    for (k = 3; k >= 0 && put < nLeave; k--) {
+        if (a[0x16 + k] == 0xFF) continue;
+        b[0x16 + put] = a[0x16 + k]; b[0x1a + put] = a[0x1a + k]; b[0x1e + put] = a[0x1e + k];
+        b[0x22 + put] = a[0x22 + k]; b[0x26 + put] = a[0x26 + k]; b[0x3A + put] = a[0x3A + k];
+        a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0; a[0x3A + k] = 0;
+        put++;
+    }
+    b[0x14] = (sUnitTypesLoaded && b[0x16] < sUnitTypeCount) ? sUnitTypeTable[b[0x16] * UNIT_TYPE_ENTRY] : b[0x16];
+    RecalcArmyStrength(a);
+    RecalcArmyStrength(b);
+    *(short *)(gs + 0x1602) = n + 1;
+    return n;
+}
+
+/* AIGiveInitialHero — every computer player starts, like the human, with a
+ * free hero at its capital (the original's turn-1 AI stacks are unit + hero:
+ * that is what keeps a Knight AI home on turn 1). */
+static void AIGiveInitialHero(short p)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short n = *(short *)(gs + 0x1602), cx, cy, j, nameIdx, nlen;
+    unsigned char *h;
+    const unsigned char *name;
+    if (n >= 100) return;
+    GetCapitalXY(p, &cx, &cy);
+    if (cx <= 0 && cy <= 0) return;
+    h = gs + 0x1604 + n * 0x42;
+    for (j = 0; j < 0x42; j++) h[j] = 0;
+    *(short *)(h + 0) = cx; *(short *)(h + 2) = cy;
+    h[0x15] = (unsigned char)p; h[0x2f] = (unsigned char)p;
+    h[0x16] = 0x1C; h[0x17] = h[0x18] = h[0x19] = 0xFF;
+    *(short *)(h + 0x34) = -1; *(short *)(h + 0x36) = -1;
+    {
+        short hMov = GetUnitTypeStat(0x1C, 3), hStr = GetUnitTypeStat(0x1C, 0);
+        if (hMov < 1) hMov = 14;
+        if (hStr < 1) hStr = 5;
+        h[0x14] = (sUnitTypesLoaded && 0x1C < sUnitTypeCount) ? sUnitTypeTable[0x1C * UNIT_TYPE_ENTRY] : 0x1C;
+        h[0x1a] = (unsigned char)hMov; h[0x1e] = (unsigned char)hStr;
+        h[0x2e] = (unsigned char)hMov; h[0x31] = 1;
+    }
+    RecalcArmyStrength(h);
+    *(short *)(gs + 0x1602) = n + 1;
+    nameIdx = (short)((unsigned short)Random() % 20);
+    name = sHeroNames[nameIdx];
+    nlen = name[0] > 16 ? 16 : name[0];
+    for (j = 0; j < nlen; j++) h[0x04 + j] = name[j + 1];
+    *(short *)(gs + 0x594 + p * 2) =
+        (nameIdx == 1 || nameIdx == 4 || nameIdx == 9 || nameIdx == 14 || nameIdx == 17) ? 1 : 0;
+    *(gs + p * 0x1e + 0xd28) = 3;
+    *(short *)(gs + p * 0x1e + 0xd2a) = n;
+    {
+        unsigned char *hr = gs + 0x1422 + p * 0x2C;
+        hr[0] = 1; hr[1] = 0; hr[2] = 0; hr[3] = (unsigned char)(TickCount() & 0xFF);
+        *(short *)(hr + 4) = n;
+        for (j = 0; j < 20; j++) hr[0x06 + j] = 0;
+        for (j = 0; j < nlen && j < 19; j++) hr[0x06 + j] = name[j + 1];
+    }
+}
+
 static void ExecuteAITurn(short aiPlayer)
 {
     unsigned char *gs;
@@ -23722,6 +23912,15 @@ static void ExecuteAITurn(short aiPlayer)
                         if (aj2 < ai) before += n; else mine = n;
                     }
                     if (before + mine <= R) continue;      /* part of the reserve */
+                    if (before < R && before + mine > R) {
+                        /* some of this record's units are reserve: the rest
+                         * leave as their own stack (handled later in this loop) */
+                        if (SplitUnitsOff(ai, before + mine - R) >= 0) {
+                            armyCount = *(short *)(gs + 0x1602);
+                            if (armyCount > 100) armyCount = 100;
+                        }
+                        continue;
+                    }
                 }
             }
 
@@ -30713,6 +30912,7 @@ static void HandleMouseDown(EventRecord *event)
                     /* Press and drag with an army selected: the original shows the
                      * path to the tile under the mouse while the button is held and
                      * moves there on release (measured, turn 2). */
+                    sClickWasDrag = false;
                     if (sSelectedArmy >= 0 && sSelectedArmy < armyCount && StillDown()) {
                         unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
                         if ((short)(unsigned char)sa[0x15] == currentPlayer) {
@@ -30743,6 +30943,7 @@ static void HandleMouseDown(EventRecord *event)
                             sPreviewPathLen = 0;
                             sPreviewGridValid = false;
                             if (dragged) { clickTileX = lastX; clickTileY = lastY; }
+                            sClickWasDrag = dragged;
                         }
                     }
                     sPathTargetX = clickTileX; sPathTargetY = clickTileY;
@@ -30991,6 +31192,23 @@ static void HandleMouseDown(EventRecord *event)
                             } else {
                                 /* Distant tile: set movement target for all selected group members */
                                 short movePts = (short)(unsigned char)selArmy[0x2e];
+                                /* PPC FUN_1003b4a4: a click (not a drag) on a foreign
+                                 * city out of reach of a single step opens that city's
+                                 * Info pane instead of moving (original turn 1,
+                                 * Crescent). */
+                                if (!sClickWasDrag) {
+                                    short ci, cc = sCityCount > 99 ? 99 : sCityCount;
+                                    for (ci = 0; ci < cc; ci++) {
+                                        unsigned char *c = sCityData + ci * 0x20;
+                                        short ddx = clickTileX - *(short *)(c + 0), ddy = clickTileY - *(short *)(c + 2);
+                                        if (c[0x17] >= 2 || ddx < 0 || ddx > 1 || ddy < 0 || ddy > 1) continue;
+                                        if (*(short *)(c + 4) != currentPlayer) {
+                                            ShowCityWindow(ci, 0);
+                                            goto doneMapClick;
+                                        }
+                                        break;
+                                    }
+                                }
                                 *(short *)(selArmy + 0x32) = 1;
                                 *(short *)(selArmy + 0x34) = clickTileX;
                                 *(short *)(selArmy + 0x36) = clickTileY;
@@ -32331,6 +32549,14 @@ int main(void)
         /* Hero offer — original game (68k CODE_117) has no army selection
          * dialog; starting armies are determined by scenario data. */
         ShowHeroHire(startPlayer, true);
+        {   /* the computer players' free starting heroes */
+            unsigned char *gsh = (unsigned char *)*gGameState;
+            short hp;
+            for (hp = 0; hp < 8; hp++)
+                if (hp != startPlayer && *(short *)(gsh + 0x138 + hp * 2) != 0 &&
+                    *(short *)(gsh + 0xd0 + hp * 2) != 0)
+                    AIGiveInitialHero(hp);
+        }
 
         /* Turn 1: show city build selection for each owned city.
          * At game start, the player typically owns only their capital.
