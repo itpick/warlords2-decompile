@@ -259,6 +259,40 @@ Still open from this pass: the pillage/sack result window (View 3810), medals
 (View 4410, skipped for now), AI-attack status-bar messages, paid hero offers
 on turns 2-3 that the original doesn't make, and a boat sprite seen on land.
 
+## Evening pass: city window, reports, heroes, AI, ports
+
+- **Movies of a whole game:** `record.mjs <port> <name>` films one emulator
+  for hours in 5-minute chunks (joined at the end). A subagent is playing a
+  full Isles of Sorcery game on the original (`.devloop/fullgame_log.md`,
+  screenshots `.devloop/shots/3200/fg_*.png`); the remake is iterated on the
+  other emulator meanwhile.
+- **City window panes** (Views 3301/3302/3310/3400/3410): Info (shields,
+  income/defence/owner, slot rings in the owner's colours, CTY description
+  lines verbatim), Build (Re-name / Raze / Build Prod), Build Production
+  (buy a unit type into a slot), Rename text dialog, Raze yes/no. Foreign
+  cities open on Info; clicking a distant foreign city with an army selected
+  opens Info instead of moving (PPC FUN_1003b4a4). Vectoring is still TODO.
+- **Reports** (View 3700) and **Inspect Heroes** (View 4000) rebuilt from
+  the original's layouts; Winning score uses the PPC formula.
+- **Pillage report** matched pixel-close; production slots are now sorted
+  by cost after the army set loads (Pillage takes Light Inf., 25 gp).
+- **Medals** (PPC FUN_1002f194), stored as nibbles in army bytes 0x38/0x39.
+- **AI:** every computer player starts with a free hero (unit + hero = the
+  Knight reserve, so nobody moves on turn 1); a partly-reserve stack splits
+  so the rest can leave; AI moves are shown (view follows, halo, 1 tick per
+  step; flag strip as progress bar). AI armies now move around turns 3-4.
+- **Map:** port anchors (MAP low byte bit 0x80); scenarios' "Not Used"
+  player slots stay dead (Game Setup had revived them: phantom armies in the
+  sea); minimap drag scrolls; the map is double-buffered (no blinking while
+  dragging a path); the remake-only yellow path and red X are gone.
+- **Battle screen:** shields keyed correctly; the map behind is redrawn
+  before the result line.
+
+Known differences still open: the item system (the original reads 39 items
+from the scenario's ITM resource; the remake hard-codes 22), Vectoring pane,
+the embark penalty and boat sprites at sea, hero offer frequency, AI
+strength (the original's AIs field heroes/dragons early).
+
 ## Open items
 
 - City window tabs Info / Build / Vectoring (Views 3301 / 3302 / 3304).
