@@ -155,7 +155,7 @@ http.createServer(async (req, res) => {
         return reply(200, 'ok');
       }
       case '/move': await page.mouse.move(+q('x'), +q('y'), { steps: 5 }); return reply(200, 'ok');
-      case '/down': await page.mouse.move(+q('x'), +q('y'), { steps: 3 }); await page.mouse.down(); return reply(200, 'ok');
+      case '/down': await page.mouse.move(+q('x'), +q('y'), { steps: 3 }); await page.waitForTimeout(150); await page.mouse.down(); return reply(200, 'ok');  // let the emulator see the move first
       case '/up':   await page.mouse.move(+q('x'), +q('y'), { steps: 8 }); await page.mouse.up(); return reply(200, 'ok');
       case '/key': await page.keyboard.press(q('k')); return reply(200, 'ok');
       case '/type': await page.keyboard.type(q('t'), { delay: 50 }); return reply(200, 'ok');

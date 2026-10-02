@@ -3472,6 +3472,38 @@ static void ScanArmySets(void)
  * placeholder stats (10 MP). Give every unit its type's movement/strength
  * once the table exists (the original copies them from the city slot,
  * whose stats are the type's with a small random adjustment). */
+/* FinalizeCitySlots — GameInit runs from the scenario picker before the army
+ * set's unit table is loaded, so its slot sort (68k CODE_072: ascending by
+ * stat 2) and the non-port naval filter saw no stats. Redo both once the
+ * table is in (Myre: Scouts, Light Inf. - pillage takes Light Inf., 25 gp). */
+static void FinalizeCitySlots(void)
+{
+    unsigned char *ext;
+    short ci, cc = sCityCount;
+    if (*gExtState == 0 || !sUnitTypesLoaded) return;
+    ext = (unsigned char *)*gExtState;
+    if (cc > 99) cc = 99;
+    for (ci = 0; ci < cc; ci++) {
+        unsigned char *city = sCityData + ci * 0x20;
+        unsigned char *ec = ext + 0x24c + ci * 0x5c;
+        short t[4], n = 0, k, j;
+        Boolean port = (*(short *)(ec + 0x5A) & 0x08) != 0;
+        if (city[0x17] >= 2) continue;
+        for (k = 0; k < 4; k++) {
+            short pt = *(short *)(ec + 0x06 + k * 2);
+            if (pt < 0 || pt >= MAX_UNIT_TYPES) continue;
+            if (!port && sUnitTypeTable[pt * UNIT_TYPE_ENTRY + UTE_STAT_NAVAL] >= 1) continue;
+            t[n++] = pt;
+        }
+        for (k = 1; k < n; k++) {                    /* stable, ascending by stat 2 */
+            short key = t[k], kc = GetUnitTypeStat(key, 2);
+            for (j = k - 1; j >= 0 && GetUnitTypeStat(t[j], 2) > kc; j--) t[j + 1] = t[j];
+            t[j + 1] = key;
+        }
+        for (k = 0; k < 4; k++) *(short *)(ec + 0x06 + k * 2) = (k < n) ? t[k] : -1;
+    }
+}
+
 static void RefreshInitialArmyStats(void)
 {
     unsigned char *gs;
@@ -15284,23 +15316,26 @@ static void ShowPillageReport(Boolean sack, short ci, short owner, short gold,
     SetRect(&v, 7, 112, 295, 131);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
     GetDATRawString(nLeft == 1 ? 386 : 387, fmt); FormatHeroLine(fmt, cname, nLeft, s);
     SetRect(&v, 7, 132, 295, 151);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    /* measured on the original: a plain 1px black frame (16,169)-(285,297),
+     * no column headers, three rows always (empty rings when unused) */
     SetRect(&list, 15, 167, 15 + 271, 167 + 130);
-    DrawT3DFrame(&list);
-    GetDATRawString(379, s);
-    SetRect(&v, list.left + 7, list.top + 10, list.left + 107, list.top + 29);
-    DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
-    GetDATRawString(380, s);
-    SetRect(&v, list.left + 183, list.top + 10, list.left + 263, list.top + 29);
-    DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
-    for (k = 0; k < nLost && k < 3; k++) {
-        DrawProdView(list.left + 24, list.top + 30 + 30 * k, owner, lost[k]);
+    {
+        RGBColor black = {0, 0, 0};
+        Rect f;
+        SetRect(&f, 16, 169, 285, 297);
+        RGBForeColor(&black);
+        FrameRect(&f);
+    }
+    for (k = 0; k < 3; k++) {
+        DrawProdView(list.left + 24, list.top + 31 + 30 * k, owner, k < nLost ? lost[k] : -1);
+        if (k >= nLost) continue;
         GetUnitTypeName(lost[k], s);
-        SetRect(&v, list.left + 64, list.top + 36 + 30 * k, list.left + 179, list.top + 55 + 30 * k);
+        SetRect(&v, list.left + 64, list.top + 37 + 30 * k, list.left + 179, list.top + 56 + 30 * k);
         DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
         NumToString((long)(GetUnitTypeStat(lost[k], 4) / 2), num);
         BlockMoveData(num, s, num[0] + 1);
         s[++s[0]] = ' '; s[++s[0]] = 'g'; s[++s[0]] = 'p';
-        SetRect(&v, list.left + 183, list.top + 36 + 30 * k, list.left + 263, list.top + 55 + 30 * k);
+        SetRect(&v, list.left + 183, list.top + 37 + 30 * k, list.left + 263, list.top + 56 + 30 * k);
         DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
     }
     FlushEvents(mDownMask | keyDownMask, 0);
@@ -15366,6 +15401,102 @@ static void ApplyVictoryChoice(short choice, short ci, short owner)
         InvalidateAllGameWindows();
         break;
     }
+    }
+}
+
+/* ===================================================================
+ * Medals (PPC FUN_1002f194), after a won battle, before the Victory dialog.
+ * Needs a hero in the attacking stack (who never gets one himself), a
+ * "worthy" battle (>= 2 units on each side, or before turn 20 a defender of
+ * strength >= 4), and 1d100 < max(40 - 5 * units-with-medals, 12). One
+ * random non-hero attacker gets it (max 4): +1 strength (capped at 9).
+ * Medal counts live in the unused army bytes 0x3A + slot.  The View 4410
+ * dialog (PICT 1016 frame, PICT 4410 + medal - 1, six TxSt 1015 lines, the
+ * unit's TProdView) is only shown to a human; RINT18 plays meanwhile.
+ * =================================================================== */
+static void FormatTwoNums(ConstStr255Param fmt, short a, short b, Str255 out)
+{
+    short i, k = 0;
+    out[0] = 0;
+    for (i = 1; i <= fmt[0]; i++) {
+        if (fmt[i] == '%' && i < fmt[0] && fmt[i + 1] == 'd') {
+            Str255 v; short j;
+            NumToString((long)(k++ == 0 ? a : b), v);
+            for (j = 1; j <= v[0] && out[0] < 255; j++) out[++out[0]] = v[j];
+            i++;
+        } else if (out[0] < 255) out[++out[0]] = fmt[i];
+    }
+}
+
+static void AwardMedal(short owner, short mx, short my, short nAtt, short nDef,
+                       short firstDefType, Boolean human)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short armyCount = *(short *)(gs + 0x1602), i, k, withMedal = 0, thr;
+    short candA[32], candS[32], nc = 0, pick, medals, newStr;
+    Boolean hero = false, worthy;
+    if (armyCount > 100) armyCount = 100;
+    for (i = 0; i < armyCount; i++) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        if ((short)(unsigned char)a[0x15] != owner) continue;
+        for (k = 0; k < 4; k++) {
+            short t = a[0x16 + k];
+            if (t == 0xFF) continue;
+            if (t != 0x1C && a[0x3A + k] > 0) withMedal++;
+            if (*(short *)(a + 0) == mx && *(short *)(a + 2) == my) {
+                if (t == 0x1C) hero = true;
+                else if (nc < 32) { candA[nc] = i; candS[nc] = k; nc++; }
+            }
+        }
+    }
+    worthy = (nAtt >= 2 && nDef >= 2) ||
+             (*(short *)(gs + 0x136) < 20 && nDef >= 1 && firstDefType >= 0 &&
+              GetUnitTypeStat(firstDefType, 0) >= 4);
+    if (!hero || nc == 0 || !worthy) return;
+    thr = 40 - 5 * withMedal;
+    if (thr < 12) thr = 12;
+    if ((short)((unsigned short)Random() % 100) + 1 >= thr) return;
+    pick = (short)((unsigned short)Random() % nc);
+    {
+        unsigned char *a = gs + 0x1604 + candA[pick] * 0x42;
+        short sl = candS[pick], t = a[0x16 + sl];
+        medals = a[0x3A + sl];
+        if (medals >= 4) return;
+        a[0x3A + sl] = (unsigned char)++medals;
+        newStr = a[0x1e + sl] + 1;
+        if (newStr > 9) newStr = 9;
+        a[0x1e + sl] = (unsigned char)newStr;
+        RecalcArmyStrength(a);
+        if (!human) return;
+        LoadAndPlayMusic(MUSIC_STATE_MEDAL);
+        {
+            WindowPtr win = NewMacAppWindow(396, 276);
+            Str255 str, fmt, tname;
+            Rect v;
+            EventRecord e;
+            if (win != NULL) {
+                DrawPictAt(1016, 0, 0);
+                DrawPictAt(4410 + medals - 1, 38, 38);
+                DrawProdView(54, 103, owner, t);
+                GetDATRawString(773 + (short)((unsigned short)Random() % 7), str);
+                SetRect(&v, 92, 103, 92 + 160, 122);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
+                GetUnitTypeName(t, tname);
+                GetDATRawString(780, fmt); FormatHeroLine(fmt, tname, 0, str);
+                SetRect(&v, 92, 123, 92 + 266, 142);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
+                GetDATRawString(781 + (short)((unsigned short)Random() % 4), str);
+                SetRect(&v, 53, 143, 53 + 191, 162);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
+                GetDATRawString(785 + medals - 1, str);
+                SetRect(&v, 53, 163, 53 + 191, 182);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
+                GetDATRawString(789, str);
+                SetRect(&v, 53, 193, 53 + 191, 212);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
+                GetDATRawString(791, fmt); FormatTwoNums(fmt, newStr - 1, newStr, str);
+                SetRect(&v, 53, 213, 53 + 191, 232);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
+                FlushEvents(mDownMask | keyDownMask, 0);
+                for (;;) if (WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) break;
+                CloseMacAppWindow(win);
+            }
+        }
+        LoadAndPlayMusic(MUSIC_STATE_TURN);
     }
 }
 
@@ -15547,7 +15678,15 @@ static void DrawBattleShield(short side, short x, short y)
 {
     RGBColor key;
     if (sShieldBigGW == NULL) return;
-    GWorldKeyColor(sShieldBigGW, &key);
+    {   /* the sheet's (0,0) is the first shield's outline: the backdrop
+         * (dark green) is at the bottom-right corner */
+        CGrafPtr sp; GDHandle sd;
+        Rect b = (*GetGWorldPixMap(sShieldBigGW))->bounds;
+        GetGWorld(&sp, &sd);
+        SetGWorld(sShieldBigGW, NULL);
+        GetCPixel(b.right - 1, b.bottom - 1, &key);
+        SetGWorld(sp, sd);
+    }
     BlitKeyedColor(sShieldBigGW, &key, side * 32, 0, 32, 36, x, y);
 }
 
@@ -15637,6 +15776,10 @@ static void ShowBattle(short tx, short ty, Boolean humanAttacker,
         else { Boolean dummy; BattleWait(15, &dummy); }
     }
 
+    /* the map behind is redrawn by now: WAR gone, a taken city in its new
+     * colours (original, Myre) */
+    InvalidateAllGameWindows();
+    DrainUpdates();
     SetPort(bw);
     SetRect(&v, 0, 251, BATTLE_W, 251 + 19);
     if (lin1 && lin1[0]) DrawSunkenText(&v, lin1, IlluriaFont(), 17, 1);
@@ -16026,6 +16169,8 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
                 BlockMoveData(fn, sCapWho + 1, len);
             }
         }
+        if (won && sGameSpeed < 3)
+            AwardMedal(mOwner, mx, my, nAttLive, nDefLive, nDefLive > 0 ? defSpr[0] : -1, humanAtt);
         CaptureCityFinish();
     }
 #undef IN_BATTLE_ZONE
@@ -30236,17 +30381,21 @@ static void HandleMouseDown(EventRecord *event)
             KeepFloatsInFront();
         } else if (sMapLoaded && gOverviewWindow != NULL &&
                    whichWindow == (WindowPtr)*gOverviewWindow) {
-            /* Click-and-drag in the overview: centre the map on that tile.
-             * Off: the original's overview did not scroll the map on a click,
-             * double-click or drag (turn 2, measured). */
-            if (sShowCityLabels) {
+            /* Drag in the overview: the map follows, centred on the point under
+             * the mouse. A click without moving does nothing (both measured on
+             * the original: turn 2 click vs drag). */
+            {
                 Rect  oPort = whichWindow->portRect;
                 short oldVX, oldVY, oldPX, oldPY;
-                Point dragPt;
+                Point dragPt, startPt;
+                Boolean moved = false;
 
                 SetPort(whichWindow);
+                GetMouse(&startPt);
                 do {
                     GetMouse(&dragPt);  /* local coords in overview window */
+                    if (!moved && (dragPt.h != startPt.h || dragPt.v != startPt.v)) moved = true;
+                    if (!moved) continue;
                     oldVX = sViewportX; oldVY = sViewportY;
                     oldPX = sViewPixX;  oldPY = sViewPixY;
                     CenterViewportOn((dragPt.h - oPort.left) / 2, (dragPt.v - oPort.top) / 2);
@@ -30769,6 +30918,8 @@ static void HandleMouseDown(EventRecord *event)
                                         if (*gExtState != 0) ((unsigned char *)*gExtState)[0x56 + sSelectedArmy] = 0;
                                     }
 
+                                    /* the view follows the stack (FUN_10008418 -> RevealTile) */
+                                    RevealTile(clickTileX, clickTileY);
                                     /* Brief movement animation */
                                     {
                                         long dummy;
@@ -32111,6 +32262,7 @@ int main(void)
     LoadTerrainSprites();
     LoadArmySprites();
     RefreshInitialArmyStats();
+    FinalizeCitySlots();
     LoadCitySprites();
     LoadShieldIcons();
     /* RemapShieldColors() disabled — raw cicn CLUT colors from terrain file
