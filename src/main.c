@@ -1072,7 +1072,9 @@ static const short   sPathDY[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 /* Stack movement request (PPC 1.0.7 FUN_100445a8 struct + the stack scan at
  * PPC_0002.c 5398-5438): mode and abilities come from ALL units of the moving
  * stack, not from the lead unit. Per-tile flag grid (FUN_10044110):
- *   bits 0-2 cost, 0x08 water, 0x10 port, 0x20 hills, 0x40 forest, 0x80 city. */
+ *   bits 0-2 cost, 0x08 water, 0x10 land or landing place (every land type,
+ *   bridge, anchor, coastal city tile - NOT "port"), 0x20 hills, 0x40 forest,
+ *   0x80 city (68k CODE_042 FUN_00001670). */
 #define PFLAG_WATER  0x08
 #define PFLAG_PORT   0x10
 #define PFLAG_HILLS  0x20
@@ -5867,7 +5869,7 @@ static void DrawT3DButton(const Rect *r, ConstStr255Param label)
     w = StringWidth(label);
     {   /* MacApp centres Chicago 12 in the view: baseline top+13 for the
          * 20- and 21-high buttons (picker / Game Setup, measured) */
-        short x = (r->left + r->right - w) / 2;   /* floor, measured on 64- and 172-wide buttons */
+        short x = (r->left + r->right - w + 1) / 2 - 1;   /* measured (picker, Game Setup, city Done) */
         DrawEmbossedStringIn(label, x, (r->top + r->bottom) / 2 + 3, &black, 0x8888, 0xDDDD);
     }
 }
@@ -7241,7 +7243,7 @@ static void DrawT3DPopup(short left, short top, ConstStr255Param item)
             GetEntryColor(sGamePal, kPopupArt[j][i], &c);
             SetCPixel(left + i, top + j, &c);
         }
-    TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+    TextFont(0);   /* the system font: the original's popup label is smoothed and spaced like the list text */ TextSize(12); TextFace(0);
     RGBForeColor(&black);
     {   /* the original clips the item to the text area (cuts the 'g' tail) */
         Rect clip;
@@ -7885,7 +7887,7 @@ static void DrawT3DButtonDisabled(const Rect *r, ConstStr255Param label)
         line[0] = (unsigned char)n;
         BlockMoveData(label + pos, line + 1, n);
         w = StringWidth(line);
-        x = (r->left + r->right - w) / 2;
+        x = (r->left + r->right - w + 1) / 2 - 1;
         RGBForeColor(&light); MoveTo(x + 2, base + 2); DrawString(line);
         RGBForeColor(&fg);    MoveTo(x + 1, base + 1); DrawString(line);
         pos += n + 1;
@@ -13011,21 +13013,26 @@ static short PathCityIndexAt(short x, short y)
 }
 
 /* ===================================================================
- * BuildPathFlagGrid — PPC FUN_10044110 + FUN_10042d2c/FUN_10042bb4.
- * Cost per terrain type (same table as GetMovementCost; a road overlay
- * makes the tile cost 1; flyers pay 1 on road/bridge/city, else 2),
- * water bit on Water/Shore and bridges, port on bridges, anchor tiles
- * (MAP flag byte bit 0x80) and coastal cities.  Foreign cities cost 0
- * (blocked unless they are the destination); own cities cost 1 for the
- * execution but the search routes round every city except the one the
- * stack starts in (PathSearch); a neutral city costs 1 in the ground
- * search of a non-human player type (FUN_10042d2c), the execution still
- * stops in front of it.
+ * BuildPathFlagGrid — PPC FUN_10044110 + FUN_10042d2c/FUN_10042bb4, the
+ * 68k original being CODE_042 FUN_00001670 (the PPC switch is lost in the
+ * decompile).  Per tile: cost = table[type] (PPC data 0x17576; a road
+ * overlay makes it 1; flyers pay 1 on road/bridge/city, else 2) OR'ed with
+ *   0x10 on every land type (the default), forest 0x50, hills 0x30,
+ *   bridge 0x18, Water/Shore 0x08 only, city 0x90 (+0x08 when coastal),
+ *   anchor tile (MAP flag byte bit 0x80) +0x18, coastal city tiles +0x18.
+ * So bit 0x10 means "land or a landing place", NOT "port": a ground stack
+ * may step between land and open water anywhere; what the bit controls is
+ * the budget's trans rule (PathStepCost) and the search's disembark
+ * penalty.  A foreign or neutral city costs 0 (blocked unless it is the
+ * destination); own cities cost 1 and ARE routed through; a neutral city
+ * costs 1 in the ground search of a non-human player type (FUN_10042d2c),
+ * the execution still stops in front of it.
  * =================================================================== */
 static void BuildPathFlagGrid(void)
 {
     static const unsigned char kCost[12]  = {1, 1, 1, 2, 4, 6, 0, 2, 5, 2, 1, 2};
-    static const unsigned char kTFlag[12] = {0, 0x18, 0x08, 0x08, 0x40, 0x20, 0, 0, 0, 0, 0x80, 0};
+    static const unsigned char kTFlag[12] = {0x10, 0x18, 0x08, 0x08, 0x50, 0x30,
+                                             0x10, 0x10, 0x10, 0x10, 0x90, 0x10};
     unsigned char *gs, *mapData, *rd = NULL;
     short x, y, maxX, maxY, me, ci, n;
     Boolean human;
@@ -13050,7 +13057,7 @@ static void BuildPathFlagGrid(void)
             if (sPathMode == PMODE_FLYING)
                 c = (type == 0 || type == 1 || type == 10 || road) ? 1 : 2;
             f = (unsigned char)(kTFlag[type] | c);
-            if (mapData[y * 0xE0 + x * 2 + 1] & 0x80) f |= PFLAG_PORT;     /* anchor */
+            if (mapData[y * 0xE0 + x * 2 + 1] & 0x80) f |= PFLAG_WATER | PFLAG_PORT;  /* anchor: 0x18 */
             sPathFlagGrid[rowOff + x] = f;
         }
     }
@@ -13081,8 +13088,12 @@ static void BuildPathFlagGrid(void)
 }
 
 /* Cost of entering a tile while executing a path (PPC FUN_100445fc).
- * *trans is set when a ground stack boards/lands at a non-port tile; the
- * steps after that cost 0x80 each, so the move ends there. */
+ * *trans is set when a ground stack that is not embarked enters open water
+ * (a tile without bit 0x10: not land, bridge, anchor or coastal city); the
+ * steps after that cost 0x80 each, so the move ends on that first water
+ * tile and the stack boards there (PathBoardOrLand).  An embarked stack
+ * never trips it: every land tile carries 0x10, so it sails and then walks
+ * inland on its sea MP, and lands (MP 0) where its move ends. */
 static short PathStepCost(short x, short y, short *trans)
 {
     unsigned char f;
@@ -13110,7 +13121,10 @@ static short PathStepCost(short x, short y, short *trans)
 
 /* Relaxation cost in the search (PPC FUN_10043248).  The search expands
  * from the destination: cur is the tile already reached, nbr the tile
- * being labelled (closer to the unit); the cost charged is nbr's. */
+ * being labelled (closer to the unit); the cost charged is nbr's.  With
+ * bit 0x10 on every land tile, portOk only fails between two open-water
+ * tiles whose water bits differ, i.e. never: a ground stack boards and
+ * lands anywhere; the disembark penalty steers the choice. */
 static short PathRelaxCost(unsigned char fc, unsigned char fn, Boolean nbrIsSrc)
 {
     short c = fn & 7;
@@ -13180,7 +13194,6 @@ static Boolean PathSearch(short srcX, short srcY, short dstX, short dstY, short 
 
     if (attempt == 0) {
         long i, total = (long)PATH_GRID_W * PATH_GRID_H;
-        short startCity = PathCityIndexAt(srcX, srcY);
         Boolean fog = false;
         for (i = 0; i < total; i++) sPathCostGrid[i] = PATH_COST_MAX;
         if (sOptHiddenMap && me >= 0 && me < 8 && *(short *)(gs + 0xd0 + me * 2) == 0)
@@ -13192,16 +13205,12 @@ static Boolean PathSearch(short srcX, short srcY, short dstX, short dstY, short 
                 if (sPathMode == PMODE_GROUND)      blocked = (f & 7) == 0;
                 else if (sPathMode == PMODE_NAVAL)  blocked = !(f & PFLAG_WATER) || (f & 7) == 0;
                 else                                blocked = (f & PFLAG_CITY) && (f & 7) == 0;
-                /* City tiles are not routed through: only the city the stack
-                 * starts in is opened (FUN_10042d2c -> FUN_10042bb4) and a
-                 * city destination is opened below (FUN_10043e60).  Verified
-                 * on the original (Erythea turn 2, Myre): the path goes round
-                 * its own city rather than through it.  Flyers skip
-                 * FUN_10042d2c. */
-                if (!blocked && (f & PFLAG_CITY) && sPathMode != PMODE_FLYING) {
-                    short ci = PathCityIndexAt(x, y);
-                    if (ci >= 0 && ci != startCity) blocked = true;
-                }
+                /* Cities: FUN_10042ee4 blocks only cost-0 tiles, and the flag
+                 * grid gives cost 0 to foreign and neutral cities only (68k
+                 * CODE_042 FUN_00001670 case 10: owner nibble != player), so
+                 * a path runs through the player's own cities and round the
+                 * others (Erythea turn 2: the path went round Myre, which was
+                 * neutral then).  A city destination is opened below. */
                 if (fog && !(x == srcX && y == srcY) && !FogGetBit(sFogExplored[me], x, y))
                     blocked = true;
                 if (blocked) sPathCostGrid[y * PATH_GRID_W + x] = PATH_COST_BLOCK;
@@ -14709,7 +14718,7 @@ static void DrawT3DButtonDim(const Rect *r, ConstStr255Param label)
     TextFont(fnum); TextSize(12); TextFace(0);
     w = StringWidth(label);
     RGBForeColor(&grey);
-    MoveTo((r->left + r->right - w) / 2, (r->top + r->bottom) / 2 + 3);
+    MoveTo((r->left + r->right - w + 1) / 2 - 1, (r->top + r->bottom) / 2 + 3);
     DrawString(label);
 }
 
@@ -22220,12 +22229,12 @@ static void DrawT3DButton2(const Rect *r, ConstStr255Param label)
     TextFont(fnum); TextSize(12); TextFace(0);
     if (b[0] == 0) {
         w = StringWidth(a);
-        DrawEmbossedStringIn(a, (r->left + r->right - w) / 2, (r->top + r->bottom) / 2 + 3, &black, 0x8888, 0xDDDD);
+        DrawEmbossedStringIn(a, (r->left + r->right - w + 1) / 2 - 1, (r->top + r->bottom) / 2 + 3, &black, 0x8888, 0xDDDD);
     } else {   /* two lines at top+13 / top+29 (measured, 36-high 'rena') */
         w = StringWidth(a);
-        DrawEmbossedStringIn(a, (r->left + r->right - w) / 2, r->top + 13, &black, 0x8888, 0xDDDD);
+        DrawEmbossedStringIn(a, (r->left + r->right - w + 1) / 2 - 1, r->top + 13, &black, 0x8888, 0xDDDD);
         w = StringWidth(b);
-        DrawEmbossedStringIn(b, (r->left + r->right - w) / 2, r->top + 29, &black, 0x8888, 0xDDDD);
+        DrawEmbossedStringIn(b, (r->left + r->right - w + 1) / 2 - 1, r->top + 29, &black, 0x8888, 0xDDDD);
     }
 }
 
@@ -24004,7 +24013,7 @@ static void AIFloodRun(short sx, short sy, short radius)
     long i, total = (long)PATH_GRID_W * PATH_GRID_H, head = 0, tail = 0;
     short maxX = sMapWidth > PATH_GRID_W ? PATH_GRID_W : sMapWidth;
     short maxY = sMapHeight > PATH_GRID_H ? PATH_GRID_H : sMapHeight;
-    short startCity = PathCityIndexAt(sx, sy), x, y;
+    short x, y;
     Boolean fog = false;
 
     for (i = 0; i < total; i++) sAIFloodCost[i] = -1;
@@ -24019,10 +24028,8 @@ static void AIFloodRun(short sx, short sy, short radius)
             if (sPathMode == PMODE_GROUND)      blocked = (f & 7) == 0;
             else if (sPathMode == PMODE_NAVAL)  blocked = !(f & PFLAG_WATER) || (f & 7) == 0;
             else                                blocked = (f & PFLAG_CITY) && (f & 7) == 0;
-            if (!blocked && (f & PFLAG_CITY) && sPathMode != PMODE_FLYING) {
-                short ci = PathCityIndexAt(x, y);
-                if (ci >= 0 && ci != startCity) blocked = true;
-            }
+            /* (as PathSearch: only cost-0 tiles block - foreign/neutral cities;
+             * own cities are routed through, 68k CODE_042 FUN_00001670) */
             if (fog && !(x == sx && y == sy) && !FogGetBit(sFogExplored[sPathOwner], x, y)) blocked = true;
             if (blocked) sAIFloodCost[y * PATH_GRID_W + x] = PATH_COST_BLOCK;
         }

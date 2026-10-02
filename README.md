@@ -7,22 +7,25 @@ InfiniteMac emulators and diffing screenshots pixel by pixel
 (`tools/infinitemac/devloop/compare.mjs` + `pixdiff.py`). Lower is better;
 0.2-0.5% is screenshot noise (clock, cursor).
 
-| Screen / step (Erythea, default setup) | Pixel difference |
+| Screen / step (Erythea, default setup) | Pixel difference (dialog area / full screen) |
 |---|---|
-| Scenario picker | 0.9% |
-| Game Setup | 2.1% |
-| Turn banner | 2.2% |
-| Hero offer | 4.7% (random hero name/portrait text) |
-| City window, production pane | 4.7% |
+| Scenario picker | 0.01% / 1.6% (the Finder window behind the remake) |
+| Game Setup | 0.03% / 1.7% |
+| Game Setup, More Choices (View 3020) | 0.5% (roller text smoothing, side-colour frame corners) |
+| Turn banner | 0.00% / 2.1% |
+| Hero offer | 0.07% masked (hero name), 0.23% raw |
+| City window, production pane | 0.00% |
+| City window, info / build panes | 2.4% (the original redraws the overview with city shields on these panes) |
+| City window, vectoring pane | 0.2% |
 | Map after turn 1 starts | 0.2% |
 | Select army / move / step east (turn 1) | 0.2% |
-| End turn, AI turns, turn 2 banner | 0.2-4% |
+| End turn, AI turns, turn 2 banner | 0.2% |
 | Path preview (hover, drag) | 0.2% |
 | Map drag / minimap drag | 0.2-0.5% |
 | Turn 3 view | 0.2% |
-| Battle window (attack on a neutral city) | 4.5% (random battle outcome) |
-| Victory dialog | 4.4% |
-| Pillage report | 9.4% (different unit rolled) |
+| Battle window (attack on a neutral city) | 0.1% masked (rolled unit), 1.8% raw |
+| Victory dialog | 0.9% masked (random lines), 2.2% raw |
+| Pillage report | layout now identical (frame, text, rings); last same-roll run 9.4% before the 1px window-placement fix |
 
 Sound: the start-of-game sequence (VBEGIN, turn chime) matches the original.
 
