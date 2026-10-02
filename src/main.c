@@ -25341,6 +25341,105 @@ static void DoAutosave(void);  /* forward declaration */
  * centered in the gate archway, shield below, turn number at bottom.
  * Plays SND_SPLASH on display. Waits for click or ~2.5 seconds.
  * =================================================================== */
+/* ===================================================================
+ * Voice advisor (PPC FUN_10092c5c mode 5): after the human's turn banner,
+ * a horned helmet (View 1050, PICT 1050 on a shaped window) speaks one line
+ * about how the player is doing, blinking (PICT 1051 eye frames), and goes
+ * away 18 ticks after the line ends.  City count V vs the last announced
+ * level L (a multiple of 5; the original's gs+0x108+p / state gs+0x100+p: 1 winning,
+ * 2 losing): V < L -> vlose (L = V/5*5); V >= L+5 -> vwin; otherwise on
+ * turns divisible by 7: gold < 100 vgold00, gold > 2800 vgold01(a), no hero
+ * vhero00, 5+ heroes vhero01, else 1 in 5 a vmess line.  Never on turn 1,
+ * nothing at 40+ cities.
+ * =================================================================== */
+static void ShowVoiceAdvisor(short p)
+{
+    static const short kLose[7] = {SND_VLOSE05, SND_VLOSE10, SND_VLOSE15, SND_VLOSE20,
+                                   SND_VLOSE25, SND_VLOSE25, SND_VLOSE35};
+    static const short kWin[8] = {SND_VWIN05, SND_VWIN05, SND_VWIN10, SND_VWIN15,
+                                  SND_VWIN20, SND_VWIN25, SND_VWIN30, SND_VWIN35};
+    static GWorldPtr helmGW = NULL, blinkGW = NULL;
+    static unsigned char advState[8], advLevel[8];   /* the original keeps these at gs+0x100/0x108 */
+    unsigned char *gs;
+    short V = 0, L, turn, snd = 0, ci, k;
+    if (*gGameState == 0 || sSoundMaster == 0 || sGameSpeed >= 3) return;
+    gs = (unsigned char *)*gGameState;
+    turn = *(short *)(gs + 0x136);
+    if (turn <= 1) { for (k = 0; k < 8; k++) advState[k] = advLevel[k] = 0; return; }
+    for (ci = 0; ci < sCityCount && ci < 99; ci++)
+        if (sCityData[ci * 0x20 + 0x17] < 2 && *(short *)(sCityData + ci * 0x20 + 4) == p) V++;
+    if (V >= 40) return;
+    L = advLevel[p];
+    if (V < L) {
+        advState[p] = 2;
+        L = (V / 5) * 5; advLevel[p] = (unsigned char)L;
+        snd = kLose[L / 5 > 6 ? 6 : L / 5];
+    } else if (V >= L + 5) {
+        advState[p] = 1;
+        L = (V / 5) * 5; advLevel[p] = (unsigned char)L;
+        snd = kWin[L / 5 > 7 ? 7 : L / 5];
+    } else if (turn % 7 == 0) {
+        short gold = *(short *)(gs + 0x186 + p * 0x14), heroes = 0, n = *(short *)(gs + 0x1602), ai;
+        if (n > 100) n = 100;
+        for (ai = 0; ai < n; ai++) {
+            unsigned char *a = gs + 0x1604 + ai * 0x42;
+            if ((short)(unsigned char)a[0x15] != p) continue;
+            for (k = 0; k < 4; k++) if (a[0x16 + k] == 0x1C) heroes++;
+        }
+        if (gold < 100) snd = SND_VGOLD00;
+        else if (gold > 2800) snd = (Random() & 1) ? SND_VGOLD01 : SND_VGOLD01A;
+        else if (heroes == 0) snd = SND_VHERO00;
+        else if (heroes >= 5) snd = SND_VHERO01;
+        else if ((unsigned short)Random() % 5 == 0) snd = SND_VMESS00 + (short)((unsigned short)Random() % 4);
+    }
+    if (snd == 0 || *gMainGameWindow == 0) return;
+    if (helmGW == NULL) helmGW = LoadPICTIntoGWorld(1050);
+    if (blinkGW == NULL) blinkGW = LoadPICTIntoGWorld(1051);
+    if (helmGW == NULL) return;
+    WaitVoiceDone();
+    {
+        WindowPtr mw = (WindowPtr)*gMainGameWindow;
+        GrafPtr sp;
+        RGBColor key;
+        Point o;
+        unsigned long next, until;
+        short cnt = 10 + (short)((unsigned short)Random() % 21), stepT;
+        EventRecord e;
+        GetPort(&sp);
+        SetPort(mw);
+        o.h = 357; o.v = 124;                       /* screen position, measured */
+        GlobalToLocal(&o);
+        GWorldKeyColor(helmGW, &key);
+        BlitKeyedColor(helmGW, &key, 0, 0, 309, 431, o.h, o.v);
+        PlayVoice(snd);
+        next = TickCount();
+        for (;;) {
+            SCStatus st;
+            if (sVoiceChannel == NULL || SndChannelStatus(sVoiceChannel, sizeof(st), &st) != noErr ||
+                !st.scChannelBusy) break;
+            WaitNextEvent(0, &e, 3, NULL);
+            if (TickCount() - next < 3) continue;
+            next = TickCount();
+            if (++cnt > 40 && blinkGW != NULL) {   /* eyes: rows 47, 94, 47, 0, 6 ticks each */
+                static const short rows[4] = {47, 94, 47, 0};
+                RGBColor bk;
+                GWorldKeyColor(blinkGW, &bk);
+                for (stepT = 0; stepT < 4; stepT++) {
+                    BlitKeyedColor(blinkGW, &bk, 0, rows[stepT], 158, 47, o.h + 78, o.v + 246);
+                    until = TickCount() + 6;
+                    while (TickCount() < until) WaitNextEvent(0, &e, 1, NULL);
+                }
+                cnt = 0;
+            }
+        }
+        until = TickCount() + 18;
+        while (TickCount() < until) WaitNextEvent(0, &e, 1, NULL);
+        InvalRect(&mw->portRect);
+        SetPort(sp);
+        DrainUpdates();
+    }
+}
+
 static void ShowTurnSplash(short playerIdx)
 {
     WindowPtr  splashWin;
@@ -26871,6 +26970,7 @@ static void AdvanceToNextPlayer(void)
         /* Show turn start banner (PICT 3100 castle gate) */
         LoadAndPlayMusic(MUSIC_STATE_TURN);
         ShowTurnSplash(curPlayer);  /* plays SND_TURN internally */
+        ShowVoiceAdvisor(curPlayer);  /* the helmet's comment on how it goes */
         /* Tutorial: TTURN2 at the start of turn 2 (68k CODE_080) */
         if (*(short *)(gs + 0x136) == 2)
             ShowTutorialScreen("\pTTURN2", 0x40);
