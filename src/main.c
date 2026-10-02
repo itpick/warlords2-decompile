@@ -19759,6 +19759,70 @@ static Boolean SiteGuardianFight(short armyIdx, unsigned char *site)
  * 3d1000+1000).  Allies: 1d2 (hard +2) units of the ruin's ally type join
  * the stack.  Sage: nothing here (the caller runs the sage).
  * Returns the kind that was searched. */
+/* View 4100 "Searching" (414x364, marble, PICT 4100 at (46,48), title
+ * (7,10) Illuria 36, lines lin1-4 at y 251/270/289/308 380 wide Illuria 17,
+ * Done (330,330) 64x21 [and Take (20,330)]), placed like the turn banner. */
+static void ShowSearchingDialog(ConstStr255Param l1, ConstStr255Param l2,
+                                ConstStr255Param l3, ConstStr255Param l4)
+{
+    WindowPtr win = NewMacAppWindow(414, 364);
+    ConstStr255Param ls[4];
+    Rect r, doneR;
+    Str255 s;
+    EventRecord e;
+    short k;
+    if (win == NULL) return;
+    ls[0] = l1; ls[1] = l2; ls[2] = l3; ls[3] = l4;
+    DrawPictAt(1001, 7, 7);
+    DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 357); DrawPictAt(1015, 407, 0);
+    r.left = 46; r.top = 48; r.right = 46 + 322; r.bottom = 48 + 202;
+    DrawT3DFrame(&r);
+    DrawPictAt(4100, 47, 49);
+    GetIndString(s, 4100, 1);
+    SetRect(&r, 7, 10, 407, 49); DrawSunkenText(&r, s[0] ? s : "\pSearching", IlluriaFont(), 36, 1);
+    for (k = 0; k < 4; k++) {
+        if (ls[k] == NULL || ls[k][0] == 0) continue;
+        SetRect(&r, 17, 251 + 19 * k, 397, 270 + 19 * k);
+        DrawSunkenText(&r, ls[k], IlluriaFont(), 17, 1);
+    }
+    SetRect(&doneR, 330, 330, 394, 351);
+    GetIndString(s, 1000, 5);
+    DrawT3DButton(&doneR, s[0] ? s : "\pDone");
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) {
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == keyDown) break;
+        { Point pt = e.where; SetPort(win); GlobalToLocal(&pt); if (PtInRect(pt, &doneR)) break; }
+    }
+    CloseMacAppWindow(win);
+}
+
+/* Guardian name n (1-9) from the scenario (SCN+0xF77, 16 bytes each) */
+static void GuardianName(short n, Str255 out)
+{
+    unsigned char *g = (unsigned char *)*gGameState + 0xF77 + (n - 1) * 0x10;
+    short len = 0;
+    out[0] = 0;
+    if (n < 1 || n > 9) return;
+    while (len < 15 && g[len]) { out[len + 1] = g[len]; len++; }
+    out[0] = (unsigned char)len;
+}
+
+static void FormatTwoStrNum(ConstStr255Param fmt, ConstStr255Param a, ConstStr255Param b, short num, Str255 out)
+{
+    short i, ks = 0;
+    out[0] = 0;
+    for (i = 1; i <= fmt[0]; i++) {
+        if (fmt[i] == '%' && i < fmt[0] && (fmt[i + 1] == 's' || fmt[i + 1] == 'd')) {
+            Str255 v; short j;
+            if (fmt[i + 1] == 'd') NumToString((long)num, v);
+            else { ConstStr255Param src = (ks == 0) ? a : b; ks++; BlockMoveData(src, v, src[0] + 1); }
+            for (j = 1; j <= v[0] && out[0] < 255; j++) out[++out[0]] = v[j];
+            i++;
+        } else if (out[0] < 255) out[++out[0]] = fmt[i];
+    }
+}
+
 static short SearchSiteReward(short armyIdx, short siteIdx,
                               short *outGold, short *outItemId,
                               short *outAllyType, short *outAllies)
@@ -29255,61 +29319,27 @@ static void HandleMenuChoice(long menuResult)
                             /* FUN_1003956c reward kinds (site+0x0C): the
                              * guardian is fought first; a lost fight kills the
                              * hero and leaves the ruin (and guardian) as is. */
+                            Str255 heroNm, enc, gName;
+                            short guard = SITE_GUARDIAN(site);
+                            {
+                                unsigned char *hn = army + 0x04; short hl = 0;
+                                while (hl < 15 && hn[hl]) hl++;
+                                heroNm[0] = (unsigned char)hl; BlockMoveData(hn, heroNm + 1, hl);
+                                enc[0] = 0;
+                                if (guard) {
+                                    Str255 f;
+                                    GuardianName(guard, gName);
+                                    GetDATRawString((gName[0] && (gName[1] == 'A' || gName[1] == 'E' || gName[1] == 'I' ||
+                                                     gName[1] == 'O' || gName[1] == 'U')) ? 329 : 326, f);
+                                    FormatTwoStrNum(f, heroNm, gName, 0, enc);
+                                }
+                            }
                             if (SITE_GUARDIAN(site) != 0 &&
                                 !SiteGuardianFight(sSelectedArmy, site)) {
                                 foundRuin = true;
                                 PlaySound(SND_DRAMATIC);
-                                {
-                                    short rwW3 = 300, rwH3 = 120;
-                                    SetRect(&rwR, 0, 0, rwW3, rwH3);
-                                    OffsetRect(&rwR,
-                                        (qd.screenBits.bounds.right - rwW3) / 2,
-                                        (qd.screenBits.bounds.bottom - rwH3) / 2);
-                                }
-                                rwWin = NewCWindow(NULL, &rwR, "\p", true,
-                                                   plainDBox, (WindowPtr)-1L, false, 0);
-                                SetRect(&rwGR, 0, 0, rwR.right - rwR.left,
-                                                     rwR.bottom - rwR.top);
-                                if (rwWin) NewGWorld(&rwGW, 0, &rwGR, NULL, NULL, 0);
-                                if (rwWin && rwGW) {
-                                    CGrafPtr sp5; GDHandle sd5;
-                                    EventRecord re5;
-                                    GetGWorld(&sp5, &sd5);
-                                    SetGWorld(rwGW, NULL);
-                                    LockPixels(GetGWorldPixMap(rwGW));
-                                    DrawMarbleBackground(&rwGR);
-                                    { RGBColor gbdr = {0xCC00, 0x3333, 0x3333};
-                                      RGBForeColor(&gbdr);
-                                      PenSize(2, 2); FrameRect(&rwGR); PenSize(1, 1); }
-                                    { RGBColor red = {0xFFFF, 0x5555, 0x5555};
-                                      RGBForeColor(&red);
-                                      TextFont(2); TextSize(14); TextFace(bold);
-                                      MoveTo(50, 30);
-                                      DrawString("\pGuardian Defeats Hero!");
-                                      TextFace(0); }
-                                    { RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                                      RGBForeColor(&white);
-                                      TextFont(3); TextSize(12);
-                                      MoveTo(30, 60);
-                                      DrawString("\pThe guardian was too powerful.");
-                                      MoveTo(30, 80);
-                                      DrawString("\pYour hero has fallen in battle."); }
-                                    SetGWorld(sp5, sd5);
-                                    { PixMapHandle pm = GetGWorldPixMap(rwGW);
-                                      SetPort(rwWin);
-                                      CopyBits((BitMap *)*pm,
-                                               &rwWin->portBits,
-                                               &rwGR, &rwGR, srcCopy, NULL); }
-                                    { unsigned long tEnd = TickCount() + 180;
-                                      while (TickCount() < tEnd) {
-                                          if (WaitNextEvent(mDownMask | keyDownMask,
-                                                            &re5, 1, NULL)) break;
-                                      }
-                                    }
-                                    UnlockPixels(GetGWorldPixMap(rwGW));
-                                }
-                                if (rwGW) DisposeGWorld(rwGW);
-                                if (rwWin) DisposeWindow(rwWin);
+                                {   Str255 l2; GetDATRawString(327, l2);      /* and is slain by it! */
+                                    ShowSearchingDialog(enc, l2, NULL, NULL); }
                                 { short alive = 0, u;
                                   for (u = 0; u < 4; u++) {
                                       if (army[0x16 + u] != 0xFF &&
@@ -29407,334 +29437,25 @@ static void HandleMenuChoice(long menuResult)
                                         rewardType == 5 ? "Recruited allies in ruins" :
                                         "Found treasure in ruins");
 
-                            /* Show reward dialog */
+                            /* View 4100 "Searching": the guardian fight (if any),
+                             * then the find, in the original's words (DAT 326-333) */
                             {
-                                /* Try search scene PICT (4100=ruin, 4101=temple) */
-                                PicHandle srchPict = GetPicture(siteType == 2 ? 4101 : 4100);
-                                short picW = 300, picH = 170;
-                                short rwW, rwH;
-                                Rect picDst, doneR;
-                                if (srchPict) {
-                                    Rect pf = (**srchPict).picFrame;
-                                    picW = pf.right - pf.left;
-                                    picH = pf.bottom - pf.top;
+                                Str255 l1, l2, l3, f, nm;
+                                l1[0] = l2[0] = l3[0] = 0;
+                                if (guard) { BlockMoveData(enc, l1, enc[0] + 1); GetDATRawString(328, l2); }
+                                if (rewardType == 1 && foundItemId > 0) {
+                                    GameItemPName(foundItemId, nm);
+                                    GetDATRawString(330, f); FormatTwoStrNum(f, heroNm, nm, 0, l3);
+                                } else if (rewardType == 5) {
+                                    GetUnitTypeName(allyTypeUsed, nm);
+                                    if (alliesAdded <= 1) { GetDATRawString(332, f); FormatTwoStrNum(f, nm, heroNm, 0, l3); }
+                                    else { GetDATRawString(333, f); FormatTwoStrNum(f, nm, heroNm, alliesAdded, l3); }
+                                } else if (rewardType == 0) {
+                                    GetDATRawString(331, f); FormatTwoStrNum(f, heroNm, "\p", gold, l3);
                                 }
-                                /* Add margins: 20px each side, 40 top for title, 80 bottom for text+button */
-                                rwW = picW + 40;
-                                rwH = picH + 120;
-                                if (rwW < 340) rwW = 340;
-                                if (rwH < 260) rwH = 260;
-                                SetRect(&rwR, 0, 0, rwW, rwH);
-                                OffsetRect(&rwR, (qd.screenBits.bounds.right - rwW) / 2,
-                                                 (qd.screenBits.bounds.bottom - rwH) / 2);
-                                /* Done button rect */
-                                SetRect(&doneR, rwW - 70, rwH - 32, rwW - 10, rwH - 8);
+                                if (!guard) { BlockMoveData(l3, l1, l3[0] + 1); l3[0] = 0; }
+                                if (l1[0]) ShowSearchingDialog(l1, l2, l3, NULL);
                             }
-                            rwWin = NewCWindow(NULL, &rwR, "\p", true,
-                                               plainDBox, (WindowPtr)-1L, false, 0);
-                            {
-                                short rwW2 = rwR.right - rwR.left;
-                                short rwH2 = rwR.bottom - rwR.top;
-                                SetRect(&rwGR, 0, 0, rwW2, rwH2);
-                            }
-                            if (rwWin) NewGWorld(&rwGW, 0, &rwGR, NULL, NULL, 0);
-                            if (rwWin && rwGW) {
-                                CGrafPtr sp; GDHandle sd;
-                                EventRecord re;
-                                Boolean rd = false;
-                                PicHandle srchPict2 = GetPicture(siteType == 2 ? 4101 : 4100);
-                                short rwW3 = rwGR.right, rwH3 = rwGR.bottom;
-                                short picW2 = rwW3 - 40, picH2 = rwH3 - 120;
-                                Rect picDst2, doneR2;
-                                GetGWorld(&sp, &sd);
-                                SetGWorld(rwGW, NULL);
-                                LockPixels(GetGWorldPixMap(rwGW));
-
-                                /* Marble background */
-                                DrawMarbleBackground(&rwGR);
-                                /* Draw illustration PICT centered with margin */
-                                SetRect(&picDst2, 20, 40, 20 + picW2, 40 + picH2);
-                                if (srchPict2) DrawPicture(srchPict2, &picDst2);
-                                /* Dark border around illustration */
-                                {
-                                    RGBColor dk = {0x3333, 0x3333, 0x3333};
-                                    RGBForeColor(&dk);
-                                    PenSize(2, 2);
-                                    FrameRect(&picDst2);
-                                    PenSize(1, 1);
-                                }
-                                /* Gold border around window */
-                                {
-                                    RGBColor gbdr = {0xCCCC, 0xAAAA, 0x3333};
-                                    RGBForeColor(&gbdr);
-                                    PenSize(2, 2);
-                                    FrameRect(&rwGR);
-                                    PenSize(1, 1);
-                                }
-                                /* Title: "Searching" in gold Illuria */
-                                {
-                                    RGBColor titleC = {0xFFFF, 0xDDDD, 0x5555};
-                                    short tw;
-                                    RGBForeColor(&titleC);
-                                    TextFont(2); TextSize(18); TextFace(bold);
-                                    tw = StringWidth("\pSearching");
-                                    MoveTo((rwW3 - tw) / 2, 28);
-                                    DrawString("\pSearching");
-                                    TextFace(0);
-                                }
-                                /* Reward text below illustration */
-                                {
-                                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                                    short textY = 40 + picH2 + 18;
-                                    RGBForeColor(&white);
-                                    TextFont(3); TextSize(12);
-
-                                    if (rewardType == 1 && foundItemId > 0) {
-                                        ItemDef itmBuf;
-                                        const ItemDef *itm = GameItemDef(foundItemId, &itmBuf);
-                                        Str255 iname;
-                                        short nl = 0;
-                                        MoveTo(20, textY);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 1, "\pYour hero discovers an artifact!"));
-                                        MoveTo(20, textY + 18);
-                                        {
-                                            RGBColor cyan = {0x6666, 0xFFFF, 0xFFFF};
-                                            RGBForeColor(&cyan);
-                                        }
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 2, "\pFound: "));
-                                        while (nl < 19 && itm->name[nl]) nl++;
-                                        iname[0] = (unsigned char)nl;
-                                        BlockMoveData(itm->name, iname + 1, nl);
-                                        DrawString(iname);
-                                        MoveTo(20, textY + 36);
-                                        RGBForeColor(&white);
-                                        switch (itm->type) {
-                                            case ITEM_TYPE_BATTLE:
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 3, "\pBattle bonus: +"));
-                                                { Str255 vs; NumToString((long)itm->value, vs); DrawString(vs); }
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 4, "\p strength"));
-                                                break;
-                                            case ITEM_TYPE_COMMAND:
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 5, "\pCommand bonus: +"));
-                                                { Str255 vs; NumToString((long)itm->value, vs); DrawString(vs); }
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 6, "\p to all stacked"));
-                                                break;
-                                            case ITEM_TYPE_FLYING:
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 7, "\pGrants flight to stack!"));
-                                                break;
-                                            case ITEM_TYPE_MOVEMENT:
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 8, "\pDoubles stack movement!"));
-                                                break;
-                                            case ITEM_TYPE_GOLD:
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 9, "\pGold bonus: +"));
-                                                { Str255 vs; NumToString((long)itm->value, vs); DrawString(vs); }
-                                                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 10, "\p per city per turn"));
-                                                break;
-                                            case ITEM_TYPE_FLAT_PLUS:
-                                                DrawString("\pCommand bonus: +1 to all units");
-                                                break;
-                                        }
-                                    } else if (rewardType == 3) {
-                                        MoveTo(20, textY);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 16, "\pA wise sage speaks to your hero!"));
-                                        MoveTo(20, textY + 18);
-                                        {
-                                            RGBColor cyan = {0x6666, 0xFFFF, 0xFFFF};
-                                            RGBForeColor(&cyan);
-                                        }
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 17, "\pThe surrounding lands are revealed!"));
-                                    } else if (rewardType == 2 && gotAlly) {
-                                        MoveTo(20, textY);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 11, "\pA warrior emerges from the shadows!"));
-                                        MoveTo(20, textY + 18);
-                                        {
-                                            RGBColor green = {0x4444, 0xFFFF, 0x4444};
-                                            RGBForeColor(&green);
-                                        }
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 12, "\pAllied: "));
-                                        {
-                                            Str255 allyName;
-                                            GetUnitTypeName(allyTypeUsed, allyName);
-                                            DrawString(allyName);
-                                        }
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 13, "\p joins your army!"));
-                                    } else if (rewardType == 4) {
-                                        /* Gold + direction hint (68k type 3) */
-                                        Str255 numStr;
-                                        MoveTo(20, textY);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 14, "\pYour hero discovers treasure!"));
-                                        MoveTo(20, textY + 18);
-                                        DrawString(GetCachedString(STR_MISC, 4, "\pReward: "));
-                                        NumToString((long)gold, numStr);
-                                        DrawString(numStr);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 15, "\p gold pieces"));
-                                        /* Find nearest unsearched ruin and show direction */
-                                        {
-                                            short bestDist = 32000, bestDx = 0, bestDy = 0;
-                                            short si2;
-                                            short sc2 = sCityCount;
-                                            if (sc2 > 139) sc2 = 139;
-                                            for (si2 = 0; si2 < sc2; si2++) {
-                                                unsigned char *s2 = sCityData +si2 * 0x20;
-                                                short st2 = (short)(unsigned char)s2[0x17];
-                                                if (st2 >= 2 && st2 <= 5) {
-                                                    short dx = *(short *)(s2 + 0x00) - ax;
-                                                    short dy = *(short *)(s2 + 0x02) - ay;
-                                                    short dist = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
-                                                    if (dist > 0 && dist < bestDist) {
-                                                        bestDist = dist;
-                                                        bestDx = dx;
-                                                        bestDy = dy;
-                                                    }
-                                                }
-                                            }
-                                            if (bestDist < 32000) {
-                                                const unsigned char *dir;
-                                                if (bestDy < 0 && (bestDx > -bestDy/2 && bestDx < bestDy/-2 + 1))
-                                                    dir = "\pNorth";
-                                                else if (bestDy > 0 && (bestDx > -bestDy/2 && bestDx < bestDy/2 + 1))
-                                                    dir = "\pSouth";
-                                                else if (bestDx > 0 && (bestDy > -bestDx/2 && bestDy < bestDx/2 + 1))
-                                                    dir = "\pEast";
-                                                else if (bestDx < 0 && (bestDy > bestDx/2 && bestDy < -bestDx/2 + 1))
-                                                    dir = "\pWest";
-                                                else if (bestDx > 0 && bestDy < 0)
-                                                    dir = "\pNortheast";
-                                                else if (bestDx < 0 && bestDy < 0)
-                                                    dir = "\pNorthwest";
-                                                else if (bestDx > 0 && bestDy > 0)
-                                                    dir = "\pSoutheast";
-                                                else
-                                                    dir = "\pSouthwest";
-                                                MoveTo(20, textY + 36);
-                                                {
-                                                    RGBColor cyan = {0x6666, 0xFFFF, 0xFFFF};
-                                                    RGBForeColor(&cyan);
-                                                }
-                                                DrawString("\pMore treasure lies to the ");
-                                                DrawString(dir);
-                                                DrawString("\p!");
-                                            }
-                                        }
-                                    } else if (rewardType == 5 && gotAlly) {
-                                        /* Multi-ally recruitment (68k type 5) */
-                                        MoveTo(20, textY);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 11, "\pA warrior emerges from the shadows!"));
-                                        MoveTo(20, textY + 18);
-                                        {
-                                            RGBColor green = {0x4444, 0xFFFF, 0x4444};
-                                            RGBForeColor(&green);
-                                        }
-                                        DrawString("\pAllied warriors join your cause!");
-                                    } else {
-                                        /* Plain gold reward */
-                                        Str255 numStr;
-                                        MoveTo(20, textY);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 14, "\pYour hero discovers treasure!"));
-                                        MoveTo(20, textY + 18);
-                                        DrawString(GetCachedString(STR_MISC, 4, "\pReward: "));
-                                        NumToString((long)gold, numStr);
-                                        DrawString(numStr);
-                                        DrawString(GetCachedString(STR_SEARCH_TEMPLE, 15, "\p gold pieces"));
-                                    }
-                                }
-                                /* Site description from SPC resource */
-                                if (ci < 99 && sSiteDescs[ci][0] != '\0') {
-                                    char *desc = sSiteDescs[ci];
-                                    short descLen = 0;
-                                    short di2 = 0;
-                                    short lineY = rwH3 - 60;
-                                    RGBColor descC = {0xAAAA, 0xDDDD, 0xAAAA};
-                                    while (desc[descLen]) descLen++;
-                                    RGBForeColor(&descC);
-                                    TextFont(3); TextSize(9); TextFace(italic);
-                                    while (di2 < descLen && lineY <= rwH3 - 40) {
-                                        short end = di2 + 55;
-                                        short bp;
-                                        if (end >= descLen) end = descLen;
-                                        else {
-                                            bp = end;
-                                            while (bp > di2 && desc[bp] != ' ') bp--;
-                                            if (bp > di2) end = bp;
-                                        }
-                                        {
-                                            Str255 ls;
-                                            short ll = end - di2;
-                                            if (ll > 254) ll = 254;
-                                            ls[0] = (unsigned char)ll;
-                                            BlockMoveData(desc + di2, ls + 1, ll);
-                                            MoveTo(20, lineY);
-                                            DrawString(ls);
-                                        }
-                                        di2 = end;
-                                        if (di2 < descLen && desc[di2] == ' ') di2++;
-                                        lineY += 11;
-                                    }
-                                    TextFace(0);
-                                }
-                                /* Done button */
-                                {
-                                    Rect doneR2;
-                                    RGBColor grey = {0x9999, 0x9999, 0x9999};
-                                    RGBColor dk = {0x3333, 0x3333, 0x3333};
-                                    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                                    SetRect(&doneR2, rwW3 - 70, rwH3 - 32, rwW3 - 10, rwH3 - 8);
-                                    RGBForeColor(&grey);
-                                    PaintRoundRect(&doneR2, 8, 8);
-                                    RGBForeColor(&dk);
-                                    FrameRoundRect(&doneR2, 8, 8);
-                                    TextFont(0); TextSize(12); TextFace(bold);
-                                    RGBForeColor(&white);
-                                    MoveTo(doneR2.left + (doneR2.right - doneR2.left - StringWidth("\pDone")) / 2,
-                                           doneR2.top + 17);
-                                    DrawString("\pDone");
-                                }
-
-                                UnlockPixels(GetGWorldPixMap(rwGW));
-                                SetGWorld(sp, sd);
-                                SetPort(rwWin);
-                                {
-                                    Rect dr = rwWin->portRect;
-                                    LockPixels(GetGWorldPixMap(rwGW));
-                                    CopyBits((BitMap *)*GetGWorldPixMap(rwGW),
-                                             &((GrafPtr)rwWin)->portBits,
-                                             &rwGR, &dr, srcCopy, NULL);
-                                    UnlockPixels(GetGWorldPixMap(rwGW));
-                                }
-
-                                /* Modal wait — Done button or Enter/Escape */
-                                {
-                                    Rect doneHit;
-                                    SetRect(&doneHit, rwW3 - 70, rwH3 - 32, rwW3 - 10, rwH3 - 8);
-                                    while (!rd) {
-                                        if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &re, 10, NULL)) {
-                                            if (re.what == mouseDown) {
-                                                Point lp = re.where;
-                                                SetPort(rwWin);
-                                                GlobalToLocal(&lp);
-                                                if (PtInRect(lp, &doneHit)) rd = true;
-                                            } else if (re.what == keyDown) {
-                                                char key = re.message & charCodeMask;
-                                                if (key == '\r' || key == 0x03 || key == 0x1B) rd = true;
-                                            } else if (re.what == updateEvt) {
-                                                BeginUpdate(rwWin);
-                                                SetPort(rwWin);
-                                                {
-                                                    Rect dr2 = rwWin->portRect;
-                                                    LockPixels(GetGWorldPixMap(rwGW));
-                                                    CopyBits((BitMap *)*GetGWorldPixMap(rwGW),
-                                                             &((GrafPtr)rwWin)->portBits,
-                                                             &rwGR, &dr2, srcCopy, NULL);
-                                                    UnlockPixels(GetGWorldPixMap(rwGW));
-                                                }
-                                                EndUpdate(rwWin);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if (rwGW) DisposeGWorld(rwGW);
-                            if (rwWin) DisposeWindow(rwWin);
                         }
                         break;
                     }
