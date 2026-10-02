@@ -22712,11 +22712,11 @@ static void ShowCityWindow(short cityIndex, short startTab)
     WindowPtr      win = NULL;
     unsigned char *gs, *ext, *extCity, *city;
     short          curPlayer, selectedType, typeList[4], typeCount = 0, tab = startTab, i;
-    short          owner;
+    short          owner, vecState = 0;
     Boolean        mine;
     short          cityX, cityY;
     Boolean        done = false, cancelled = false, redraw = true, tutorialChecked = false;
-    Rect           winRect, overR, tabR[4], doneOuter, doneBtn, armR[4], stopR, bldR[3];
+    Rect           winRect, overR, tabR[4], doneOuter, doneBtn, armR[4], stopR, bldR[3], vToR, vDestR, vSeeR;
     unsigned long  openTick = TickCount();
 
     if (*gGameState == 0 || *gExtState == 0) return;
@@ -22776,6 +22776,9 @@ reloadCity:
         SetRect(&armR[i], CITY_PANE_L + 8 + 48 * i, CITY_PANE_T + 82,
                 CITY_PANE_L + 8 + 48 * i + 32, CITY_PANE_T + 82 + 30);
     SetRect(&stopR, CITY_PANE_L + 200, CITY_PANE_T + 80, CITY_PANE_L + 236, CITY_PANE_T + 116);
+    SetRect(&vToR,   CITY_PANE_L + 16, CITY_PANE_T + 161, CITY_PANE_L + 56, CITY_PANE_T + 201);
+    SetRect(&vDestR, CITY_PANE_L + 16, CITY_PANE_T + 212, CITY_PANE_L + 56, CITY_PANE_T + 252);
+    SetRect(&vSeeR,  CITY_PANE_L + 208, CITY_PANE_T + 41, CITY_PANE_L + 248, CITY_PANE_T + 81);
     for (i = 0; i < 3; i++)
         SetRect(&bldR[i], CITY_PANE_L + 16, CITY_PANE_T + 123 + 48 * i, CITY_PANE_L + 16 + 48, CITY_PANE_T + 123 + 48 * i + 36);
 
@@ -22859,6 +22862,58 @@ cityLoop:
             PenSize(1, 1);
             DrawT3DButton(&doneBtn, ViewString(s, 1000, 5, "\pDone"));
 
+            if (tab == 3) {
+                /* View 3304 Vectoring: "Current:" ring + "%dt"; this city's armies
+                 * in transit (go 1/go 2); See all; "Next turn:" / "Turn after:"
+                 * incoming rings; the vector-to (cicn 3321) and change-destination
+                 * (cicn 3320) buttons with their two-line prompts (DAT 762-771).
+                 * The remake's vectored armies arrive at once, so the transit
+                 * rings stay empty. */
+                short P = CITY_PANE_L, T = CITY_PANE_T, k2, incoming = 0, ci;
+                short vt = *(short *)(extCity + 0x3e);
+                Str255 fmt;
+                for (ci = 0; ci < sCityCount && ci < 99; ci++)
+                    if (*(short *)(ext + 0x24c + ci * 0x5c + 0x3e) == cityIndex) incoming++;
+                GetDATRawString(760, s);
+                SetRect(&r, P + 1, T + 49, P + 62, T + 68);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                DrawProdView(P + 64, T + 43, curPlayer, selectedType);
+                if (selectedType >= 0) {
+                    GetDATRawString(761, fmt);
+                    FormatHeroLine(fmt, "\p", GetProductionTurns(selectedType), s);
+                    SetRect(&r, P + 101, T + 49, P + 126, T + 68);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                }
+                DrawProdView(P + 128, T + 43, curPlayer, -1);
+                DrawProdView(P + 168, T + 43, curPlayer, -1);
+                GetIndString(s, 3300, 10);
+                DrawT3DButton2(&vSeeR, s[0] ? s : "\pSee\rall");
+                GetDATRawString(762, s);
+                SetRect(&r, P + 14, T + 95, P + 94, T + 114);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                GetDATRawString(763, s);
+                SetRect(&r, P + 10, T + 128, P + 94, T + 147);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                for (k2 = 0; k2 < 4; k2++) {
+                    DrawProdView(P + 96 + 40 * k2, T + 89, curPlayer, -1);
+                    DrawProdView(P + 96 + 40 * k2, T + 122, curPlayer, -1);
+                }
+                DrawT3DIconButton(&vToR, CachedCIcon(3321), selectedType >= 0);
+                GetDATRawString(vecState == 1 ? 766 : 764, s);
+                SetRect(&r, P + 64, T + 161, P + 255, T + 180);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                GetDATRawString(vecState == 1 ? 767 : 765, s);
+                SetRect(&r, P + 64, T + 181, P + 255, T + 200);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                DrawT3DIconButton(&vDestR, CachedCIcon(3320), incoming > 0);
+                GetDATRawString(vecState == 2 ? 770 : 768, s);
+                SetRect(&r, P + 64, T + 212, P + 255, T + 231);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                GetDATRawString(vecState == 2 ? 771 : 769, s);
+                SetRect(&r, P + 64, T + 232, P + 255, T + 251);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                /* the current vector target on the overview */
+                if (vt >= 0 && vt < sCityCount) {
+                    unsigned char *tc = sCityData + vt * 0x20;
+                    RGBColor yel = {0xFFFF, 0xFFFF, 0x0000};
+                    RGBForeColor(&yel); PenSize(2, 2);
+                    MoveTo(overR.left + cityX * 2 + 2, overR.top + cityY * 2 + 2);
+                    LineTo(overR.left + *(short *)(tc + 0) * 2 + 2, overR.top + *(short *)(tc + 2) * 2 + 2);
+                    PenSize(1, 1);
+                }
+            }
             if (tab == 1) {
                 /* View 3302 Build: shields, income/defence/owner as on Info (one
                  * pixel lower), Re-name / Raze / Build Prod T3DButtons 48x36 at
@@ -23029,6 +23084,29 @@ cityLoop:
             GlobalToLocal(&lp);
             if (PtInRect(lp, &doneOuter)) {
                 done = true;
+            } else if (tab == 3 && mine && PtInRect(lp, &vToR) && selectedType >= 0) {
+                vecState = (vecState == 1) ? 0 : 1;
+                redraw = true;
+            } else if (tab == 3 && mine && vecState == 1 && PtInRect(lp, &overR)) {
+                /* pick the vector target: the player's city nearest the click
+                 * (the city itself cancels vectoring; PPC FUN_10048138) */
+                short tx = (lp.h - overR.left) / 2, ty = (lp.v - overR.top) / 2, ci, best = -1;
+                long bd = 0x7FFFFFFFL;
+                for (ci = 0; ci < sCityCount && ci < 99; ci++) {
+                    unsigned char *c2 = sCityData + ci * 0x20;
+                    long dx = tx - *(short *)(c2 + 0), dy = ty - *(short *)(c2 + 2);
+                    if (c2[0x17] >= 2 || *(short *)(c2 + 4) != curPlayer) continue;
+                    if (dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; best = ci; }
+                }
+                if (best >= 0) {
+                    short in4 = 0, cj;
+                    for (cj = 0; cj < sCityCount && cj < 99; cj++)
+                        if (*(short *)(ext + 0x24c + cj * 0x5c + 0x3e) == best) in4++;
+                    if (best == cityIndex) *(short *)(extCity + 0x3e) = -1;
+                    else if (in4 < 4) *(short *)(extCity + 0x3e) = best;
+                }
+                vecState = 0;
+                redraw = true;
             } else if (tab == 1 && mine && PtInRect(lp, &bldR[2])) {
                 ShowBuildProduction(cityIndex);
                 SetPort(win);
@@ -23077,7 +23155,7 @@ cityLoop:
                 for (i = 0; i < 4; i++)
                     if (PtInRect(lp, &tabR[i]) && i != tab) {
                         if (i == 0) { tab = 0; redraw = true; }
-                        else if (i == 1 || i == 2) {
+                        else if (i == 1 || i == 2 || i == 3) {
                             /* panes 1-3 show the player's own city nearest to the
                              * one viewed (PPC FUN_1002bf64) */
                             if (!mine) {
@@ -23094,9 +23172,6 @@ cityLoop:
                                 goto reloadCity;
                             }
                             tab = i; redraw = true;
-                        } else {
-                            /* TODO: Build (View 3302) and Vectoring (View 3304) panes */
-                            SysBeep(1);
                         }
                     }
                 if (tab == 2)
