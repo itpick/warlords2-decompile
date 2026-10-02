@@ -110,7 +110,8 @@ static short sDbgOwnedCount = -1;
 static short sPlayerSide    = 0;
 static short sComputerSkill = 0;  /* 0=Knight, 1=Lord, 2=Warlord */
 
-/* Per-faction AI: 0=Human, 1=Knight, 2=Lord, 3=Warlord */
+/* Per-faction AI: 0=Human, 1=Knight, 2=Lord, 3=Warlord, 4=Off (AI_OFF) */
+#define AI_OFF 4
 static short sFactionAI[MAX_FACTIONS] = {0, 1, 1, 1, 1, 1, 1, 1};
 
 /* Game options (Edit Options dialog) */
@@ -131,8 +132,9 @@ static Boolean sNoHumanNoticeShown = false;  /* DAT 215/216 shown once */
 /* "I am the Greatest" mode: sets all AI to Knight (easiest) */
 static Boolean sIAmGreatest = false;
 
-/* Per-faction "Character" toggle (hero starts with faction) */
-static Boolean sFactionCharacter[MAX_FACTIONS] = {true, false, false, false, false, false, false, false};
+/* Per-faction "Character" (View 3020 'chaN'): the original's enhanced-AI
+ * flag at gs+0xE0, only meaningful for computer sides. */
+static Boolean sFactionCharacter[MAX_FACTIONS] = {false, false, false, false, false, false, false, false};
 
 /* Game speed: 0=Slow, 1=Normal, 2=Fast, 3=Instant */
 static short sGameSpeed = 1;
@@ -6746,6 +6748,19 @@ static short CalcDifficultyRatingNoAI(void)
     return DifficultyOptionsTerm() + 80;
 }
 
+/* The same rating over the per-side levels of View 3020: every computer
+ * side adds (level+1)*80/(count*3); no computer side at all gives 80. */
+static short CalcDifficultyRatingSides(void)
+{
+    long sum = 0;
+    short i, n = 0, ai;
+    for (i = 0; i < MAX_FACTIONS; i++)
+        if (sFactionAI[i] >= 1 && sFactionAI[i] <= 3) { sum += (long)sFactionAI[i] * 80; n++; }
+    ai = n ? (short)(sum / (n * 3)) : 80;
+    if (ai > 77) ai = 80;
+    return DifficultyOptionsTerm() + ai;
+}
+
 
 /* ===================================================================
  * ShowEditOptions — Modal dialog for gameplay options
@@ -7252,9 +7267,8 @@ static short ChicagoFont(void)
  * title drawn 16px in;
  * the line resumes 13px past the title's pen end (measured on all three
  * clusters of View 3024). */
-static void DrawT3DCluster(const Rect *v, ConstStr255Param title)
+static void DrawT3DClusterColor(const Rect *v, ConstStr255Param title, const RGBColor *col)
 {
-    RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
     Rect f;
     short tx, tw;
     FontInfo fi;
@@ -7264,7 +7278,10 @@ static void DrawT3DCluster(const Rect *v, ConstStr255Param title)
     GetFontInfo(&fi);
     tw = StringWidth(title);
     tx = f.left + 16;
-    RGBForeColor(&cream);
+    {
+        RGBColor frame = *col;
+        RGBForeColor(&frame);
+    }
     PenSize(2, 2);
     MoveTo(f.left, f.top); LineTo(tx - 4, f.top);                 /* top, left of title */
     MoveTo(tx + tw + 13, f.top); LineTo(f.right - 2, f.top);      /* resumes 13px past the title */
@@ -7272,7 +7289,15 @@ static void DrawT3DCluster(const Rect *v, ConstStr255Param title)
     MoveTo(f.left, f.bottom - 2); LineTo(f.right - 2, f.bottom - 2);  /* bottom */
     MoveTo(f.right - 2, f.top); LineTo(f.right - 2, f.bottom - 2);    /* right */
     PenSize(1, 1);
-    DrawEmbossedStringIn(title, tx, v->top + fi.ascent, &cream, 0x5555, 0xBBBB);
+    DrawEmbossedStringIn(title, tx, v->top + fi.ascent, col, 0x5555, 0xBBBB);
+}
+
+/* The default cream cluster (View 3024); View 3020 frames each side's
+ * cluster in the side's colour through DrawT3DClusterColor. */
+static void DrawT3DCluster(const Rect *v, ConstStr255Param title)
+{
+    RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
+    DrawT3DClusterColor(v, title, &cream);
 }
 
 /* Centred / left / right embossed text in a TSunkenText view rect. */
@@ -7562,6 +7587,413 @@ static short RunEasyGameSetup(char names[][FACTION_NAME_LEN + 1], short factionC
 }
 
 /* ===================================================================
+ * RunMoreGameSetup — View 3020 "More Choices", the original's eight-side
+ * Game Setup. 507x348 altDBoxProc window (the View's 'wind' record; the
+ * 364x510 marble PICT 1001 behind it is clipped), centred like View 3024.
+ * Two columns of four T3DClusters 'clu1'..'clu8' (75x161), each framed
+ * and titled in the side's colour and holding a T3DIconButton 'icoN'
+ * (41x41, the side's portrait), a TRoller 'rolN' (23x84, cycling the
+ * 'Roll' 3020 states Knight/Lord/Warlord/Off/Human) and a T3DCheckBox
+ * 'chaN' "Character" (the enhanced-AI flag, dimmed unless the side is a
+ * computer). Right column: the Options cluster (popup, Edit Options, I am
+ * the Greatest), the difficulty rating, E-mail game / Set Addresses /
+ * Select Random Characters (dimmed as on the original without an e-mail
+ * game or a character set), Fewer Choices and the default Begin Game.
+ * Every position below is the View record's (v,h), window-relative.
+ * Returns 0 = Begin Game, 1 = Fewer Choices, 2 = cancelled (Escape).
+ * =================================================================== */
+#define MORE_W 507
+#define MORE_H 348
+
+/* 'Roll' 3020 state order Knight, Lord, Warlord, Off, Human <-> sFactionAI */
+static short RollerIndexOfAI(short ai)  { return ai == 0 ? 4 : ai - 1; }
+static short AIOfRollerIndex(short idx) { return idx == 4 ? 0 : idx + 1; }
+
+/* A side slot the scenario does not use: beyond the named slots, nameless,
+ * or carrying the SCN's literal "Not Used". Such a side stays Off. */
+static Boolean SetupSlotUnused(char names[][FACTION_NAME_LEN + 1], short factionCount, short i)
+{
+    const char *n = names[i];
+    if (i >= factionCount || n[0] == 0) return true;
+    return n[0] == 'N' && n[1] == 'o' && n[2] == 't' && n[3] == ' ' &&
+           (n[4] == 'U' || n[4] == 'u') && n[5] == 's' && n[6] == 'e' && n[7] == 'd';
+}
+
+/* Side colour code: the SCN colour array (original gs+0xA0 = SCN+0x9F as
+ * big-endian shorts; the remake copies the SCN raw, so the code is the low
+ * byte at gs+0xA0+slot*2). Every shipped SCN carries 15,7,8,9,10,6,5,0. */
+static short SideColourCode(short slot)
+{
+    unsigned char *gs;
+    if (*gGameState == 0) return 15;
+    gs = (unsigned char *)*gGameState;
+    return gs[0xA0 + slot * 2] & 0x0F;
+}
+
+/* Colour code -> RGB as the original frames View 3020's clusters (measured
+ * on Mac OS 8.6 with the display gamma removed): 15 white, 7 yellow,
+ * 8 orange, 9 red, 10 green, 6 blue, 5 light blue, 0 black; 3 is the grey
+ * the original stamps on "Not Used" sides. Other codes: pltt 1000 entries. */
+static void SideColourRGB(short code, RGBColor *c)
+{
+    static const unsigned short tab[16][3] = {
+        {0x0000, 0x0000, 0x0000},   /* 0  black */
+        {0x8F8F, 0x8F8F, 0x8F8F},   /* 1 */
+        {0x8F8F, 0x8F8F, 0x8F8F},   /* 2 */
+        {0x6F6F, 0x6F6F, 0x6F6F},   /* 3  grey */
+        {0x4F4F, 0x4F4F, 0x4F4F},   /* 4 */
+        {0x4242, 0xBDBD, 0xFFFF},   /* 5  light blue */
+        {0x0000, 0x5151, 0xCFCF},   /* 6  blue */
+        {0xFFFF, 0xFFFF, 0x0000},   /* 7  yellow */
+        {0xFFFF, 0x7F7F, 0x0000},   /* 8  orange */
+        {0xC2C2, 0x1919, 0x0000},   /* 9  red */
+        {0x4F4F, 0xABAB, 0x1919},   /* 10 green */
+        {0x0000, 0x8A8A, 0x0202},   /* 11 */
+        {0x0000, 0x5454, 0x0000},   /* 12 */
+        {0xA3A3, 0x5151, 0x0000},   /* 13 */
+        {0x7070, 0x3030, 0x0000},   /* 14 */
+        {0xFFFF, 0xFFFF, 0xFFFF},   /* 15 white */
+    };
+    if (code < 0 || code > 15) code = 15;
+    c->red = tab[code][0]; c->green = tab[code][1]; c->blue = tab[code][2];
+}
+
+/* 'Roll' 3020: five Str255 records of 258 bytes (Knight, Lord, Warlord,
+ * Off, Human). */
+static ConstStr255Param RollerString(Str255 buf, short idx)
+{
+    static const unsigned char *fallback[5] = {
+        "\pKnight", "\pLord", "\pWarlord", "\pOff", "\pHuman"
+    };
+    Handle h;
+    if (idx < 0 || idx > 4) idx = 0;
+    h = GetResource('Roll', 3020);
+    if (h != NULL && GetHandleSize(h) >= (long)(idx + 1) * 258) {
+        unsigned char *p = (unsigned char *)*h + idx * 258;
+        BlockMoveData(p, buf, p[0] + 1);
+        return buf;
+    }
+    BlockMoveData(fallback[idx], buf, fallback[idx][0] + 1);
+    return buf;
+}
+
+/* Side portrait of View 3020's 'icoN' (PPC FUN_10057e5c): cicn 3020 +
+ * level for a computer side (Knight/Lord/Warlord Macs), 3024 (woman) /
+ * 3025 (man) for a human on an even / odd slot; an Off side shows the
+ * disabled face with no icon. */
+static CIconHandle SidePortraitIcon(short slot, short ai)
+{
+    static CIconHandle icons[6];
+    static Boolean loaded = false;
+    short k;
+    if (!loaded) {
+        for (k = 0; k < 6; k++) icons[k] = GetCIcon(3020 + k);
+        loaded = true;
+    }
+    if (ai == AI_OFF) return NULL;
+    if (ai == 0) return icons[(slot & 1) ? 5 : 4];
+    return icons[ai - 1];
+}
+
+/* TRoller art (23x84), lifted from the original as pltt 1000 indices: the
+ * MacApp bevel (dark 0x5555 above/left, light 0xBBBB below/right, 0x8888
+ * where they meet) around a black-outlined horizontal cylinder — the body
+ * shades 0x6F / 0x8F / 0xBB / white / 0xBB / 0x8F / 0x6F top to bottom, a
+ * one- or two-pixel cap band stands at the left end and the right end is
+ * stepped. Columns 0-4 are x = 0..4, column 5 fills x = 5..80 and columns
+ * 6-8 are x = 81..83. */
+#define ROLLER_W 84
+#define ROLLER_H 23
+static const unsigned char kRollerArt[ROLLER_H][9] = {
+    {251, 251, 251, 251, 251,  251,  251, 251, 249},
+    {251, 255, 255, 255, 255,  255,  255, 247, 249},
+    {251, 255, 255,   3,   3,    3,  255, 247, 249},
+    {251, 255, 255,   1,   1,    1,  255, 247, 249},
+    {251, 255,   1, 255,   1,    1,    1, 255, 249},
+    {251, 255,   1, 255, 247,  247,  247, 255, 249},
+    {251, 255,   1, 255, 247,  247,  247, 255, 248},
+    {251, 255,   1,   3, 255,  247,  247, 247, 255},
+    {251, 255,   3,   3, 255,    0,    0,   0, 255},
+    {251, 255,   3,   3, 255,    0,    0,   0, 255},
+    {251, 255,   3,   3, 255,  247,  247, 247, 255},
+    {251, 255,   3,   3, 255,    0,    0,   0, 255},
+    {251, 255,   3,   3, 255,  247,  247, 247, 255},
+    {251, 255,   3,   3, 255,  247,  247, 247, 255},
+    {251, 255,   3,   3, 255,  247,  247, 247, 255},
+    {251, 255,   1,   3, 255,  247,  247, 247, 255},
+    {251, 255,   1, 255, 247,  247,  247, 255, 248},
+    {251, 255,   1, 255,   1,    1,    1, 255, 249},
+    {251, 255,   1, 255,   1,    1,    1, 255, 249},
+    {251, 255, 255,   3,   3,    3,  255, 247, 249},
+    {251, 255, 255,   3,   3,    3,  255, 247, 249},
+    {251, 255, 255, 255, 255,  255,  255, 247, 249},
+    {251, 247, 247, 247, 247,  247,  247, 247, 249},
+};
+
+/* TRoller: the art above plus the current state in Chicago 12 black,
+ * centred like a T3DButton label (cap ink rows top+6..top+14). */
+static void DrawTRoller(short left, short top, ConstStr255Param item)
+{
+    short x, y, w;
+    RGBColor c, black = {0, 0, 0};
+    if (sGamePal != NULL) {
+        for (y = 0; y < ROLLER_H; y++) {
+            for (x = 0; x < 5; x++) {
+                GetEntryColor(sGamePal, kRollerArt[y][x], &c);
+                SetCPixel(left + x, top + y, &c);
+            }
+            for (x = 0; x < 3; x++) {
+                GetEntryColor(sGamePal, kRollerArt[y][6 + x], &c);
+                SetCPixel(left + ROLLER_W - 3 + x, top + y, &c);
+            }
+            GetEntryColor(sGamePal, kRollerArt[y][5], &c);
+            RGBForeColor(&c);
+            MoveTo(left + 5, top + y); LineTo(left + ROLLER_W - 4, top + y);
+        }
+    }
+    TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+    w = StringWidth(item);
+    RGBForeColor(&black);
+    MoveTo((left + left + ROLLER_W - w + 1) / 2, top + 15);
+    DrawString(item);
+}
+
+/* Dimmed T3DCheckBox (measured on View 3020's 'chaN' / 'mail'): no bevel,
+ * a 0x8888 12x12 frame filled 0xDDDD at (left+2, top+2); the label is a
+ * single 0xAAAA layer where the embossed label's face would be. */
+static void DrawT3DCheckBoxDim(short left, short top, Boolean on)
+{
+    RGBColor frame = {0x8888, 0x8888, 0x8888}, fill = {0xDDDD, 0xDDDD, 0xDDDD};
+    Rect b;
+    SetRect(&b, left + 2, top + 2, left + 14, top + 14);
+    RGBForeColor(&frame); FrameRect(&b);
+    InsetRect(&b, 1, 1);
+    RGBForeColor(&fill); PaintRect(&b);
+    if (on) {
+        RGBForeColor(&frame);
+        MoveTo(b.left, b.top); LineTo(b.right - 1, b.bottom - 1);
+        MoveTo(b.right - 1, b.top); LineTo(b.left, b.bottom - 1);
+    }
+}
+
+static void DrawDimLabel(ConstStr255Param s, short x, short baseline)
+{
+    RGBColor dim = {0xAAAA, 0xAAAA, 0xAAAA};
+    RGBForeColor(&dim);
+    MoveTo(x + 1, baseline + 1);
+    DrawString(s);
+}
+
+/* Disabled T3DButton (View 3020 'addr' / 'sele'): the 0x5555 outline and
+ * flat 0xCCCC face of DrawT3DDisabledFace, the label 0x7777 over a 0xBBBB
+ * highlight (no dark layer). Lines split on '\r' sit 16px apart from the
+ * 21px-button baseline (top+13), as the two-line 'sele' shows. */
+static void DrawT3DButtonDisabled(const Rect *r, ConstStr255Param label)
+{
+    RGBColor fg = {0x7777, 0x7777, 0x7777}, light = {0xBBBB, 0xBBBB, 0xBBBB};
+    Str255 line;
+    short pos = 1, base = r->top + 13, w, x;
+    DrawT3DDisabledFace(r);
+    TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+    while (pos <= label[0]) {
+        short n = 0;
+        while (pos + n <= label[0] && label[pos + n] != '\r') n++;
+        line[0] = (unsigned char)n;
+        BlockMoveData(label + pos, line + 1, n);
+        w = StringWidth(line);
+        x = (r->left + r->right - w + 1) / 2 - 1;
+        RGBForeColor(&light); MoveTo(x + 2, base + 2); DrawString(line);
+        RGBForeColor(&fg);    MoveTo(x + 1, base + 1); DrawString(line);
+        pos += n + 1;
+        base += 16;
+    }
+}
+
+static short RunMoreGameSetup(char names[][FACTION_NAME_LEN + 1], short factionCount)
+{
+    /* 'clu1'..'clu8' (v,h): two columns of four */
+    static const short kClu[MAX_FACTIONS][2] = {
+        {7, 3}, {92, 3}, {177, 3}, {262, 3}, {7, 172}, {92, 172}, {177, 172}, {262, 172}
+    };
+    WindowPtr win;
+    Rect wr, r;
+    short i, result = -1, mbar = GetMBarHeight();
+    Rect screen = qd.screenBits.bounds;
+    MenuHandle presetMenu;
+    Rect popR, editR, addrR, seleR, feweR, goR, goBtn;
+    Str255 s;
+    Boolean unused[MAX_FACTIONS];
+
+    for (i = 0; i < MAX_FACTIONS; i++) {
+        unused[i] = SetupSlotUnused(names, factionCount, i);
+        if (unused[i]) sFactionAI[i] = AI_OFF;
+        else if (sFactionAI[i] < 0 || sFactionAI[i] > AI_OFF) sFactionAI[i] = 1;
+    }
+
+    /* MacApp centres the window including altDBoxProc's 2px shadow */
+    SetRect(&wr, (screen.right - (MORE_W + 2)) / 2, mbar + (screen.bottom - mbar - (MORE_H + 2)) / 2, 0, 0);
+    wr.right = wr.left + MORE_W; wr.bottom = wr.top + MORE_H;
+    win = NewCWindow(NULL, &wr, "\p", false, altDBoxProc, (WindowPtr)-1L, false, 0);
+    if (win == NULL) return 2;
+    ApplyGamePalette(win);
+    SetPort(win);
+    TextFont(ChicagoFont()); TextSize(12);
+
+    presetMenu = NewMenu(240, "\p");                 /* CMNU 70 items */
+    AppendMenu(presetMenu, "\pBeginner;Intermediate;Advanced");
+    InsertMenu(presetMenu, -1);
+
+    /* 'opti' (7,340) 108x162: 'popu' (20,16) 19x132, 'edit' (49,16) 21x132 */
+    SetRect(&popR,  340 + 16, 7 + 20, 340 + 16 + 132, 7 + 20 + 19);
+    SetRect(&editR, 340 + 16, 7 + 49, 340 + 16 + 132, 7 + 49 + 21);
+    SetRect(&addrR, 356, 181, 356 + 132, 181 + 20);      /* 'addr' */
+    SetRect(&seleR, 356, 218, 356 + 132, 218 + 37);      /* 'sele' */
+    SetRect(&feweR, 356, 272, 356 + 132, 272 + 21);      /* 'fewe' */
+    SetRect(&goR,   352, 310, 352 + 140, 310 + 29);      /* 'go  ' */
+    goBtn = goR; InsetRect(&goBtn, 4, 4);
+
+    ShowWindow(win);
+    FlushEvents(everyEvent, 0);
+
+    while (result < 0) {
+        EventRecord evt;
+        if (!WaitNextEvent(everyEvent, &evt, 30, NULL)) continue;
+        if (evt.what == updateEvt && (WindowPtr)evt.message == win) {
+            RGBColor black = {0, 0, 0}, cream = {0xFFFF, 0xFFFF, 0xCCCC};
+            BeginUpdate(win);
+            {   /* TPlainPicture: PICT 1001 marble at the origin */
+                PicHandle marble = GetPicture(1001);
+                if (marble != NULL) {
+                    Rect pf = (**marble).picFrame;
+                    OffsetRect(&pf, -pf.left, -pf.top);
+                    DrawPicture(marble, &pf);
+                }
+            }
+
+            for (i = 0; i < MAX_FACTIONS; i++) {
+                short v = kClu[i][0], h = kClu[i][1];
+                RGBColor col;
+                Rect ir;
+                Str255 title;
+                SideColourRGB(SideColourCode(i), &col);
+                if (unused[i]) {
+                    BlockMoveData("\pNot used", title, 9);
+                } else {
+                    short n = 0;
+                    while (n < FACTION_NAME_LEN && names[i][n]) n++;
+                    title[0] = (unsigned char)n; BlockMoveData(names[i], title + 1, n);
+                }
+                SetRect(&r, h, v, h + 161, v + 75);
+                DrawT3DClusterColor(&r, title, &col);
+
+                SetRect(&ir, h + 14, v + 21, h + 14 + 41, v + 21 + 41);      /* 'icoN' */
+                DrawT3DIconButton(&ir, SidePortraitIcon(i, sFactionAI[i]), sFactionAI[i] != AI_OFF);
+
+                DrawTRoller(h + 65, v + 20, RollerString(s, RollerIndexOfAI(sFactionAI[i])));  /* 'rolN' */
+
+                ViewString(s, 3020, 9, "\pCharacter");                        /* 'chaN' */
+                TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+                if (sFactionAI[i] >= 1 && sFactionAI[i] <= 3) {
+                    DrawT3DCheckBox(h + 64, v + 48, sFactionCharacter[i]);
+                    DrawEmbossedString(s, h + 64 + 17, v + 48 + 11, &cream);
+                } else {
+                    DrawT3DCheckBoxDim(h + 64, v + 48, false);
+                    DrawDimLabel(s, h + 64 + 17, v + 48 + 11);
+                }
+            }
+
+            SetRect(&r, 340, 7, 340 + 162, 7 + 108);
+            DrawT3DCluster(&r, ViewString(s, 3020, 4, "\pOptions"));
+            DrawT3DButton(&editR, ViewString(s, 3010, 9, "\pEdit Options\311"));
+            TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+            DrawT3DCheckBox(340 + 14, 7 + 80, sIAmGreatest);                    /* 'grea' */
+            DrawEmbossedString(ViewString(s, 3020, 2, "\pI am the Greatest"), 340 + 14 + 17,
+                               7 + 80 + 11, &cream);
+            {
+                Str255 num, line;
+                NumToString((long)CalcDifficultyRatingSides(), num);
+                BlockMoveData("\pDifficulty Rating ", line, 19);
+                BlockMoveData(num + 1, line + 1 + line[0], num[0]); line[0] += num[0];
+                line[++line[0]] = '%';
+                SetRect(&r, 340, 128, 340 + 162, 128 + 19);                     /* 'diff' */
+                DrawSunkenText(&r, line, IlluriaFont(), 17, 1);
+            }
+            TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+            DrawT3DCheckBoxDim(371, 164, false);                                /* 'mail' */
+            DrawDimLabel(ViewString(s, 3020, 10, "\pE-mail game"), 371 + 17, 164 + 11);
+            DrawT3DButtonDisabled(&addrR, ViewString(s, 3010, 15, "\pSet Addresses"));
+            DrawT3DButtonDisabled(&seleR, ViewString(s, 3010, 10, "\pSelect Random\rCharacters"));
+            DrawT3DButton(&feweR, ViewString(s, 3010, 22, "\pFewer Choices"));
+            RGBForeColor(&black);
+            PenSize(3, 3); FrameRoundRect(&goR, 16, 16); PenSize(1, 1);
+            DrawT3DButton(&goBtn, ViewString(s, 3010, 11, "\pBegin Game"));
+            {
+                Str255 item;
+                GetMenuItemText(presetMenu, sOptionsPreset + 1, item);
+                DrawT3DPopup(popR.left, popR.top, item);
+            }
+            EndUpdate(win);
+        } else if (evt.what == mouseDown) {
+            WindowPtr hit;
+            Point pt = evt.where;
+            Rect rr;
+            if (FindWindow(pt, &hit) != inContent || hit != win) continue;
+            GlobalToLocal(&pt);
+            for (i = 0; i < MAX_FACTIONS; i++) {
+                short v = kClu[i][0], h = kClu[i][1];
+                SetRect(&rr, h + 65, v + 20, h + 65 + ROLLER_W, v + 20 + ROLLER_H);   /* 'rolN' */
+                if (PtInRect(pt, &rr) && !unused[i]) {
+                    sFactionAI[i] = AIOfRollerIndex((RollerIndexOfAI(sFactionAI[i]) + 1) % 5);
+                    InvalRect(&win->portRect);
+                }
+                SetRect(&rr, h + 64, v + 48, h + 64 + 90, v + 48 + 16);              /* 'chaN' */
+                if (PtInRect(pt, &rr) && sFactionAI[i] >= 1 && sFactionAI[i] <= 3) {
+                    sFactionCharacter[i] = !sFactionCharacter[i];
+                    InvalRect(&win->portRect);
+                }
+            }
+            SetRect(&rr, 340 + 14, 7 + 80, 340 + 14 + 138, 7 + 80 + 16);   /* 'grea' */
+            if (PtInRect(pt, &rr)) {
+                sIAmGreatest = !sIAmGreatest;
+                if (sIAmGreatest)   /* "I am the greatest": every computer side a Warlord */
+                    for (i = 0; i < MAX_FACTIONS; i++)
+                        if (sFactionAI[i] >= 1 && sFactionAI[i] <= 3) sFactionAI[i] = 3;
+                InvalRect(&win->portRect);
+            }
+            if (PtInRect(pt, &popR)) {
+                Point g;
+                long choice;
+                g.h = popR.left; g.v = popR.top;
+                LocalToGlobal(&g);
+                choice = PopUpMenuSelect(presetMenu, g.v, g.h, sOptionsPreset + 1);
+                if ((choice & 0xFFFF) != 0) {
+                    sOptionsPreset = (short)(choice & 0xFFFF) - 1;
+                    ApplyOptionsPreset(sOptionsPreset);
+                }
+                InvalRect(&win->portRect);   /* difficulty rating may change */
+            } else if (PtInRect(pt, &goR)) {
+                result = 0;
+            } else if (PtInRect(pt, &feweR)) {
+                result = 1;
+            } else if (PtInRect(pt, &editR)) {
+                ShowEditOptions();
+                SetPort(win);
+                InvalRect(&win->portRect);
+            }
+        } else if (evt.what == keyDown) {
+            char key = evt.message & charCodeMask;
+            if (key == 0x0D || key == 0x03) result = 0;
+            else if (key == 0x1B) result = 2;
+        }
+    }
+    DisposeWindow(win);
+    DeleteMenu(240);
+    DisposeMenu(presetMenu);
+    return result;
+}
+
+
+/* ===================================================================
  * ShowGameSetup — Display game setup dialog
  *
  * Shows a modal window where the player chooses their faction and
@@ -7571,26 +8003,12 @@ static short RunEasyGameSetup(char names[][FACTION_NAME_LEN + 1], short factionC
  * =================================================================== */
 static Boolean ShowGameSetup(void)
 {
-    WindowPtr  setupWin;
-    GWorldPtr  offscreen = NULL;
-    Rect       winRect;
-    Boolean    done = false;
     Boolean    beginGame = false;
     short      selectedSide = 0;
     short      computerSkill = 0;
-    Boolean    showMoreChoices = false;
-    Rect       screenRect = qd.screenBits.bounds;
     char       factionNames[MAX_FACTIONS][FACTION_NAME_LEN + 1];
     short      factionCount = 0;
     short      i;
-    short      winW, winH;
-
-    static const unsigned char *aiLabels[4] = {
-        "\pHuman", "\pKnight", "\pLord", "\pWarlord"
-    };
-    static const unsigned char *presetLabels[3] = {
-        "\pBeginner", "\pIntermediate", "\pAdvanced"
-    };
 
     /* Parse faction names from SCN resource (offset 0, 8x20 bytes) */
     if (*gGameState != 0) {
@@ -7607,981 +8025,41 @@ static Boolean ShowGameSetup(void)
     if (factionCount == 0)
         factionCount = MAX_FACTIONS;
 
-    /* The original's default setup is View 3024 (easy); "More Choices" opens
-     * the expanded one, still the remake's own layout below. */
+    /* The original's default setup is View 3024 (easy); "More Choices"
+     * opens View 3020 and "Fewer Choices" comes back, until Begin Game or
+     * Escape. Both views work on sFactionAI / sFactionCharacter. */
     {
-        short easy = RunEasyGameSetup(factionNames, factionCount, &selectedSide, &computerSkill);
-        for (i = 0; i < factionCount; i++)
-            sFactionAI[i] = (i == selectedSide) ? 0 : (sIAmGreatest ? 3 : computerSkill + 1);   /* "I am the greatest": every AI a Warlord */
-        if (easy == 0)      { done = true; beginGame = true; }
-        else if (easy == 2) { done = true; }
-        else                showMoreChoices = true;
-    }
-
-    /* Simple mode: 460x340 */
-    winW = showMoreChoices ? 560 : 460;
-    winH = showMoreChoices ? 420 : 340;
-
-    SetRect(&winRect,
-        (screenRect.right - winW) / 2,
-        (screenRect.bottom - winH) / 2,
-        (screenRect.right - winW) / 2 + winW,
-        (screenRect.bottom - winH) / 2 + winH);
-
-    setupWin = done ? NULL : NewCWindow(NULL, &winRect, "\p", false,
-                          plainDBox, (WindowPtr)-1L, false, 0);
-    if (setupWin == NULL && !done)
-        return false;
-
-    if (setupWin != NULL) {
-        SetPort(setupWin);
-        ShowWindow(setupWin);
-    }   /* show up front — we draw directly now (the old
-                             * ShowWindow lived inside the offscreen-blit block). */
-
-    {
-        /* Draw the setup screen DIRECTLY to the window (no offscreen buffer).
-         * An offscreen GWorld matched PICT 1001's dark-granite marble to the
-         * wrong palette and washed it out (same regression as the city-build
-         * dialog). The window has the correct screen palette, so drawing
-         * straight to it keeps the marble dark, matching the original. Redraw is
-         * on-demand (only after a click), so there is no continuous flicker.
-         * offscreen stays NULL; every `if (offscreen != NULL)` path is skipped. */
-        offscreen = NULL;
-    }
-
-    FlushEvents(everyEvent, 0);
-
-    {
-        Boolean needsRedraw = true;
-        Boolean setupShown = false;
-        unsigned long startTick = TickCount();
-
-        while (!done) {
-            EventRecord evt;
-
-            if (needsRedraw) {
-                Rect r;
-                CGrafPtr savedPort;
-                GDHandle savedDevice;
-                SetRect(&r, 0, 0, winW, winH);
-
-                if (offscreen != NULL) {
-                    GetGWorld(&savedPort, &savedDevice);
-                    SetGWorld(offscreen, NULL);
-                    LockPixels(GetGWorldPixMap(offscreen));
-                }
-
-                /* Dark background */
-                {
-                    DrawMarbleBackground(&r);
-                }
-
-                /* Title */
-                {
-                    RGBColor gold = {0xFFFF, 0xCCCC, 0x3333};
-                    RGBForeColor(&gold);
-                    TextFont(2);
-                    TextSize(18);
-                    TextFace(bold);
-                    MoveTo(20, 30);
-                    DrawString(GetCachedString(STR_GAME_SETUP, 0, "\pGame Setup"));
-                }
-
-                if (!showMoreChoices) {
-                    /* ========== SIMPLE MODE ========== */
-
-                    /* "Side to play" label */
-                    {
-                        RGBColor labelColor = {0xFFFF, 0xCCCC, 0x3333};
-                        RGBForeColor(&labelColor);
-                        TextFont(2);
-                        TextSize(12);
-                        TextFace(bold);
-                        MoveTo(30, 60);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 1, "\pSide to play"));
-                    }
-
-                    /* Faction radio buttons with shield icons */
-                    TextFont(3);
-                    TextSize(10);
-                    TextFace(0);
-                    for (i = 0; i < factionCount; i++) {
-                        short yPos = 78 + i * 22;
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        Rect radioRect;
-
-                        SetRect(&radioRect, 35, yPos - 9, 47, yPos + 3);
-                        RGBForeColor(&white);
-                        FrameOval(&radioRect);
-
-                        if (i == selectedSide) {
-                            Rect fillRect;
-                            SetRect(&fillRect, 38, yPos - 6, 44, yPos);
-                            PaintOval(&fillRect);
-                        }
-
-                        /* Shield icon next to radio button (13x15 small shield) */
-                        if (sShieldsLoaded) {
-                            Rect shR;
-                            SetRect(&shR, 52, yPos - 10, 52 + 13, yPos + 5);
-                            DrawSmallShieldIcon(i, &shR);
-                        }
-
-                        RGBForeColor(&white);
-                        MoveTo(70, yPos);
-                        {
-                            Str255 pName;
-                            short nlen = 0;
-                            while (nlen < FACTION_NAME_LEN && factionNames[i][nlen] != 0)
-                                nlen++;
-                            pName[0] = (unsigned char)nlen;
-                            BlockMoveData(factionNames[i], pName + 1, nlen);
-                            DrawString(pName);
-                        }
-                    }
-
-                    /* "Computer Level" label (matches the original game) */
-                    {
-                        RGBColor labelColor = {0xFFFF, 0xCCCC, 0x3333};
-                        RGBForeColor(&labelColor);
-                        TextFont(2);
-                        TextSize(12);
-                        TextFace(bold);
-                        MoveTo(260, 60);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 2, "\pComputer Level"));
-                    }
-
-                    /* Skill level radio buttons */
-                    TextFont(3);
-                    TextSize(10);
-                    TextFace(0);
-                    for (i = 0; i < 3; i++) {
-                        short yPos = 78 + i * 22;
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        Rect radioRect;
-
-                        SetRect(&radioRect, 265, yPos - 9, 277, yPos + 3);
-                        RGBForeColor(&white);
-                        FrameOval(&radioRect);
-
-                        if (i == computerSkill) {
-                            Rect fillRect;
-                            SetRect(&fillRect, 268, yPos - 6, 274, yPos);
-                            PaintOval(&fillRect);
-                        }
-
-                        MoveTo(282, yPos);
-                        if (i == 0) DrawString(GetCachedString(STR_GAME_SETUP, 3, "\pKnight"));
-                        else if (i == 1) DrawString(GetCachedString(STR_GAME_SETUP, 4, "\pLord"));
-                        else DrawString(GetCachedString(STR_GAME_SETUP, 5, "\pWarlord"));
-                    }
-
-                    /* "Options" label */
-                    {
-                        RGBColor labelColor = {0xFFFF, 0xCCCC, 0x3333};
-                        RGBForeColor(&labelColor);
-                        TextFont(2);
-                        TextSize(12);
-                        TextFace(bold);
-                        MoveTo(260, 160);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 6, "\pOptions"));
-                    }
-
-                    /* Preset dropdown */
-                    {
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        RGBColor black = {0, 0, 0};
-                        Rect dropRect;
-                        SetRect(&dropRect, 260, 170, 410, 188);
-                        RGBForeColor(&white);
-                        PaintRect(&dropRect);
-                        RGBForeColor(&black);
-                        FrameRect(&dropRect);
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(0);
-                        MoveTo(266, 184);
-                        DrawString(presetLabels[sOptionsPreset]);
-                    }
-
-                    /* "Edit Options..." button */
-                    {
-                        RGBColor black = {0, 0, 0};
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        Rect editOptBtn;
-                        SetRect(&editOptBtn, 260, 196, 410, 214);
-                        RGBForeColor(&white);
-                        PaintRoundRect(&editOptBtn, 8, 8);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&editOptBtn, 8, 8);
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(0);
-                        MoveTo(editOptBtn.left + 18, editOptBtn.bottom - 5);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 7, "\pEdit Options..."));
-                    }
-
-                    /* "I am the Greatest" checkbox (original shows it here, in the
-                     * main view's Options section) — sets all AI to easiest. */
-                    {
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        Rect cbRect;
-                        SetRect(&cbRect, 260, 220, 272, 232);
-                        if (sIAmGreatest) {
-                            RGBColor checkGreen = {0x4444, 0xFFFF, 0x4444};
-                            RGBForeColor(&checkGreen);
-                            PaintRect(&cbRect);
-                            RGBForeColor(&white);
-                            MoveTo(cbRect.left + 2, cbRect.bottom - 3);
-                            LineTo(cbRect.left + 4, cbRect.bottom - 1);
-                            LineTo(cbRect.right - 2, cbRect.top + 2);
-                        } else {
-                            RGBColor dark = {0x2222, 0x2222, 0x2222};
-                            RGBForeColor(&dark);
-                            PaintRect(&cbRect);
-                        }
-                        RGBForeColor(&white);
-                        FrameRect(&cbRect);
-                        TextFont(3); TextSize(10); TextFace(0);
-                        MoveTo(278, 230);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 13, "\pI am the Greatest"));
-                    }
-
-                    /* Difficulty rating */
-                    {
-                        RGBColor valueColor = {0xCCCC, 0xDDDD, 0xFFFF};
-                        Str255 numStr;
-                        short rating = CalcDifficultyRating(computerSkill);
-                        RGBForeColor(&valueColor);
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(0);
-                        MoveTo(260, 252);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 8, "\pDifficulty Rating: "));
-                        NumToString((long)rating, numStr);
-                        DrawString(numStr);
-                        DrawString("\p%");
-                    }
-
-                    /* Army Set dropdown */
-                    if (sArmySetCount > 0) {
-                        RGBColor labelColor = {0xFFFF, 0xCCCC, 0x3333};
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        RGBColor black = {0, 0, 0};
-                        Rect armyDropRect;
-                        RGBForeColor(&labelColor);
-                        TextFont(2);
-                        TextSize(12);
-                        TextFace(bold);
-                        MoveTo(30, 260);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 9, "\pArmy Set"));
-
-                        SetRect(&armyDropRect, 30, 268, 220, 286);
-                        RGBForeColor(&white);
-                        PaintRect(&armyDropRect);
-                        RGBForeColor(&black);
-                        FrameRect(&armyDropRect);
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(0);
-                        MoveTo(36, 282);
-                        {
-                            Str255 setName;
-                            short sn;
-                            for (sn = 0; sArmySetNames[sSelectedArmySet][sn] && sn < 255; sn++)
-                                setName[sn + 1] = sArmySetNames[sSelectedArmySet][sn];
-                            setName[0] = (unsigned char)sn;
-                            DrawString(setName);
-                        }
-                    }
-
-                    /* Buttons */
-                    {
-                        RGBColor black = {0, 0, 0};
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        Rect moreBtnRect, beginBtnRect;
-
-                        SetRect(&moreBtnRect, 30, 300, 170, 322);
-                        SetRect(&beginBtnRect, 290, 300, 430, 322);
-
-                        /* "More Choices" */
-                        RGBForeColor(&white);
-                        PaintRoundRect(&moreBtnRect, 8, 8);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&moreBtnRect, 8, 8);
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(0);
-                        MoveTo(moreBtnRect.left + 22, moreBtnRect.bottom - 5);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 10, "\pMore Choices"));
-
-                        /* "Begin Game" (default button) */
-                        RGBForeColor(&white);
-                        PaintRoundRect(&beginBtnRect, 8, 8);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&beginBtnRect, 8, 8);
-                        PenSize(2, 2);
-                        FrameRoundRect(&beginBtnRect, 8, 8);
-                        PenSize(1, 1);
-                        TextFace(bold);
-                        MoveTo(beginBtnRect.left + 26, beginBtnRect.bottom - 5);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 11, "\pBegin Game"));
-                    }
-                } else {
-                    /* ========== EXPANDED MODE (More Choices) ========== */
-
-                    /* 4 rows x 2 columns of faction boxes */
-                    for (i = 0; i < factionCount; i++) {
-                        short col = i % 2;
-                        short row = i / 2;
-                        short bx = 15 + col * 145;
-                        short by = 50 + row * 68;
-                        Rect boxRect;
-                        RGBColor borderColor;
-                        RGBColor boxBg = {0x2000, 0x1800, 0x3000};
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        RGBColor black = {0, 0, 0};
-
-                        SetRect(&boxRect, bx, by, bx + 135, by + 60);
-
-                        /* Box background */
-                        RGBForeColor(&boxBg);
-                        PaintRect(&boxRect);
-
-                        /* Colored border from player colors */
-                        borderColor = sPlayerColors[i + 1];
-                        RGBForeColor(&borderColor);
-                        PenSize(2, 2);
-                        FrameRect(&boxRect);
-                        PenSize(1, 1);
-
-                        /* Shield icon in faction box (13x15 small shield) */
-                        if (sShieldsLoaded) {
-                            Rect shR;
-                            SetRect(&shR, bx + 4, by + 3, bx + 4 + 13, by + 3 + 15);
-                            DrawSmallShieldIcon(i, &shR);
-                        }
-
-                        /* Faction name (bold, offset for shield) */
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(bold);
-                        RGBForeColor(&white);
-                        MoveTo(bx + 22, by + 14);
-                        {
-                            Str255 pName;
-                            short nlen = 0;
-                            while (nlen < FACTION_NAME_LEN && factionNames[i][nlen] != 0)
-                                nlen++;
-                            pName[0] = (unsigned char)nlen;
-                            BlockMoveData(factionNames[i], pName + 1, nlen);
-                            DrawString(pName);
-                        }
-
-                        /* AI dropdown text */
-                        TextFace(0);
-                        {
-                            Rect aiRect;
-                            SetRect(&aiRect, bx + 6, by + 22, bx + 90, by + 36);
-                            RGBForeColor(&white);
-                            PaintRect(&aiRect);
-                            RGBForeColor(&black);
-                            FrameRect(&aiRect);
-                            MoveTo(bx + 10, by + 34);
-                            DrawString(aiLabels[sFactionAI[i]]);
-                        }
-
-                        /* Character checkbox */
-                        {
-                            Rect cbRect;
-                            SetRect(&cbRect, bx + 6, by + 42, bx + 18, by + 54);
-                            if (sFactionCharacter[i]) {
-                                RGBColor checkGreen = {0x4444, 0xFFFF, 0x4444};
-                                RGBForeColor(&checkGreen);
-                                PaintRect(&cbRect);
-                                RGBForeColor(&white);
-                                MoveTo(cbRect.left + 2, cbRect.bottom - 3);
-                                LineTo(cbRect.left + 4, cbRect.bottom - 1);
-                                LineTo(cbRect.right - 2, cbRect.top + 2);
-                            } else {
-                                RGBColor dark = {0x2222, 0x2222, 0x2222};
-                                RGBForeColor(&dark);
-                                PaintRect(&cbRect);
-                            }
-                            RGBForeColor(&white);
-                            FrameRect(&cbRect);
-                            MoveTo(bx + 22, by + 52);
-                            DrawString(GetCachedString(STR_GAME_SETUP, 12, "\pCharacter"));
-                        }
-                    }
-
-                    /* Right column: Options section */
-                    {
-                        RGBColor labelColor = {0xFFFF, 0xCCCC, 0x3333};
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        RGBColor black = {0, 0, 0};
-                        RGBColor valueColor = {0xCCCC, 0xDDDD, 0xFFFF};
-                        Str255 numStr;
-                        short rating;
-
-                        /* Options label */
-                        RGBForeColor(&labelColor);
-                        TextFont(2);
-                        TextSize(12);
-                        TextFace(bold);
-                        MoveTo(310, 60);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 6, "\pOptions"));
-
-                        /* Preset dropdown */
-                        {
-                            Rect dropRect;
-                            SetRect(&dropRect, 310, 68, 540, 86);
-                            RGBForeColor(&white);
-                            PaintRect(&dropRect);
-                            RGBForeColor(&black);
-                            FrameRect(&dropRect);
-                            TextFont(3);
-                            TextSize(10);
-                            TextFace(0);
-                            MoveTo(316, 82);
-                            DrawString(presetLabels[sOptionsPreset]);
-                        }
-
-                        /* "Edit Options..." button */
-                        {
-                            Rect editOptBtn;
-                            SetRect(&editOptBtn, 310, 94, 540, 112);
-                            RGBForeColor(&white);
-                            PaintRoundRect(&editOptBtn, 8, 8);
-                            RGBForeColor(&black);
-                            FrameRoundRect(&editOptBtn, 8, 8);
-                            TextFont(3);
-                            TextSize(10);
-                            TextFace(0);
-                            MoveTo(editOptBtn.left + 18, editOptBtn.bottom - 5);
-                            DrawString(GetCachedString(STR_GAME_SETUP, 7, "\pEdit Options..."));
-                        }
-
-                        /* "I am the Greatest" checkbox */
-                        {
-                            Rect cbRect;
-                            SetRect(&cbRect, 315, 122, 327, 134);
-                            if (sIAmGreatest) {
-                                RGBColor checkGreen = {0x4444, 0xFFFF, 0x4444};
-                                RGBForeColor(&checkGreen);
-                                PaintRect(&cbRect);
-                                RGBForeColor(&white);
-                                MoveTo(cbRect.left + 2, cbRect.bottom - 3);
-                                LineTo(cbRect.left + 4, cbRect.bottom - 1);
-                                LineTo(cbRect.right - 2, cbRect.top + 2);
-                            } else {
-                                RGBColor dark = {0x2222, 0x2222, 0x2222};
-                                RGBForeColor(&dark);
-                                PaintRect(&cbRect);
-                            }
-                            RGBForeColor(&white);
-                            FrameRect(&cbRect);
-                            MoveTo(333, 132);
-                            DrawString(GetCachedString(STR_GAME_SETUP, 13, "\pI am the Greatest"));
-                        }
-
-                        /* Difficulty rating */
-                        rating = CalcDifficultyRating(computerSkill);
-                        RGBForeColor(&valueColor);
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(0);
-                        MoveTo(310, 156);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 8, "\pDifficulty Rating: "));
-                        NumToString((long)rating, numStr);
-                        DrawString(numStr);
-                        DrawString("\p%");
-
-                        /* "E-mail game" checkbox (stub, disabled) */
-                        {
-                            RGBColor gray = {0x7777, 0x7777, 0x7777};
-                            Rect cbRect;
-                            SetRect(&cbRect, 315, 174, 327, 186);
-                            RGBForeColor(&gray);
-                            FrameRect(&cbRect);
-                            MoveTo(333, 184);
-                            DrawString(GetCachedString(STR_GAME_SETUP, 14, "\pE-mail game"));
-                        }
-
-                        /* "Set Addresses" button (stub) */
-                        {
-                            RGBColor gray = {0x7777, 0x7777, 0x7777};
-                            Rect addrBtn;
-                            SetRect(&addrBtn, 310, 194, 540, 212);
-                            RGBForeColor(&gray);
-                            PaintRoundRect(&addrBtn, 8, 8);
-                            RGBForeColor(&black);
-                            FrameRoundRect(&addrBtn, 8, 8);
-                            TextFont(3);
-                            TextSize(10);
-                            TextFace(0);
-                            RGBForeColor(&gray);
-                            MoveTo(addrBtn.left + 18, addrBtn.bottom - 5);
-                            DrawString(GetCachedString(STR_GAME_SETUP, 15, "\pSet Addresses"));
-                        }
-
-                        /* "Select Random Characters" button (stub) */
-                        {
-                            Rect randBtn;
-                            SetRect(&randBtn, 310, 220, 540, 238);
-                            RGBForeColor(&white);
-                            PaintRoundRect(&randBtn, 8, 8);
-                            RGBForeColor(&black);
-                            FrameRoundRect(&randBtn, 8, 8);
-                            TextFont(3);
-                            TextSize(10);
-                            TextFace(0);
-                            MoveTo(randBtn.left + 4, randBtn.bottom - 5);
-                            DrawString(GetCachedString(STR_GAME_SETUP, 16, "\pSelect Random Characters"));
-                        }
-
-                        /* Army Set dropdown (expanded mode) */
-                        if (sArmySetCount > 0) {
-                            RGBForeColor(&labelColor);
-                            TextFont(2);
-                            TextSize(12);
-                            TextFace(bold);
-                            MoveTo(310, 260);
-                            DrawString(GetCachedString(STR_GAME_SETUP, 9, "\pArmy Set"));
-
-                            {
-                                Rect armyDropRect;
-                                SetRect(&armyDropRect, 310, 268, 540, 286);
-                                RGBForeColor(&white);
-                                PaintRect(&armyDropRect);
-                                RGBForeColor(&black);
-                                FrameRect(&armyDropRect);
-                                TextFont(3);
-                                TextSize(10);
-                                TextFace(0);
-                                MoveTo(316, 282);
-                                {
-                                    Str255 setName;
-                                    short sn;
-                                    for (sn = 0; sArmySetNames[sSelectedArmySet][sn] && sn < 255; sn++)
-                                        setName[sn + 1] = sArmySetNames[sSelectedArmySet][sn];
-                                    setName[0] = (unsigned char)sn;
-                                    DrawString(setName);
-                                }
-                            }
-                        }
-                    }
-
-                    /* Bottom buttons */
-                    {
-                        RGBColor black = {0, 0, 0};
-                        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                        Rect fewerBtnRect, beginBtnRect;
-
-                        SetRect(&fewerBtnRect, 30, 390, 170, 410);
-                        SetRect(&beginBtnRect, 390, 390, 530, 410);
-
-                        /* "Fewer Choices" */
-                        RGBForeColor(&white);
-                        PaintRoundRect(&fewerBtnRect, 8, 8);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&fewerBtnRect, 8, 8);
-                        TextFont(3);
-                        TextSize(10);
-                        TextFace(0);
-                        MoveTo(fewerBtnRect.left + 16, fewerBtnRect.bottom - 5);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 17, "\pFewer Choices"));
-
-                        /* "Begin Game" (default button) */
-                        RGBForeColor(&white);
-                        PaintRoundRect(&beginBtnRect, 8, 8);
-                        RGBForeColor(&black);
-                        FrameRoundRect(&beginBtnRect, 8, 8);
-                        PenSize(2, 2);
-                        FrameRoundRect(&beginBtnRect, 8, 8);
-                        PenSize(1, 1);
-                        TextFace(bold);
-                        MoveTo(beginBtnRect.left + 26, beginBtnRect.bottom - 5);
-                        DrawString(GetCachedString(STR_GAME_SETUP, 11, "\pBegin Game"));
+        Boolean more = false;
+        for (;;) {
+            short res;
+            if (!more) {
+                res = RunEasyGameSetup(factionNames, factionCount, &selectedSide, &computerSkill);
+                for (i = 0; i < MAX_FACTIONS; i++)
+                    sFactionAI[i] = SetupSlotUnused(factionNames, factionCount, i) ? AI_OFF :
+                                    (i == selectedSide) ? 0 :
+                                    (sIAmGreatest ? 3 : computerSkill + 1);   /* "I am the greatest": every AI a Warlord */
+            } else {
+                short aiCounts[4] = {0, 0, 0, 0};
+                Boolean haveHuman = false;
+                res = RunMoreGameSetup(factionNames, factionCount);
+                /* Sync the easy view's side / level from the per-side states:
+                 * the first human side, the most common computer level. */
+                for (i = 0; i < MAX_FACTIONS; i++) {
+                    if (sFactionAI[i] == 0) {
+                        if (!haveHuman) { selectedSide = i; haveHuman = true; }
+                    } else if (sFactionAI[i] >= 1 && sFactionAI[i] <= 3) {
+                        aiCounts[sFactionAI[i]]++;
                     }
                 }
-
-                /* Blit offscreen buffer to window */
-                if (offscreen != NULL) {
-                    UnlockPixels(GetGWorldPixMap(offscreen));
-                    SetGWorld(savedPort, savedDevice);
-                    SetPort(setupWin);
-                    CopyBits((BitMap *)*GetGWorldPixMap(offscreen),
-                             &((GrafPtr)setupWin)->portBits,
-                             &r, &setupWin->portRect,
-                             srcCopy, NULL);
-                }
-
-                /* Show window after first blit to avoid white flash */
-                if (!setupShown) {
-                    ShowWindow(setupWin);
-                    setupShown = true;
-                }
-
-                needsRedraw = false;
-            }
-
-            /* Wait for events */
-            WaitNextEvent(everyEvent, &evt, 30, NULL);
-
-            /* Service update events with a full redraw. We draw the setup screen
-             * directly to the window (no offscreen buffer, so the marble keeps its
-             * true dark palette), so an unserviced update would erase content. */
-            if (evt.what == updateEvt && (WindowPtr)evt.message == setupWin) {
-                BeginUpdate(setupWin);
-                EndUpdate(setupWin);
-                needsRedraw = true;
-            }
-
-            if (evt.what == mouseDown) {
-                WindowPtr clickWin2;
-                short partCode2 = FindWindow(evt.where, &clickWin2);
-
-                if (partCode2 == inMenuBar) {
-                    long menuResult = MenuSelect(evt.where);
-                    short menuID2 = (menuResult >> 16) & 0xFFFF;
-                    short menuItem2 = menuResult & 0xFFFF;
-                    if (menuID2 == 2 && menuItem2 == 9) {
-                        /* File > Quit */
-                        DisposeWindow(setupWin);
-                        if (offscreen != NULL) DisposeGWorld(offscreen);
-                        ExitToShell();
-                    }
-                    HiliteMenu(0);
-                } else {
-                Point localPt = evt.where;
-                SetPort(setupWin);
-                GlobalToLocal(&localPt);
-
-                if (!showMoreChoices) {
-                    /* === Simple mode clicks === */
-
-                    /* Faction radio clicks */
-                    for (i = 0; i < factionCount; i++) {
-                        Rect factionHitRect;
-                        short yPos = 78 + i * 22;
-                        SetRect(&factionHitRect, 30, yPos - 12, 220, yPos + 8);
-                        if (PtInRect(localPt, &factionHitRect)) {
-                            selectedSide = i;
-                            needsRedraw = true;
-                            break;
-                        }
-                    }
-
-                    /* Skill level radio clicks */
-                    for (i = 0; i < 3; i++) {
-                        Rect skillHitRect;
-                        short yPos = 78 + i * 22;
-                        SetRect(&skillHitRect, 260, yPos - 12, 430, yPos + 8);
-                        if (PtInRect(localPt, &skillHitRect)) {
-                            computerSkill = i;
-                            needsRedraw = true;
-                            break;
-                        }
-                    }
-
-                    /* Preset dropdown click — cycle through presets */
-                    {
-                        Rect dropRect;
-                        SetRect(&dropRect, 260, 170, 410, 188);
-                        if (PtInRect(localPt, &dropRect)) {
-                            sOptionsPreset = (sOptionsPreset + 1) % 3;
-                            ApplyOptionsPreset(sOptionsPreset);
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* "Edit Options..." button */
-                    {
-                        Rect editOptBtn;
-                        SetRect(&editOptBtn, 260, 196, 410, 214);
-                        if (PtInRect(localPt, &editOptBtn)) {
-                            ShowEditOptions();
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* "I am the Greatest" checkbox click (checkbox + label hit area) */
-                    {
-                        Rect greatRect;
-                        SetRect(&greatRect, 260, 218, 410, 234);
-                        if (PtInRect(localPt, &greatRect)) {
-                            sIAmGreatest = !sIAmGreatest;
-                            if (sIAmGreatest) {
-                                /* Set all AI factions to Knight (easiest) */
-                                for (i = 0; i < factionCount; i++)
-                                    if (sFactionAI[i] != 0) sFactionAI[i] = 1;
-                            }
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* Army set dropdown click — cycle through sets */
-                    if (sArmySetCount > 1) {
-                        Rect armyDropRect;
-                        SetRect(&armyDropRect, 30, 268, 220, 286);
-                        if (PtInRect(localPt, &armyDropRect)) {
-                            sSelectedArmySet = (sSelectedArmySet + 1) % sArmySetCount;
-                            /* Reload shields to match the selected army set */
-                            sShieldsLoaded = false;
-                            LoadShieldIcons();
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* "Begin Game" button */
-                    {
-                        Rect beginBtnRect;
-                        SetRect(&beginBtnRect, 290, 300, 430, 322);
-                        if (PtInRect(localPt, &beginBtnRect)) {
-                            done = true;
-                            beginGame = true;
-                        }
-                    }
-
-                    /* "More Choices" button — toggle to expanded */
-                    {
-                        Rect moreBtnRect;
-                        SetRect(&moreBtnRect, 30, 300, 170, 322);
-                        if (PtInRect(localPt, &moreBtnRect)) {
-                            /* Sync: init sFactionAI from simple mode state */
-                            for (i = 0; i < factionCount; i++)
-                                sFactionAI[i] = (i == selectedSide) ? 0 : (computerSkill + 1);
-
-                            showMoreChoices = true;
-                            winW = 560;
-                            winH = 420;
-
-                            /* Recreate window and offscreen at new size */
-                            if (offscreen != NULL) {
-                                DisposeGWorld(offscreen);
-                                offscreen = NULL;
-                            }
-                            DisposeWindow(setupWin);
-
-                            SetRect(&winRect,
-                                (screenRect.right - winW) / 2,
-                                (screenRect.bottom - winH) / 2,
-                                (screenRect.right - winW) / 2 + winW,
-                                (screenRect.bottom - winH) / 2 + winH);
-                            setupWin = NewCWindow(NULL, &winRect, "\p", true,
-                                                   plainDBox, (WindowPtr)-1L, false, 0);
-                            SetPort(setupWin);
-                            {
-                                Rect obounds;
-                                SetRect(&obounds, 0, 0, winW, winH);
-                                NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
-                            }
-                            needsRedraw = true;
-                        }
-                    }
-                } else {
-                    /* === Expanded mode clicks === */
-
-                    /* Faction AI dropdown clicks */
-                    for (i = 0; i < factionCount; i++) {
-                        short col = i % 2;
-                        short row = i / 2;
-                        short bx = 15 + col * 145;
-                        short by = 50 + row * 68;
-                        Rect aiHitRect;
-                        SetRect(&aiHitRect, bx + 6, by + 22, bx + 90, by + 36);
-                        if (PtInRect(localPt, &aiHitRect)) {
-                            sFactionAI[i] = (sFactionAI[i] + 1) % 4;
-                            needsRedraw = true;
-                            break;
-                        }
-                    }
-
-                    /* Preset dropdown click */
-                    {
-                        Rect dropRect;
-                        SetRect(&dropRect, 310, 68, 540, 86);
-                        if (PtInRect(localPt, &dropRect)) {
-                            sOptionsPreset = (sOptionsPreset + 1) % 3;
-                            ApplyOptionsPreset(sOptionsPreset);
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* "Edit Options..." button */
-                    {
-                        Rect editOptBtn;
-                        SetRect(&editOptBtn, 310, 94, 540, 112);
-                        if (PtInRect(localPt, &editOptBtn)) {
-                            ShowEditOptions();
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* "I am the Greatest" checkbox click */
-                    {
-                        Rect iagRect;
-                        SetRect(&iagRect, 315, 122, 540, 134);
-                        if (PtInRect(localPt, &iagRect)) {
-                            sIAmGreatest = !sIAmGreatest;
-                            if (sIAmGreatest) {
-                                /* Set all AI factions to Knight (easiest) */
-                                for (i = 0; i < factionCount; i++)
-                                    if (sFactionAI[i] != 0) sFactionAI[i] = 1;
-                            }
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* "Select Random Characters" button click */
-                    {
-                        Rect randBtn;
-                        SetRect(&randBtn, 310, 220, 540, 238);
-                        if (PtInRect(localPt, &randBtn)) {
-                            /* Randomize AI level for non-human factions */
-                            for (i = 0; i < factionCount; i++) {
-                                if (sFactionAI[i] != 0)
-                                    sFactionAI[i] = (short)((unsigned short)Random() % 3) + 1;
-                            }
-                            /* Toggle character flags randomly */
-                            for (i = 0; i < factionCount; i++)
-                                sFactionCharacter[i] = ((unsigned short)Random() % 3 != 0);
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* Faction "Character" checkbox clicks */
-                    for (i = 0; i < factionCount; i++) {
-                        short col = i % 2;
-                        short row = i / 2;
-                        short bx = 15 + col * 145;
-                        short by = 50 + row * 68;
-                        Rect charHitRect;
-                        SetRect(&charHitRect, bx + 6, by + 42, bx + 90, by + 54);
-                        if (PtInRect(localPt, &charHitRect)) {
-                            sFactionCharacter[i] = !sFactionCharacter[i];
-                            needsRedraw = true;
-                            break;
-                        }
-                    }
-
-                    /* Army set dropdown click — cycle through sets */
-                    if (sArmySetCount > 1) {
-                        Rect armyDropRect;
-                        SetRect(&armyDropRect, 310, 268, 540, 286);
-                        if (PtInRect(localPt, &armyDropRect)) {
-                            sSelectedArmySet = (sSelectedArmySet + 1) % sArmySetCount;
-                            /* Reload shields to match the selected army set */
-                            sShieldsLoaded = false;
-                            LoadShieldIcons();
-                            needsRedraw = true;
-                        }
-                    }
-
-                    /* "Begin Game" button */
-                    {
-                        Rect beginBtnRect;
-                        SetRect(&beginBtnRect, 390, 390, 530, 410);
-                        if (PtInRect(localPt, &beginBtnRect)) {
-                            done = true;
-                            beginGame = true;
-                        }
-                    }
-
-                    /* "Fewer Choices" button — toggle back to simple */
-                    {
-                        Rect fewerBtnRect;
-                        SetRect(&fewerBtnRect, 30, 390, 170, 410);
-                        if (PtInRect(localPt, &fewerBtnRect)) {
-                            /* Sync: derive selectedSide and computerSkill from sFactionAI */
-                            {
-                                short aiCounts[4] = {0, 0, 0, 0};
-                                short maxAI = 1;
-                                selectedSide = 0;
-                                for (i = 0; i < factionCount; i++) {
-                                    if (sFactionAI[i] == 0)
-                                        selectedSide = i;
-                                    else
-                                        aiCounts[sFactionAI[i]]++;
-                                }
-                                /* Most common AI level */
-                                if (aiCounts[2] >= aiCounts[1] && aiCounts[2] >= aiCounts[3])
-                                    maxAI = 2;
-                                else if (aiCounts[3] >= aiCounts[1] && aiCounts[3] >= aiCounts[2])
-                                    maxAI = 3;
-                                else
-                                    maxAI = 1;
-                                computerSkill = maxAI - 1; /* 0=Knight, 1=Lord, 2=Warlord */
-                            }
-
-                            showMoreChoices = false;
-                            winW = 460;
-                            winH = 340;
-
-                            if (offscreen != NULL) {
-                                DisposeGWorld(offscreen);
-                                offscreen = NULL;
-                            }
-                            DisposeWindow(setupWin);
-
-                            SetRect(&winRect,
-                                (screenRect.right - winW) / 2,
-                                (screenRect.bottom - winH) / 2,
-                                (screenRect.right - winW) / 2 + winW,
-                                (screenRect.bottom - winH) / 2 + winH);
-                            setupWin = NewCWindow(NULL, &winRect, "\p", true,
-                                                   plainDBox, (WindowPtr)-1L, false, 0);
-                            SetPort(setupWin);
-                            {
-                                Rect obounds;
-                                SetRect(&obounds, 0, 0, winW, winH);
-                                NewGWorld(&offscreen, 0, &obounds, NULL, NULL, 0);
-                            }
-                            needsRedraw = true;
-                        }
-                    }
-                }
-                } /* end else (not inMenuBar) */
-            }
-            else if (evt.what == keyDown) {
-                char key = evt.message & charCodeMask;
-
-                /* Cmd+Q = Quit */
-                if ((evt.modifiers & cmdKey) && (key == 'q' || key == 'Q')) {
-                    DisposeWindow(setupWin);
-                    if (offscreen != NULL) DisposeGWorld(offscreen);
-                    ExitToShell();
-                }
-
-                if ((TickCount() - startTick) < 60)
-                    continue;
-                if (key == 0x0D || key == 0x03) {
-                    done = true;
-                    beginGame = true;
-                }
-                else if (key == 0x1B) {
-                    done = true;
-                }
-                else if (!showMoreChoices) {
-                    if (key == 0x1E) {
-                        if (selectedSide > 0) {
-                            selectedSide--;
-                            needsRedraw = true;
-                        }
-                    }
-                    else if (key == 0x1F) {
-                        if (selectedSide < factionCount - 1) {
-                            selectedSide++;
-                            needsRedraw = true;
-                        }
-                    }
+                if (aiCounts[1] || aiCounts[2] || aiCounts[3]) {
+                    if (aiCounts[2] >= aiCounts[1] && aiCounts[2] >= aiCounts[3]) computerSkill = 1;
+                    else if (aiCounts[3] >= aiCounts[1] && aiCounts[3] >= aiCounts[2]) computerSkill = 2;
+                    else computerSkill = 0;
                 }
             }
-            else if (evt.what == updateEvt) {
-                needsRedraw = true;
-            }
+            if (res == 0) { beginGame = true; break; }
+            if (res == 2) break;
+            more = !more;
         }
     }
 
@@ -8624,7 +8102,7 @@ static Boolean ShowGameSetup(void)
          * armies at junk capital coords - Isles of Sorcery player 2 in the sea). */
         for (i = 0; i < 8; i++) {
             *(short *)(gs + 0x138 + i * 2) =
-                (i < factionCount && gs[i * 0x14] != 0 &&
+                (i < factionCount && gs[i * 0x14] != 0 && sFactionAI[i] != AI_OFF &&
                  !(gs[i * 0x14] == 'N' && gs[i * 0x14 + 1] == 'o' && gs[i * 0x14 + 2] == 't' &&
                    gs[i * 0x14 + 3] == ' ' && gs[i * 0x14 + 4] == 'U')) ? 1 : 0;
         }
@@ -8674,11 +8152,13 @@ static Boolean ShowGameSetup(void)
 
         /* Set AI difficulty per-faction (Knight=1, Lord=2, Warlord=3) */
         for (i = 0; i < factionCount; i++) {
-            if (sFactionAI[i] > 0) {
+            if (sFactionAI[i] >= 1 && sFactionAI[i] <= 3) {
                 /* 68k encoding (verified via the difficulty rating on the
                  * original): Knight 0, Lord 1, Warlord 2; 3 = not used.
                  * sFactionAI is 1..3 = Knight..Warlord. */
                 *(short *)(gs + 0xc0 + i * 2) = sFactionAI[i] - 1;  /* AI level */
+            } else if (sFactionAI[i] == AI_OFF) {
+                *(short *)(gs + 0xc0 + i * 2) = 3;  /* switched off (View 3020 roller) */
             } else {
                 *(short *)(gs + 0xc0 + i * 2) = 0;  /* Human */
             }
@@ -8710,7 +8190,9 @@ static Boolean ShowGameSetup(void)
         *(short *)(gs + 0x158) = 0;   /* special game mode */
         sNoHumanNoticeShown = false;
         for (i = 0; i < 8; i++) {
-            *(short *)(gs + 0x0E0 + i * 2) = 0;  /* enhancement flags */
+            /* enhanced-AI flag: View 3020's 'Character' checkbox of a computer side */
+            *(short *)(gs + 0x0E0 + i * 2) =
+                (sFactionAI[i] >= 1 && sFactionAI[i] <= 3 && sFactionCharacter[i]) ? 1 : 0;
             *(short *)(gs + 0x148 + i * 2) = sOptHiddenMap ? 1 : 0;  /* fog per player */
         }
 
@@ -8752,9 +8234,6 @@ static Boolean ShowGameSetup(void)
         }
     }
 
-    if (offscreen != NULL)
-        DisposeGWorld(offscreen);
-    if (setupWin != NULL) DisposeWindow(setupWin);
     return beginGame;
 }
 
@@ -15150,6 +14629,13 @@ static short ShowCityVictory(short ci, ConstStr255Param who)
     en[1] = PillageValue(ci) > 0;
     en[2] = SackValue(ci) > 0;
     en[3] = (sRazingCities != 2);
+    {   /* FUN_100472f4: in the tutorial, the TFRESULT page once per run */
+        static Boolean shownFResult = false;
+        if (TutorialActive() && !shownFResult) {
+            shownFResult = true;
+            ShowTutorialScreen("\pTFRESULT", 0);
+        }
+    }
     for (i = 0; i < 4; i++) SetRect(&br[i], bx[i], by[i], bx[i] + 64, by[i] + bh[i]);
     strs = GetResource('STR#', 3800);
     for (i = 0; i < 4; i++) {
