@@ -1446,6 +1446,8 @@ static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
 static void DrawT3DFrame(const Rect *v);
+static short GetMedals(const unsigned char *a, short k);
+static void SetMedals(unsigned char *a, short k, short v);
 static void DrawProdView(short L, short T, short owner, short unitType);
 static void GetDATRawString(short rawIdx, Str255 out);
 static void FormatHeroLine(ConstStr255Param fmt, ConstStr255Param city, short num, Str255 out);
@@ -15468,7 +15470,7 @@ static void ApplyVictoryChoice(short choice, short ci, short owner)
  * "worthy" battle (>= 2 units on each side, or before turn 20 a defender of
  * strength >= 4), and 1d100 < max(40 - 5 * units-with-medals, 12). One
  * random non-hero attacker gets it (max 4): +1 strength (capped at 9).
- * Medal counts live in the unused army bytes 0x3A + slot.  The View 4410
+ * Medal counts are nibbles in the unused army bytes 0x38/0x39.  The View 4410
  * dialog (PICT 1016 frame, PICT 4410 + medal - 1, six TxSt 1015 lines, the
  * unit's TProdView) is only shown to a human; RINT18 plays meanwhile.
  * =================================================================== */
@@ -15500,7 +15502,7 @@ static void AwardMedal(short owner, short mx, short my, short nAtt, short nDef,
         for (k = 0; k < 4; k++) {
             short t = a[0x16 + k];
             if (t == 0xFF) continue;
-            if (t != 0x1C && a[0x3A + k] > 0) withMedal++;
+            if (t != 0x1C && GetMedals(a, k) > 0) withMedal++;
             if (*(short *)(a + 0) == mx && *(short *)(a + 2) == my) {
                 if (t == 0x1C) hero = true;
                 else if (nc < 32) { candA[nc] = i; candS[nc] = k; nc++; }
@@ -15518,9 +15520,9 @@ static void AwardMedal(short owner, short mx, short my, short nAtt, short nDef,
     {
         unsigned char *a = gs + 0x1604 + candA[pick] * 0x42;
         short sl = candS[pick], t = a[0x16 + sl];
-        medals = a[0x3A + sl];
+        medals = GetMedals(a, sl);
         if (medals >= 4) return;
-        a[0x3A + sl] = (unsigned char)++medals;
+        SetMedals(a, sl, ++medals);
         newStr = a[0x1e + sl] + 1;
         if (newStr > 9) newStr = 9;
         a[0x1e + sl] = (unsigned char)newStr;
@@ -23818,6 +23820,18 @@ static void AIShowStack(short armyIdx)
     while (TickCount() - t < 1) WaitNextEvent(0, &ev, 0, NULL);
 }
 
+/* Medal counts (0-4) per unit slot, nibbles in the free army bytes 0x38/0x39
+ * (0x3A.. hold the hero's item slots). */
+static short GetMedals(const unsigned char *a, short k)
+{
+    return (a[0x38 + (k >> 1)] >> ((k & 1) * 4)) & 0x0F;
+}
+static void SetMedals(unsigned char *a, short k, short v)
+{
+    short sh = (k & 1) * 4;
+    a[0x38 + (k >> 1)] = (unsigned char)((a[0x38 + (k >> 1)] & ~(0x0F << sh)) | ((v & 0x0F) << sh));
+}
+
 /* SplitUnitsOff — move the last nLeave units of an army record into a new
  * record on the same tile (the original's units are separate armies; the
  * remake packs up to four per record). Returns the new index or -1. */
@@ -23838,12 +23852,15 @@ static short SplitUnitsOff(short idx, short nLeave)
     *(short *)(b + 0x34) = -1; *(short *)(b + 0x36) = -1;
     for (k = 0; k < 4; k++) b[0x16 + k] = 0xFF;
     for (k = 3; k >= 0 && put < nLeave; k--) {
-        if (a[0x16 + k] == 0xFF) continue;
+        if (a[0x16 + k] == 0xFF || a[0x16 + k] == 0x1C) continue;   /* the hero (and its items) stays */
         b[0x16 + put] = a[0x16 + k]; b[0x1a + put] = a[0x1a + k]; b[0x1e + put] = a[0x1e + k];
-        b[0x22 + put] = a[0x22 + k]; b[0x26 + put] = a[0x26 + k]; b[0x3A + put] = a[0x3A + k];
-        a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0; a[0x3A + k] = 0;
+        b[0x22 + put] = a[0x22 + k]; b[0x26 + put] = a[0x26 + k];
+        SetMedals(b, put, GetMedals(a, k));
+        a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0;
+        SetMedals(a, k, 0);
         put++;
     }
+    if (put == 0) return -1;
     b[0x14] = (sUnitTypesLoaded && b[0x16] < sUnitTypeCount) ? sUnitTypeTable[b[0x16] * UNIT_TYPE_ENTRY] : b[0x16];
     RecalcArmyStrength(a);
     RecalcArmyStrength(b);
