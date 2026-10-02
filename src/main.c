@@ -25824,95 +25824,53 @@ static void ProcessStartOfTurn(short player)
                 army[0x31] = (unsigned char)curLvl;
                 RecalcArmyStrength(army);
 
-                /* Show ceremony for human players only (68k CODE_080 FUN_00000996) */
-                if (isHuman) {
-                    WindowPtr lvWin;
-                    Rect lvR;
-                    PicHandle lvPict = NULL;
-                    short lvW = 300, lvH = 200;
-
-                    PlaySound(SND_ORCH);
-
-                    if (curLvl >= 2 && curLvl <= 4)
-                        lvPict = GetPicture(4020 + curLvl);
-                    if (lvPict) {
-                        Rect pf = (**lvPict).picFrame;
-                        lvW = pf.right - pf.left;
-                        lvH = pf.bottom - pf.top;
+                /* Promotion (PPC FUN_10033600, View 4020): PICT 1016 frame,
+                 * PICT 4022+ art for the new level, the title and five lines
+                 * (DAT 490-525: Cavalier/Amazon, Champion, Paladin/Valkyrie),
+                 * RINT15; humans only. */
+                if (isHuman && curLvl >= 2 && curLvl <= 4) {
+                    Boolean fem = IsHeroFemale(i);
+                    short base = 490 + (curLvl - 2) * 12 + (fem ? 6 : 0), k;
+                    Str255 hn, ln, fmt;
+                    WindowPtr win;
+                    Rect v;
+                    EventRecord ev;
+                    unsigned char *nm = army + 0x04; short len = 0;
+                    while (len < 15 && nm[len]) len++;
+                    hn[0] = (unsigned char)len; BlockMoveData(nm, hn + 1, len);
+                    LoadAndPlayMusic(MUSIC_STATE_PROMOTE);
+                    win = NewMacAppWindow(396, 276);
+                    if (win != NULL) {
+                        DrawPictAt(1016, 0, 0);
+                        DrawPictAt(4020 + curLvl, 38, 38);
+                        GetDATRawString(base, ln);
+                        SetRect(&v, 38, 42, 358, 82); DrawSunkenText(&v, ln, IlluriaFont(), 36, 1);
+                        SetRect(&v, 38, 88, 358, 107); DrawSunkenText(&v, hn, IlluriaFont(), 17, 1);
+                        for (k = 1; k <= 4; k++) {
+                            GetDATRawString(base + k, ln);
+                            SetRect(&v, 38, 88 + 20 * k + (k == 4 ? 12 : 0), 358, 107 + 20 * k + (k == 4 ? 12 : 0));
+                            DrawSunkenText(&v, ln, IlluriaFont(), 17, 1);
+                        }
+                        GetDATRawString(base + 5, fmt);
+                        {   /* "Level: %d   Str: %d (+%d)   Move: %d (+%d)" */
+                            short vals[5], vi = 0, q;
+                            vals[0] = curLvl; vals[1] = army[0x1e]; vals[2] = 0;
+                            vals[3] = baseMov; vals[4] = 2 * levelsGained;
+                            ln[0] = 0;
+                            for (q = 1; q <= fmt[0]; q++) {
+                                if (fmt[q] == '%' && q < fmt[0] && fmt[q + 1] == 'd' && vi < 5) {
+                                    Str255 nn; short j; NumToString((long)vals[vi++], nn);
+                                    for (j = 1; j <= nn[0]; j++) ln[++ln[0]] = nn[j];
+                                    q++;
+                                } else ln[++ln[0]] = fmt[q];
+                            }
+                        }
+                        SetRect(&v, 38, 200, 358, 219); DrawSunkenText(&v, ln, IlluriaFont(), 17, 1);
+                        FlushEvents(mDownMask | keyDownMask, 0);
+                        for (;;) if (WaitNextEvent(mDownMask | keyDownMask, &ev, 5, NULL)) break;
+                        CloseMacAppWindow(win);
                     }
-
-                    SetRect(&lvR, 0, 0, lvW, lvH);
-                    OffsetRect(&lvR, (640 - lvW) / 2, (480 - lvH) / 2);
-                    lvWin = NewCWindow(NULL, &lvR, "\p", true,
-                                       plainDBox, (WindowPtr)-1, false, 0);
-                    if (lvWin) {
-                        RGBColor gold2 = {0xFFFF, 0xDDDD, 0x3333};
-                        RGBColor wh2 = {0xFFFF, 0xFFFF, 0xFFFF};
-                        RGBColor shadow2 = {0x0000, 0x0000, 0x0000};
-                        EventRecord lvEvt;
-                        unsigned long lvTk;
-                        Str255 titleStr, hname2;
-                        Boolean fem = IsHeroFemale(i);
-                        unsigned char *hn = army + 0x04;
-                        short nl2 = 0;
-                        while (nl2 < 15 && hn[nl2]) nl2++;
-                        hname2[0] = (unsigned char)nl2;
-                        BlockMoveData(hn, hname2 + 1, nl2);
-                        GetHeroTitle(curLvl, fem, titleStr);
-                        SetPort(lvWin);
-
-                        if (lvPict) {
-                            Rect dr = lvWin->portRect;
-                            DrawPicture(lvPict, &dr);
-                        } else {
-                            DrawMarbleBackground(&lvWin->portRect);
-                        }
-                        RGBForeColor(&gold2); PenSize(2,2); FrameRect(&lvWin->portRect); PenNormal();
-
-                        TextFont(3); TextSize(14); TextFace(bold);
-                        RGBForeColor(&shadow2);
-                        MoveTo(21, lvH - 63);
-                        DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
-                        DrawString(titleStr);
-                        DrawString("\p!");
-                        RGBForeColor(&gold2);
-                        MoveTo(20, lvH - 64);
-                        DrawString(GetCachedString(STR_COMBAT, 0, "\pA "));
-                        DrawString(titleStr);
-                        DrawString("\p!");
-
-                        TextFace(0); TextSize(11);
-                        RGBForeColor(&shadow2);
-                        MoveTo(21, lvH - 43);
-                        DrawString(hname2);
-                        DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
-                        DrawString(titleStr);
-                        DrawString("\p!");
-                        RGBForeColor(&wh2);
-                        MoveTo(20, lvH - 44);
-                        DrawString(hname2);
-                        DrawString(GetCachedString(STR_COMBAT, 1, "\p is now a "));
-                        DrawString(titleStr);
-                        DrawString("\p!");
-
-                        RGBForeColor(&gold2);
-                        TextSize(10);
-                        MoveTo(20, lvH - 22);
-                        DrawString(GetCachedString(STR_COMBAT, 2, "\pLevel: "));
-                        {
-                            Str255 ns2;
-                            NumToString((long)curLvl, ns2); DrawString(ns2);
-                            DrawString(GetCachedString(STR_COMBAT, 3, "\p   Str: "));
-                            NumToString((long)(unsigned char)army[0x1e], ns2); DrawString(ns2);
-                            DrawString(GetCachedString(STR_COMBAT, 4, "\p   Mov: "));
-                            NumToString((long)(unsigned char)army[0x1a], ns2); DrawString(ns2);
-                        }
-                        lvTk = TickCount() + SpeedTicks(180);
-                        while (TickCount() < lvTk) {
-                            if (WaitNextEvent(mDownMask | keyDownMask, &lvEvt, 5, NULL)) break;
-                        }
-                        DisposeWindow(lvWin);
-                    }
+                    LoadAndPlayMusic(MUSIC_STATE_TURN);
                 }
             }
         }
@@ -26033,7 +25991,7 @@ static void ProcessStartOfTurn(short player)
                         *(short *)(extCity + 0x58) = timer;
                         /* Notify human player of production stall (68k shows message) */
                         if (*(short *)(gs + 0xd0 + player * 2) == 0) {
-                            ShowBriefMessage("\pProduction stalled: no gold!");
+                            /* (remake-only "Production stalled" notice removed) */
                         }
                         continue;
                     }
@@ -26268,8 +26226,7 @@ static void ProcessStartOfTurn(short player)
                           for (ui = 1; ui <= unitName[0] && ml < 200; ui++)
                               prodMsg[1 + ml++] = unitName[ui]; }
                         prodMsg[0] = (unsigned char)ml;
-                        PlaySound(SND_DING);
-                        ShowBriefMessage(prodMsg);
+                        (void)prodMsg;   /* remake-only "X produced Y" notice + ding: the original is silent */
                     }
 
                     /* Reset timer: if spawn succeeded, restart production.
