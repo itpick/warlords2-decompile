@@ -8245,9 +8245,14 @@ static Boolean ShowGameSetup(void)
         *(short *)(gs + 0x128) = sOptIntenseCombat ? 1 : 0;
         *(short *)(gs + 0x12a) = sOptViewEnemies ? 1 : 0;
 
-        /* Initialize player alive flags (alive for each faction in the scenario) */
+        /* Alive flags: the scenario's factions as GameInit found them ("Not
+         * Used" slots stay dead: re-enabling them put phantom AIs, heroes and
+         * armies at junk capital coords - Isles of Sorcery player 2 in the sea). */
         for (i = 0; i < 8; i++) {
-            *(short *)(gs + 0x138 + i * 2) = (i < factionCount) ? 1 : 0;
+            *(short *)(gs + 0x138 + i * 2) =
+                (i < factionCount && gs[i * 0x14] != 0 &&
+                 !(gs[i * 0x14] == 'N' && gs[i * 0x14 + 1] == 'o' && gs[i * 0x14 + 2] == 't' &&
+                   gs[i * 0x14 + 3] == ' ' && gs[i * 0x14 + 4] == 'U')) ? 1 : 0;
         }
 
         /* Initialize turn management */
@@ -8622,6 +8627,23 @@ static void DrawMapInWindow(WindowPtr win)
 
         RGBBackColor(&oldBack);
         UnlockPixels(roadPix);
+    }
+
+    /* --- Port anchors (PPC FUN_1000419c / FUN_10005f90): MAP low byte bit 0x80,
+     * PICT 30010 (0,0) 32x30 at the tile's top-left, after the roads and
+     * before cities and armies. None on the minimap. --- */
+    {
+        short tx2, ty2;
+        for (ty2 = 0; ty2 < tilesHigh; ty2++)
+            for (tx2 = 0; tx2 < tilesWide; tx2++) {
+                short mx2 = sViewportX + tx2, my2 = sViewportY + ty2;
+                Rect ar;
+                if (mx2 < 0 || mx2 >= sMapWidth || my2 < 0 || my2 >= sMapHeight) continue;
+                if (!(mapData[my2 * 0xE0 + mx2 * 2 + 1] & 0x80)) continue;
+                SetRect(&ar, winRect.left + tx2 * TERRAIN_TILE_W, winRect.top + ty2 * TERRAIN_TILE_H,
+                        winRect.left + tx2 * TERRAIN_TILE_W + 32, winRect.top + ty2 * TERRAIN_TILE_H + 30);
+                DrawPortAnchor(&ar);
+            }
     }
 
     /* --- Fog of war: drawn AFTER all sprites (see block below stack badges) --- */
