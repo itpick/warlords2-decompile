@@ -24062,6 +24062,90 @@ static void AIGiveInitialHero(short p)
     }
 }
 
+/* Unit-type stat as the original reads it: a little-endian short
+ * (0 strength, 1 turns, 2 upkeep, 3 moves, 4 Build Production price;
+ * a negative price = not buyable). */
+static short UnitStatLE(short t, short k)
+{
+    unsigned char *e;
+    if (!sUnitTypesLoaded || t < 0 || t >= sUnitTypeCount) return 0;
+    e = sUnitTypeTable + t * UNIT_TYPE_ENTRY + 0x16 + k * 2;
+    return (short)(e[0] | (e[1] << 8));
+}
+
+/* PPC FUN_1000d1a4 (AI step 15): with a hero and >= 400 gold, buy one new
+ * production type per turn: FUN_10020f94 scores the buyable types within a
+ * budget (800, or 1500 three times in ten), FUN_1000cf78 picks an own city
+ * that lacks it and whose best slot is weak, the weakest slot is replaced. */
+static void AIBuyProduction(short p)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short gold = *(short *)(gs + 0x186 + p * 0x14), heroes = 0, n = *(short *)(gs + 0x1602), ai, k;
+    short budget, minStr, best = -1, bestScore = -9999, tries, cities = 0, ci, bestCity = -1;
+    if (n > 100) n = 100;
+    for (ai = 0; ai < n; ai++) {
+        unsigned char *a = gs + 0x1604 + ai * 0x42;
+        if ((short)(unsigned char)a[0x15] != p) continue;
+        for (k = 0; k < 4; k++) if (a[0x16 + k] == 0x1C) heroes++;
+    }
+    if (heroes == 0 || gold < 400 || *gExtState == 0) return;
+    budget = ((unsigned short)Random() % 10) + 1 > 7 ? 1500 : 800;
+    minStr = budget == 1500 ? 5 : 4;
+    for (tries = 0; tries < 5 && best < 0; tries++) {
+        short t;
+        for (t = 0; t < sUnitTypeCount && t < 29; t++) {
+            short str = UnitStatLE(t, 0), turns = UnitStatLE(t, 1), moves = UnitStatLE(t, 3), price = UnitStatLE(t, 4), sc;
+            if (t == 0x1C || price < 0 || price > budget) continue;
+            if (sUnitTypeTable[t * UNIT_TYPE_ENTRY + UTE_STAT_NAVAL] >= 1) continue;
+            sc = str - turns;
+            if (str >= minStr) {
+                short f;
+                if (price <= budget - 200) sc++;
+                if (price <= budget - 400) sc++;
+                if (moves > 11) sc++;
+                if (moves > 15) sc++;
+                for (f = 5; f < 19; f++) if (UnitStatLE(t, f) > 0) sc++;   /* abilities */
+            }
+            if (sc > 1) sc += 1 + (short)((unsigned short)Random() % (2 * sc));
+            if (sc > bestScore || (sc == bestScore && (Random() & 1))) { bestScore = sc; best = t; }
+        }
+        if (best < 0) { budget += 500; if (minStr > 1) minStr--; }
+    }
+    if (best < 0 || UnitStatLE(best, 0) <= 2 || UnitStatLE(best, 4) + 100 > gold) return;
+    for (ci = 0; ci < sCityCount && ci < 99; ci++)
+        if (sCityData[ci * 0x20 + 0x17] < 2 && *(short *)(sCityData + ci * 0x20 + 4) == p) cities++;
+    {
+        short needStr = cities >= 9 ? 3 : cities >= 5 ? 2 : 99;   /* FUN_1001f648 */
+        for (ci = 0; ci < sCityCount && ci < 99; ci++) {
+            unsigned char *c = sCityData + ci * 0x20, *ec = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+            short top = 0, has = 0;
+            if (c[0x17] >= 2 || *(short *)(c + 4) != p) continue;
+            for (k = 0; k < 4; k++) {
+                short t = *(short *)(ec + 0x06 + k * 2);
+                if (t == best) has = 1;
+                if (t >= 0 && UnitStatLE(t, 0) > top) top = UnitStatLE(t, 0);
+            }
+            if (has || top > needStr) continue;
+            if (bestCity < 0 || (unsigned short)Random() % 2) bestCity = ci;
+        }
+    }
+    if (bestCity < 0) return;
+    {
+        unsigned char *ec = (unsigned char *)*gExtState + 0x24c + bestCity * 0x5c;
+        short slot = -1, weakest = 99;
+        for (k = 0; k < 4; k++) {
+            short t = *(short *)(ec + 0x06 + k * 2);
+            if (t < 0) { slot = k; break; }
+            if (UnitStatLE(t, 0) < weakest) { weakest = UnitStatLE(t, 0); slot = k; }
+        }
+        if (slot < 0) return;
+        *(short *)(ec + 0x06 + slot * 2) = best;
+        *(short *)(gs + 0x186 + p * 0x14) = gold - UnitStatLE(best, 4);
+        *(short *)(ec + 0x02) = -1; *(short *)(ec + 0x58) = -1;   /* re-chosen below */
+        *(short *)(ec + 0x3e) = -1;
+    }
+}
+
 static void ExecuteAITurn(short aiPlayer)
 {
     unsigned char *gs;
@@ -24081,6 +24165,8 @@ static void ExecuteAITurn(short aiPlayer)
      * ExecuteAITurn is called. Removed duplicate income block that was
      * causing AI to receive double income. (68k CODE_080: income application
      * is human-only in main entry, but our ProcessStartOfTurn handles all.) */
+
+    AIBuyProduction(aiPlayer);   /* step 15: buy a stronger unit type */
 
     /* Process production for AI */
     if (*gExtState != 0) {
@@ -24111,15 +24197,19 @@ static void ExecuteAITurn(short aiPlayer)
                                 if (!aiIsPort && sUnitTypesLoaded &&
                                     sUnitTypeTable[pt * UNIT_TYPE_ENTRY + UTE_STAT_NAVAL] >= 1)
                                     continue;
-                                short str = GetUnitTypeStat(pt, 0);  /* HP/strength */
-                                short turns = GetProductionTurns(pt);
-                                short cost = GetUnitTypeStat(pt, 2); /* gold cost */
+                                /* PPC FUN_1001e794 mode 3 (most city roles): 10*str +
+                                 * 5*(10-turns) + moves/2; str capped at 9, +1 turn
+                                 * below strength 3; FUN_1001e674: no buying below
+                                 * cost+30 gold after turn 5 */
+                                short str = UnitStatLE(pt, 0);
+                                short turns = UnitStatLE(pt, 1);
+                                short cost = UnitStatLE(pt, 2);
                                 short aiGoldNow = *(short *)(gs + 0x186 + aiPlayer * 0x14);
-                                if (turns < 1) turns = 1;
+                                if (str > 9) str = 9;
+                                if (str < 3) turns++;
                                 if (turns > 10) turns = 10;
-                                /* Skip if too expensive (68k CODE_118 line 10) */
-                                if (cost + 30 > aiGoldNow && cost > 0) continue;
-                                { short score = str * 3 + (10 - turns) * 2;
+                                if (cost + 30 > aiGoldNow && *(short *)(gs + 0x136) > 5) continue;
+                                { short score = str * 10 + 5 * (10 - turns) + UnitStatLE(pt, 3) / 2;
                                   if (score > bestScore) {
                                       bestScore = score;
                                       bestProd = pt;
