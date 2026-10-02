@@ -293,6 +293,30 @@ from the scenario's ITM resource; the remake hard-codes 22), Vectoring pane,
 the embark penalty and boat sprites at sea, hero offer frequency, AI
 strength (the original's AIs field heroes/dragons early).
 
+## Whole-game recording of the original (Oct 2)
+
+`.devloop/movies/orig_fullgame.mp4` (3 h 37 min, 2 fps): Isles of Sorcery
+(Magicians vs 3 Knight AIs; eliminated turn 48, AIs played on to turn ~67,
+Summoners won) and three Tutoria attempts (lost each time). Turn-by-turn
+log: `.devloop/fullgame_log.md`; screenshots `.devloop/shots/3200/fg*_*.png`.
+The AI's hero stacks (Dragons, Spiders, Devils) and 4-6 unit garrisons beat
+anything a human could field early, so no player-win ending was recorded.
+
+Behaviour noted for the remake:
+- A captured city is redrawn in the new owner's style; a captured enemy
+  capital shows that owner's red CAPITAL badge in the city window.
+- An army with a pending path: clicking anywhere runs the old path rather
+  than setting a new one. Clicking one's own unit while another army is
+  selected moves the selected army there. Escape deselects.
+- Tutorial screens appear over other dialogs.
+- Seen and not yet compared: Sack! report, History Events, Save dialog,
+  File > Revert ("thy turn continues!"), "<Faction>, you are being
+  attacked!" with a progress bar during AI turns, elimination messages
+  ("thou art vanquished!", "thy cities are as dust!", "No further human
+  resistance is possible! But the battle will continue!"), the winner's
+  "thou hast triumphed!" and "Congratulations - You have conquered the
+  world!" (the game then continues), "And the hero brings N allies!".
+
 ## Open items
 
 - City window tabs Info / Build / Vectoring (Views 3301 / 3302 / 3304).
