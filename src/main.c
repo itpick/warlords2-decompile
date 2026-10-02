@@ -1420,9 +1420,12 @@ static short sSgnSignpostCount = 0;
 #define MAX_CITY_NAME 20
 #define MAX_CITY_DESC 100
 static char sCityNames[99][MAX_CITY_NAME];  /* up to 99 cities, 20 chars each */
+static char sScnCityNames[99][17];           /* the SCN city records' names (city+0x04, 16 bytes) */
+static Boolean sScnCityNamesValid = false;
 static char sCityDescs[99][MAX_CITY_DESC];  /* city descriptions from CTY resource */
 static char sSiteDescs[99][MAX_CITY_DESC];  /* site descriptions from SPC resource */
 static short sCityNameCount = 0;
+static Boolean sSaveFileValid;              /* defined with the save code; a new game clears it */
 
 /* Unit type name lookup — indexed by unit type byte */
 /* Show a brief tooltip message (auto-dismisses after ~1.5s or on click/key) */
@@ -1563,11 +1566,20 @@ static short PathStackSig(short armyIdx);
 static short RunStoredPath(short armyIdx);
 static Boolean ArmyShownOnTile(short i);
 static void RefreshInitialArmyStats(void);
+static void FinalizeCitySlots(void);
+static short CitySlotStat(short ci, short t, short which);
+static void SetCitySlotBase(short ci, short k, short t);
+static void InitCitySlotStatsBase(void);
+static void JitterCitySlotStats(void);
+static Boolean sCitySlotStatsPending = false;   /* new game: the slots await base stats + jitter */
 static void DrawArmySpriteAt(short owner, short spriteIdx, short x, short y, Boolean faded);
 static void DrawArmyGhostAt(short owner, short spriteIdx, short x, short y);
 static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
+static void AdjustGameMenus(void);
+static void ModalMenus(Boolean up);
+static void ShowTurnContinues(void);
 static void HelmetVoice(short sndID);
 static void DrawT3DFrame(const Rect *v);
 static WindowPtr NewMacAppWindow(short w, short h);
@@ -1975,7 +1987,7 @@ static void SpawnCityUnits(short ci, short owner, short type, short count, Boole
     }
     RecalcArmyStrength(a);
     if (fortified) { a[0x2e] = 20; a[0x2d] = 3; }
-    else a[0x2e] = (unsigned char)mv;
+    else a[0x2e] = (owner >= 0 && owner < 8) ? 0 : (unsigned char)mv;   /* FUN_1002cae8: 0 until the turn-1 reset */
     *(short *)(gs + 0x1602) = n + 1;
 }
 
@@ -2044,8 +2056,7 @@ static void GameInit(void)
     /* --- Player alive flags --- */
     /* Read from player_type array at 0xD0. If type != 0xFF, player is alive */
     {
-        short factionCount = *(short *)(gs + 0x10C);
-        if (factionCount < 1 || factionCount > 8) factionCount = 8;
+        short factionCount = 8;   /* gs+0x100..0x10F are the advisor's bytes (original layout) */
 
         for (i = 0; i < 8; i++) {
             /* A faction participates only if its slot has a REAL name. The SCN
@@ -2228,6 +2239,28 @@ static void GameInit(void)
             *(short *)(city + 0x08) = (short)(unsigned char)src[0x2A];
 
             city[0x17] = 0;  /* site type: 0 = playable city */
+
+            /* the record's name (16 bytes at +0x04) is the city's name */
+            if (i < 99) {
+                for (j = 0; j < 16 && src[0x04 + j] != 0; j++) sScnCityNames[i][j] = (char)src[0x04 + j];
+                sScnCityNames[i][j] = 0;
+                sScnCityNamesValid = true;
+            }
+
+            /* City name: the SCN record's C string at +0x04 (16 bytes,
+             * "White College", "Caldera").  The original's city window 'name'
+             * (View 3300, TSunkenText) shows this field; the CTY text is only
+             * the Info pane's description ("The city of Caldera...").  The
+             * CTY-derived guess that LoadCityNames made is replaced here. */
+            if (i < 99) {
+                short q = 0;
+                while (q < 16 && q < MAX_CITY_NAME - 1 && src[0x04 + q] != 0) {
+                    sCityNames[i][q] = (char)src[0x04 + q];
+                    q++;
+                }
+                sCityNames[i][q] = 0;
+                if (sCityNameCount < i + 1) sCityNameCount = i + 1;
+            }
         }
         /* DEBUG: count non-neutral cities */
         {
@@ -2456,8 +2489,7 @@ static void GameInit(void)
     /* If a player has no capital city, mark them as eliminated.
      * This prevents orphaned players with no home base. */
     {
-        short factionCount = *(short *)(gs + 0x10C);
-        if (factionCount < 1 || factionCount > 8) factionCount = 8;
+        short factionCount = 8;
         for (i = 0; i < factionCount; i++) {
             unsigned char *pstat = gs + 0x186 + i * 0x14;
             short capX = *(short *)(pstat + 0x04);
@@ -2887,8 +2919,7 @@ static void GameInit(void)
      * (_DAT_00028864[t*6+5]) are not modelled yet. */
     {
         short armyCount = *(short *)(gs + 0x1602);
-        short fCount = *(short *)(gs + 0x10C);
-        if (fCount < 1 || fCount > 8) fCount = 8;
+        short fCount = 8;
         for (i = 0; i < fCount && armyCount < 100; i++) {
             unsigned char *pstat  = gs + 0x186 + i * 0x14;
             short pAlive = *(short *)(gs + 0x138 + i * 2);
@@ -2982,7 +3013,11 @@ static void GameInit(void)
                         } else newArmy[0x16 + k] = 0xFF;
                     }
                 }
-                newArmy[0x2e] = baseMov;  /* current MP */
+                /* PPC FUN_1002cae8: the starting unit's CURRENT moves are 0;
+                 * the turn-1 reset (FUN_10064f24: base + min(left, 2)) then
+                 * gives exactly the base (the original's Wizard shows 50 on
+                 * turn 1, the remake showed 52) */
+                newArmy[0x2e] = 0;
                 RecalcArmyStrength(newArmy);
                 armyCount++;
             }
@@ -3188,14 +3223,18 @@ static void GameInit(void)
         }
     }
 
-    /* --- Apply random unit stat variance (68k CODE_117 FUN_00002118) --- */
-    /* Each game slightly randomizes unit type stats for variety.
-     * Restore base stats first, then apply small random deltas. */
+    /* The original never alters the army set's table: FUN_1003b9f8 gives each
+     * CITY SLOT its type's stats and jitters THOSE at new game
+     * (JitterCitySlotStats, run from FinalizeCitySlots once the table is in;
+     * the city window and the produced units read the slot).  The old
+     * per-type global variance below was a remake invention - disabled. */
+    sCitySlotStatsPending = true;
     if (sUnitTypesLoaded && sUnitTypeCount > 0) {
-        unsigned short rSeedV = (unsigned short)TickCount();
-        /* Restore original stats from base table */
         BlockMoveData(sUnitTypeTableBase, sUnitTypeTable,
                       (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
+    }
+    if (0) {
+        unsigned short rSeedV = (unsigned short)TickCount();
         for (i = 0; i < sUnitTypeCount; i++) {
             unsigned char *ute = sUnitTypeTable + i * UNIT_TYPE_ENTRY;
             short str = *(short *)(ute + 0x16);
@@ -3363,6 +3402,19 @@ static void LoadCityNames(void)
         }
     }
 
+    /* The original names a city by the SCN city record's name (city+0x04
+     * in its gs+0x1604 array: "Dark College", "Crater"), never by the CTY
+     * description text ("The dark College is ...", "This city was built").
+     * Where GameInit kept the SCN names they replace the parsed ones. */
+    if (sScnCityNamesValid) {
+        short ci, k;
+        for (ci = 0; ci < 99; ci++) {
+            if (sScnCityNames[ci][0] == 0) continue;
+            for (k = 0; k < 16 && sScnCityNames[ci][k]; k++) sCityNames[ci][k] = sScnCityNames[ci][k];
+            sCityNames[ci][k] = 0;
+            if (ci >= sCityNameCount) sCityNameCount = ci + 1;
+        }
+    }
 }
 
 static void TryLoadScenario(void)
@@ -3556,7 +3608,10 @@ static void TryLoadScenario(void)
             for (i = 1; i <= len; i++)
                 title[++title[0]] = src[i];
         }
-        (void)title;   /* the original's map window stays "untitled" */
+        (void)title;
+        /* a new game is a new MacApp document: "untitled" until it is saved */
+        SetWTitle((WindowPtr)*gMainGameWindow, "\puntitled");
+        sSaveFileValid = false;
     }
 
     /* Force redraw of all windows */
@@ -3883,8 +3938,149 @@ static void FinalizeCitySlots(void)
             for (j = k - 1; j >= 0 && (UnitStatLE(t[j], 4) < 0 ? -UnitStatLE(t[j], 4) : UnitStatLE(t[j], 4)) > kc; j--) t[j + 1] = t[j];
             t[j + 1] = key;
         }
-        for (k = 0; k < 4; k++) *(short *)(ec + 0x06 + k * 2) = (k < n) ? t[k] : -1;
+        {   /* the slot stats travel with their types (FUN_100496c8 moves all
+             * five fields) */
+            unsigned char keep[4][4];
+            short old[4], q;
+            for (k = 0; k < 4; k++) {
+                old[k] = *(short *)(ec + 0x06 + k * 2);
+                keep[k][0] = ec[0x40 + k]; keep[k][1] = ec[0x44 + k];
+                keep[k][2] = ec[0x48 + k]; keep[k][3] = ec[0x4C + k];
+            }
+            for (k = 0; k < 4; k++) {
+                *(short *)(ec + 0x06 + k * 2) = (k < n) ? t[k] : -1;
+                ec[0x40 + k] = ec[0x44 + k] = ec[0x48 + k] = ec[0x4C + k] = 0;
+                if (k >= n) continue;
+                for (q = 0; q < 4; q++) if (old[q] == t[k]) break;
+                if (q < 4) {
+                    ec[0x40 + k] = keep[q][0]; ec[0x44 + k] = keep[q][1];
+                    ec[0x48 + k] = keep[q][2]; ec[0x4C + k] = keep[q][3];
+                }
+            }
+        }
     }
+    if (sCitySlotStatsPending) {
+        sCitySlotStatsPending = false;
+        InitCitySlotStatsBase();
+        JitterCitySlotStats();
+    }
+}
+
+/* ===================================================================
+ * Per-city production slot stats - the original's city record +0x1A..+0x29
+ * (per slot: turns, strength, movement, cost), kept here in the ext city
+ * record at +0x40 turns[4], +0x44 strength[4], +0x48 moves[4], +0x4C cost[4]
+ * (signed), parallel to the slot types at +0x06.  FUN_1003b9f8 fills them
+ * from the army set at new game and jitters them (JitterCitySlotStats);
+ * FUN_10049aec (Build Production) writes the plain type stats into the slot
+ * it buys; FUN_1000ba58 shows them in the city window; FUN_1004a5f0 gives a
+ * produced unit the slot's strength and moves.
+ * =================================================================== */
+static short CitySlotOf(short ci, short t)
+{
+    unsigned char *ec;
+    short k;
+    if (*gExtState == 0 || ci < 0 || ci >= sCityCount || ci >= 139 || t < 0) return -1;
+    ec = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+    for (k = 0; k < 4; k++) if (*(short *)(ec + 0x06 + k * 2) == t) return k;
+    return -1;
+}
+
+static void SetCitySlotBase(short ci, short k, short t)
+{
+    unsigned char *ec;
+    if (*gExtState == 0 || ci < 0 || ci >= 139 || k < 0 || k > 3) return;
+    ec = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+    if (t < 0 || t >= MAX_UNIT_TYPES || !sUnitTypesLoaded) {
+        ec[0x40 + k] = ec[0x44 + k] = ec[0x48 + k] = ec[0x4C + k] = 0;
+        return;
+    }
+    ec[0x44 + k] = (unsigned char)UnitStatLE(t, 0);   /* strength */
+    ec[0x40 + k] = (unsigned char)UnitStatLE(t, 1);   /* turns */
+    ec[0x4C + k] = (unsigned char)UnitStatLE(t, 2);   /* cost (upkeep) */
+    ec[0x48 + k] = (unsigned char)UnitStatLE(t, 3);   /* moves */
+}
+
+static void InitCitySlotStatsBase(void)
+{
+    short ci, k, cc = sCityCount;
+    if (*gExtState == 0) return;
+    if (cc > 139) cc = 139;
+    for (ci = 0; ci < cc; ci++) {
+        unsigned char *ec = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+        for (k = 0; k < 4; k++) SetCitySlotBase(ci, k, *(short *)(ec + 0x06 + k * 2));
+    }
+}
+
+/* FUN_1003b9f8, the new-game pass over every filled slot (R = 1d100):
+ *   R < 10: strength +1 (cap 9) when R < 60, else -1 (floor 1)
+ *   R < 20: R' < 10 moves +4, < 60 +2, < 95 -2 (floor 2), else -4 (floor 2)
+ *   moves below 6 become 6
+ *   R < 10: cost -cost/4 when R < 60, else +cost/4   (signed-char maths)
+ *   R < 10: turns -1 (floor 1) when R < 60, else +1 */
+#define SLOT_D100() ((short)((unsigned short)Random() % 100) + 1)
+static void JitterCitySlotStats(void)
+{
+    short ci, k, cc = sCityCount;
+    if (*gExtState == 0 || !sUnitTypesLoaded) return;
+    if (cc > 139) cc = 139;
+    for (ci = 0; ci < cc; ci++) {
+        unsigned char *ec = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+        if (sCityData[ci * 0x20 + 0x17] >= 2) continue;
+        for (k = 0; k < 4; k++) {
+            short v;
+            if (*(short *)(ec + 0x06 + k * 2) < 0) break;
+            if (SLOT_D100() < 10) {
+                v = (short)ec[0x44 + k];
+                if (SLOT_D100() < 60) { v++; if (v > 9) v = 9; }
+                else { v--; if (v < 2) v = 1; }
+                ec[0x44 + k] = (unsigned char)v;
+            }
+            if (SLOT_D100() < 20) {
+                short r = SLOT_D100();
+                v = (short)ec[0x48 + k];
+                if (r < 10) v += 4;
+                else if (r < 60) v += 2;
+                else if (r < 95) { v -= 2; if (v < 3) v = 2; }
+                else { v -= 4; if (v < 3) v = 2; }
+                ec[0x48 + k] = (unsigned char)v;
+            }
+            if ((short)ec[0x48 + k] < 6) ec[0x48 + k] = 6;
+            if (SLOT_D100() < 10) {
+                signed char c = (signed char)ec[0x4C + k];
+                if (SLOT_D100() < 60) c = (signed char)(c - c / 4);
+                else c = (signed char)(c + c / 4);
+                ec[0x4C + k] = (unsigned char)c;
+            }
+            if (SLOT_D100() < 10) {
+                v = (short)ec[0x40 + k];
+                if (SLOT_D100() < 60) { v--; if (v < 2) v = 1; }
+                else v++;
+                ec[0x40 + k] = (unsigned char)v;
+            }
+        }
+    }
+}
+
+/* which: 0 strength, 1 turns, 2 cost, 3 moves - the city's own slot value,
+ * else (type not in a slot, slot unfilled) the army set's. */
+static short CitySlotStat(short ci, short t, short which)
+{
+    short k;
+    if (sCitySlotStatsPending && sUnitTypesLoaded) FinalizeCitySlots();   /* a game begun before the table was in */
+    k = CitySlotOf(ci, t);
+    if (k >= 0 && !sCitySlotStatsPending) {
+        unsigned char *ec = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+        if (ec[0x44 + k] != 0 || ec[0x48 + k] != 0) {
+            switch (which) {
+                case 0: return (short)ec[0x44 + k];
+                case 1: return (short)ec[0x40 + k];
+                case 2: return (short)(signed char)ec[0x4C + k];
+                case 3: return (short)ec[0x48 + k];
+            }
+        }
+    }
+    return GetUnitTypeStat(t, which);
 }
 
 static void RefreshInitialArmyStats(void)
@@ -3909,7 +4105,9 @@ static void RefreshInitialArmyStats(void)
             if (a[0x1a + k] < minMv) minMv = a[0x1a + k];
         }
         a[0x14] = sUnitTypeTable[(unsigned char)a[0x16] * UNIT_TYPE_ENTRY];
-        if (minMv < 255) a[0x2e] = (unsigned char)minMv;
+        /* a side's starting units begin with 0 current moves (FUN_1002cae8);
+         * their turn-1 reset gives the base.  Neutral garrisons keep theirs. */
+        if (minMv < 255) a[0x2e] = (a[0x15] < 8) ? 0 : (unsigned char)minMv;
         RecalcArmyStrength(a);
     }
 }
@@ -5414,7 +5612,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         }
     }
 
-    *(short *)(gs + 0x10C) = 8;       /* faction count */
+    for (i = 0; i < 16; i++) gs[0x100 + i] = 0;   /* advisor state (FUN_10092c5c) */
     for (i = 0; i < 8; i++)
         *(short *)(gs + 0xd0 + i * 2) = (i == 0) ? 0 : 1;  /* human + 7 AI */
     *(short *)(gs + 0x110) = 0;        /* current player */
@@ -5669,9 +5867,8 @@ static void DrawT3DButton(const Rect *r, ConstStr255Param label)
     w = StringWidth(label);
     {   /* MacApp centres Chicago 12 in the view: baseline top+13 for the
          * 20- and 21-high buttons (picker / Game Setup, measured) */
-        short x = (r->left + r->right - w + 1) / 2;
-        short h = r->bottom - r->top;
-        DrawEmbossedStringIn(label, x - 1, r->top + 13 + (h - 21) / 2, &black, 0x8888, 0xDDDD);
+        short x = (r->left + r->right - w) / 2;   /* floor, measured on 64- and 172-wide buttons */
+        DrawEmbossedStringIn(label, x, (r->top + r->bottom) / 2 + 3, &black, 0x8888, 0xDDDD);
     }
 }
 
@@ -7636,8 +7833,13 @@ static void DrawTRoller(short left, short top, ConstStr255Param item)
     TextFont(ChicagoFont()); TextSize(12); TextFace(0);
     w = StringWidth(item);
     RGBForeColor(&black);
-    MoveTo((left + left + ROLLER_W - w + 1) / 2 + 1, top + 15);   /* measured ('Human') */
+    if (sGamePal != NULL) {   /* smoothed text blends against the back colour: the roller face */
+        RGBColor face; GetEntryColor(sGamePal, kRollerArt[ROLLER_H / 2][5], &face);
+        RGBBackColor(&face);
+    }
+    MoveTo((left + left + ROLLER_W - w + 1) / 2, top + 15);
     DrawString(item);
+    {   RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF}; RGBBackColor(&white); }
 }
 
 /* Dimmed T3DCheckBox (measured on View 3020's 'chaN' / 'mail'): no bevel,
@@ -7683,7 +7885,7 @@ static void DrawT3DButtonDisabled(const Rect *r, ConstStr255Param label)
         line[0] = (unsigned char)n;
         BlockMoveData(label + pos, line + 1, n);
         w = StringWidth(line);
-        x = (r->left + r->right - w + 1) / 2 - 1;
+        x = (r->left + r->right - w) / 2;
         RGBForeColor(&light); MoveTo(x + 2, base + 2); DrawString(line);
         RGBForeColor(&fg);    MoveTo(x + 1, base + 1); DrawString(line);
         pos += n + 1;
@@ -8013,7 +8215,7 @@ static Boolean ShowGameSetup(void)
         unsigned char *gs = (unsigned char *)*gGameState;
 
         /* Faction count and current player */
-        *(short *)(gs + 0x10C) = factionCount;
+        for (i = 0; i < 16; i++) gs[0x100 + i] = 0;   /* advisor state, zero in every SCN */
         *(short *)(gs + 0x110) = selectedSide;
 
         /* Player types: human vs AI */
@@ -9546,7 +9748,7 @@ static void DrawMapInWindow(WindowPtr win)
      * the current player's slot sits in a black box 3px wider each side. */
     if (hasScn && scnData != NULL) {
         Rect fullPort = win->portRect;
-        short factionCount = *(short *)(scnData + 0x10C);
+        short factionCount = 8;   /* all eight turn-order slots (gs+0x10C is advisor state) */
         short curPlayer = *(short *)(scnData + 0x110);
         short turn = *(short *)(scnData + 0x136);
         short top = fullPort.bottom - SCROLLBAR_H;      /* black line row */
@@ -9574,12 +9776,22 @@ static void DrawMapInWindow(WindowPtr win)
         NumToString((long)turn, numStr);
         DrawString(numStr);
 
-        for (slotIdx = 0; slotIdx < factionCount; slotIdx++) {
+        /* 68k CODE_067: x = (i + (8 - alive)) * 16 + base, i.e. the alive sides'
+         * shields are right-aligned in 8 slots (4 sides -> slots 4..7, one left
+         * -> slot 7).  At 1024x768 the Control Strip covers slots 0-4. */
+        {
+            short alive = 0, p;
+            for (p = 0; p < 8; p++)
+                if (*(short *)(scnData + 0x138 + p * 2) != 0) alive++;
+            aliveSlot = 8 - alive;
+        }
+        for (slotIdx = 0; slotIdx < 8; slotIdx++) {
             short factionIdx = *(short *)(scnData + 0x164 + slotIdx * 2);
             short sx;
             Rect sR;
             if (factionIdx < 0 || factionIdx >= 8) continue;
             if (*(short *)(scnData + 0x138 + factionIdx * 2) == 0) continue;
+            if (aliveSlot > 7) break;
             sx = fullPort.left + 67 + aliveSlot * SHIELD_SLOT_W;
             if (factionIdx == curPlayer) {
                 Rect bR;
@@ -10798,8 +11010,7 @@ static void ShowCityInfo(short cityIndex)
                 {
                     short panelX = CITY_WIN_W / 2;
                     short pp;
-                    short factionCount = *(short *)(gs + 0x10C);
-                    if (factionCount > 8) factionCount = 8;
+                    short factionCount = 8;
                     for (pp = 0; pp < factionCount; pp++) {
                         unsigned char *pstat = gs + 0x186 + pp * 0x14;
                         short capX = *(short *)(pstat + 0x04);
@@ -10930,7 +11141,7 @@ static void ShowCityInfo(short cityIndex)
                         MoveTo(xOff + 90, yBase + 36);
                         if (producing >= 0) {
                             Str255 prodName;
-                            short totalTurns = GetProductionTurns(producing);
+                            short totalTurns = CitySlotStat(cityIndex, producing, 1);
                             short elapsed = totalTurns - prodTurns;
                             short barW = CITY_WIN_W / 2 - 25;
                             short fillW;
@@ -11108,9 +11319,9 @@ static void ShowCityInfo(short cityIndex)
                                 Boolean isCurrent = (pType == producing);
 
                                 GetUnitTypeName(pType, uName);
-                                str2 = GetUnitTypeStat(pType, 0);
-                                mov = GetUnitTypeStat(pType, 3);
-                                turns = GetProductionTurns(pType);
+                                str2 = CitySlotStat(cityIndex, pType, 0);
+                                mov = CitySlotStat(cityIndex, pType, 3);
+                                turns = CitySlotStat(cityIndex, pType, 1);
 
                                 /* Button background */
                                 SetRect(&prodBtnR[numProdSlots], xOff + 6, rowY - 8,
@@ -11206,7 +11417,7 @@ static void ShowCityInfo(short cityIndex)
                         /* Current production timer */
                         if (producing >= 0) {
                             short prodTurns = *(short *)(extCity + 0x58);
-                            short totalTurns = GetProductionTurns(producing);
+                            short totalTurns = CitySlotStat(cityIndex, producing, 1);
                             short timerY = yBase + 16 + numProdSlots * 28 + 10;
                             Rect trackR3, fillR3;
                             short elapsed2, fillW2;
@@ -11456,7 +11667,7 @@ static void ShowCityInfo(short cityIndex)
                             short curProd = *(short *)(extCity + 0x02);
                             if (selectedType >= 0 && selectedType != curProd) {
                                 *(short *)(extCity + 0x02) = selectedType;
-                                *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
+                                *(short *)(extCity + 0x58) = CitySlotStat(cityIndex, selectedType, 1);
                                 needsRedraw = true;
                             }
                             break;
@@ -11894,22 +12105,27 @@ static void ShowArmyInspect(short armyIndex)
 /* Forward declarations for stack grouping and window refresh */
 static void BuildStackArrays(short leadArmyIdx);
 static void InvalidateAllGameWindows(void);
+static void MoveSelectedGroup(void);
 
 /* ===================================================================
- * SelectNextArmy — Select nearest unfinished army for current player
+ * SelectNextArmy — Next Group (Cmd-N; PPC FUN_10055f30 -> FUN_100559ac)
  *
- * Implements "Next Group" (Cmd+N).  68k CODE_115 FUN_000032c0:
- * Uses Manhattan distance from viewport center to pick the nearest
- * army that has movement points, is not fortified, and has no queued
- * orders.  Armies at distance 0 (already at viewport) are penalized
- * to 9000 so they're picked last.
+ * The original measures the Manhattan distance from the position of the
+ * stack it picked LAST (at the start of the turn: the player's capital,
+ * FUN_100558f8 reads pstat+0x04/06), 0 -> 9000 so the current stack is
+ * taken last.  Pass 1 considers stacks not yet visited this turn (unit
+ * flag 0x200, set whenever a stack is selected, FUN_10055c64), pass 2 the
+ * visited ones and then clears every visited flag.  Fortified units
+ * (0x40) are skipped.  The remake keeps the flags per army record index.
  * =================================================================== */
+static unsigned char sArmyVisited[100];
+static short sNextRefX = -1, sNextRefY = -1, sNextRefTurn = -1, sNextRefPlayer = -1;
+
 static void SelectNextArmy(void)
 {
     unsigned char *gs;
     short currentPlayer, armyCount, i;
     short bestIdx = -1;
-    short bestDist = 10000;
     short vpCenterX, vpCenterY;
 
     if (*gGameState == 0)
@@ -11961,61 +12177,52 @@ static void SelectNextArmy(void)
            * Pass 2: already-grouped armies (army+0x11 != 0).
            * If falling back to pass 2, clear all group tags for this player
            * (68k clears 0x200 flag on all player armies — auto-ungroup). */
-          short bestUngrouped = -1, bestGrouped = -1;
-          short bestUngDist = 10000, bestGrpDist = 10000;
+          short bestNew = -1, bestOld = -1;
+          short bestNewDist = 10000, bestOldDist = 10000;
+          (void)vpCenterX; (void)vpCenterY;
+          /* a new turn (or side): forget the visited flags, start from the capital */
+          if (sNextRefTurn != turnNum || sNextRefPlayer != currentPlayer) {
+              sNextRefTurn = turnNum; sNextRefPlayer = currentPlayer;
+              for (i = 0; i < 100; i++) sArmyVisited[i] = 0;
+              GetCapitalXY(currentPlayer, &sNextRefX, &sNextRefY);
+          }
           for (i = armyCount - 1; i >= 0; i--) {
                 unsigned char *army = gs + 0x1604 + i * 0x42;
                 short owner = (short)(unsigned char)army[0x15];
                 short ax, ay, dist, dx, dy;
-                short movePts, hasOrders, fortified;
 
                 if (owner != currentPlayer) continue;
                 ax = *(short *)(army + 0x00);
                 if (ax < 0) continue;  /* not placed */
                 if (army[0x16] == 0xFF) continue;  /* dead */
+                if ((short)(unsigned char)army[0x2e] <= 0) continue;  /* spent */
+                if (army[0x2d] != 0) continue;  /* fortified (0x40) */
 
-                movePts = (short)(unsigned char)army[0x2e];
-                if (movePts <= 0) continue;  /* no movement */
-                fortified = army[0x2d];
-                if (fortified != 0) continue;  /* fortified/garrisoned */
-                hasOrders = *(short *)(army + 0x32);
-                if (hasOrders != 0) continue;  /* queued orders */
-
-                /* Manhattan distance from viewport center */
                 ay = *(short *)(army + 0x02);
-                dx = ax - vpCenterX;
-                if (dx < 0) dx = -dx;
-                dy = ay - vpCenterY;
-                if (dy < 0) dy = -dy;
+                dx = ax - sNextRefX; if (dx < 0) dx = -dx;
+                dy = ay - sNextRefY; if (dy < 0) dy = -dy;
                 dist = dx + dy;
-
-                /* Penalize army at viewport center (68k: distance 0 → 9000) */
                 if (dist == 0) dist = 9000;
 
-                if (army[0x11] == 0) {
-                    /* Ungrouped */
-                    if (dist < bestUngDist) { bestUngDist = dist; bestUngrouped = i; }
+                if (!sArmyVisited[i]) {
+                    if (dist < bestNewDist) { bestNewDist = dist; bestNew = i; }
                 } else {
-                    /* Grouped */
-                    if (dist < bestGrpDist) { bestGrpDist = dist; bestGrouped = i; }
+                    if (dist < bestOldDist) { bestOldDist = dist; bestOld = i; }
                 }
           }
-          if (bestUngrouped >= 0) {
-              bestIdx = bestUngrouped;
-          } else if (bestGrouped >= 0) {
-              /* 68k: clear all group tags for this player (auto-ungroup) */
-              for (i = armyCount - 1; i >= 0; i--) {
-                  unsigned char *a2 = gs + 0x1604 + i * 0x42;
-                  if ((short)(unsigned char)a2[0x15] == currentPlayer)
-                      a2[0x11] = 0;
-              }
-              bestIdx = bestGrouped;
+          if (bestNew >= 0) {
+              bestIdx = bestNew;
+          } else if (bestOld >= 0) {
+              for (i = 0; i < 100; i++) sArmyVisited[i] = 0;   /* everyone seen: start over */
+              bestIdx = bestOld;
           }
       }
     }
 
     if (bestIdx < 0)
         return;
+    sNextRefX = *(short *)(gs + 0x1604 + bestIdx * 0x42 + 0x00);
+    sNextRefY = *(short *)(gs + 0x1604 + bestIdx * 0x42 + 0x02);
 
     /* Select and center viewport on chosen army */
     {
@@ -12137,6 +12344,7 @@ static void BuildStackArrays(short leadArmyIdx)
     sStackSelected[0] = 1;
     sStackSep[0] = 0;
     sStackCount = 1;
+    if (leadArmyIdx < 100) sArmyVisited[leadArmyIdx] = 1;   /* unit flag 0x200 (FUN_10055c64) */
 
     /* Find all other armies at the same tile with same owner */
     for (ai = 0; ai < armyCount && sStackCount < MAX_STACK; ai++) {
@@ -13259,6 +13467,26 @@ static void PathBoardOrLand(short x, short y)
     if (board) sPathFlags |= PABIL_EMBARKED; else sPathFlags &= ~PABIL_EMBARKED;
 }
 
+/* After a battle the stack advances into the target tile (PPC
+ * FUN_1002d3ac): a stack that is not embarked and is not flying BOARDS when
+ * that tile is Water/Shore (MP 0); nothing else changes - a stack that took
+ * a coastal city from its boats stays embarked in the city (20 + carry MP
+ * next turn, and it lands - MP 0 - with its first step onto open land). */
+static void PathBoardAfterBattle(short x, short y)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short t = GetTerrainType(x, y), k;
+    if (sPathMode == PMODE_FLYING || (sPathFlags & PABIL_EMBARKED)) return;
+    if (t != 2 && t != 3) return;
+    for (k = 0; k < sPathMoverCount; k++) {
+        unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+        if (ArmyIsNaval(sPathMovers[k])) continue;      /* a ship's record rides on */
+        a[0x2C] |= ARMY_EMBARKED_BIT;
+        a[0x2e] = 0;
+    }
+    sPathFlags |= PABIL_EMBARKED;
+}
+
 /* Per-step redraw for a human's stack (the original animates each step). */
 static void PathAnimateStep(short x, short y)
 {
@@ -13414,7 +13642,7 @@ static short ExecutePathSteps(short armyIdx)
                 *(short *)(army + 0x00) != blockedX || *(short *)(army + 0x02) != blockedY)
                 return stepsTaken;
         }
-        PathBoardOrLand(blockedX, blockedY);
+        PathBoardAfterBattle(blockedX, blockedY);   /* FUN_1002d3ac: board, never land */
         CheckGroundItemPickup(armyIdx);
     }
 
@@ -13437,16 +13665,15 @@ static short ExecutePathSteps(short armyIdx)
                 for (k = 0; k < sPathMoverCount; k++)
                     if (sPathMovers[k] < armyCount)
                         *(short *)(gs + 0x1604 + sPathMovers[k] * 0x42 + 0x32) = 0;
-            /* (a computer player's records are grouped by its garrison step) */
-            if (sPathMoverCount == 1 && sAITurnPlayer < 0 && TryMergeArmies(armyIdx)) {
-                if (wasSelected) {
-                    sSelectedArmy = -1; sPreviewPathLen = 0; sPreviewGridValid = false;
-                    sInfoStackBackupSaved = false;
-                    { GrafPtr _sp; GetPort(&_sp);
-                      if (gInfoWindow && *gInfoWindow) { SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect); }
-                      SetPort(_sp); }
-                }
-            }
+            /* The original never merges unit records: a record arriving on a
+             * friendly tile keeps its own MP, orders and embarked state and the
+             * stack panel lists every record on the tile (BuildStackArrays).
+             * The remake's old auto-merge folded a lone arriving record into
+             * the first friendly record, which hid it behind that record's
+             * sprite and MP ("the Wizard vanished" when it walked into the
+             * hero's city).  A computer player's records are grouped by its
+             * garrison step. */
+            (void)wasSelected;
         }
     }
 
@@ -13594,6 +13821,8 @@ static void RemoveArmy(short armyIndex)
     AIOrdOnRemove(armyIndex, armyCount);
 
     /* Shift all armies after this one down by one slot */
+    for (j = armyIndex; j < 99; j++) sArmyVisited[j] = sArmyVisited[j + 1];   /* Next Group flags follow */
+    sArmyVisited[99] = 0;
     for (j = armyIndex; j < armyCount - 1; j++) {
         unsigned char *dst = gs + 0x1604 + j * 0x42;
         unsigned char *src = gs + 0x1604 + (j + 1) * 0x42;
@@ -13756,9 +13985,12 @@ static void BattleAddRecord(BattleUnit *side, short *n, short max, short rec, Bo
         u->rec = rec; u->slot = k; u->type = t;
         u->str = (short)(unsigned char)a[0x1e + k];
         u->order = 0; u->value = 0; u->hp = 1;
-        /* the remake's proxy for the original's "embarked" unit flag: a unit
-         * carried in a boat's record, fighting on water or shore */
-        u->embarked = (onWater && naval && !UnitTypeNaval(t));
+        /* The original's "embarked" unit flag (status 0x1000, PPC
+         * FUN_1005d598 / FUN_1005d948): a land unit in boats fights at value
+         * 4 with no bonuses, attacking or defending, on water or from its
+         * boats into a coastal city.  A ship's record is never embarked. */
+        u->embarked = ((a[0x2C] & ARMY_EMBARKED_BIT) != 0 && !UnitTypeNaval(t));
+        (void)onWater; (void)naval;
     }
 }
 
@@ -13779,10 +14011,18 @@ static void BattleGather(Battle *b, short movingIdx, short mOwner, short mx, sho
     b->nAtt = b->nDef = 0;
     if (movingIdx >= 0 && movingIdx < n)
         BattleAddRecord(b->att, &b->nAtt, BATTLE_ATT_MAX, movingIdx, onWater);
+    /* PPC FUN_100ac0cc / FUN_10055c64: the attackers are the SELECTED group -
+     * the moving record and the records on its tile that carry the same
+     * non-zero group tag (a[0x11]) - never every own army on the tile (a
+     * lone hero fought beside a Wizard that merely shared its city). */
     for (i = 0; i < n; i++) {
         unsigned char *a = gs + 0x1604 + i * 0x42;
         if (i == movingIdx || (short)(unsigned char)a[0x15] != mOwner) continue;
         if (*(short *)(a + 0x00) != mx || *(short *)(a + 0x02) != my) continue;
+        if (movingIdx >= 0 && movingIdx < n) {
+            unsigned char *mv = gs + 0x1604 + movingIdx * 0x42;
+            if (mv[0x11] == 0 || a[0x11] != mv[0x11]) continue;
+        }
         BattleAddRecord(b->att, &b->nAtt, BATTLE_ATT_MAX, i, onWater);
     }
     /* the original walks the unit table from the end */
@@ -14242,7 +14482,9 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
     (void)byPlayer;
     while (len < 14 && fn[len]) len++;
     nm[0] = (unsigned char)len; BlockMoveData(fn, nm + 1, len);
-    GetDATRawString(207 + (short)((unsigned short)Random() % 4), fmt);
+    /* DAT group 0xC has five lines (206-210, "for thee the war is over!"
+     * included), picked uniformly (FUN_1005f678(0xc, -1)) */
+    GetDATRawString(206 + (short)((unsigned short)Random() % 5), fmt);
     FormatHeroLine(fmt, nm, 0, line);
     win = NewMacAppWindow(392, 94);
     if (win == NULL) return;
@@ -14467,7 +14709,7 @@ static void DrawT3DButtonDim(const Rect *r, ConstStr255Param label)
     TextFont(fnum); TextSize(12); TextFace(0);
     w = StringWidth(label);
     RGBForeColor(&grey);
-    MoveTo((r->left + r->right - w + 1) / 2 - 1, r->bottom - 8);
+    MoveTo((r->left + r->right - w) / 2, (r->top + r->bottom) / 2 + 3);
     DrawString(label);
 }
 
@@ -14476,10 +14718,13 @@ static WindowPtr NewMacAppWindow(short w, short h)
     WindowPtr win;
     Rect wr;
     short sw = qd.screenBits.bounds.right, sh = qd.screenBits.bounds.bottom, mb = GetMBarHeight();
-    short left = (sw - (w + 6)) / 2, top = mb + (sh - mb - (h + 6)) / 3;
+    /* a third of the way down, rounded to nearest (measured: 314-high Pillage
+     * report at 163, 352-high hero/city at 150, 276-high Victory at 155) */
+    short left = (sw - (w + 6)) / 2, top = mb + (sh - mb - (h + 6) + 1) / 3;
     SetRect(&wr, left, top, left + w, top + h);
     win = NewCWindow(NULL, &wr, "\p", false, 0x0807, (WindowPtr)-1L, false, 0);
     if (win == NULL) return NULL;
+    ModalMenus(true);   /* MacApp PoseModally: every menu but Help greys */
     {
         Handle wctb = GetResource('wctb', 1000);
         if (wctb != NULL) SetWinColor(win, (CTabHandle)wctb);
@@ -14539,12 +14784,32 @@ static void DisposeOverMap(WindowPtr win)
 static void CloseMacAppWindow(WindowPtr win)
 {
     DisposeOverMap(win);
+    ModalMenus(false);
     if (*gMainGameWindow != 0) {
         HiliteWindow((WindowPtr)*gMainGameWindow, true);
         ActivatePalette((WindowPtr)*gMainGameWindow);
     }
     InvalidateAllGameWindows();
     DrainUpdates();
+}
+
+/* MacApp's modal dialogs (the notices, Victory, Congratulations, the medal
+ * and promotion screens...) grey the whole menu bar except Help while they
+ * are up (the original: wg_elim_druids, wg_r3_c).  Nested dialogs are
+ * counted so the bar comes back with the last one. */
+static void ModalMenus(Boolean up)
+{
+    static short depth = 0;
+    short id;
+    if (up) { if (depth++ > 0) return; }
+    else    { if (depth <= 0 || --depth > 0) return; }
+    if (!sMapLoaded || *gMainGameWindow == 0) return;   /* the picker keeps its own menu state */
+    for (id = 1; id <= 9; id++) {
+        MenuHandle m = GetMenuHandle(id);
+        if (m == NULL) continue;
+        if (up) DisableItem(m, 0); else EnableItem(m, 0);
+    }
+    DrawMenuBar();
 }
 
 /* returns 0 Occupy, 1 Pillage, 2 Sack, 3 Raze */
@@ -14715,7 +14980,7 @@ static void ShowPillageReport(Boolean sack, short ci, short owner, short gold,
     {
         RGBColor black = {0, 0, 0};
         Rect f;
-        SetRect(&f, 16, 169, 285, 297);
+        SetRect(&f, 16, 168, 285, 296);
         RGBForeColor(&black);
         FrameRect(&f);
     }
@@ -21183,6 +21448,13 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 
     playerGold = *(short *)(gs + 0x186 + playerIdx * 0x14);
 
+    /* PPC FUN_10032a24: on turn 1 (gs+0x136, the round shared by all sides)
+     * the offer is free and unconditional for EVERY human on its own first
+     * turn - hot-seat sides included - with no 'Don't Hire' button and the
+     * hero at the player's start city; the caps, cost, gold and dice tests
+     * apply from turn 2. */
+    if (*(short *)(gs + 0x136) <= 1) initialOffer = true;
+
     /* Count heroes for cap check and cost calculation (68k CODE_103) */
     {
         short armyCount = *(short *)(gs + 0x1602);
@@ -21532,6 +21804,13 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
                 char key = evt.message & charCodeMask;
                 if ((TickCount() - startTick) < 30)
                     continue;
+                /* MacApp modal: command keys go to the (disabled) menus, not
+                 * into the name field - Cmd-E must not type an 'e'; Cmd-. is
+                 * the cancel key (the 'dont' item, paid offers only) */
+                if (evt.modifiers & cmdKey) {
+                    if (key == '.' && !initialOffer) { done = true; hired = false; }
+                    continue;
+                }
                 if (key == 0x0D || key == 0x03) {
                     done = true;
                     hired = true;
@@ -21753,16 +22032,25 @@ static short CheckVictoryConditions(void)
      * Winner must also own > 50% of all cities on the map.
      * Count total cities (including neutral) for threshold. */
     if (alivePlayers == 1 && lastAlive >= 0) {
+        /* PPC FUN_1003d094: one side left (humans == 1, computer sides 0)
+         * has won when it holds MORE THAN HALF of the cities still standing
+         * (those whose tile is terrain type 10; razed ones are ruins) -
+         * the Isles win had 11 of 20 with 9 neutral.  Nothing happens to the
+         * current player otherwise: a side without a city is only removed at
+         * the round boundary (EliminateDeadPlayers), never silently here. */
         short totalC = 0, winnerC = playerCities[lastAlive];
         short cci;
+        unsigned char *md = (*gMapTiles != 0) ? (unsigned char *)*gMapTiles : NULL;
         for (cci = 0; cci < cityCount; cci++) {
             unsigned char *ct = sCityData + cci * 0x20;
-            if ((short)(unsigned char)ct[0x17] < 2) totalC++;
+            short cx = *(short *)(ct + 0x00), cy = *(short *)(ct + 0x02);
+            if ((short)(unsigned char)ct[0x17] >= 2) continue;
+            if (md != NULL && cx >= 0 && cx < sMapWidth && cy >= 0 && cy < sMapHeight) {
+                if (gs[md[cy * 0xE0 + cx * 2] + TERRAIN_TYPE_OFS] == 10) totalC++;
+            } else totalC++;
         }
-        /* the original: every other side eliminated, neutral cities
-         * don't matter (Isles hot-seat win with 9 cities still neutral) */
-        (void)winnerC; (void)totalC;
-        return (lastAlive == curPlayer) ? 1 : -1;
+        if (lastAlive == curPlayer && winnerC > totalC / 2) return 1;
+        return 0;
     }
 
     /* Dominant player victory (68k CODE_130 FUN_000006d2):
@@ -21808,10 +22096,8 @@ static short CheckVictoryConditions(void)
                 *(short *)(gs + 0x15e) = 1;  /* domination flag */
             }
         }
-        /* Single remaining human wins if all AI eliminated */
-        if (humanCount == 1 && aiCount == 0 && humanIdx >= 0) {
-            return (humanIdx == curPlayer) ? 1 : -1;
-        }
+        /* (a single human with every computer side gone is the case above) */
+        (void)humanIdx;
     }
 
     /* NOTE: Allied victory was removed — the 68k has NO "all players allied = victory"
@@ -21819,10 +22105,10 @@ static short CheckVictoryConditions(void)
      * falsely trigger shared victory at game start. Conquest/dominant are the only
      * victory paths in the original game. */
 
-    /* Current player has no cities = defeat (68k: no cities → dead) */
-    if (playerCities[curPlayer] == 0)
-        return -1;
-
+    /* No defeat here: the original has no turn-start "no cities" rule.  The
+     * old `return -1` marked a side dead (gs+0x138 = 0) at the start of its
+     * last banner turn, so the round-boundary elimination (FUN_1003cb84)
+     * skipped it and the "thy empire has fallen!" notice never showed. */
     return 0;
 }
 
@@ -21934,12 +22220,12 @@ static void DrawT3DButton2(const Rect *r, ConstStr255Param label)
     TextFont(fnum); TextSize(12); TextFace(0);
     if (b[0] == 0) {
         w = StringWidth(a);
-        DrawEmbossedStringIn(a, (r->left + r->right - w + 1) / 2 - 1, (r->top + r->bottom) / 2 + 4, &black, 0x8888, 0xDDDD);
-    } else {
+        DrawEmbossedStringIn(a, (r->left + r->right - w) / 2, (r->top + r->bottom) / 2 + 3, &black, 0x8888, 0xDDDD);
+    } else {   /* two lines at top+13 / top+29 (measured, 36-high 'rena') */
         w = StringWidth(a);
-        DrawEmbossedStringIn(a, (r->left + r->right - w + 1) / 2 - 1, r->top + 15, &black, 0x8888, 0xDDDD);
+        DrawEmbossedStringIn(a, (r->left + r->right - w) / 2, r->top + 13, &black, 0x8888, 0xDDDD);
         w = StringWidth(b);
-        DrawEmbossedStringIn(b, (r->left + r->right - w + 1) / 2 - 1, r->top + 29, &black, 0x8888, 0xDDDD);
+        DrawEmbossedStringIn(b, (r->left + r->right - w) / 2, r->top + 29, &black, 0x8888, 0xDDDD);
     }
 }
 
@@ -21954,7 +22240,7 @@ static void DrawSunkenText2(const Rect *v, ConstStr255Param s)
     for (i++; i <= s[0]; i++) b[++b[0]] = s[i];
     r.bottom = r.top + 19;
     DrawSunkenText(&r, a, IlluriaFont(), 17, -2);
-    OffsetRect(&r, 0, 20);
+    OffsetRect(&r, 0, 16);                       /* wrapped lines are 16 apart (measured, View 3302) */
     if (b[0]) DrawSunkenText(&r, b, IlluriaFont(), 17, -2);
 }
 
@@ -22205,8 +22491,10 @@ static void ShowBuildProduction(short ci)
                 for (s2 = 0; s2 < 4; s2++) if (*(short *)(ext + 0x06 + s2 * 2) == t) have = true;
                 cost = (short)(sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1e] | (sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1f] << 8));
                 if (gold < cost || have) {
+                    /* dimmed (FUN_10049048: gold < cost or already in a slot);
+                     * DrawArmySpriteAt wants the SPRITE index, not the type */
                     DrawProdView(armR[k].left, armR[k].top, owner, -1);
-                    DrawArmySpriteAt(owner, t, armR[k].left, armR[k].top, true);
+                    DrawArmySpriteAt(owner, sUnitTypeTable[t * UNIT_TYPE_ENTRY], armR[k].left, armR[k].top, true);
                 } else DrawProdView(armR[k].left, armR[k].top, owner, t);
                 NumToString((long)cost, str);
                 str[++str[0]] = ' '; str[++str[0]] = 'g'; str[++str[0]] = 'p';
@@ -22250,6 +22538,7 @@ static void ShowBuildProduction(short ci)
                     *(short *)(ext + 0x02) = -1; *(short *)(ext + 0x58) = -1;
                 }
                 *(short *)(ext + 0x06 + sel * 2) = t;
+                SetCitySlotBase(ci, sel, t);   /* FUN_10049aec: the bought slot gets the type's plain stats */
                 *(short *)(gs + 0x186 + owner * 0x14) = gold - cost;
                 for (s2 = 0; s2 < 4; s2++) if (*(short *)(ext + 0x06 + s2 * 2) >= 0) filled++;
                 *(short *)(city + 0x06) = filled < 3 ? 1 : 2;
@@ -22389,14 +22678,26 @@ cityLoop:
             }
             ClipRect(&win->portRect);
 
-            /* Overview: base map only, selection shield on the city */
+            /* Overview: base map only, the 10x10 shield on every city of the
+             * current player (original: Isles of Sorcery turn 4 shows WC,
+             * Moonlight, Crescent and the just-taken Caldera all marked, the
+             * viewed city no differently from the others). */
             r = overR; InsetRect(&r, -1, -1);
             DrawT3DFrame(&r);
             DrawOverviewTo((GrafPtr)win, overR, 0);
             SetPort(win);
-            SetRect(&r, overR.left + cityX * 2 - 2, overR.top + cityY * 2 - 1,
-                    overR.left + cityX * 2 + 8, overR.top + cityY * 2 + 9);
-            DrawMinimapSelectionShield(&r);
+            {
+                short oc, occ = sCityCount > 139 ? 139 : sCityCount;
+                for (oc = 0; oc < occ; oc++) {
+                    unsigned char *c2 = sCityData + oc * 0x20;
+                    short ox = *(short *)(c2 + 0), oy = *(short *)(c2 + 2);
+                    if (c2[0x17] >= 2 || *(short *)(c2 + 4) != curPlayer) continue;
+                    if (ox < 0 || oy < 0 || ox >= sMapWidth || oy >= sMapHeight) continue;
+                    SetRect(&r, overR.left + ox * 2 - 2, overR.top + oy * 2 - 1,
+                            overR.left + ox * 2 + 8, overR.top + oy * 2 + 9);
+                    DrawMinimapSelectionShield(&r);
+                }
+            }
 
             /* City name */
             {
@@ -22550,10 +22851,16 @@ cityLoop:
             }
             if (tab == 2) {
                 short P = CITY_PANE_L, T = CITY_PANE_T;
-                /* Capital banner / shield */
-                short capX, capY;
-                GetCapitalXY(curPlayer, &capX, &capY);
-                if (capX == cityX && capY == cityY && sShieldBigGW != NULL) {
+                /* 'side' TSideSymbol (View 3303): the CAPITAL banner when this
+                 * city is ANY side's capital, in that side's colours (the
+                 * original shows the Druids' green banner on Green College
+                 * after the Magicians take it); nothing at all otherwise. */
+                short capX, capY, capP = -1, pp;
+                for (pp = 0; pp < 8 && capP < 0; pp++) {
+                    GetCapitalXY(pp, &capX, &capY);
+                    if (capX == cityX && capY == cityY) capP = pp;
+                }
+                if (capP >= 0 && sShieldBigGW != NULL) {
                     PixMapHandle pm = GetGWorldPixMap(sShieldBigGW);
                     Rect sr, dr;
                     RGBColor key = {0x0000, 0x5757, 0x0000}, savedBg;
@@ -22568,14 +22875,11 @@ cityLoop:
                     GetBackColor(&savedBg);
                     RGBForeColor(&black);
                     RGBBackColor(&key);
-                    SetRect(&sr, curPlayer * 36, 36, curPlayer * 36 + 32, 59);   /* the 'side' view is 32 wide */
+                    SetRect(&sr, capP * 36, 36, capP * 36 + 32, 59);   /* the 'side' view is 32 wide */
                     SetRect(&dr, P + 8, T + 50, P + 40, T + 73);
                     CopyBits((BitMap *)*pm, &win->portBits, &sr, &dr, 36, NULL);
                     RGBBackColor(&savedBg);
                     UnlockPixels(pm);
-                } else {
-                    SetRect(&r, P + 18, T + 58, P + 18 + SHIELD_ICON_W, T + 58 + SHIELD_ICON_H);
-                    DrawSmallShieldIcon(curPlayer, &r);
                 }
 
                 GetDATRawString(760, s);                                   /* "Current:" */
@@ -22585,7 +22889,7 @@ cityLoop:
                 if (selectedType >= 0) {
                     Str255 fmt;
                     GetDATRawString(761, fmt);                             /* "%dt" */
-                    NumToString((long)GetProductionTurns(selectedType), s);
+                    NumToString((long)CitySlotStat(cityIndex, selectedType, 1), s);
                     if (fmt[0] >= 2 && fmt[fmt[0]] == 't') s[++s[0]] = 't';
                 } else {
                     s[0] = 1; s[1] = '-';
@@ -22611,10 +22915,12 @@ cityLoop:
                     GetUnitTypeName(selectedType, s);
                     SetRect(&r, P + 151, T + 122, P + 151 + 104, T + 122 + 19);
                     DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
-                    v[0] = GetProductionTurns(selectedType);
-                    v[1] = GetUnitTypeStat(selectedType, 2);
-                    v[2] = GetUnitTypeStat(selectedType, 0);
-                    v[3] = GetUnitTypeStat(selectedType, 3);
+                    /* FUN_1000ba58: the city's own slot stats (turns, cost,
+                     * strength, moves), not the army set's */
+                    v[0] = CitySlotStat(cityIndex, selectedType, 1);
+                    v[1] = CitySlotStat(cityIndex, selectedType, 2);
+                    v[2] = CitySlotStat(cityIndex, selectedType, 0);
+                    v[3] = CitySlotStat(cityIndex, selectedType, 3);
                     for (k = 0; k < 4; k++) {
                         Str255 num;
                         short n = 0;
@@ -22759,7 +23065,7 @@ cityLoop:
     if (!cancelled && mine) {
         if (selectedType >= 0) {
             *(short *)(extCity + 0x02) = selectedType;
-            *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
+            *(short *)(extCity + 0x58) = CitySlotStat(cityIndex, selectedType, 1);
         } else {
             *(short *)(extCity + 0x02) = -1;
             *(short *)(extCity + 0x58) = -1;
@@ -23066,7 +23372,7 @@ static void ShowCityProductionDialog(short cityIndex)
                         unsigned char *ext = (unsigned char *)*gExtState;
                         unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
                         *(short *)(extCity + 0x02) = selectedType;
-                        *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
+                        *(short *)(extCity + 0x58) = CitySlotStat(cityIndex, selectedType, 1);
                         prodDone = true;
                     }
                 }
@@ -23084,7 +23390,7 @@ static void ShowCityProductionDialog(short cityIndex)
                     unsigned char *ext = (unsigned char *)*gExtState;
                     unsigned char *extCity = ext + 0x24c + cityIndex * 0x5c;
                     *(short *)(extCity + 0x02) = selectedType;
-                    *(short *)(extCity + 0x58) = GetProductionTurns(selectedType);
+                    *(short *)(extCity + 0x58) = CitySlotStat(cityIndex, selectedType, 1);
                     prodDone = true;
                 } else if (key == 0x1B) {
                     prodDone = true;
@@ -25295,7 +25601,7 @@ static Boolean AICityProducing(short ci)
     ec = AI_EXT(ci);
     cur = *(short *)(ec + 0x02); turns = *(short *)(ec + 0x58);
     if (cur < 0 || turns <= 0) return false;
-    if (turns == GetProductionTurns(cur)) return false;
+    if (turns == CitySlotStat(ci, cur, 1)) return false;
     return true;
 }
 /* FUN_1001e9d0: the weakest slot (the first empty one) */
@@ -25329,7 +25635,7 @@ static Boolean AISetProduction(short ci, short t, Boolean vec, short vecCity)
     unsigned char *ec = AI_EXT(ci);
     if (AIGold() < UnitStatLE(t, 2) + 30 && AITurn() > 5) return false;
     *(short *)(ec + 0x02) = t;
-    *(short *)(ec + 0x58) = GetProductionTurns(t);
+    *(short *)(ec + 0x58) = CitySlotStat(ci, t, 1);
     if (*(short *)(ec + 0x58) < 1) *(short *)(ec + 0x58) = 1;
     if (!vec) AIVectorOff(ci); else AIVectorTo(ci, vecCity);
     return true;
@@ -25392,6 +25698,7 @@ static void AIBuyFlyerSlot(short ci)
         if ((short)(price + 30) <= AIGold()) {
             unsigned char *ec = AI_EXT(ci);
             *(short *)(ec + 0x06 + slot * 2) = t;
+            SetCitySlotBase(ci, slot, t);
             AISetGold((long)AIGold() - price);
             gAI->cflags[ci] |= 2;
             *(short *)(ec + 0x58) = 0;
@@ -25549,6 +25856,7 @@ static void AIStepBuyProduction(void)
         short slot = AIWeakestSlot(ci);
         if (slot < 0) return;
         *(short *)(ec + 0x06 + slot * 2) = t;
+        SetCitySlotBase(ci, slot, t);
         AISetGold((long)AIGold() - UnitStatLE(t, 4));
         gAI->boughtCount++;
         *(short *)(ec + 0x58) = 0;
@@ -27833,23 +28141,27 @@ static void ShowVoiceAdvisor(short p)
                                    SND_VLOSE25, SND_VLOSE25, SND_VLOSE35};
     static const short kWin[8] = {0, 0, SND_VWIN10, SND_VWIN15,
                                   SND_VWIN20, SND_VWIN25, SND_VWIN30, SND_VWIN35};
-    static unsigned char advLevel[8];
+    /* The state lives in the game state as in the original (FUN_10092c5c):
+     * gs+0x100+p = 1 after a "winning" line, 2 after a "losing" one;
+     * gs+0x108+p = the city count rounded down to a multiple of 5 at the last
+     * change.  Both are per-player BYTES, zero in every shipped scenario and
+     * saved with the game (so Revert keeps them). */
     unsigned char *gs;
     short V = 0, L, turn, snd = 0, ci, k;
     if (*gGameState == 0 || sSoundMaster == 0) return;
     gs = (unsigned char *)*gGameState;
     turn = *(short *)(gs + 0x136);
     if (turn < 1) turn = 1;
-    if (turn == 1) for (k = 0; k < 8; k++) advLevel[k] = 0;   /* new game */
+    (void)k;
     for (ci = 0; ci < sCityCount && ci < 99; ci++)
         if (sCityData[ci * 0x20 + 0x17] < 2 && *(short *)(sCityData + ci * 0x20 + 4) == p) V++;
     if (V >= 40) return;
-    L = advLevel[p];
+    L = (short)(signed char)gs[0x108 + p];
     if (V < L) {
-        L = (V / 5) * 5; advLevel[p] = (unsigned char)L;
+        L = (V / 5) * 5; gs[0x108 + p] = (unsigned char)L; gs[0x100 + p] = 2;
         snd = kLose[L / 5 > 6 ? 6 : L / 5];
     } else if (V >= L + 5) {
-        L = (V / 5) * 5; advLevel[p] = (unsigned char)L;
+        L = (V / 5) * 5; gs[0x108 + p] = (unsigned char)L; gs[0x100 + p] = 1;
         snd = (L >= 10 && L <= 35) ? kWin[L / 5] : ((Random() & 1) ? SND_VWIN05 : SND_VWIN05A);
     } else {
         short gold = *(short *)(gs + 0x186 + p * 0x14), heroes = 0, n = *(short *)(gs + 0x1602), ai;
@@ -28063,7 +28375,7 @@ static void ProcessNeutralCities(void)
                 /* the unit appears, fortified with the garrison; production
                  * goes on with the same slot */
                 if (armyCount < 100 && prod < MAX_UNIT_TYPES) {
-                    short mv = GetUnitTypeStat(prod, 3), hp = GetUnitTypeStat(prod, 0), merged = -1;
+                    short mv = CitySlotStat(ci, prod, 3), hp = CitySlotStat(ci, prod, 0), merged = -1;
                     if (mv < 1) mv = 10;
                     if (hp < 1) hp = 3;
                     for (ai = 0; ai < armyCount && merged < 0; ai++) {
@@ -28085,7 +28397,7 @@ static void ProcessNeutralCities(void)
                     }
                     if (merged < 0) SpawnCityUnits(ci, 0x0F, prod, 1, true);
                 }
-                timer = GetProductionTurns(prod);
+                timer = CitySlotStat(ci, prod, 1);
                 if (timer < 1) timer = 1;
             }
             *(short *)(extCity + 0x58) = timer;
@@ -28110,7 +28422,7 @@ static void ProcessNeutralCities(void)
             }
             if (bestProd >= 0) {
                 *(short *)(extCity + 0x02) = bestProd;
-                *(short *)(extCity + 0x58) = GetProductionTurns(bestProd);
+                *(short *)(extCity + 0x58) = CitySlotStat(ci, bestProd, 1);
                 if (*(short *)(extCity + 0x58) < 1) *(short *)(extCity + 0x58) = 1;
             }
         }
@@ -28539,9 +28851,10 @@ static void ProcessStartOfTurn(short player)
                                 /* Set movement and HP from unit type table */
                                 if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
                                     /* 68k CODE_080 FUN_00001858: produced units get FULL movement */
-                                    short fullMov = GetUnitTypeStat(prodType, 3);
+                                    /* PPC FUN_1004a5f0: moves and strength from the CITY SLOT */
+                                    short fullMov = CitySlotStat(i, prodType, 3);
                                     a[0x1a + slot] = (unsigned char)fullMov;
-                                    a[0x1e + slot] = (unsigned char)GetUnitTypeStat(prodType, 0); /* HP */
+                                    a[0x1e + slot] = (unsigned char)CitySlotStat(i, prodType, 0); /* HP */
                                 } else {
                                     a[0x1a + slot] = 8;
                                     a[0x1e + slot] = 3;
@@ -28632,9 +28945,10 @@ static void ProcessStartOfTurn(short player)
                             unsigned char *ute = sUnitTypeTable + prodType * UNIT_TYPE_ENTRY;
                             a[0x14] = (unsigned char)ute[0x00];
                             /* 68k CODE_080 FUN_00001858: produced units get FULL movement */
-                            short fullMov2 = GetUnitTypeStat(prodType, 3);
+                            /* PPC FUN_1004a5f0: moves and strength from the CITY SLOT */
+                            short fullMov2 = CitySlotStat(i, prodType, 3);
                             a[0x1a] = (unsigned char)fullMov2;
-                            a[0x1e] = (unsigned char)GetUnitTypeStat(prodType, 0); /* HP */
+                            a[0x1e] = (unsigned char)CitySlotStat(i, prodType, 0); /* HP */
                         } else {
                             a[0x14] = (unsigned char)prodType;
                             a[0x1a] = 8;
@@ -28717,7 +29031,7 @@ static void ProcessStartOfTurn(short player)
                      * guard skips on future turns). Player must change production
                      * or free up tile space. */
                     if (mergeIdx >= 0 || newIdx >= 0) {
-                        timer = GetProductionTurns(prodType);
+                        timer = CitySlotStat(i, prodType, 1);
                     } else {
                         timer = 0;  /* 68k: permanent stall when no spawn tile available */
                     }
@@ -29946,6 +30260,23 @@ static void AdvanceToNextPlayer(void)
          * Endgame = a player has >50% of all armies AND leads by armies/8. */
         if (*(short *)(gs + 0x15e) == 0) {
             ShowHeroHire(curPlayer, false);
+            /* FUN_10065d24 phase 1 on turn 1: the start city's window follows
+             * the (free) hero offer - for every human side in a hot-seat game
+             * (the first side gets it from the game-start code). */
+            if (*(short *)(gs + 0x136) <= 1 && *gExtState != 0) {
+                short hx = 0, hy = 0, hci, hcc = sCityCount;
+                if (hcc > 139) hcc = 139;
+                GetCapitalXY(curPlayer, &hx, &hy);
+                for (hci = 0; hci < hcc; hci++) {
+                    unsigned char *hc = sCityData + hci * 0x20;
+                    if (hc[0x17] >= 2) continue;
+                    if (*(short *)(hc + 0x00) == hx && *(short *)(hc + 0x02) == hy &&
+                        *(short *)(hc + 0x04) == curPlayer) {
+                        ShowCityBuildSelection(hci);
+                        break;
+                    }
+                }
+            }
         }
 
         /* Prompt human player to set production when a city goes idle
@@ -30124,7 +30455,7 @@ static void AdvanceToNextPlayer(void)
  *         viewport/selection state (20B)
  * =================================================================== */
 #define SAVE_MAGIC  0x574C3253   /* 'WL2S' */
-#define SAVE_VERSION 7
+#define SAVE_VERSION 8   /* v8: per-city slot stats in the ext city record (+0x40..+0x4F) */
 
 static FSSpec sSaveFileSpec;
 static Boolean sSaveFileValid = false;
@@ -30517,6 +30848,11 @@ static Boolean LoadGameFromFile(FSSpec *spec)
         } else AIResetAll();
     }
 
+    /* v8: the per-city slot stats are in the ext block; older saves get the
+     * army set's plain stats (no jitter: that happened at THEIR new game) */
+    sCitySlotStatsPending = false;
+    if (version < 8) InitCitySlotStatsBase();
+
     /* Restore map dimensions from game state */
     {
         unsigned char *gs2 = (unsigned char *)*gGameState;
@@ -30538,7 +30874,8 @@ static void DoSaveAs(void)
     if (reply.sfGood) {
         sSaveFileSpec = reply.sfFile;
         sSaveFileValid = true;
-        SaveGameToFile(&sSaveFileSpec);
+        if (SaveGameToFile(&sSaveFileSpec) && gMainGameWindow != NULL && *gMainGameWindow != 0)
+            SetWTitle((WindowPtr)*gMainGameWindow, reply.sfFile.name);   /* MacApp document title (original: "wingame") */
     }
 }
 
@@ -30562,6 +30899,8 @@ static void DoOpen(void)
         if (LoadGameFromFile(&reply.sfFile)) {
             sSaveFileSpec = reply.sfFile;
             sSaveFileValid = true;
+            if (gMainGameWindow != NULL && *gMainGameWindow != 0)
+                SetWTitle((WindowPtr)*gMainGameWindow, reply.sfFile.name);
             /* Invalidate all windows */
             if (gMainGameWindow != NULL && *gMainGameWindow != 0) {
                 SetPort((WindowPtr)*gMainGameWindow);
@@ -30575,6 +30914,10 @@ static void DoOpen(void)
                 SetPort((WindowPtr)*gInfoWindow);
                 InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
             }
+            /* FUN_10029ac0 (DoRead): the loaded game's player is told
+             * "%s, thy turn continues!" - Open and Revert alike */
+            DrainUpdates();
+            ShowTurnContinues();
         }
     }
 }
@@ -30857,6 +31200,45 @@ static void ShowVectoringDialog(short cityIndex)
 }
 
 
+/* PPC FUN_10029ac0 (document DoRead, FUN_1007ded4): after a saved game is
+ * read - File > Open and File > Revert alike - "%s, thy turn continues!"
+ * (DAT group 0x30 #1, raw 320) names the player whose turn it is in a View
+ * 1020 notice; no banner, no new turn. */
+static void ShowTurnContinues(void)
+{
+    unsigned char *gs;
+    Str255 fmt, s, nm;
+    unsigned char *fn;
+    short cur, len = 0;
+    if (*gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+    cur = *(short *)(gs + 0x110);
+    if (cur < 0 || cur > 7) return;
+    fn = gs + cur * FACTION_NAME_LEN;
+    while (len < 14 && fn[len]) len++;
+    nm[0] = (unsigned char)len; BlockMoveData(fn, nm + 1, len);
+    GetDATRawString(320, fmt);
+    FormatHeroLine(fmt, nm, 0, s);
+    ShowNoticeLines(s, NULL);
+}
+
+/* FUN_1003f6e8: End Turn (0x76c) and Save and End Turn (0x773) are enabled
+ * only while the game is not won (gs+0x15c == 0); Revert needs a file. */
+static void AdjustGameMenus(void)
+{
+    MenuHandle m = GetMenuHandle(9);
+    Boolean on = sMapLoaded && *gGameState != 0 &&
+                 *(short *)((unsigned char *)*gGameState + 0x15c) == 0;
+    if (m != NULL) {
+        if (on) { EnableItem(m, 1); EnableItem(m, 2); }
+        else    { DisableItem(m, 1); DisableItem(m, 2); }
+    }
+    m = GetMenuHandle(2);
+    if (m != NULL) {
+        if (sSaveFileValid) EnableItem(m, 7); else DisableItem(m, 7);
+    }
+}
+
 /* ===================================================================
  * HandleMenuChoice — translate MenuSelect/MenuKey result
  * =================================================================== */
@@ -30911,6 +31293,15 @@ static void HandleMenuChoice(long menuResult)
             break;
         case 7: /* Revert */
             if (sSaveFileValid) {
+                /* MacApp TRevertDocCommand (FUN_100d61a8): ALRT 132 'Revert
+                 * to the last saved version of "^0"?' with Revert (1, default)
+                 * and Cancel (2) - the resource fork carries the original's */
+                short hit;
+                ParamText(sSaveFileSpec.name, "\p", "\p", "\p");
+                hit = Alert(132, NULL);
+                if (hit < 0)   /* no ALRT 132: the game's own Yes/No */
+                    hit = AskYesNo("\pRevert", "\pRevert to the last", "\psaved version of", sSaveFileSpec.name, NULL) ? 1 : 2;
+                if (hit != 1) break;
                 LoadGameFromFile(&sSaveFileSpec);
                 if (gMainGameWindow != NULL && *gMainGameWindow != 0) {
                     SetPort((WindowPtr)*gMainGameWindow);
@@ -30920,6 +31311,9 @@ static void HandleMenuChoice(long menuResult)
                     SetPort((WindowPtr)*gOverviewWindow);
                     InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
                 }
+                InvalidateAllGameWindows();
+                DrainUpdates();
+                ShowTurnContinues();   /* FUN_10029ac0: "%s, thy turn continues!" */
             }
             break;
         case 9: /* Quit (Cmd+Q) */
@@ -31149,8 +31543,9 @@ static void HandleMenuChoice(long menuResult)
                 }
             }
             break;
-        case 4:  /* Move Group (cmd 0x57A) — FUN_1007c618 */
-            MoveAllArmies();
+        case 4:  /* Move Group (cmd 0x57A) — FUN_1007c618: the selected stack
+                  * runs its own orders (not every army, that is 0x57B) */
+            MoveSelectedGroup();
             break;
         case 5:  /* Move All Armies (cmd 0x57B) — FUN_10041cf8 */
             MoveAllArmies();
@@ -32480,38 +32875,70 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
     if (took == 0)
         return false;
 
-    /* If the attacker was destroyed, auto-advance to the next army */
+    /* The original's step command (PPC FUN_100a0b08 -> FUN_100419b0) leaves
+     * the stack selected whatever its MP; a destroyed stack just clears the
+     * selection (_DAT_817f0000 = 0).  Next Group is only ever explicit. */
     if (sSelectedArmy < 0) {
         sStackCount = 0;
-        SelectNextArmy();
+        InvalidateAllGameWindows();
         return true;
     }
     armyCount = *(short *)(gs + 0x1602);
     if (sSelectedArmy >= armyCount) {
         sSelectedArmy = -1; sStackCount = 0;
-        SelectNextArmy();
+        InvalidateAllGameWindows();
         return true;
     }
     BuildStackArrays(sSelectedArmy);
 
     /* (ruin auto-search for a hero stack runs inside ExecutePathSteps) */
 
-    /* Auto-select next army if this one exhausted or has no more movement */
-    if (sSelectedArmy >= 0) {
-        armyCount = *(short *)(gs + 0x1602);
-        if (sSelectedArmy < armyCount) {
-            selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
-            if ((short)(unsigned char)selArmy[0x2e] <= 0 &&
-                *(short *)(selArmy + 0x32) == 0) {
-                SelectNextArmy();
-            }
-        }
-    } else {
-        /* Army was merged away, advance to next */
-        SelectNextArmy();
-    }
-
     return true;
+}
+
+/* ===================================================================
+ * MoveSelectedGroup — Orders > Move Group (Cmd-M, PPC command 0x57A ->
+ * FUN_1007c618 -> FUN_10017cb4 on the selected stack's stored target):
+ * the selected stack runs its pending orders as far as its MP allow; it
+ * stays selected at its destination, and is deselected (orders kept)
+ * when it stops short or is spent, as after a dragged path.
+ * =================================================================== */
+static void MoveSelectedGroup(void)
+{
+    unsigned char *gs, *a;
+    short count, tx, ty, ox, oy, took;
+
+    if (!sMapLoaded || *gGameState == 0 || sSelectedArmy < 0) return;
+    gs = (unsigned char *)*gGameState;
+    count = *(short *)(gs + 0x1602);
+    if (count > 100) count = 100;
+    if (sSelectedArmy >= count) return;
+    a = gs + 0x1604 + sSelectedArmy * 0x42;
+    if ((short)(unsigned char)a[0x15] != *(short *)(gs + 0x110)) return;
+    if (*(short *)(a + 0x32) == 0) return;             /* no orders */
+    tx = *(short *)(a + 0x34); ty = *(short *)(a + 0x36);
+    ox = *(short *)(a + 0x00); oy = *(short *)(a + 0x02);
+
+    took = RunStoredPath(sSelectedArmy);
+    count = *(short *)(gs + 0x1602);
+    if (count > 100) count = 100;
+    if (sSelectedArmy < 0 || sSelectedArmy >= count) {
+        sSelectedArmy = -1; sStackCount = 0;
+        InvalidateAllGameWindows();
+        return;
+    }
+    a = gs + 0x1604 + sSelectedArmy * 0x42;
+    if (took == 0 && *(short *)(a + 0x32) == 0 &&
+        *(short *)(a + 0x00) == ox && *(short *)(a + 0x02) == oy &&
+        *(short *)(gs + 0xd0 + *(short *)(gs + 0x110) * 2) == 0)
+        PlaySound(SND_CHORD);                       /* FUN_10017cb4: no path */
+    BuildStackArrays(sSelectedArmy);
+    RevealTile(*(short *)(a + 0x00), *(short *)(a + 0x02));
+    if (*(short *)(a + 0x00) != tx || *(short *)(a + 0x02) != ty || a[0x2e] == 0) {
+        sSelectedArmy = -1; sStackCount = 0;
+    }
+    sPreviewPathLen = 0;
+    InvalidateAllGameWindows();
 }
 
 
@@ -32962,6 +33389,17 @@ static void DrawStackPanel(WindowPtr win, Rect r)
         DrawViewText(&v, s, 1);
     }
     BlitAbits(290, allSel ? 20 : 0, 32, 20, r.left + 188, r.top + 77);
+    /* The 'fly ' slot above "Group Move" (View 1005, 32x10; PPC
+     * FUN_10082640): the boat-on-water icon (ABITS 424,30) when every
+     * record of the stack is embarked. */
+    {
+        Boolean allEmb = (sStackCount > 0);
+        for (i = 0; i < sStackCount; i++) {
+            if (sStackArmyIdx[i] < 0) continue;
+            if (!((gs + 0x1604 + sStackArmyIdx[i] * 0x42)[0x2C] & ARMY_EMBARKED_BIT)) allEmb = false;
+        }
+        if (allEmb) BlitAbits(424, 30, 32, 10, r.left + 185, r.top + 37);
+    }
 }
 
 /* Clicks in the stack panel: ring toggles a unit, check/X selects exactly
@@ -33004,6 +33442,7 @@ static void HandleMouseDown(EventRecord *event)
 
     switch (partCode) {
     case inMenuBar:
+        AdjustGameMenus();   /* FUN_1003f6e8 before the menu drops */
         HandleMenuChoice(MenuSelect(event->where));
         break;
 
@@ -33477,32 +33916,15 @@ static void HandleMouseDown(EventRecord *event)
 
                     if (clickedArmy >= 0) {
                         if (clickedArmy != sSelectedArmy) {
-                            /* Clicked a different friendly army.
-                             * If we already have an army selected and the click is adjacent,
-                             * treat it as a move (fall through to movement handler) so armies
-                             * stack/merge via TryMergeArmies(). Non-adjacent clicks switch selection. */
-                            if (sSelectedArmy >= 0) {
-                                unsigned char *selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
-                                short selX = *(short *)(selArmy + 0x00);
-                                short selY = *(short *)(selArmy + 0x02);
-                                short ddx = clickTileX - selX;
-                                short ddy = clickTileY - selY;
-                                short adx = ddx < 0 ? -ddx : ddx;
-                                short ady = ddy < 0 ? -ddy : ddy;
-                                if (adx <= 1 && ady <= 1 && (adx + ady) > 0) {
-                                    /* Adjacent: clear clickedArmy so movement handler fires */
-                                    clickedArmy = -1;
-                                } else {
-                                    /* Non-adjacent: switch selection */
-                                    sSelectedArmy = clickedArmy;
-                                    BuildStackArrays(clickedArmy);
-                                    RevealTile(clickTileX, clickTileY);
-                                    /* silent, as the original (recorded) */
-                                    InvalRect(&port);
-                                    goto doneMapClick;
-                                }
+                            /* Another own stack.  The original's map cursor
+                             * (PPC FUN_1003b4a4, 68k CODE_046 FUN_00000436): with a
+                             * stack selected every tile at distance >= 1 that is not
+                             * a foreign city gets the move cursor (6), so the click
+                             * MOVES the selection there, adjacent or not; the select
+                             * cursor (5) needs no selection or the modifier key. */
+                            if (sSelectedArmy >= 0 && !(event->modifiers & optionKey)) {
+                                clickedArmy = -1;          /* fall through to the move */
                             } else {
-                                /* No army selected yet: select this one */
                                 sSelectedArmy = clickedArmy;
                                 BuildStackArrays(clickedArmy);
                                 RevealTile(clickTileX, clickTileY);
@@ -33511,8 +33933,10 @@ static void HandleMouseDown(EventRecord *event)
                                 goto doneMapClick;
                             }
                         } else {
-                            /* Re-click on already-selected army: check for city first */
-                            Boolean openedCity = false;
+                            /* Re-click on the selected stack's tile: cursor 5 ->
+                             * tracker 0x834 -> FUN_10021524 re-selects the stack; the
+                             * original has no inspect box here.  A city under the
+                             * stack opens its window (kept). */
                             short cCount = sCityCount;
                             short ci;
                             if (cCount > 139) cCount = 139;
@@ -33526,12 +33950,9 @@ static void HandleMouseDown(EventRecord *event)
                                         ShowCityBuildSelection(ci);
                                     else
                                         ShowCityInfo(ci);
-                                    openedCity = true;
                                     break;
                                 }
                             }
-                            if (!openedCity)
-                                ShowArmyInspect(clickedArmy);
                             SetPort(whichWindow);
                         }
                         InvalRect(&port);
@@ -33549,6 +33970,13 @@ static void HandleMouseDown(EventRecord *event)
                             /* Cities are 2x2 tiles; ruins are 1x1 */
                             if (sType < 2 && cdx >= 0 && cdx <= 1 && cdy >= 0 && cdy <= 1) {
                                 if (*(short *)(c + 0x04) == currentPlayer) {
+                                    /* Own city: without a selection (or with the
+                                     * modifier) cursor 3 opens its window; with a
+                                     * stack selected elsewhere it is the move cursor
+                                     * and the stack walks in (original turn 17,
+                                     * Green College). */
+                                    if (sSelectedArmy >= 0 && !(event->modifiers & optionKey))
+                                        break;                 /* fall through to the move */
                                     ShowCityBuildSelection(ci);
                                     openedCity = true;
                                     SetPort(whichWindow);
@@ -34482,6 +34910,26 @@ static void TutorialWatch(void)
     lastY = *(short *)(army + 0x02);
 }
 
+/* The original's CMNU 4 marks Ungroup (G) and Move All Armies (M) with the
+ * shift modifier, shown as a shift-glyph+cmd shortcut on Mac OS 8.5+ menus.
+ * SetMenuItemModifiers is not in the toolchain's import library, so it is
+ * bound at run time through CFM (InterfaceLib exports it on 8.5+). */
+static void SetMenuShiftShortcut(MenuHandle m, short item, char key)
+{
+    static pascal OSErr (*setMods)(MenuHandle, short, unsigned char) = NULL;
+    static Boolean looked = false;
+    if (!looked) {
+        ConnectionID conn = NULL; Ptr mainAddr = NULL, sym = NULL; Str255 err; SymClass cls;
+        looked = true;
+        if (GetSharedLibrary("\pInterfaceLib", 'pwpc', 2 /* kFindCFrag */, &conn, &mainAddr, err) == noErr &&
+            FindSymbol(conn, "\pSetMenuItemModifiers", &sym, &cls) == noErr && sym != NULL)
+            setMods = (pascal OSErr (*)(MenuHandle, short, unsigned char))sym;
+    }
+    if (setMods == NULL) return;
+    SetItemCmd(m, item, key);
+    setMods(m, item, 1 /* kMenuShiftModifier */);
+}
+
 int main(void)
 {
     EventRecord event;
@@ -34696,6 +35144,8 @@ int main(void)
         AppendMenu(m, "\p(-;Next Group/N;Leave Group/L;Defend;Deselect Group");
         AppendMenu(m, "\p(-;Show current army;Show army's shadow");
         AppendMenu(m, "\p(-;Fight Order...;Disband Group;Change Signpost...;(-;Resign...");
+        SetMenuShiftShortcut(m, 2, 'G');     /* Ungroup          shift-cmd-G (CMNU 4 style 0x40) */
+        SetMenuShiftShortcut(m, 5, 'M');     /* Move All Armies  shift-cmd-M */
         InsertMenu(m, 0);
 
         /* 5 - Reports */
@@ -35600,6 +36050,7 @@ int main(void)
                     if (!ShowScenarioSelection())
                         TryLoadScenario();
                 } else {
+                    AdjustGameMenus();   /* a disabled item's key does nothing */
                     HandleMenuChoice(MenuKey(key));
                 }
             } else if (sMapLoaded) {
