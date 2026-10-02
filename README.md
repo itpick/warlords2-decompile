@@ -1,5 +1,51 @@
 # Warlords II — PowerPC Reconstruction
 
+## Fidelity status vs the original (updated Oct 2, 2026)
+
+Measured by running the original game and the remake side by side in two
+InfiniteMac emulators and diffing screenshots pixel by pixel
+(`tools/infinitemac/devloop/compare.mjs` + `pixdiff.py`). Lower is better;
+0.2-0.5% is screenshot noise (clock, cursor).
+
+| Screen / step (Erythea, default setup) | Pixel difference |
+|---|---|
+| Scenario picker | 0.9% |
+| Game Setup | 2.1% |
+| Turn banner | 2.2% |
+| Hero offer | 4.7% (random hero name/portrait text) |
+| City window, production pane | 4.7% |
+| Map after turn 1 starts | 0.2% |
+| Select army / move / step east (turn 1) | 0.2% |
+| End turn, AI turns, turn 2 banner | 0.2-4% |
+| Path preview (hover, drag) | 0.2% |
+| Map drag / minimap drag | 0.2-0.5% |
+| Turn 3 view | 0.2% |
+| Battle window (attack on a neutral city) | 4.5% (random battle outcome) |
+| Victory dialog | 4.4% |
+| Pillage report | 9.4% (different unit rolled) |
+
+Sound: the start-of-game sequence (VBEGIN, turn chime) matches the original.
+
+Other comparisons:
+- **Whole games recorded on the original**: a 3 h 37 min loss and a 1 h 13 min
+  hot-seat player win on Isles of Sorcery (`.devloop/movies/`, logs in
+  `.devloop/fullgame_log.md`, `.devloop/wingame_log.md`). Every screen seen
+  there now exists in the remake with the original's layout and text (battle,
+  Victory, Pillage/Sack, medals, Searching, Sage, city panes, reports,
+  Inspect Heroes, voice advisor, elimination, Offer of Peace,
+  Congratulations).
+- **Backend rules** (reviewed against the PPC 1.0.7 decompile, Oct 2):
+  combat engine, production, movement/boats, hero offers, temples,
+  diplomacy, elimination and game options now follow the original's code.
+  Still different: the **AI** (the original's 20-step planner is specified
+  in `docs/ai_port_spec.md` and is the next port — the goal is identical
+  AI code), quests, vectoring transit time, per-city unit stat rolls, saving
+  city ownership. Goal: every gameplay number identical to the original.
+- **Next**: replay the recorded Isles of Sorcery game on the remake and
+  compare the two movies flow by flow; multi-turn number comparisons.
+
+Details and history: `docs/2026-10-01-fidelity-log.md`.
+
 ![Current Progress](docs/screenshot_progress.jpg)
 
 ## Byte-for-Byte Replica Progress
