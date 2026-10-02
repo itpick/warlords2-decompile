@@ -15995,7 +15995,11 @@ static void ShowBattle(short tx, short ty, Boolean humanAttacker,
 
     /* the map behind is redrawn by now: WAR gone, a taken city in its new
      * colours (original, Myre) */
+    SetPort(bw);
+    ValidRect(&bw->portRect);   /* drawn by us: the update loop must not erase it */
     InvalidateAllGameWindows();
+    SetPort(bw);
+    ValidRect(&bw->portRect);
     DrainUpdates();
     SetPort(bw);
     SetRect(&v, 0, 251, BATTLE_W, 251 + 19);
@@ -16390,6 +16394,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             AwardMedal(mOwner, mx, my, nAttLive, nDefLive, nDefLive > 0 ? defSpr[0] : -1, humanAtt);
         CaptureCityFinish();
     }
+    sPreviewPathLen = 0; sPreviewGridValid = false;   /* the old path's rings go */
 #undef IN_BATTLE_ZONE
     return true;
 }
