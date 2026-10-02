@@ -19762,39 +19762,56 @@ static Boolean SiteGuardianFight(short armyIdx, unsigned char *site)
 /* View 4100 "Searching" (414x364, marble, PICT 4100 at (46,48), title
  * (7,10) Illuria 36, lines lin1-4 at y 251/270/289/308 380 wide Illuria 17,
  * Done (330,330) 64x21 [and Take (20,330)]), placed like the turn banner. */
-static void ShowSearchingDialog(ConstStr255Param l1, ConstStr255Param l2,
-                                ConstStr255Param l3, ConstStr255Param l4)
+static Boolean ShowSearchingDialog(ConstStr255Param l1, ConstStr255Param l2,
+                                   ConstStr255Param l3, ConstStr255Param l4, Boolean take)
 {
+    /* the lines appear one after another (left aligned), then the buttons;
+     * with an item, "Take it" is the default (returns true) */
     WindowPtr win = NewMacAppWindow(414, 364);
     ConstStr255Param ls[4];
-    Rect r, doneR;
+    Rect r, doneR, takeR, takeRing;
     Str255 s;
     EventRecord e;
     short k;
-    if (win == NULL) return;
+    Boolean took = false;
+    if (win == NULL) return take;
     ls[0] = l1; ls[1] = l2; ls[2] = l3; ls[3] = l4;
     DrawPictAt(1001, 7, 7);
     DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 357); DrawPictAt(1015, 407, 0);
     r.left = 46; r.top = 48; r.right = 46 + 322; r.bottom = 48 + 202;
-    DrawT3DFrame(&r);
+    { RGBColor black = {0, 0, 0}; RGBForeColor(&black); FrameRect(&r); }
     DrawPictAt(4100, 47, 49);
     GetIndString(s, 4100, 1);
     SetRect(&r, 7, 10, 407, 49); DrawSunkenText(&r, s[0] ? s : "\pSearching", IlluriaFont(), 36, 1);
     for (k = 0; k < 4; k++) {
+        unsigned long until = TickCount() + 40;
         if (ls[k] == NULL || ls[k][0] == 0) continue;
+        while (TickCount() < until) WaitNextEvent(0, &e, 2, NULL);
+        SetPort(win);
         SetRect(&r, 17, 251 + 19 * k, 397, 270 + 19 * k);
-        DrawSunkenText(&r, ls[k], IlluriaFont(), 17, 1);
+        DrawSunkenText(&r, ls[k], IlluriaFont(), 17, -2);
     }
     SetRect(&doneR, 330, 330, 394, 351);
+    SetRect(&takeR, 20, 330, 84, 351);
+    takeRing = takeR; InsetRect(&takeRing, -4, -4);
     GetIndString(s, 1000, 5);
     DrawT3DButton(&doneR, s[0] ? s : "\pDone");
+    if (take) {
+        RGBColor black = {0, 0, 0};
+        RGBForeColor(&black); PenSize(3, 3); FrameRoundRect(&takeRing, 16, 16); PenSize(1, 1);
+        GetIndString(s, 4100, 2);
+        DrawT3DButton(&takeR, s[0] ? s : "\pTake it");
+    }
     FlushEvents(mDownMask | keyDownMask, 0);
     for (;;) {
         if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
-        if (e.what == keyDown) break;
-        { Point pt = e.where; SetPort(win); GlobalToLocal(&pt); if (PtInRect(pt, &doneR)) break; }
+        if (e.what == keyDown) { took = take; break; }
+        { Point pt = e.where; SetPort(win); GlobalToLocal(&pt);
+          if (PtInRect(pt, &doneR)) break;
+          if (take && PtInRect(pt, &takeRing)) { took = true; break; } }
     }
     CloseMacAppWindow(win);
+    return took;
 }
 
 /* Guardian name n (1-9) from the scenario (SCN+0xF77, 16 bytes each) */
@@ -29339,7 +29356,7 @@ static void HandleMenuChoice(long menuResult)
                                 foundRuin = true;
                                 PlaySound(SND_DRAMATIC);
                                 {   Str255 l2; GetDATRawString(327, l2);      /* and is slain by it! */
-                                    ShowSearchingDialog(enc, l2, NULL, NULL); }
+                                    ShowSearchingDialog(enc, l2, NULL, NULL, false); }
                                 { short alive = 0, u;
                                   for (u = 0; u < 4; u++) {
                                       if (army[0x16 + u] != 0xFF &&
@@ -29454,7 +29471,18 @@ static void HandleMenuChoice(long menuResult)
                                     GetDATRawString(331, f); FormatTwoStrNum(f, heroNm, "\p", gold, l3);
                                 }
                                 if (!guard) { BlockMoveData(l3, l1, l3[0] + 1); l3[0] = 0; }
-                                if (l1[0]) ShowSearchingDialog(l1, l2, l3, NULL);
+                                if (l1[0] &&
+                                    !ShowSearchingDialog(l1, l2, l3, NULL, rewardType == 1 && foundItemId > 0) &&
+                                    rewardType == 1 && foundItemId > 0) {
+                                    /* Done without Take it: the find stays on the ground at the ruin */
+                                    short sl;
+                                    unsigned char *ir = gs + 0xD12 + (foundItemId - 1) * 0x1E;
+                                    for (sl = 0; sl < ITEM_SLOTS; sl++)
+                                        if (*(short *)(army + 0x3A + sl * 2) == foundItemId) *(short *)(army + 0x3A + sl * 2) = 0;
+                                    *(short *)(ir + 0x16) = 1;
+                                    *(short *)(ir + 0x18) = -1;
+                                    *(short *)(ir + 0x1A) = ax; *(short *)(ir + 0x1C) = ay;
+                                }
                             }
                         }
                         break;
