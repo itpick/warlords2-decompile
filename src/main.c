@@ -22872,6 +22872,135 @@ static void DrawBigShieldAt(short side, short x, short y)
     BlitKeyedColor(sShieldBigGW, &key, side * 32, 0, 32, 36, x, y);
 }
 
+/* MacApp small dialogs on a 334x214 marble (edge PICTs 1004/1005/1006/1014,
+ * marble PICT 1001 at (7,7)): 'head' (7,11) 320x39 Illuria 36, text lines
+ * 320 wide Illuria 17 (all cream, centred); Cancel/No T3DButton (173,173)
+ * 64x20, OK/Yes default (246,169) 72x29 incl. its ring (STR# 1000). */
+static void DrawSmallDialogFrame(ConstStr255Param head)
+{
+    Rect r;
+    DrawPictAt(1001, 7, 7);
+    DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 207); DrawPictAt(1014, 327, 0);
+    SetRect(&r, 7, 11, 327, 50);
+    DrawSunkenText(&r, head, IlluriaFont(), 36, 1);
+}
+
+static void DrawSmallDialogButtons(short yesIdx, short noIdx)
+{
+    Rect okR, okRing, cR;
+    Str255 s;
+    RGBColor black = {0, 0, 0};
+    SetRect(&okRing, 246, 169, 318, 198);
+    okR = okRing; InsetRect(&okR, 4, 4);
+    SetRect(&cR, 173, 173, 237, 193);
+    RGBForeColor(&black); PenSize(3, 3); FrameRoundRect(&okRing, 16, 16); PenSize(1, 1);
+    GetIndString(s, 1000, yesIdx); DrawT3DButton(&okR, s);
+    GetIndString(s, 1000, noIdx);  DrawT3DButton(&cR, s);
+}
+
+/* View 3410: returns true for Yes (keys y / Return), false for No (n / Esc). */
+static Boolean AskYesNo(ConstStr255Param head, ConstStr255Param l1, ConstStr255Param l2,
+                        ConstStr255Param l3, ConstStr255Param l4)
+{
+    WindowPtr win = NewMacAppWindow(334, 214);
+    static const short ys[4] = {58, 82, 104, 127};
+    ConstStr255Param ls[4];
+    Rect r, okRing, cR;
+    EventRecord e;
+    short k;
+    Boolean yes = false;
+    if (win == NULL) return false;
+    ls[0] = l1; ls[1] = l2; ls[2] = l3; ls[3] = l4;
+    DrawSmallDialogFrame(head);
+    for (k = 0; k < 4; k++) {
+        if (ls[k] == NULL || ls[k][0] == 0) continue;
+        SetRect(&r, 7, ys[k], 327, ys[k] + 19);
+        DrawSunkenText(&r, ls[k], IlluriaFont(), 17, 1);
+    }
+    DrawSmallDialogButtons(4, 3);
+    SetRect(&okRing, 246, 169, 318, 198);
+    SetRect(&cR, 173, 173, 237, 193);
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) {
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == keyDown) {
+            char c = e.message & charCodeMask;
+            if (c == 'y' || c == 'Y' || c == '\r' || c == 3) { yes = true; break; }
+            if (c == 'n' || c == 'N' || c == 27) break;
+        } else {
+            Point pt = e.where;
+            SetPort(win); GlobalToLocal(&pt);
+            if (PtInRect(pt, &okRing)) { yes = true; break; }
+            if (PtInRect(pt, &cR)) break;
+        }
+    }
+    CloseMacAppWindow(win);
+    return yes;
+}
+
+/* View 3400: a name field (31,114) 256x22 under two lines; true on OK. */
+static Boolean AskText(ConstStr255Param head, ConstStr255Param l1, ConstStr255Param l2,
+                       Str255 text, short maxLen)
+{
+    WindowPtr win = NewMacAppWindow(334, 214);
+    Rect r, field, okRing, cR, te;
+    TEHandle teh;
+    EventRecord e;
+    Boolean ok = false, done = false;
+    RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF}, lav = {0xDADA, 0xDADA, 0xFFFF}, black = {0, 0, 0};
+    if (win == NULL) return false;
+    DrawSmallDialogFrame(head);
+    SetRect(&r, 7, 58, 327, 77);  DrawSunkenText(&r, l1, IlluriaFont(), 17, 1);
+    SetRect(&r, 7, 81, 327, 100); DrawSunkenText(&r, l2, IlluriaFont(), 17, 1);
+    SetRect(&field, 31, 114, 287, 136);
+    DrawT3DFrame(&field);
+    r = field; InsetRect(&r, 2, 2);
+    RGBForeColor(&white); FrameRect(&r);
+    InsetRect(&r, 1, 1); RGBForeColor(&lav); PaintRect(&r);
+    DrawSmallDialogButtons(2, 1);
+    SetRect(&okRing, 246, 169, 318, 198);
+    SetRect(&cR, 173, 173, 237, 193);
+    te = field; InsetRect(&te, 4, 3);
+    TextFont(ChicagoFont()); TextSize(12); TextFace(0);
+    RGBForeColor(&black); RGBBackColor(&lav);
+    teh = TENew(&te, &te);
+    if (teh == NULL) { CloseMacAppWindow(win); return false; }
+    TESetText(text + 1, text[0], teh);
+    TESetSelect(0, 32767, teh);
+    TEActivate(teh);
+    TEUpdate(&te, teh);
+    FlushEvents(mDownMask | keyDownMask, 0);
+    while (!done) {
+        TEIdle(teh);
+        if (!WaitNextEvent(mDownMask | keyDownMask | autoKeyMask, &e, 10, NULL)) continue;
+        SetPort(win);
+        RGBForeColor(&black); RGBBackColor(&lav);
+        if (e.what == mouseDown) {
+            Point pt = e.where;
+            GlobalToLocal(&pt);
+            if (PtInRect(pt, &okRing)) { ok = true; done = true; }
+            else if (PtInRect(pt, &cR)) done = true;
+            else if (PtInRect(pt, &field)) TEClick(pt, (e.modifiers & shiftKey) != 0, teh);
+        } else {
+            char c = e.message & charCodeMask;
+            if (c == '\r' || c == 3) { ok = true; done = true; }
+            else if (c == 27) done = true;
+            else if ((**teh).teLength < maxLen || c == 8 || c < 0x20) TEKey(c, teh);
+        }
+    }
+    if (ok) {
+        CharsHandle ch = TEGetText(teh);
+        short n = (**teh).teLength;
+        if (n > maxLen) n = maxLen;
+        text[0] = (unsigned char)n;
+        BlockMoveData(*ch, text + 1, n);
+    }
+    TEDispose(teh);
+    RGBBackColor(&white);
+    CloseMacAppWindow(win);
+    return ok && text[0] > 0;
+}
+
 /* View 3310 Build Production (PPC FUN_10049930 / FUN_10049048 / FUN_10049aec):
  * buy a new unit type into the city's selected slot. */
 static void ShowBuildProduction(short ci)
@@ -23307,8 +23436,42 @@ cityLoop:
                 SetPort(win);
                 redraw = true;
                 goto reloadCity;
-            } else if (tab == 1 && (PtInRect(lp, &bldR[0]) || PtInRect(lp, &bldR[1]))) {
-                SysBeep(1);   /* TODO: Rename (text dialog) / Raze (confirm dialog) */
+            } else if (tab == 1 && mine && PtInRect(lp, &bldR[0])) {
+                /* Rename (PPC FUN_10025e44): View 3400, at most 15 characters */
+                Str255 nm;
+                CityNameP(cityIndex, nm);
+                if (AskText("\pRename City", "\pType the new name for", "\pthis city", nm, 15)) {
+                    short q;
+                    for (q = 0; q < nm[0] && q < MAX_CITY_NAME - 1; q++) sCityNames[cityIndex][q] = nm[q + 1];
+                    sCityNames[cityIndex][q] = 0;
+                }
+                SetPort(win);
+                redraw = true;
+            } else if (tab == 1 && mine && PtInRect(lp, &bldR[1])) {
+                /* Raze (PPC FUN_1004f388): only with razing "always" allowed */
+                Str255 nm, l3;
+                CityNameP(cityIndex, nm);
+                FormatHeroLine("\praze %s?", nm, 0, l3);
+                if (sRazingCities == 0 &&
+                    AskYesNo("\pRaze City", "\pAre you sure that you", "\pwant to", l3, "\pYou won't be popular!")) {
+                    *(short *)(gs + 0x1122 + curPlayer * 2) += 100 + 1 + (short)((unsigned short)Random() % 25);
+                    *(short *)(city + 0x04) = 0x0F;
+                    if (*gMapTiles != 0) {
+                        unsigned char *m = (unsigned char *)*gMapTiles;
+                        short dx, dy;
+                        for (dy = 0; dy < 2; dy++)
+                            for (dx = 0; dx < 2; dx++)
+                                if (cityX + dx < sMapWidth && cityY + dy < sMapHeight) {
+                                    unsigned short o = (cityY + dy) * 0xE0 + (cityX + dx) * 2;
+                                    m[o] = (unsigned char)(0xA0 + 2 * curPlayer + dx + dy * 0x10);
+                                    m[o + 1] = (m[o + 1] & 0xF0) | 0x0F;
+                                }
+                    }
+                    *(short *)(extCity + 0x02) = -1; *(short *)(extCity + 0x58) = -1;
+                    done = true; cancelled = true;
+                }
+                SetPort(win);
+                redraw = true;
             } else if (tab == 2 && PtInRect(lp, &stopR) && selectedType >= 0) {
                 selectedType = -1;
                 redraw = true;
