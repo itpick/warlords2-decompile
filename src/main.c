@@ -1169,7 +1169,7 @@ static GWorldPtr sHaloGW = NULL;          /* PICT 1002 selection halo frames */
 static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
 /* DEV ONLY - REVERT BEFORE TIMING COMPARISONS: 1 skips the per-AI-turn holds
  * (the original's ~1.75 s per computer player) to speed up test iterations. */
-#define DEV_FAST_TURNS 1
+#define DEV_FAST_TURNS 0
 #define DEV_SHIP_PROBE 0   /* DEV: temporary ship-on-land probe */
 static short     sAIProgress = 0;
 static Str255    sInfoMsg;                /* info-area message over the AI turn display */         /* its flag strip as a progress bar, 0-100 */
@@ -8806,6 +8806,8 @@ static Boolean AIAttackGate(short armyIdx, short bx, short by);
 static void AIAnimateStep(short x, short y);
 static void AIOrdOnRemove(short armyIndex, short armyCount);
 static void AIResetAll(void);
+static void AIBattleMemory(short defOwner, short attOwner, short heroesLeft, short unitsLeft,
+                           short attUnits, Boolean cityBattle);
 static Boolean sPathForceAI;   /* BuildPathFlagGrid: treat the owner as a computer player */
 static void TryAutoSearchRuin(short armyIdx);
 
@@ -14004,8 +14006,10 @@ static short ExecutePathSteps(short armyIdx)
 
     if (stepsTaken == 0) return 0;
 
-    /* Auto-search ruins */
-    TryAutoSearchRuin(armyIdx);
+    /* Auto-search ruins (a computer hero searches through its own step;
+     * a temple blesses any stack that stops on it) */
+    if (sAITurnPlayer >= 0) TryTempleBlessing(armyIdx);
+    else TryAutoSearchRuin(armyIdx);
 
     /* Reached the path's last tile: orders done when it is the stored
      * target; a lone record joins a friendly record there (the remake's
@@ -16034,6 +16038,14 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             }
         }
         won = (nDefLive == 0 && nAttLive > 0);
+
+        /* PPC FUN_1000dc4c: the defending player's AI remembers the attack */
+        {
+            short hl = 0, q;
+            for (q = 0; q < nAttLive; q++) if (liveAtt[q] == 0x1C || liveAtt[q] == 0x1D) hl++;
+            AIBattleMemory(defOwner, mOwner, hl, nAttLive, sBattle.nAtt,
+                           cityIdx >= 0 || GetTerrainType(mx, my) == 10);
+        }
 
         /* display order: the fallen first, in the order they fell */
         for (i = 0; i < sBattleKillN; i++) {
@@ -23910,6 +23922,10 @@ typedef struct {
 #define AIO_EXPED    0x0100
 #define AIO_DONE     0x0200
 
+static void AIFreeRoam(short rec, short cityCtx);   /* FUN_1001a348 (below) */
+static Boolean sAIOrigValid;
+static short   sAIAllyFlag[8];
+static void AIHeroHandover(short *heroes, short nHeroes); /* FUN_10016df0 (below) */
 static AIBlock  sAIBlocks[8];
 static AIBlock *gAI = NULL;                 /* the block of the player whose turn runs */
 static short    sAIMe = -1;
@@ -24145,6 +24161,8 @@ static void AIResetAll(void)
     sAINbValid = false;
     sAILastX = sAILastY = 0;
     sAIExpandLastTarget = sAIExpandLastCity = -1;
+    sAIOrigValid = false;
+    for (p = 0; p < 8; p++) sAIAllyFlag[p] = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -25121,11 +25139,11 @@ static Boolean AIContinueCapture(AIStack *s)
         }
         if (best == -1) {
             if (AIHidden() && AITurn() < 10) {
-                /* FUN_1001a348: release as free-roamers */
-                for (k = 0; k < s->n; k++) {
-                    AIStack one; one.n = 1; one.rec[0] = s->rec[k];
-                    AISetOrders(&one, 4, 0, AIO_RELEASED);
-                }
+                /* FUN_1001a348: the units roam */
+                short recs[8], nr = s->n;
+                for (k = 0; k < nr; k++) recs[k] = s->rec[k];
+                for (k = 0; k < nr; k++) if (recs[k] < AIArmyCount() && AIRecMine(recs[k])) AIFreeRoam(recs[k], -1);
+                s->n = 0;
                 return false;
             }
             return true;
@@ -25564,6 +25582,12 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
         }
     }
     if (heroRec >= 0) CheckGroundItemPickup(heroRec);     /* FUN_100169c0 */
+    if (heroes > 1) {                                      /* FUN_10016df0 */
+        short hr[8], nh = 0;
+        for (i = n - 1; i >= 0 && nh < 8; i--)
+            if (AIRecMine(i) && AIRecHasHero(i) && AIRecX(i) >= cx && AIRecX(i) <= cx + 1 && AIRecY(i) >= cy && AIRecY(i) <= cy + 1) hr[nh++] = i;
+        AIHeroHandover(hr, nh);
+    }
     gAI->cflags[ci] &= ~0x30;
     if (heroes) gAI->cflags[ci] |= 0x20;
     if (spec) gAI->cflags[ci] |= 0x10;
@@ -25595,7 +25619,7 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
                 AIUnit one1 = out[i];
                 AIStack one;
                 AISeparateUnits(&one1, 1, &one, out, listed);
-                if (one.n > 0) AISetOrders(&one, 4, 0, AIO_RELEASED);   /* FUN_1001a348 (free-roam move: not ported) */
+                if (one.n > 0) AIFreeRoam(one.rec[0], -1);      /* FUN_1001a348 */
             }
             out[i].rec = -1;
             flyers--;
@@ -25751,8 +25775,7 @@ static short AIExpandCity(short ci, unsigned char *ordered)
 }
 
 /* FUN_1001a470(city, flyersOnly): the pool units beyond the reserve are
- * released as free-roamers (hidden map).  The free-roam movement
- * (FUN_1001a348) is not ported: the units are flagged released. */
+ * released as free-roamers (hidden map) */
 static void AIReleasePool(short ci, Boolean flyersOnly)
 {
     short d = AINearestEnemyUnit(AICityX(ci), AICityY(ci)), i, p, sumWins = 0, R;
@@ -25767,10 +25790,8 @@ static void AIReleasePool(short ci, Boolean flyersOnly)
         if (AIRecHasHero(i) && anyFront) continue;
         if (flyersOnly && !AIRecHasFlyer(i)) continue;
         if (R > 0) { R -= AIRecUnits(i); continue; }
-        {
-            AIStack one; one.n = 1; one.rec[0] = i;
-            AISetOrders(&one, 4, 0, AIO_RELEASED);
-        }
+        AIFreeRoam(i, ci);                        /* FUN_1001a348(unit, city) */
+        if (i >= AIArmyCount()) i = AIArmyCount();
     }
 }
 
@@ -26184,305 +26205,6 @@ static void AIStepVectoring(void)
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* step 1 (part): FUN_10014e44 counts the heroes (the hero AI itself,     */
-/* FUN_100164e4, is not ported yet)                                     */
-/* ------------------------------------------------------------------ */
-static void AICountHeroes(void)
-{
-    short i, k, n = 0;
-    for (i = AIArmyCount() - 1; i >= 0 && n < 6; i--) {
-        unsigned char *a = AI_REC(i);
-        if (!AIRecMine(i)) continue;
-        for (k = 0; k < 4; k++) if (a[0x16 + k] == 0x1C && n < 6) n++;
-    }
-    gAI->heroCount = n;
-}
-
-
-/* ------------------------------------------------------------------ */
-/* The remake's earlier diplomacy rules (68k CODE_082 reading) run at    */
-/* step 1 until FUN_10011804 / FUN_1000df58 are ported.                */
-/* ------------------------------------------------------------------ */
-static void AIDiplomacyLegacy(short aiPlayer)
-{
-    unsigned char *gs = (unsigned char *)*gGameState;
-    short armyCount = *(short *)(gs + 0x1602), cityCount = sCityCount, ai, ci;
-    if (armyCount > 100) armyCount = 100;
-    if (cityCount > 139) cityCount = 139;
-    (void)ai; (void)ci;
-    if (sOptDiplomacy) {
-        short playerArmyCounts[8];
-        short playerLandArmies[8];
-        short threatToward[8];  /* armies AI has aimed at player p */
-        short threatFrom[8];    /* armies player p has aimed at AI */
-        short pj;
-        short aiCities = 0, aiArmies = 0;
-        short primaryTarget = -1;
-        short maxThreatPlayer = -1;
-        short maxThreatValue = 0;
-
-        for (pj = 0; pj < 8; pj++) {
-            playerArmyCounts[pj] = 0;
-            playerLandArmies[pj] = 0;
-            threatToward[pj] = 0;
-            threatFrom[pj] = 0;
-        }
-
-        /* Count AI's cities */
-        for (ci = 0; ci < cityCount; ci++) {
-            unsigned char *city = sCityData +ci * 0x20;
-            short ds = (short)(unsigned char)city[0x17];
-            if (ds != 0 && ds != 1) continue;
-            if (*(short *)(city + 0x04) == aiPlayer) aiCities++;
-        }
-
-        /* Count armies and threats (68k Phase 1) */
-        for (ai = 0; ai < armyCount; ai++) {
-            unsigned char *a = gs + 0x1604 + ai * 0x42;
-            short aOwner = (short)(unsigned char)a[0x15];
-            if (aOwner < 0 || aOwner > 7) continue;
-            if (a[0x16] == 0xFF) continue;
-            playerArmyCounts[aOwner]++;
-            playerLandArmies[aOwner]++;  /* simplified: count all as land */
-            if (aOwner == aiPlayer) {
-                /* Check what this army is targeting */
-                short tgtX = *(short *)(a + 0x34);
-                short tgtY = *(short *)(a + 0x36);
-                if (tgtX >= 0 && tgtY >= 0) {
-                    short tci;
-                    for (tci = 0; tci < cityCount; tci++) {
-                        unsigned char *tc = sCityData + tci * 0x20;
-                        if (*(short *)(tc + 0x00) == tgtX &&
-                            *(short *)(tc + 0x02) == tgtY) {
-                            short tOwner = *(short *)(tc + 0x04);
-                            if (tOwner >= 0 && tOwner < 8 && tOwner != aiPlayer)
-                                threatToward[tOwner]++;
-                            break;
-                        }
-                    }
-                }
-            } else {
-                /* Check if this enemy army is targeting AI's cities */
-                short tgtX2 = *(short *)(a + 0x34);
-                short tgtY2 = *(short *)(a + 0x36);
-                if (tgtX2 >= 0 && tgtY2 >= 0) {
-                    short tci2;
-                    for (tci2 = 0; tci2 < cityCount; tci2++) {
-                        unsigned char *tc2 = sCityData + tci2 * 0x20;
-                        if (*(short *)(tc2 + 0x00) == tgtX2 &&
-                            *(short *)(tc2 + 0x02) == tgtY2 &&
-                            *(short *)(tc2 + 0x04) == aiPlayer) {
-                            threatFrom[aOwner]++;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        aiArmies = playerArmyCounts[aiPlayer];
-
-        /* (the AI's row is NOT reset to peace each turn: its proposals from
-         * earlier turns stand until the threat picture changes them) */
-
-        /* Phase 2: Threat-based decisions (68k bias formula) */
-        for (pj = 0; pj < 8; pj++) {
-            short atPeace, atWar, bias, combined;
-            if (pj == aiPlayer) continue;
-            if (*(short *)(gs + 0x138 + pj * 2) == 0) continue;
-
-            /* Count how many players are at peace/war with AI */
-            atPeace = 0; atWar = 0;
-            { short pk;
-              for (pk = 0; pk < 8; pk++) {
-                  if (pk == aiPlayer) continue;
-                  if (*(short *)(gs + 0x138 + pk * 2) == 0) continue;
-                  if (DIPLO_GET_STATE(*(gs + 0x1582 + aiPlayer * 8 + pk)) == DIPLO_WAR)
-                      atWar++;
-                  else
-                      atPeace++;
-              }
-            }
-
-            bias = (atPeace - atWar) * 2;
-            combined = threatToward[pj] + threatFrom[pj];
-
-            if (combined < bias + 4) {
-                /* Low threat: propose peace */
-                *(gs + 0x1582 + aiPlayer * 8 + pj) =
-                    DIPLO_SET_STATE(*(gs + 0x1582 + aiPlayer * 8 + pj), DIPLO_PEACE);
-            } else if (combined >= bias + 8) {
-                /* High threat: declare war */
-                *(gs + 0x1582 + aiPlayer * 8 + pj) =
-                    DIPLO_SET_STATE(*(gs + 0x1582 + aiPlayer * 8 + pj), DIPLO_WAR);
-            }
-            /* Else: stays at peace (already set) */
-
-            /* Track most threatening player */
-            if (threatFrom[pj] > maxThreatValue) {
-                maxThreatValue = threatFrom[pj];
-                maxThreatPlayer = pj;
-            }
-        }
-
-        /* Phase 3: Force war with primary target (most threatening) */
-        if (maxThreatPlayer >= 0) {
-            primaryTarget = maxThreatPlayer;
-            *(gs + 0x1582 + aiPlayer * 8 + primaryTarget) =
-                DIPLO_SET_STATE(*(gs + 0x1582 + aiPlayer * 8 + primaryTarget), DIPLO_WAR);
-        }
-
-        /* Phase 4: Focus-fire on dominant enemy (68k CODE_082 Phase 7) */
-        { short dominantPlayer = -1, dominantArmies = 0;
-          for (pj = 0; pj < 8; pj++) {
-              if (pj == aiPlayer) continue;
-              if (*(short *)(gs + 0x138 + pj * 2) == 0) continue;
-              short threshold = (*(short *)(gs + 0xd0 + pj * 2) == 0) ? 50 : 30;
-              if (playerArmyCounts[pj] > threshold &&
-                  playerArmyCounts[pj] > dominantArmies) {
-                  dominantArmies = playerArmyCounts[pj];
-                  dominantPlayer = pj;
-              }
-          }
-          if (dominantPlayer >= 0) {
-              /* War with dominant player, peace with everyone else */
-              for (pj = 0; pj < 8; pj++) {
-                  if (pj == aiPlayer) continue;
-                  if (*(short *)(gs + 0x138 + pj * 2) == 0) continue;
-                  if (pj == dominantPlayer || pj == primaryTarget) {
-                      *(gs + 0x1582 + aiPlayer * 8 + pj) =
-                          DIPLO_SET_STATE(*(gs + 0x1582 + aiPlayer * 8 + pj), DIPLO_WAR);
-                  } else {
-                      *(gs + 0x1582 + aiPlayer * 8 + pj) =
-                          DIPLO_SET_STATE(*(gs + 0x1582 + aiPlayer * 8 + pj), DIPLO_PEACE);
-                  }
-              }
-          }
-        }
-
-        /* Phase 5: Peace with dead players (0 armies) */
-        for (pj = 0; pj < 8; pj++) {
-            if (pj == aiPlayer) continue;
-            if (playerLandArmies[pj] == 0) {
-                *(gs + 0x1582 + aiPlayer * 8 + pj) =
-                    DIPLO_SET_STATE(*(gs + 0x1582 + aiPlayer * 8 + pj), DIPLO_PEACE);
-            }
-        }
-
-        /* Notify human players of the AI's new proposals.  Only the AI's own
-         * row is written; the other side's bits converge at that player's
-         * turn start (ProcessStartOfTurn 0c). */
-        for (pj = 0; pj < 8; pj++) {
-            short pjType, pjAlive;
-            unsigned char newState, oldState;
-            if (pj == aiPlayer) continue;
-            pjAlive = *(short *)(gs + 0x138 + pj * 2);
-            if (!pjAlive) continue;
-
-            pjType = *(short *)(gs + 0xd0 + pj * 2);
-            newState = DIPLO_GET_STATE(*(gs + 0x1582 + aiPlayer * 8 + pj));
-            oldState = *(gs + 0x1582 + aiPlayer * 8 + pj) & 3;   /* displayed */
-
-            if (newState == DIPLO_WAR && oldState != DIPLO_WAR) {
-                { short turnNum = *(short *)(gs + 0x136);
-                  RecordEvent(turnNum, HIST_EVT_WAR, aiPlayer,
-                      "War declared");
-                }
-                /* Notify human player of war declaration */
-                if (pjType == 0 && sOptDiplomacy) {   /* no diplomacy: no war/peace notices (original: silent) */
-                    WindowPtr wwWin;
-                    Rect wwR;
-                    PlaySound(SND_DRAMATIC);
-                    SetRect(&wwR, 0, 0, 300, 80);
-                    OffsetRect(&wwR, 170, 220);
-                    wwWin = NewCWindow(NULL, &wwR, "\p", true,
-                                       plainDBox, (WindowPtr)-1, false, 0);
-                    if (wwWin) {
-                        RGBColor bg3 = {0x2800, 0x0800, 0x0800};
-                        RGBColor red3 = {0xFFFF, 0x4444, 0x4444};
-                        RGBColor wh3 = {0xFFFF, 0xFFFF, 0xFFFF};
-                        EventRecord wwE;
-                        unsigned long wwT;
-                        Str255 fn3;
-                        unsigned char *np3 = gs + aiPlayer * 20;
-                        short nl3 = 0;
-                        while (nl3 < 20 && np3[nl3]) nl3++;
-                        fn3[0] = (unsigned char)nl3;
-                        BlockMoveData(np3, fn3 + 1, nl3);
-                        SetPort(wwWin);
-                        RGBForeColor(&bg3); PaintRect(&wwWin->portRect);
-                        RGBForeColor(&red3); PenSize(2,2); FrameRect(&wwWin->portRect); PenNormal();
-                        TextFont(3); TextSize(11); TextFace(bold);
-                        RGBForeColor(&red3);
-                        MoveTo(15, 22);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 4, "\pWar Declared!"));
-                        TextFace(0); TextSize(10);
-                        RGBForeColor(&wh3);
-                        MoveTo(15, 44);
-                        DrawString(fn3);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 5, "\p has declared war!"));
-                        MoveTo(15, 62);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 6, "\pPrepare thy forces!"));
-                        wwT = TickCount() + SpeedTicks(120);
-                        while (TickCount() < wwT) {
-                            if (WaitNextEvent(mDownMask | keyDownMask, &wwE, 5, NULL)) break;
-                        }
-                        DisposeWindow(wwWin);
-                    }
-                }
-            } else if (newState != DIPLO_WAR && oldState == DIPLO_WAR) {
-                /* War ended (as proposed by this AI) */
-                { short turnNum2 = *(short *)(gs + 0x136);
-                  RecordEvent(turnNum2, HIST_EVT_PEACE, aiPlayer,
-                      "Peace negotiated");
-                }
-                /* Notify human player of peace */
-                if (pjType == 0 && sOptDiplomacy) {   /* no diplomacy: no war/peace notices (original: silent) */
-                    WindowPtr pwWin;
-                    Rect pwR;
-                    PlaySound(SND_CHORD);
-                    SetRect(&pwR, 0, 0, 300, 80);
-                    OffsetRect(&pwR, 170, 220);
-                    pwWin = NewCWindow(NULL, &pwR, "\p", true,
-                                       plainDBox, (WindowPtr)-1, false, 0);
-                    if (pwWin) {
-                        RGBColor bg4 = {0x1000, 0x2000, 0x1000};
-                        RGBColor gold4 = {0xFFFF, 0xDDDD, 0x3333};
-                        RGBColor wh4 = {0xFFFF, 0xFFFF, 0xFFFF};
-                        EventRecord pwE;
-                        unsigned long pwT;
-                        Str255 fn4;
-                        unsigned char *np4 = gs + aiPlayer * 20;
-                        short nl4 = 0;
-                        while (nl4 < 20 && np4[nl4]) nl4++;
-                        fn4[0] = (unsigned char)nl4;
-                        BlockMoveData(np4, fn4 + 1, nl4);
-                        SetPort(pwWin);
-                        RGBForeColor(&bg4); PaintRect(&pwWin->portRect);
-                        RGBForeColor(&gold4); PenSize(2,2); FrameRect(&pwWin->portRect); PenNormal();
-                        TextFont(3); TextSize(11); TextFace(bold);
-                        RGBForeColor(&gold4);
-                        MoveTo(15, 22);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 1, "\pPeace Negotiated!"));
-                        TextFace(0); TextSize(10);
-                        RGBForeColor(&wh4);
-                        MoveTo(15, 44);
-                        DrawString(fn4);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 2, "\p proposes peace."));
-                        MoveTo(15, 62);
-                        DrawString(GetCachedString(STR_HERO_DIPLO, 3, "\pA truce has been declared."));
-                        pwT = TickCount() + SpeedTicks(120);
-                        while (TickCount() < pwT) {
-                            if (WaitNextEvent(mDownMask | keyDownMask, &pwE, 5, NULL)) break;
-                        }
-                        DisposeWindow(pwWin);
-                    }
-                }
-            }
-        }
-    }
-}
-
 /* the turn-start hero offer for a computer player (PPC FUN_10032a24) */
 static void AIHeroOffer(short aiPlayer)
 {
@@ -26624,35 +26346,1747 @@ static void AIHeroOffer(short aiPlayer)
 }
 
 /* ===================================================================
+ * Phase 2: heroes, diplomacy, release / free roam, expeditions, fronts,
+ * raids (PPC FUN_100164e4, FUN_10011804, FUN_10013774, FUN_10014214,
+ * FUN_1001d014 / FUN_1000f410, FUN_10013040 and their callees).
+ * =================================================================== */
+
+/* the original owner of every city (city+0x2f, FUN_1001d15c at game
+ * start; FUN_10011590 may claim orphans).  Taken at the first computer
+ * turn of a game. */
+static unsigned char sAIOrigOwner[AI_MAX_CITIES];
+static Boolean sAIOrigValid = false;
+static short sAIAllyFlag[8];               /* DAT_40820014: each computer player's +0x38 */
+
+static short AICityOrig(short ci)
+{
+    if (!sAIOrigValid || ci < 0 || ci >= AI_MAX_CITIES) return 0x0F;
+    return sAIOrigOwner[ci];
+}
+static void AIOrigEnsure(void)
+{
+    short ci;
+    if (sAIOrigValid) return;
+    for (ci = 0; ci < AI_MAX_CITIES; ci++) sAIOrigOwner[ci] = (unsigned char)(AIIsCity(ci) ? AICityOwner(ci) : 0x0F);
+    sAIOrigValid = true;
+}
+static Boolean AIPlayerAlive(short p) { return p >= 0 && p < 8 && *(short *)(AI_GS + 0x138 + p * 2) != 0; }
+static Boolean AIPlayerHuman(short p) { return p >= 0 && p < 8 && *(short *)(AI_GS + 0xd0 + p * 2) == 0; }
+/* the proposed state of player a toward b (bits 28-29 of the original's long) */
+static short AIProposed(short a, short b) { return (short)DIPLO_GET_STATE(*(AI_GS + 0x1582 + a * 8 + b)); }
+/* the effective state (bits 26-27: >> 0x1a & 3) */
+static short AIEffective(short a, short b) { return (short)(*(AI_GS + 0x1582 + a * 8 + b) & 3); }
+static void AISetProposed(short p, short state)
+{
+    unsigned char *d;
+    if (p < 0 || p > 7 || p == sAIMe) return;
+    d = AI_GS + 0x1582 + sAIMe * 8 + p;
+    *d = (unsigned char)DIPLO_SET_STATE(*d, state);
+}
+/* the home (capital) city of player p: FUN_1002be50 of gs+0x194/0x196 */
+static short AIHomeCity(short p)
+{
+    unsigned char *ps = AI_GS + 0x186 + p * 0x14;
+    return AICityAt(*(short *)(ps + 0x0E), *(short *)(ps + 0x10));
+}
+
+/* ------------------------------------------------------------------ */
+/* FUN_1000dc4c: the battle memory of the defending player (indexed by  */
+/* the attacker): heroes and units the attacker kept, battles, wins     */
+/* (no losses), city battles and city wins.  Called after every battle. */
+/* ------------------------------------------------------------------ */
+static void AIBattleMemory(short defOwner, short attOwner, short heroesLeft, short unitsLeft,
+                           short attUnits, Boolean cityBattle)
+{
+    AIBlock *b;
+    if (defOwner < 0 || defOwner > 7 || attOwner < 0 || attOwner > 7) return;
+    b = &sAIBlocks[defOwner];
+    if (!b->inited) return;
+    b->battleMem[0][attOwner] += heroesLeft;
+    b->battleMem[1][attOwner] += unitsLeft;
+    b->battleMem[2][attOwner] += 1;
+    if (unitsLeft == attUnits) b->battleMem[3][attOwner] += 1;
+    if (cityBattle) {
+        b->battleMem[4][attOwner] += 1;
+        if (unitsLeft == attUnits) b->battleMem[5][attOwner] += 1;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* step 1 diplomacy: FUN_10011590, FUN_10011734, FUN_1000df58,          */
+/* FUN_10011804                                                         */
+/* ------------------------------------------------------------------ */
+/* FUN_10011590: the nearest city within 40 of my home whose original
+ * owner is neutral or dead becomes "originally mine" */
+static void AIClaimOrphanCity(void)
+{
+    short home = AIHomeCity(sAIMe), ci, best = -1, bestD = 10000;
+    if (home < 0) return;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short o, d;
+        if (!AIIsCity(ci)) continue;
+        o = AICityOrig(ci);
+        if (o == sAIMe) continue;
+        if (!(o == 0x0F || !AIPlayerAlive(o))) continue;
+        d = AIDist(AICityX(ci), AICityY(ci), AICityX(home), AICityY(home));
+        if (d < 40 && d < bestD) { best = ci; bestD = d; }
+    }
+    if (best != -1) sAIOrigOwner[best] = (unsigned char)sAIMe;
+}
+/* FUN_10011734(p): a human-allying computer player leaves p alone when p
+ * is at war with an allying human */
+static Boolean AIMayAllyHuman(short p)
+{
+    short q;
+    if (!sOptDiplomacy || gAI->allyHumans == 0) return false;
+    if (AIPlayerHuman(sAIMe)) return false;
+    for (q = 7; q >= 0; q--)
+        if (AIPlayerAlive(q) && AIPlayerHuman(q) && AIEffective(p, q) == DIPLO_WAR && sAIAllyFlag[q] != 0) return true;
+    return false;
+}
+/* FUN_1000df58: the player to go to war with (-1 none) */
+static short AIPickTargetPlayer(void)
+{
+    short cities[8], explored[8], capHeld[8], taken[8], border[8], frontTgt[8], score[8], rnd[8];
+    short p, ci, home = AIHomeCity(sAIMe), myNot = *(short *)(AI_GS + 0x1122 + sAIMe * 2);
+    short nFronts = 0, others = 0, best = -1, bestScore = 0, holder = -1, f;
+    Boolean atWar = false;
+    for (p = 7; p >= 0; p--) {
+        cities[p] = explored[p] = capHeld[p] = taken[p] = border[p] = frontTgt[p] = score[p] = 0;
+        rnd[p] = AIRnd(10, 0);
+    }
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short o;
+        if (!AIIsCity(ci)) continue;
+        o = AICityOwner(ci);
+        if (o == 0x0F) continue;
+        cities[o]++;
+        if (!(gAI->cflags[ci] & 1)) explored[o]++;
+        if (o == sAIMe) {
+            unsigned char nb[6];
+            short k;
+            if (AICityOrig(ci) != 0x0F) taken[AICityOrig(ci)]++;
+            AINeighbours(ci, nb, NULL);
+            for (k = 5; k >= 0; k--)
+                if (nb[k] != 0xFF && AICityOwner(nb[k]) != sAIMe && AICityOrig(nb[k]) == sAIMe)
+                    border[o]++;            /* (the original credits the city's own owner) */
+        }
+    }
+    for (f = gAI->frontCount - 1; f >= 0; f--)
+        if (gAI->fronts[f].active) { if (gAI->fronts[f].targetPlayer >= 0) frontTgt[gAI->fronts[f].targetPlayer]++; nFronts++; }
+    if (home >= 0) { holder = AICityOwner(home); if (holder != 0x0F && holder != sAIMe) score[holder] += 20; }
+    for (p = 7; p >= 0; p--) {
+        if (cities[p] == 0) continue;
+        if (p != sAIMe) others++;
+        {
+            short hc = AIHomeCity(p);
+            if (hc >= 0 && AICityOwner(hc) == sAIMe) capHeld[p] = 1;
+        }
+    }
+    for (p = 7; p >= 0; p--) {
+        short s, level = *(short *)(AI_GS + 0xc0 + sAIMe * 2), d1, d2;
+        s = (short)(gAI->battleMem[5][p] * 2 + gAI->battleMem[4][p] * 2 + gAI->battleMem[3][p] * 2 +
+                    gAI->battleMem[2][p] + gAI->battleMem[1][p] + gAI->battleMem[0][p] * 4 +
+                    border[p] * 6 + taken[p] * 4 + capHeld[p] * 15 + score[p] + rnd[p]);
+        if (AIPlayerHuman(sAIMe)) s += gAI->biasA;
+        else if (level == 2) s += gAI->biasD;
+        else if (level == 1) s += gAI->biasB;
+        else if (level == 0) s += gAI->biasC;
+        d1 = (short)(myNot - *(short *)(AI_GS + 0x1122 + p * 2)); if (d1 < 0) d1 = (short)-d1;
+        d2 = (short)(cities[sAIMe] - cities[p]); if (d2 < 0) d2 = (short)-d2;
+        score[p] = (short)(s + d1 / 8 + d2 / 4);
+    }
+    for (p = 7; p >= 0; p--)
+        if (AIPlayerAlive(p) && p != sAIMe && AIProposed(sAIMe, p) == DIPLO_WAR) atWar = true;
+    if (*(short *)(AI_GS + 0x116) != 0 && !AIPlayerHuman(sAIMe)) {
+        short warH[8], q;
+        for (p = 7; p >= 0; p--) {
+            warH[p] = 0;
+            if (!AIPlayerAlive(p) || AIPlayerHuman(p)) continue;
+            for (q = 7; q >= 0; q--)
+                if (AIPlayerAlive(q) && *(short *)(AI_GS + 0xd0 + q * 2) != 1 && AIEffective(p, q) == DIPLO_WAR) warH[p] = 1;
+        }
+        for (p = 7; p >= 0; p--)
+            if (AIPlayerAlive(p) && !AIPlayerHuman(p) && (warH[sAIMe] || warH[p])) score[p] = 0;
+    }
+    for (p = 7; p >= 0; p--) {
+        short early = AIQuickStart() ? 4 : 8;
+        if (AIMayAllyHuman(p)) score[p] = 0;
+        if (atWar && AIProposed(sAIMe, p) == DIPLO_PEACE) score[p] = 0;
+        if (nFronts == 0 && explored[p] == 0) score[p] = 0;
+        if (AITurn() < early && gAI->battleMem[2][p] + gAI->battleMem[4][p] == 0) score[p] = 0;
+        if (others > 1 && cities[p] / 4 < frontTgt[p]) score[p] = 0;
+    }
+    score[sAIMe] = 0;
+    for (p = 7; p >= 0; p--)
+        if (cities[p] != 0 && bestScore < score[p]) { best = p; bestScore = score[p]; }
+    if (holder != -1 && holder != 0x0F && holder != sAIMe) {
+        Boolean targeted = false;
+        for (f = gAI->frontCount - 1; f >= 0; f--) if (gAI->fronts[f].targetPlayer == holder) targeted = true;
+        if (!targeted) best = holder;
+    }
+    if (best != -1 && explored[best] == 0) best = -1;
+    return best;
+}
+
+static void AIFrontReset(short f);
+
+/* FUN_10011804: the diplomacy proposals (only with the Diplomacy option) */
+static void AIStepDiplomacy(void)
+{
+    short peace[8], war[8], cities[8], explored[8], taken[8], p, ci, target, total = 0, f;
+    AIClaimOrphanCity();
+    if (!sOptDiplomacy) return;
+    target = AIPickTargetPlayer();
+    for (p = 7; p >= 0; p--) {
+        AISetProposed(p, DIPLO_PEACE);
+        taken[p] = cities[p] = explored[p] = 0;
+        peace[p] = war[p] = 0;
+        if (p != sAIMe) {                       /* p's proposal toward me */
+            if (AIProposed(p, sAIMe) == DIPLO_PEACE) peace[p] = 1;
+            else if (AIProposed(p, sAIMe) == DIPLO_WAR) war[p] = 1;
+        }
+    }
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short o;
+        if (!AIIsCity(ci)) continue;
+        total++;
+        o = AICityOwner(ci);
+        if (o == 0x0F) continue;
+        cities[o]++;
+        if (!(gAI->cflags[ci] & 1)) explored[o]++;
+        if (o == sAIMe) { if (AICityOrig(ci) != 0x0F) taken[AICityOrig(ci)]++; }
+        else if (AICityOrig(ci) == sAIMe) taken[o]++;
+    }
+    for (p = 7; p >= 0; p--) {
+        short k;
+        if (p == sAIMe || !AIPlayerAlive(p)) continue;
+        k = (short)((peace[p] - war[p]) * 2);
+        if (taken[p] < k + 4) { if (k + 8 <= taken[p]) AISetProposed(p, DIPLO_WAR); }
+        else AISetProposed(p, DIPLO_HOSTILE);
+    }
+    for (p = 7; p >= 0; p--) {
+        short agg, k;
+        if (p == sAIMe || !AIPlayerAlive(p)) continue;
+        agg = (short)(gAI->battleMem[3][p] + gAI->battleMem[5][p] * 4 + gAI->battleMem[0][p] * 2);
+        k = (short)((peace[p] - war[p]) * 2);
+        if (agg < k + 5) { if (k + 10 <= agg) AISetProposed(p, DIPLO_WAR); }
+        else { short cur = AIProposed(sAIMe, p); if (cur < 2) cur = 1; AISetProposed(p, cur); }
+    }
+    if (target != -1) AISetProposed(target, DIPLO_WAR);
+    for (f = 3; f >= 0; f--)
+        if (gAI->fronts[f].active && gAI->fronts[f].targetPlayer >= 0) AISetProposed(gAI->fronts[f].targetPlayer, DIPLO_WAR);
+    {
+        short dom = -1, domCities = 0;
+        for (p = 7; p >= 0; p--) {
+            short thr, pct;
+            if (!AIPlayerAlive(p)) continue;
+            thr = AIPlayerHuman(p) ? gAI->dominancePct : 50;
+            pct = (short)((cities[p] * 100) / (total < 1 ? 1 : total));
+            if (domCities < cities[p] && thr < pct) { dom = p; domCities = cities[p]; }
+        }
+        if (dom != -1 && dom != sAIMe)
+            for (p = 7; p >= 0; p--) {
+                if (!AIPlayerAlive(p)) continue;
+                if (p == dom || p == target) AISetProposed(p, DIPLO_WAR); else AISetProposed(p, DIPLO_PEACE);
+            }
+    }
+    if (gAI->allyHumans != 0) {
+        Boolean humanWar = false;
+        for (p = 7; p >= 0; p--)
+            if (AIPlayerAlive(p) && !AIPlayerHuman(p) && p != sAIMe && AIProposed(sAIMe, p) != 0 && AIMayAllyHuman(p))
+                AISetProposed(p, DIPLO_PEACE);
+        for (p = 7; p >= 0; p--)
+            if (AIPlayerAlive(p) && *(short *)(AI_GS + 0xd0 + p * 2) != 1 && AIEffective(sAIMe, p) == DIPLO_WAR) humanWar = true;
+        if (humanWar)
+            for (p = 7; p >= 0; p--)
+                if (AIPlayerAlive(p) && *(short *)(AI_GS + 0xd0 + p * 2) == 1 && sAIAllyFlag[p] != 0) AISetProposed(p, DIPLO_PEACE);
+    }
+    if (*(short *)(AI_GS + 0x116) != 0) {
+        short warH[8], q;
+        for (p = 7; p >= 0; p--) {
+            warH[p] = 0;
+            if (!AIPlayerAlive(p) || AIPlayerHuman(p)) continue;
+            for (q = 7; q >= 0; q--)
+                if (AIPlayerAlive(q) && *(short *)(AI_GS + 0xd0 + q * 2) != 1 && AIEffective(p, q) == DIPLO_WAR) warH[p] = 1;
+        }
+        for (p = 7; p >= 0; p--)
+            if (AIPlayerAlive(p) && !AIPlayerHuman(p) && (warH[sAIMe] || warH[p])) AISetProposed(p, DIPLO_PEACE);
+    }
+    for (p = 7; p >= 0; p--) if (explored[p] == 0) AISetProposed(p, DIPLO_PEACE);
+    for (f = 3; f >= 0; f--)
+        if (gAI->fronts[f].active && gAI->fronts[f].targetPlayer >= 0 &&
+            AIProposed(sAIMe, gAI->fronts[f].targetPlayer) == DIPLO_PEACE) AIFrontReset(f);
+    /* the history keeps the changes */
+    for (p = 7; p >= 0; p--) {
+        if (p == sAIMe || !AIPlayerAlive(p)) continue;
+        if (AIProposed(sAIMe, p) == DIPLO_WAR && war[p] == 0) RecordEvent(AITurn(), HIST_EVT_WAR, sAIMe, "War declared");
+        else if (AIProposed(sAIMe, p) != DIPLO_WAR && war[p] != 0) RecordEvent(AITurn(), HIST_EVT_PEACE, sAIMe, "Peace negotiated");
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* ruins / temples (the remake's sites: +0x17 2 temple, 3..6 ruins)     */
+/* ------------------------------------------------------------------ */
+static Boolean AISiteIsSite(short si) { return si >= 0 && si < AICityCount() && AI_CITY(si)[0x17] >= 2; }
+static Boolean AISiteIsTemple(short si) { return AISiteIsSite(si) && AI_CITY(si)[0x17] == 2; }
+/* the original's "searched" map bit 22 */
+static Boolean AISiteSearched(short si)
+{
+    unsigned char *s = AI_CITY(si);
+    if (AISiteIsTemple(si)) return false;
+    return s[0x1D] == 0 || SITE_KIND(s) == SITE_EMPTY;
+}
+/* FUN_1002bef8: the site at (x,y) */
+static short AISiteAt(short x, short y)
+{
+    short si, n = AICityCount();
+    for (si = 0; si < n; si++)
+        if (AISiteIsSite(si) && AICityX(si) == x && AICityY(si) == y) return si;
+    return -1;
+}
+/* FUN_10015904/FUN_10015980: the temple's rank (0..3) and blessing bit */
+static short AITempleRank(short si)
+{
+    short k, rank = 0;
+    for (k = 0; k < si; k++) if (AISiteIsTemple(k) && rank < 4) rank++;
+    return rank;
+}
+static Boolean AIRecBlessedAt(short rec, short si)
+{
+    unsigned char *a = AI_REC(rec);
+    short k, rank = AITempleRank(si);
+    if (*gExtState == 0) return false;
+    for (k = 0; k < 4; k++)
+        if (a[0x16 + k] == 0x1C && ((*(unsigned short *)((unsigned char *)*gExtState + 0x3500 + rec * 2)) & (1 << (k * 4 + rank)))) return true;
+    return false;
+}
+/* FUN_10015030(site, hero): may the hero go for this site?  Within
+ * 2*turn+10 (+12 for a temple; Knight: 2*turn), explored, a ruin tile,
+ * a temple or an unsearched ruin. */
+static Boolean AIRuinValid(short si, short heroRec)
+{
+    short d = AIDist(AICityX(si), AICityY(si), AIRecX(heroRec), AIRecY(heroRec));
+    short range = (short)(AITurn() * 2 + 10);
+    if (AISiteIsTemple(si)) range = (short)(AITurn() * 2 + 22);
+    if (gAI->passive) range = (short)(AITurn() * 2);
+    if (d >= range) return false;
+    if (!AIExploredNear(AICityX(si), AICityY(si))) return false;
+    if (GetTerrainType(AICityX(si), AICityY(si)) != 11) return false;
+    if (AISiteIsTemple(si)) return true;
+    return !AISiteSearched(si);
+}
+/* FUN_10013a10(hero, site): the hero on the site searches it (the remake's
+ * guardian fight + reward); 0 when nothing happened, 2 when searched */
+static short AISearchSite(short heroRec, short si)
+{
+    unsigned char *site = AI_CITY(si), *a = AI_REC(heroRec);
+    short k;
+    if (AIRecX(heroRec) != AICityX(si) || AIRecY(heroRec) != AICityY(si) || AIRecMP(heroRec) == 0) return 0;
+    if (GetTerrainType(AICityX(si), AICityY(si)) != 11) return 2;
+    if (!AISiteIsTemple(si) && AISiteSearched(si)) return 2;
+    if (AISiteIsTemple(si)) { TryTempleBlessing(heroRec); }
+    else if (AIRecHasHero(heroRec)) {
+        short rg, rItem, rAT, rAN, rKind;
+        for (k = 0; k < 4; k++) if (a[0x16 + k] == 0x1C) { AddHeroXP(a, k, 3); break; }
+        if (SITE_GUARDIAN(site) != 0 && !SiteGuardianFight(heroRec, site)) return 0;   /* the hero fell */
+        rKind = SearchSiteReward(heroRec, si, &rg, &rItem, &rAT, &rAN);
+        if (rKind == SITE_SAGE) AISetGold((long)AIGold() + (short)((unsigned short)Random() % 500));
+        RecordEvent(AITurn(), HIST_EVT_SEARCH, sAIMe, "AI searched ruins");
+        AIOrdSync();
+    }
+    if (!AIRecHasHero(heroRec)) return 0;
+    {
+        AIStack s;
+        AIStackAt(AIRecX(heroRec), AIRecY(heroRec), sAIOrd[heroRec].front, sAIOrd[heroRec].type, 0, &s);
+        for (k = 0; k < s.n; k++) sAIOrd[s.rec[k]].flags &= ~AIO_STUCK;
+    }
+    return 2;
+}
+
+/* ------------------------------------------------------------------ */
+/* free roam (FUN_1001a348 / FUN_1001a12c / FUN_10019174 ...)           */
+/* ------------------------------------------------------------------ */
+static void AIFreeRoam(short rec, short cityCtx);
+
+/* FUN_10019e00: roam to (tx,ty); the unit is stuck afterwards */
+static void AIRoamMoveTo(short rec, short tx, short ty)
+{
+    AIStack s;
+    short r;
+    s.n = 1; s.rec[0] = rec;
+    sAIOrd[rec].destX = tx; sAIOrd[rec].destY = ty;
+    r = AIMoveStack(&s, tx, ty);
+    if (s.n == 0) return;
+    rec = s.rec[0];
+    if (r == 1) { sAIOrd[rec].flags &= ~AIO_RELEASED; sAIOrd[rec].type = 0; sAIOrd[rec].target = 0; }
+    sAIOrd[rec].flags |= AIO_STUCK;
+    sAIOrd[rec].destX = -1; sAIOrd[rec].destY = -1;
+}
+/* FUN_10019f14: a flyer heads for the nearest unexplored city (+rnd) */
+static Boolean AIRoamFlyerCity(short rec, short *tx, short *ty)
+{
+    short ci, best = -1, bestV = 10000;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short v;
+        if (!AIIsCity(ci) || !(gAI->cflags[ci] & 1)) continue;
+        v = (short)(AIDist(AICityX(ci), AICityY(ci), AIRecX(rec), AIRecY(rec)) + AIRnd(10, 0));
+        if (v < bestV) { best = ci; bestV = v; }
+    }
+    if (best == -1) return false;
+    *tx = (short)(AICityX(best) - 1); *ty = (short)(AICityY(best) - 1);
+    return true;
+}
+/* FUN_10019174: the roam target within 5: an enemy city (kind 1) or ruin
+ * (kind 2) nearby, else the best unexplored frontier tile */
+static Boolean AIRoamTarget(short rec, short *tx, short *ty, short *kind, short *ex, short *ey)
+{
+    short x = AIRecX(rec), y = AIRecY(rec), hx, hy, px, py, best = 0;
+    Boolean found = false, embarked = (AI_REC(rec)[0x2C] & ARMY_EMBARKED_BIT) != 0;
+    short home = sAIOrd[rec].home;
+    *kind = 0;
+    if (home < AICityCount() && AIIsCity(home)) { hx = AICityX(home); hy = AICityY(home); }
+    else { hx = x; hy = y; }
+    PathBuildStack(rec, false);
+    BuildPathFlagGrid();
+    if (AIRnd(4, -1) == 0 && GetTerrainType(x, y) == 10 && CityIsCoastal(x, y) && !AIRecHasHero(rec)) embarked = true;
+    for (px = (short)(x - 5); px < x + 5; px++) {
+        for (py = (short)(y - 5); py < y + 5; py++) {
+            short t, unexp = 0, dx, dy, bonus = 0, sc, dU, dH;
+            unsigned char f;
+            if (px < 0 || py < 0 || px >= sMapWidth || py >= sMapHeight) continue;
+            t = GetTerrainType(px, py);
+            if (t == 10 && PathCityOwnerAt(px, py) != sAIMe) {
+                /* FUN_10018f00 */
+                short d = (sPathMode == PMODE_FLYING) ? 2 : AIDist(x, y, px, py);
+                if (d < 4 && (!(AI_REC(rec)[0x2C] & ARMY_EMBARKED_BIT) || CityIsCoastal(px, py)) &&
+                    AIExploredNear(px, py)) { *kind = 1; *ex = px; *ey = py; }
+            }
+            if (t == 11 && *kind == 0 && !(AI_REC(rec)[0x2C] & ARMY_EMBARKED_BIT) && AIExploredNear(px, py)) {
+                *kind = 2; *ex = px; *ey = py;              /* FUN_10019080 */
+            }
+            if (t == 10) continue;
+            f = sPathFlagGrid[py * PATH_GRID_W + px];
+            if (!(sPathMode == PMODE_FLYING || (sPathFlags & PABIL_HILLS) || t != 5)) continue;
+            if (sOptHiddenMap && FogGetBit(sFogExplored[sAIMe], px, py)) continue;
+            if (!sOptHiddenMap) continue;                   /* nothing is unexplored */
+            if (!(sPathMode == PMODE_FLYING || (f & 7) != 0)) continue;
+            for (dx = -1; dx <= 1; dx++)
+                for (dy = -1; dy <= 1; dy++)
+                    if (px + dx >= 0 && py + dy >= 0 && px + dx < sMapWidth && py + dy < sMapHeight &&
+                        !FogGetBit(sFogExplored[sAIMe], px + dx, py + dy)) unexp++;
+            if (unexp < 2) continue;
+            if (embarked) { if (t == 2 || t == 3) bonus = 200; }
+            else if (t != 2 && t != 3) { if (t != 5) bonus = 100; }
+            dU = AIDist(px, py, x, y); dH = AIDist(px, py, hx, hy);
+            sc = (short)(AIRnd(10, 0) + dU * 2 + dH + unexp * 10 + bonus);
+            if (embarked && bonus != 0) sc = (short)(sc + (dH > 50 ? 50 : dH) * 10);
+            if (best < sc) { *tx = px; *ty = py; found = true; best = sc; }
+        }
+    }
+    return found;
+}
+/* FUN_10019718: a roamer next to an attackable city */
+static Boolean AIRoamAttack(short rec, short ex, short ey)
+{
+    short ci, found = -1, est, thr;
+    AIStack s;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        if (!AIIsCity(ci) || AICityOwner(ci) == sAIMe || ci == gAI->questCity) continue;
+        if (AIDist(AICityX(ci), AICityY(ci), ex, ey) >= 3) continue;
+        if (!AICityAttackable(ci)) continue;
+        if (gAI->cflags[ci] & 1) {
+            short x = AICityX(ci), y = AICityY(ci), dx, dy;
+            Boolean seen = false;
+            for (dx = -1; dx <= 2; dx++) for (dy = -1; dy <= 2; dy++) if (FogGetBit(sFogExplored[sAIMe], x + dx, y + dy)) seen = true;
+            if (seen) gAI->cflags[ci] &= ~1;
+            if (gAI->cflags[ci] & 1) continue;
+        }
+        found = ci; break;
+    }
+    if (found == -1) return false;
+    s.n = 1; s.rec[0] = rec;
+    AISetOrders(&s, 4, 0, AIO_RELEASED);
+    est = AIWinEstimate(&s, AICityX(found), AICityY(found));
+    if (AIRecHasHero(rec) || AI_REC(rec)[0x1e] > 3) thr = 75;
+    else if (gAI->neutralCities < AICityCount() / 10) thr = 50;
+    else { short h = (short)(AITurn() / 2); if (h > 10) h = 10; thr = (h < gAI->ownCities) ? 75 : 40; }
+    if (est < thr) return false;
+    sAIOrd[rec].flags &= ~AIO_RELEASED;
+    AISetOrders(&s, 1, found, AIO_CONTINUE);
+    AIMoveStack(&s, sAIOrd[rec].destX, sAIOrd[rec].destY);
+    return true;
+}
+/* FUN_10019a40: a roamer visits the ruin / temple at (ex,ey) */
+static Boolean AIRoamRuin(short rec, short ex, short ey)
+{
+    short si = AISiteAt(ex, ey), r, o;
+    AIStack s;
+    if (si < 0 || GetTerrainType(ex, ey) != 11 || AISiteSearched(si)) return false;
+    if (AI_REC(rec)[0x2C] & ARMY_EMBARKED_BIT) return false;
+    if (AISiteIsTemple(si) && AIRecBlessedAt(rec, si)) return false;
+    if (!AIRecHasHero(rec) && !AISiteIsTemple(si)) return false;
+    o = PathCityOwnerAt(ex, ey);
+    {
+        short i;
+        for (i = 0; i < AIArmyCount(); i++)
+            if (AIRecX(i) == ex && AIRecY(i) == ey && AI_REC(i)[0x16] != 0xFF &&
+                (short)(unsigned char)AI_REC(i)[0x15] != sAIMe) return false;
+    }
+    (void)o;
+    s.n = 1; s.rec[0] = rec;
+    AISetOrders(&s, 4, 0, 0);
+    sAIOrd[rec].destX = ex; sAIOrd[rec].destY = ey;
+    r = AIMoveStack(&s, ex, ey);
+    if (s.n == 0) return true;
+    rec = s.rec[0];
+    if (r == 1) return false;
+    if (AIRecX(rec) == ex && AIRecY(rec) == ey) {
+        if (AIRecHasHero(rec)) AISearchSite(rec, si);
+        else TryTempleBlessing(rec);
+    } else sAIOrd[rec].flags |= AIO_STUCK;
+    sAIOrd[rec].flags |= AIO_RELEASED;
+    sAIOrd[rec].type = 0; sAIOrd[rec].target = 0;
+    sAIOrd[rec].destX = -1; sAIOrd[rec].destY = -1;
+    return true;
+}
+/* FUN_1001a12c: one roam decision */
+static void AIRoamStep(short rec, short cityCtx)
+{
+    short tx = -1, ty = -1, kind = 0, ex = -1, ey = -1;
+    if (!AIRoamTarget(rec, &tx, &ty, &kind, &ex, &ey)) {
+        if (!AIRecHasFlyer(rec) || !AIRoamFlyerCity(rec, &tx, &ty)) {
+            unsigned char zeros[AI_MAX_CITIES];
+            short nb = 0xFF, i;
+            for (i = 0; i < AI_MAX_CITIES; i++) zeros[i] = 0;
+            if (cityCtx != -1) nb = AIFreeNeutralNeighbour(cityCtx, zeros);
+            if (cityCtx == -1 || nb == 0xFF) {
+                sAIOrd[rec].type = 0; sAIOrd[rec].target = 0; sAIOrd[rec].flags &= ~AIO_RELEASED;
+                sAIOrd[rec].destX = -1; sAIOrd[rec].destY = -1;
+            } else AIRoamMoveTo(rec, AICityX(nb), AICityY(nb));
+        } else AIRoamMoveTo(rec, tx, ty);
+        return;
+    }
+    if (kind == 0 || (kind == 1 && !AIRoamAttack(rec, ex, ey)) || (kind == 2 && !AIRoamRuin(rec, ex, ey)))
+        AIRoamMoveTo(rec, tx, ty);
+}
+/* FUN_1001a348(unit, city): release a unit as a free-roamer and let it
+ * roam up to MP/5+1 times this turn */
+static void AIFreeRoam(short rec, short cityCtx)
+{
+    AIStack s;
+    short n, guard = 0;
+    s.n = 1; s.rec[0] = rec;
+    AISetOrders(&s, 4, 0, AIO_RELEASED);
+    n = (short)(AIRecMP(rec) / 5 + 1);
+    if (AIRecMP(rec) < 2) return;
+    for (;;) {
+        short x = AIRecX(rec), y = AIRecY(rec), before = AIArmyCount();
+        AIRoamStep(rec, cityCtx);
+        if (AIArmyCount() != before || rec >= AIArmyCount() || !AIRecMine(rec)) return;
+        if (x == AIRecX(rec) && y == AIRecY(rec)) return;
+        if (AIRecMP(rec) < 4 || n == 0 || !(sAIOrd[rec].flags & AIO_RELEASED)) return;
+        n--;
+        if (AIRecMP(rec) < 2 || ++guard > 20) return;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* step 2: FUN_10013774 (hidden map): released units roam              */
+/* ------------------------------------------------------------------ */
+static void AIStepRelease(void)
+{
+    short ci, pass, i;
+    Boolean staging = false;
+    for (ci = AICityCount() - 1; ci >= 0; ci--)
+        if (AIIsCity(ci) && AICityOwner(ci) == sAIMe && gAI->role[ci] == 7) staging = true;
+    gAI->releasedLand = 0; gAI->releasedOther = 0;
+    for (pass = 0; pass < 2; pass++) {
+        for (i = AIArmyCount() - 1; i >= 0; i--) {
+            Boolean hero;
+            if (i >= AIArmyCount() || !AIRecMine(i) || !(sAIOrd[i].flags & AIO_RELEASED)) continue;
+            hero = AIRecHasHero(i);
+            if ((pass == 0) != hero) continue;
+            if ((hero && staging) || (AIRecHasFlyer(i) && gAI->releasedOther > 7 && AI_REC(i)[0x1e] < 4)) {
+                sAIOrd[i].type = 0; sAIOrd[i].target = 0; sAIOrd[i].flags &= ~AIO_RELEASED;
+                continue;
+            }
+            AIFreeRoam(i, -1);
+            if (i < AIArmyCount() && AIRecMine(i)) {
+                if (!AIRecHasFlyer(i)) gAI->releasedLand++; else gAI->releasedOther++;
+            }
+        }
+    }
+    AIOrdSync();
+}
+
+/* ------------------------------------------------------------------ */
+/* step 3: FUN_10014214 / FUN_10013d0c hero + flyer expeditions          */
+/* ------------------------------------------------------------------ */
+/* FUN_10013d0c(stack): 0 no hero, 1 hero without flyer, 2 sent */
+static short AIExpedition(AIStack *s)
+{
+    short hero = -1, fly = -1, i, hx, hy, bestRuin = -1, bestRuinScore = -1, bestCity = -1, bestCityScore = -1, si, ci;
+    AIStack pair;
+    for (i = 0; i < s->n; i++) { if (hero == -1 && AIRecHasHero(s->rec[i])) hero = s->rec[i]; if (fly == -1 && AIRecHasFlyer(s->rec[i])) fly = s->rec[i]; }
+    if (hero == -1) return 0;
+    if (fly == -1) return 1;
+    hx = AIRecX(hero); hy = AIRecY(hero);
+    pair.n = 0; pair.rec[pair.n++] = hero; if (fly != hero) pair.rec[pair.n++] = fly;
+    /* the flyer's orders pass to the hero */
+    sAIOrd[hero].type = sAIOrd[fly].type; sAIOrd[hero].target = sAIOrd[fly].target;
+    sAIOrd[fly].type = 0; sAIOrd[fly].target = 0;
+    for (si = AICityCount() - 1; si >= 0; si--) {
+        short d, j;
+        Boolean other = false;
+        if (!AISiteIsSite(si)) continue;
+        for (j = AIArmyCount() - 1; j >= 0; j--)
+            if (j != hero && AIRecMine(j) && AIRecHasHero(j) && sAIOrd[j].type == 3 && sAIOrd[j].target == si) other = true;
+        if (other || !AIExploredNear(AICityX(si), AICityY(si))) continue;
+        if (GetTerrainType(AICityX(si), AICityY(si)) != 11 || AISiteIsTemple(si) || AISiteSearched(si)) continue;
+        d = AIDist(hx, hy, AICityX(si), AICityY(si));
+        if (d <= 14) { if (bestRuinScore < 215 - d) { bestRuin = si; bestRuinScore = (short)(215 - d); } }
+        else if (d < 40 && bestRuinScore < 90 - d) { bestRuin = si; bestRuinScore = (short)(90 - d); }
+    }
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short d;
+        if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe) continue;
+        d = AIDist(hx, hy, AICityX(ci), AICityY(ci));
+        if (gAI->role[ci] == 7) d = (short)(d - 80);
+        if (d <= 14) { if (bestCityScore < 115 - d) { bestCity = ci; bestCityScore = (short)(115 - d); } }
+        else if (d < 40 && bestCityScore < 40 - d) { bestCity = ci; bestCityScore = (short)(40 - d); }
+    }
+    if (bestRuin == -1) {                       /* no ruin: the best own city (3 or more away) */
+        if (bestCity == -1) return 0;
+        if (AIDist(hx, hy, AICityX(bestCity), AICityY(bestCity)) < 3) return 0;
+        AISetOrders(&pair, 1, bestCity, 0);
+        AIMoveStack(&pair, sAIOrd[hero].destX, sAIOrd[hero].destY);
+        return 0;
+    }
+    (void)bestCityScore; (void)bestRuinScore;
+    AISetOrders(&pair, 3, bestRuin, AIO_EXPED);
+    AIMoveStack(&pair, sAIOrd[hero].destX, sAIOrd[hero].destY);
+    if (pair.n == 0) return 0;
+    hero = AIStackLead(&pair);
+    return AISearchSite(hero, bestRuin);
+}
+static void AIStepExpeditions(void)
+{
+    short i;
+    for (i = AIArmyCount() - 1; i >= 0; i--) {
+        Boolean go = true;
+        if (i >= AIArmyCount() || !AIRecMine(i) || !(sAIOrd[i].flags & AIO_EXPED)) continue;
+        sAIOrd[i].flags &= ~AIO_EXPED;
+        if (!AIRecHasHero(i)) continue;
+        for (;;) {
+            AIStack s;
+            short x = AIRecX(i), y = AIRecY(i), r;
+            if (AIStackAt(x, y, sAIOrd[i].front, sAIOrd[i].type, 0, &s) == 0 || AIRecMP(i) < 3) break;
+            r = AIExpedition(&s);
+            if (r == 1 || r == 0) go = false;
+            if (i >= AIArmyCount() || !AIRecMine(i)) break;
+            if ((x == AIRecX(i) && y == AIRecY(i) && AIRecMP(i) < AIRecMaxMoves(i)) || !go) break;
+        }
+    }
+    AIOrdSync();
+}
+
+/* ------------------------------------------------------------------ */
+/* step 1 heroes: FUN_100164e4 and callees                              */
+/* ------------------------------------------------------------------ */
+typedef struct {
+    short rec[6], city[6], ruin[6], flightItem[6];
+    short temple, templeDist, ruin2, ruinDist, cityT, cityDist, item, itemDist;
+} AIHeroInfo;
+
+/* FUN_10014e44: up to six heroes, the city / ruin they stand in */
+static void AIHeroList(AIHeroInfo *h)
+{
+    short i, n = 0;
+    for (i = 0; i < 6; i++) { h->rec[i] = -1; h->city[i] = -1; h->ruin[i] = -1; h->flightItem[i] = 0; }
+    gAI->heroCount = 0;
+    for (i = AIArmyCount() - 1; i >= 0 && n < 6; i--) {
+        short t;
+        if (!AIRecMine(i) || !AIRecHasHero(i)) continue;
+        h->rec[n] = i;
+        t = GetTerrainType(AIRecX(i), AIRecY(i));
+        if (t == 10) h->city[n] = AICityAt(AIRecX(i), AIRecY(i));
+        else if (t == 11) h->ruin[n] = AISiteAt(AIRecX(i), AIRecY(i));
+        if (ArmyHasFlightItem(i)) h->flightItem[n] = 1;
+        n++;
+        gAI->heroCount++;
+    }
+}
+/* FUN_100151e8: the hero searches the site it stands on */
+static void AIHeroSearchHere(short rec)
+{
+    short si = AISiteAt(AIRecX(rec), AIRecY(rec));
+    AIStack s;
+    if (si < 0 || !AIRuinValid(si, rec)) return;
+    if (AIStackAt(AIRecX(rec), AIRecY(rec), sAIOrd[rec].front, sAIOrd[rec].type, 4, &s) == 0) return;
+    AISetOrders(&s, sAIOrd[rec].type, sAIOrd[rec].target, 0);
+    AISearchSite(rec, si);
+}
+/* FUN_10015324: the quest hero goes for the quest city */
+static Boolean AIHeroQuest(short idx, AIHeroInfo *h)
+{
+    short rec = h->rec[idx], target, need, n;
+    AIStack s;
+    QuestState *q = &sPlayerQuests[sAIMe];
+    if (!q->active || q->type != QUEST_CAPTURE) return false;
+    target = q->target;
+    if (!AIIsCity(target) || (gAI->cflags[target] & 1)) return false;
+    need = (AICityOwner(target) != 0x0F && AITurn() > 7) ? 2 : 1;
+    n = AIStackAtAny(AIRecX(rec), AIRecY(rec), 0, &s);
+    if (n < need) return false;
+    if (!(sAIOrd[rec].type == 1 && sAIOrd[rec].target == target) &&
+        AIWinEstimate(&s, AICityX(target), AICityY(target)) < 75) return false;
+    AISetOrders(&s, 1, target, 0);
+    AIMoveStack(&s, sAIOrd[AIStackLead(&s)].destX, sAIOrd[AIStackLead(&s)].destY);
+    return true;
+}
+/* FUN_100159c8: the nearest temple (within min(range,11), quests on, no
+ * quest) and the nearest free unsearched ruin within 25 (5 if ordered) */
+static void AIHeroPickSites(short idx, AIHeroInfo *h)
+{
+    short rec = h->rec[idx], si, range = sAIOrd[rec].type == 0 ? 25 : 5, limit = range;
+    h->temple = -1; h->templeDist = 100; h->ruin2 = -1; h->ruinDist = 100;
+    if (gAI->passive) { limit = (short)(AITurn() * 2); if (range < limit) limit = range; }
+    for (si = 0; si < AICityCount(); si++) {
+        short d, j;
+        Boolean free = true;
+        if (!AISiteIsSite(si) || !AIRuinValid(si, rec)) continue;
+        d = AIDist(AICityX(si), AICityY(si), AIRecX(rec), AIRecY(rec));
+        if (AISiteIsTemple(si)) {
+            if (AIQuests() && !sPlayerQuests[sAIMe].active) {
+                short lim = limit > 11 ? 11 : limit;
+                if (d < lim && d < h->templeDist) { h->temple = si; h->templeDist = d; }
+            }
+            if (AIRecBlessedAt(rec, si)) continue;
+        } else {
+            for (j = 5; j >= 0; j--)
+                if (j != idx && h->rec[j] != -1 && sAIOrd[h->rec[j]].type == 3 && sAIOrd[h->rec[j]].target == si) free = false;
+        }
+        if (free && d <= limit && d < h->ruinDist) { h->ruin2 = si; h->ruinDist = d; }
+    }
+}
+/* FUN_10015c48: a ground item the hero may go for */
+static Boolean AIItemReachable(short itemId)
+{
+    unsigned char *r = GameItemRec(itemId);
+    short x, y, i;
+    if (r == NULL || ITEM_STATUS(r) != ITEM_ST_GROUND) return false;
+    x = *(short *)(r + 0x1A); y = *(short *)(r + 0x1C);
+    if (!AIExploredNear(x, y)) return false;
+    if (GetTerrainType(x, y) == 10) { short ci = AICityAt(x, y); if (ci < 0 || AICityOwner(ci) != sAIMe) return false; }
+    else {
+        for (i = 0; i < AIArmyCount(); i++)
+            if (AIRecX(i) == x && AIRecY(i) == y && AI_REC(i)[0x16] != 0xFF && (short)(unsigned char)AI_REC(i)[0x15] != sAIMe) return false;
+    }
+    return true;
+}
+/* FUN_10015dc8: the nearest ground item (hero with < 3 items) */
+static void AIHeroPickItem(short idx, AIHeroInfo *h)
+{
+    short rec = h->rec[idx], carried = 0, it, range;
+    h->item = -1; h->itemDist = 100;
+    for (it = 1; it <= GAME_ITEM_COUNT; it++) {
+        unsigned char *r = GameItemRec(it);
+        if (r && ITEM_STATUS(r) == ITEM_ST_CARRIED && ITEM_CARRIER(r) == rec) carried++;
+    }
+    if (carried >= 3) return;
+    range = sAIOrd[rec].type == 0 ? 25 : 5;
+    for (it = GAME_ITEM_COUNT; it >= 1; it--) {
+        unsigned char *r = GameItemRec(it);
+        short d, j;
+        Boolean free = true;
+        if (!AIItemReachable(it)) continue;
+        for (j = 5; j >= 0; j--)
+            if (j != idx && h->rec[j] != -1 && sAIOrd[h->rec[j]].type == 2 && sAIOrd[h->rec[j]].target == it) free = false;
+        if (!free) continue;
+        d = AIDist(*(short *)(r + 0x1A), *(short *)(r + 0x1C), AIRecX(rec), AIRecY(rec));
+        if (d <= range && d < h->itemDist) { h->item = it; h->itemDist = d; }
+    }
+}
+/* FUN_10015f98: an enemy city for the hero's strike group (units with
+ * base moves >= 12): win estimate >= 95 (fewer than 3 units) / 75 */
+static void AIHeroPickCity(short idx, AIHeroInfo *h)
+{
+    short rec = h->rec[idx], cur = (sAIOrd[rec].type == 1) ? sAIOrd[rec].target : -1, ci, n, thr, best = -1, bestEst = 0, bestD = 20;
+    AIStack s;
+    h->cityT = -1; h->cityDist = -1;
+    n = AIStackAt(AIRecX(rec), AIRecY(rec), sAIOrd[rec].front, sAIOrd[rec].type, 12, &s);
+    if (n == 0) return;
+    thr = n < 3 ? 95 : 75;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short o, d, est;
+        if (!AIIsCity(ci) || (gAI->cflags[ci] & 1)) continue;
+        o = AICityOwner(ci);
+        if (o == 0x0F || !AIAtWar(o)) continue;
+        d = AIDist(AICityX(ci), AICityY(ci), AIRecX(rec), AIRecY(rec));
+        if (!(d <= bestD || cur == ci)) continue;
+        est = AIWinEstimate(&s, AICityX(ci), AICityY(ci));
+        if (cur == ci) est += 20;
+        if (est >= thr && (bestEst < est || (est == bestEst && d < bestD))) { best = ci; bestEst = est; bestD = d; }
+    }
+    h->cityT = best; h->cityDist = bestD;
+}
+/* FUN_100161fc: 1 temple, 3 ruin, 4 city, 2 item (0 nothing) */
+static short AIHeroChoose(short idx, AIHeroInfo *h)
+{
+    short choice = (h->temple != -1) ? 1 : 0, best = 0, v;
+    v = AIRnd(20, 20);
+    if (choice) best = (short)(v - h->templeDist + 100);
+    v = (short)(AIRnd(20, 20) - h->ruinDist + 100);
+    if (h->ruin2 != -1 && best < v) { choice = 3; best = v; }
+    if (h->city[idx] == -1 || gAI->unitCount[h->city[idx]] > 4) {
+        v = (short)(AIRnd(20, 0) - h->cityDist + 100);
+        if (h->cityT != -1 && best < v) { choice = 4; best = v; }
+        v = (short)(AIRnd(20, 0) - h->itemDist + 100);
+        if (h->item != -1 && best < v) choice = 2;
+    }
+    return choice;
+}
+/* FUN_10015554(idx, kind, heroes, which): the hero goes to the temple /
+ * ruin / item with one flyer, or alone when no enemy is near */
+static Boolean AIHeroGoSite(short idx, short kind, AIHeroInfo *h, Boolean temple)
+{
+    short rec = h->rec[idx], target, tx, ty, n, city = h->city[idx], d, fly = -1, i, r;
+    AIStack s, go;
+    if (kind == 3 || kind == 0) {
+        target = temple ? h->temple : h->ruin2;
+        if (target < 0) return false;
+        tx = AICityX(target); ty = AICityY(target);
+    } else {
+        unsigned char *ir = GameItemRec(h->item);
+        if (ir == NULL) return false;
+        target = (short)(h->item + 1000);
+        tx = *(short *)(ir + 0x1A); ty = *(short *)(ir + 0x1C);
+    }
+    n = AIStackAt(AIRecX(rec), AIRecY(rec), sAIOrd[rec].front, sAIOrd[rec].type, 12, &s);
+    if (n == 0) return false;
+    go = s;
+    if (city != -1) {
+        d = AINearestEnemyUnit(AIRecX(rec), AIRecY(rec));
+        for (i = s.n - 1; i >= 0; i--) if (s.rec[i] != rec && AIRecHasFlyer(s.rec[i])) fly = s.rec[i];
+        if (fly == -1) { if (d > 14) { go.n = 1; go.rec[0] = rec; n = 1; } }
+        else { go.n = 2; go.rec[0] = rec; go.rec[1] = fly; n = 2; }
+        if (n == gAI->unitCount[city] && n < 3 && d < 15) return false;
+        if (n == 3) { go.n = 1; go.rec[0] = rec; }
+    }
+    if (target < 1000) {
+        AISetOrders(&go, 3, target, 0);
+        r = AIMoveStack(&go, tx, ty);
+    } else {
+        AISetOrders(&go, 4, 0, 0);
+        for (i = 0; i < go.n; i++) { sAIOrd[go.rec[i]].destX = tx; sAIOrd[go.rec[i]].destY = ty; }
+        r = AIMoveStack(&go, tx, ty);
+    }
+    return r == 4;
+}
+/* FUN_10016344: the hero's strike group attacks the chosen city */
+static void AIHeroGoCity(short idx, AIHeroInfo *h)
+{
+    short rec = h->rec[idx], city = h->city[idx], n;
+    AIStack s;
+    n = AIStackAt(AIRecX(rec), AIRecY(rec), sAIOrd[rec].front, sAIOrd[rec].type, 12, &s);
+    if (n == 0 || h->cityT < 0) return;
+    if (city != -1 && n == gAI->unitCount[city]) {
+        short d = AINearestEnemyUnit(AIRecX(rec), AIRecY(rec));
+        if (d < (AITurn() < 6 ? 10 : 15)) return;
+    }
+    AISetOrders(&s, 1, h->cityT, 0);
+    AIMoveStack(&s, sAIOrd[AIStackLead(&s)].destX, sAIOrd[AIStackLead(&s)].destY);
+}
+/* FUN_10016df0 / FUN_10016cc4: heroes sharing a city hand items over:
+ * the movement, flying and gold items go to heroes without one, then the
+ * battle / command / flat items are spread evenly */
+static void AIHeroHandover(short *heroes, short nHeroes)
+{
+    short items[8][4], count[8], i, k, kind;
+    Boolean moved;
+    if (nHeroes < 2) return;
+    for (i = 0; i < 8; i++) { count[i] = 0; for (k = 0; k < 4; k++) items[i][k] = 0; }
+    for (i = 0; i < nHeroes; i++) {
+        unsigned char *a = AI_REC(heroes[i]);
+        for (k = 0; k < 4; k++) { items[i][k] = *(short *)(a + 0x3A + k * 2); if (items[i][k] > 0) count[i]++; }
+    }
+    for (kind = 0; kind < 3; kind++) {
+        static const short kKinds[3] = {ITEM_TYPE_MOVEMENT, ITEM_TYPE_FLYING, ITEM_TYPE_GOLD};
+        short has[8], j;
+        do {
+            moved = false;
+            for (i = 0; i < nHeroes; i++) { has[i] = 0; for (k = 0; k < 4; k++) if (items[i][k] > 0 && GameItemType(items[i][k]) == kKinds[kind]) has[i]++; }
+            for (i = 0; i < nHeroes && !moved; i++) {
+                if (has[i] < 2) continue;
+                for (j = 0; j < nHeroes && !moved; j++) {
+                    if (j == i || has[j] != 0 || count[j] >= 4) continue;
+                    for (k = 0; k < 4; k++) {
+                        if (items[i][k] > 0 && GameItemType(items[i][k]) == kKinds[kind]) {
+                            short q;
+                            for (q = 0; q < 4 && items[j][q] > 0; q++) ;
+                            if (q == 4) break;
+                            items[j][q] = items[i][k]; items[i][k] = 0; count[i]--; count[j]++;
+                            moved = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        } while (moved);
+    }
+    do {
+        moved = false;
+        for (i = 0; i < nHeroes && !moved; i++) {
+            short minJ = -1, minC = count[i], j;
+            if (count[i] == 0) continue;
+            for (j = 0; j < nHeroes; j++) if (j != i && count[j] < minC) { minJ = j; minC = count[j]; }
+            if (minJ == -1 || count[i] - count[minJ] < 2) continue;
+            for (k = 0; k < 4; k++) {
+                short t = items[i][k] > 0 ? GameItemType(items[i][k]) : 0;
+                if (t == ITEM_TYPE_BATTLE || t == ITEM_TYPE_COMMAND || t == ITEM_TYPE_FLAT_PLUS) {
+                    short q;
+                    for (q = 0; q < 4 && items[minJ][q] > 0; q++) ;
+                    if (q == 4) break;
+                    items[minJ][q] = items[i][k]; items[i][k] = 0; count[i]--; count[minJ]++;
+                    moved = true;
+                    break;
+                }
+            }
+        }
+    } while (moved);
+    for (i = 0; i < nHeroes; i++) {
+        unsigned char *a = AI_REC(heroes[i]);
+        for (k = 0; k < 4; k++) {
+            *(short *)(a + 0x3A + k * 2) = items[i][k];
+            if (items[i][k] > 0) { unsigned char *r = GameItemRec(items[i][k]); if (r) ITEM_CARRIER(r) = heroes[i]; }
+        }
+    }
+}
+
+static void AIStepHeroes(void)
+{
+    AIHeroInfo h;
+    short i;
+    gAI->questCity = -1;
+    if (AIQuests() && sPlayerQuests[sAIMe].active && sPlayerQuests[sAIMe].type == QUEST_CAPTURE)
+        gAI->questCity = sPlayerQuests[sAIMe].target;
+    AIHeroList(&h);
+    for (i = 5; i >= 0; i--) {
+        short rec = h.rec[i];
+        if (rec == -1 || rec >= AIArmyCount() || !AIRecMine(rec) || !AIRecHasHero(rec)) continue;
+        AIHeroSearchHere(rec);
+        if (rec >= AIArmyCount() || !AIRecMine(rec) || !AIRecHasHero(rec)) continue;
+        if (h.city[i] >= 0) {
+            AIGarrison(h.city[i], true);
+            /* the garrison regrouped the records: find the hero again */
+            for (rec = AIArmyCount() - 1; rec >= 0; rec--)
+                if (AIRecMine(rec) && AIRecHasHero(rec) && AICityAt(AIRecX(rec), AIRecY(rec)) == h.city[i]) break;
+            if (rec < 0) continue;
+            h.rec[i] = rec;
+        }
+        if (AIQuests() && sPlayerQuests[sAIMe].active && AIHeroQuest(i, &h)) continue;
+        if (sAIOrd[rec].type == 3) {
+            if (!AIRuinValid(sAIOrd[rec].target, rec)) {
+                AIStack s;
+                AIStackAt(AIRecX(rec), AIRecY(rec), sAIOrd[rec].front, 3, 0, &s);
+                AIClearOrders(&s, true, 0);
+            } else {
+                h.ruin2 = sAIOrd[rec].target;
+                AIHeroGoSite(i, 3, &h, false);
+                if (rec >= AIArmyCount() || !AIRecMine(rec) || !AIRecHasHero(rec)) continue;
+            }
+        }
+        if (AIRecMP(rec) > 3) {
+            short choice;
+            AIHeroPickSites(i, &h);
+            AIHeroPickItem(i, &h);
+            AIHeroPickCity(i, &h);
+            choice = AIHeroChoose(i, &h);
+            /* (the choice switch is lost in the decompile: temple / ruin /
+             * item go through FUN_10015554, the city through FUN_10016344) */
+            switch (choice) {
+                case 1: AIHeroGoSite(i, 0, &h, true); break;
+                case 3: AIHeroGoSite(i, 3, &h, false); break;
+                case 2: AIHeroGoSite(i, 2, &h, false); break;
+                case 4: AIHeroGoCity(i, &h); break;
+                default: break;
+            }
+        }
+    }
+    AIOrdSync();
+}
+
+/* ------------------------------------------------------------------ */
+/* fronts (steps 4 and 13)                                              */
+/* ------------------------------------------------------------------ */
+/* FUN_1000de24 + FUN_1001ae14: a front is given up */
+static void AIFrontReset(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short i;
+    if (fr->staging >= 0 && fr->staging < AI_MAX_CITIES) gAI->role[fr->staging] = 8;
+    for (i = 0; i < 4; i++) if (fr->feeders[i] >= 0 && fr->feeders[i] < AI_MAX_CITIES) gAI->role[fr->feeders[i]] = 8;
+    fr->active = 0; fr->targetPlayer = -1; fr->staging = -1; fr->flags = 0; fr->minMoves = 0;
+    for (i = 0; i < 4; i++) { fr->feeders[i] = -1; fr->stacks[i] = -1; }
+    for (i = 0; i < 6; i++) { fr->targets[i] = -1; fr->targetDist[i] = -1; fr->targetNeigh[i] = -1; fr->visited[i] = -1; }
+}
+/* FUN_1001aea0: the oldest front goes */
+static void AIResetOldestFront(void)
+{
+    short f, best = -1, bestAge = -1;
+    for (f = gAI->frontCount - 1; f >= 0; f--)
+        if (gAI->fronts[f].active && bestAge < gAI->fronts[f].active) { best = f; bestAge = gAI->fronts[f].active; }
+    if (best != -1) AIFrontReset(best);
+}
+/* FUN_1000f6a0 */
+static Boolean AIIsStaging(short ci)
+{
+    short f;
+    for (f = gAI->frontCount - 1; f >= 0; f--) if (gAI->fronts[f].active && gAI->fronts[f].staging == ci) return true;
+    return false;
+}
+/* FUN_1000f064: raze / pillage / sack policy of a new front */
+static void AIFrontPolicy(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short level = *(short *)(AI_GS + 0xc0 + sAIMe * 2), base = (short)(gAI->ownCities * gAI->pMulCity);
+    if (AIPlayerHuman(sAIMe)) base += gAI->pLv0;
+    else if (level == 2) base += gAI->pLv1;
+    else if (level == 1) base += gAI->pLv2;
+    else if (level == 0) base += gAI->pHuman;
+    fr->flags = 0;
+    if (gAI->pRaze != 0 && AIRnd(1000, 0) < gAI->pRaze + base) { fr->flags |= 1; return; }
+    if (AIGold() < 100) base += gAI->pPoor;
+    if (gAI->pPillage != 0 && AIRnd(1000, 0) < gAI->pPillage + base) { fr->flags |= 2; return; }
+    if (gAI->pSack != 0 && AIRnd(1000, 0) < gAI->pSack + base) fr->flags |= 4;
+}
+/* FUN_1000f258: a new staging city stops feeding other fronts */
+static void AIRemoveFeeder(short ci)
+{
+    short f, k;
+    for (f = gAI->frontCount - 1; f >= 0; f--) {
+        if (!gAI->fronts[f].active) continue;
+        for (k = 3; k >= 0; k--)
+            if (gAI->fronts[f].feeders[k] == ci) { gAI->fronts[f].feeders[k] = -1; AIVectorOff(ci); }
+    }
+}
+/* FUN_1000f308: how many neighbours of each target the target player holds */
+static void AIFrontTargetNeigh(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short i, k;
+    for (i = 0; i < 6; i++) {
+        unsigned char nb[6];
+        short n = 0;
+        if (fr->targets[i] == -1) continue;
+        AINeighbours(fr->targets[i], nb, NULL);
+        for (k = 5; k >= 0; k--) if (nb[k] != 0xFF && AICityOwner(nb[k]) == fr->targetPlayer) n++;
+        fr->targetNeigh[i] = n;
+    }
+}
+/* FUN_1000e938: the target's city with most same-owner neighbours */
+static short AISeedCity(short p)
+{
+    short ci, best = -1, bestN = 0;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        unsigned char nb[6];
+        short n = 1, k;
+        if (!AIIsCity(ci) || AICityOwner(ci) != p) continue;
+        AINeighbours(ci, nb, NULL);
+        for (k = 5; k >= 0; k--) if (nb[k] != 0xFF && AICityOwner(nb[k]) == p) n++;
+        if (bestN < n || (n == bestN && AIRnd(2, -1) != 0)) { best = ci; bestN = n; }
+    }
+    return best;
+}
+/* FUN_1000ea7c: distances over the city graph from seed */
+static short sAIGraphReach[AI_MAX_CITIES], sAIGraphDist[AI_MAX_CITIES];
+static void AIGraphDijkstra(short seed)
+{
+    short ci, done[AI_MAX_CITIES];
+    Boolean changed;
+    for (ci = 0; ci < AI_MAX_CITIES; ci++) { sAIGraphReach[ci] = 0; sAIGraphDist[ci] = 0; done[ci] = 0; }
+    sAIGraphReach[seed] = 1;
+    do {
+        changed = false;
+        for (ci = AICityCount() - 1; ci >= 0; ci--) {
+            unsigned char nb[6], nd[6];
+            short k, base;
+            if (!sAIGraphReach[ci] || done[ci]) continue;
+            base = sAIGraphDist[ci];
+            done[ci] = 1;
+            AINeighbours(ci, nb, nd);
+            changed = true;
+            for (k = 5; k >= 0; k--) {
+                short d;
+                if (nb[k] == 0xFF) continue;
+                d = (short)(base + nd[k]);
+                if (!sAIGraphReach[nb[k]]) { sAIGraphReach[nb[k]] = 1; sAIGraphDist[nb[k]] = d; }
+                else if (d < sAIGraphDist[nb[k]]) sAIGraphDist[nb[k]] = d;
+            }
+        }
+    } while (changed);
+}
+/* FUN_1000ec04: up to six of the target player's explored reached cities */
+static short AIGraphTargets(short seed, short p, short *targets, short *dists)
+{
+    short n = 0, k;
+    for (k = 0; k < 6; k++) {
+        short ci, best = -1, bestD = 10000;
+        for (ci = AICityCount() - 1; ci >= 0; ci--) {
+            if (!AIIsCity(ci) || AICityOwner(ci) != p || (gAI->cflags[ci] & 1) || !sAIGraphReach[ci]) continue;
+            if (sAIGraphDist[ci] < bestD) { best = ci; bestD = sAIGraphDist[ci]; }
+        }
+        if (best == -1) break;
+        targets[n] = best; dists[n] = bestD; n++;
+        sAIGraphReach[best] = 0;
+    }
+    if (n == 0 && !(gAI->cflags[seed] & 1)) { targets[0] = seed; dists[0] = 100; n = 1; }
+    return n;
+}
+static const short kAIStagingRoles[6] = {5, 8, 6, 4, 14, -1};      /* PEF 0xace8 / 0xacf8 */
+static Boolean AIRoleInList(short role, const short *list)
+{
+    short i;
+    for (i = 0; list[i] != -1; i++) if (role == list[i]) return true;
+    return false;
+}
+/* FUN_1000ed34: the staging city and the targets of a new front */
+static short AIPickStaging(short f, short p, short *targets, short *dists)
+{
+    short seed, ci, staging = -1, bestD = 10000, k;
+    for (k = 0; k < 6; k++) { targets[k] = -1; dists[k] = -1; }
+    seed = AISeedCity(p);
+    if (seed == -1) return -1;
+    AIGraphDijkstra(seed);
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe || !AIRoleInList(gAI->role[ci], kAIStagingRoles)) continue;
+        if (sAIGraphReach[ci] && sAIGraphDist[ci] < bestD) { staging = ci; bestD = sAIGraphDist[ci]; }
+    }
+    if (staging == -1) {
+        if (gAI->cflags[seed] & 1) return -1;
+        bestD = 10000;
+        for (ci = AICityCount() - 1; ci >= 0; ci--) {
+            short d;
+            if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe || !AIRoleInList(gAI->role[ci], kAIStagingRoles)) continue;
+            d = AIDist(AICityX(ci), AICityY(ci), AICityX(seed), AICityY(seed));
+            if (d < bestD) { staging = ci; bestD = d; }
+        }
+        if (staging != -1) { targets[0] = seed; dists[0] = 100; }
+        return staging;
+    }
+    AIGraphDijkstra(staging);
+    if (AIGraphTargets(seed, p, targets, dists) == 0) return -1;
+    (void)f;
+    return staging;
+}
+
+/* FUN_1001fcc0: feeder classes */
+static void AIClassifyCities(void)
+{
+    short active = 0, f, ci, top[8], i, minTop = 100, budget;
+    for (f = gAI->frontCount - 1; f >= 0; f--) if (gAI->fronts[f].active) active++;
+    gAI->minSlotStr = gAI->clsAcnt = gAI->clsBcnt = gAI->clsCcnt = 0;
+    for (i = 0; i < 8; i++) top[i] = 0;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short slot, t, s, worst = -1, worstV;
+        if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe) continue;
+        gAI->cflags[ci] &= 0x37;
+        if (gAI->role[ci] == 7 || !AICityGoodSlot(ci, &slot)) continue;
+        t = *(short *)(AI_EXT(ci) + 0x06 + slot * 2);
+        s = UnitStatLE(t, 0);
+        if (AITypeFlag(t, 5) == 1) s += 2;
+        worstV = s;
+        for (i = 7; i >= 0; i--) {
+            if (top[i] == 0) { top[i] = s; worst = -1; break; }
+            if (top[i] < worstV) { worst = i; worstV = top[i]; }
+        }
+        if (worst != -1) top[worst] = s;
+    }
+    for (i = 7; i >= 0; i--) if (top[i] != 0 && top[i] < minTop) minTop = top[i];
+    gAI->minSlotStr = minTop > 4 ? 4 : minTop;
+    if (active == 4) {
+        for (ci = AICityCount() - 1; ci >= 0; ci--) {
+            Boolean ok = false;
+            if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe || !AIFeederCandidate(ci, true) || !(gAI->cflags[ci] & 2)) continue;
+            for (i = 3; i >= 0; i--) {
+                short t = *(short *)(AI_EXT(ci) + 0x06 + i * 2);
+                if (t >= 0 && AIFlies(t) && UnitStatLE(t, 0) > 4) ok = true;
+            }
+            if (ok) { gAI->clsAcnt++; gAI->cflags[ci] |= 0x40; }
+        }
+    }
+    budget = gAI->clsAcnt < 4 ? gAI->clsAcnt : (short)(gAI->clsAcnt - 4);
+    if (active > 2) {
+        for (ci = AICityCount() - 1; ci >= 0; ci--) {
+            Boolean ok = false;
+            if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe || !AIFeederCandidate(ci, true)) continue;
+            if (gAI->cflags[ci] & 0x40) { if (budget == 0) continue; gAI->cflags[ci] &= ~0x40; budget--; }
+            for (i = 3; i >= 0; i--) {
+                short t = *(short *)(AI_EXT(ci) + 0x06 + i * 2);
+                if (t >= 0 && (AITypeFlag(t, 5) == 1 || gAI->minSlotStr <= UnitStatLE(t, 0)) && UnitStatLE(t, 3) > 15) ok = true;
+            }
+            if (ok) { gAI->clsBcnt++; gAI->cflags[ci] |= 0x80; }
+        }
+    }
+    budget = gAI->clsBcnt < 4 ? gAI->clsBcnt : (short)(gAI->clsBcnt - 4);
+    if (active > 1) {
+        for (ci = AICityCount() - 1; ci >= 0; ci--) {
+            Boolean ok = false;
+            if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe || !AIFeederCandidate(ci, true)) continue;
+            if (gAI->cflags[ci] & 0x40) continue;
+            if (gAI->cflags[ci] & 0x80) { if (budget == 0) continue; gAI->cflags[ci] &= ~0x80; budget--; }
+            for (i = 3; i >= 0; i--) {
+                short t = *(short *)(AI_EXT(ci) + 0x06 + i * 2), mv;
+                if (t < 0) continue;
+                mv = UnitStatLE(t, 3);
+                if ((AITypeFlag(t, 5) == 1 || gAI->minSlotStr <= UnitStatLE(t, 0)) && mv > 11 && (gAI->clsBcnt < 8 || mv > 15)) ok = true;
+            }
+            if (ok) { gAI->clsCcnt++; gAI->cflags[ci] |= 8; }
+        }
+    }
+    budget = gAI->clsCcnt < 4 ? gAI->clsCcnt : (short)(gAI->clsCcnt - 4);
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe) continue;
+        if (!(gAI->cflags[ci] & 0xC0) && (gAI->cflags[ci] & 8) && budget != 0) { gAI->cflags[ci] &= ~8; budget--; }
+    }
+    for (f = gAI->frontCount - 1; f >= 0; f--) if (gAI->fronts[f].active) gAI->fronts[f].minMoves = 8;
+}
+
+/* FUN_1000f410 (step 13): open a front */
+static void AIStepOpenFront(void)
+{
+    short ci, S = 0, active = 0, f, pick = -1, target;
+    if (gAI->rolesPassCount == 0) return;
+    for (ci = AICityCount() - 1; ci >= 0; ci--)
+        if (AIIsCity(ci) && AICityOwner(ci) == sAIMe && (gAI->role[ci] == 5 || gAI->role[ci] == 8)) S++;
+    for (f = 3; f >= 0; f--) if (gAI->fronts[f].active) active++;
+    if (!(active < gAI->frontCount && S != 0 && (active == 0 || S > 2))) return;
+    for (f = gAI->frontCount - 1; f >= 0; f--) if (!gAI->fronts[f].active) pick = f;
+    if (pick == -1) return;
+    AIFrontReset(pick);
+    target = AIPickTargetPlayer();
+    if (target == -1) return;
+    {
+        AIFront *fr = &gAI->fronts[pick];
+        short staging = AIPickStaging(pick, target, fr->targets, fr->targetDist);
+        if (staging == -1) { AIFrontReset(pick); return; }
+        fr->active = 1; fr->targetPlayer = target; fr->staging = staging;
+        gAI->role[staging] = 7;
+        AIFrontPolicy(pick);
+        AISetProposed(target, DIPLO_WAR);
+        AIRemoveFeeder(staging);
+        AIFrontTargetNeigh(pick);
+        AIClassifyCities();
+    }
+}
+
+/* FUN_1001af38: validate the targets, add the staging city's neighbours
+ * held by the target player */
+static short AIFrontValidateTargets(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short i, n = 0, k;
+    unsigned char nb[6], nd[6];
+    for (i = 0; i < 6; i++) {
+        if (fr->targets[i] == -1) continue;
+        if (fr->targets[i] == gAI->questCity || AICityOwner(fr->targets[i]) != fr->targetPlayer) fr->targets[i] = -1;
+        else n++;
+    }
+    AINeighbours(fr->staging, nb, nd);
+    for (k = 5; k >= 0; k--) {
+        Boolean present = false;
+        short slot = -1, slotD = 0;
+        if (nb[k] == 0xFF || AICityOwner(nb[k]) != fr->targetPlayer || (gAI->cflags[nb[k]] & 1)) continue;
+        for (i = 5; i >= 0; i--) if (fr->targets[i] == nb[k]) present = true;
+        if (present) continue;
+        n++;
+        for (i = 5; i >= 0; i--) {
+            if (fr->targets[i] == -1) { slot = i; slotD = -1; break; }
+            if (slotD < fr->targetDist[i]) { slot = i; slotD = fr->targetDist[i]; }
+        }
+        if (slot != -1 && (slotD == -1 || (short)nd[k] < slotD)) { fr->targets[slot] = nb[k]; fr->targetDist[slot] = nd[k]; }
+    }
+    return n;
+}
+/* FUN_1001b198: a single remaining target: its neighbours join, the
+ * staging moves next to it */
+static void AIFrontSingleTarget(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short i, n = 0, last = -1, cand = -1, k;
+    unsigned char nb[6];
+    Boolean stagingAdj = false;
+    for (i = 0; i < 6; i++) if (fr->targets[i] != -1) { n++; last = fr->targets[i]; }
+    if (n != 1) return;
+    AINeighbours(last, nb, NULL);
+    for (k = 0; k < 6; k++) {
+        if (nb[k] == 0xFF || (gAI->cflags[nb[k]] & 1)) continue;
+        if (AICityOwner(nb[k]) == fr->targetPlayer) {
+            for (i = 0; i < 6; i++) if (fr->targets[i] == -1) { fr->targets[i] = nb[k]; break; }
+        } else if (AICityOwner(nb[k]) == sAIMe) {
+            if (fr->staging == nb[k]) stagingAdj = true;
+            if (!AIIsStaging(nb[k]) && cand == -1) cand = nb[k];
+        }
+    }
+    if (!stagingAdj && cand != -1) fr->staging = cand;
+}
+/* FUN_1001b35c: re-pick the staging city among the staging's own neighbours */
+static Boolean AIFrontRepickStaging(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    unsigned char nb[6];
+    short k, best = -1, bestD = 1000, sx = AICityX(fr->staging), sy = AICityY(fr->staging);
+    AINeighbours(fr->staging, nb, NULL);
+    for (k = 5; k >= 0; k--) {
+        short d;
+        if (nb[k] == 0xFF || AICityOwner(nb[k]) != sAIMe || AIIsStaging(nb[k])) continue;
+        d = AIDist(AICityX(nb[k]), AICityY(nb[k]), sx, sy);
+        if (d < bestD) { best = nb[k]; bestD = d; }
+    }
+    if (best == -1) { AIFrontReset(f); return false; }
+    fr->staging = best;
+    return true;
+}
+/* FUN_1001b4ac: the registered attack stacks must still be ours and on this front */
+static void AIFrontValidateStacks(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short k;
+    for (k = 3; k >= 0; k--) {
+        short u = fr->stacks[k];
+        if (u == -1) continue;
+        if (u >= AIArmyCount() || !AIRecMine(u) || sAIOrd[u].front != f + 1) fr->stacks[k] = -1;
+    }
+}
+
+/* FUN_1001b8e0: pillage (the last slot); FUN_1001ba60: sack (all but the
+ * first); FUN_1001bbf0: raze.  The Warlord only pillages / sacks a city
+ * originally human or, one time in two, worth >= 300 / 900. */
+static void AIPillage(short ci)
+{
+    short v = PillageValue(ci), o = AICityOrig(ci);
+    Boolean ok = *(short *)(AI_GS + 0xc0 + sAIMe * 2) != 2;
+    if (o != 0x0F && AIPlayerHuman(o)) ok = true;
+    if (AIRnd(2, -1) != 0 && v > 299) ok = true;
+    if (!ok || v == 0) return;
+    {
+        short slot[4], n = CitySlots(ci, slot);
+        AISetGold((long)AIGold() + v);
+        if (n > 0) *(short *)(AI_EXT(ci) + 0x06 + (n - 1) * 2) = -1;
+        *(short *)(AI_GS + 0x1122 + sAIMe * 2) += AIRnd(5, 0);
+        RecordEvent(AITurn(), HIST_EVT_CAPTURE, sAIMe, "Pillaged");
+    }
+}
+static void AISack(short ci)
+{
+    short v = SackValue(ci), o = AICityOrig(ci), i;
+    Boolean ok = *(short *)(AI_GS + 0xc0 + sAIMe * 2) != 2;
+    if (o != 0x0F && AIPlayerHuman(o)) ok = true;
+    if (AIRnd(2, -1) != 0 && v > 899) ok = true;
+    if (!ok) return;
+    if (v == 0) { AIPillage(ci); return; }
+    {
+        short slot[4], n = CitySlots(ci, slot);
+        for (i = 1; i < n; i++) *(short *)(AI_EXT(ci) + 0x06 + i * 2) = -1;
+        *(short *)(AI_GS + 0x1122 + sAIMe * 2) += (short)(AIRnd(10, 0) + 5);
+        AISetGold((long)AIGold() + v);
+        RecordEvent(AITurn(), HIST_EVT_CAPTURE, sAIMe, "Sacked");
+    }
+}
+/* FUN_1001bbf0(city, 0): razing is refused with three own cities within
+ * 45; a city worth >= 900 or with razing off is sacked instead (-1).
+ * Returns the next city to go for (FUN_1001f5e8) or -1. */
+static short AIRaze(short ci, const AIStack *s)
+{
+    short v = SackValue(ci), k, near = 0;
+    unsigned char nb[6], nd[6];
+    AINeighbours(ci, nb, nd);
+    for (k = 5; k >= 0; k--) if (nb[k] != 0xFF && AICityOwner(nb[k]) == sAIMe && nd[k] < 45) near++;
+    if (near > 2) return -1;
+    if (v < 900 && sRazingCities != 2) {
+        unsigned char *city = AI_CITY(ci);
+        *(short *)(city + 0x04) = 0x0F;
+        if (*gMapTiles != 0) {
+            unsigned char *m = (unsigned char *)*gMapTiles;
+            short cx = AICityX(ci), cy = AICityY(ci), dx, dy;
+            for (dy = 0; dy < 2; dy++)
+                for (dx = 0; dx < 2; dx++)
+                    if (cx + dx < sMapWidth && cy + dy < sMapHeight) {
+                        unsigned short o = (unsigned short)((cy + dy) * 0xE0 + (cx + dx) * 2);
+                        m[o] = (unsigned char)(0xA0 + 2 * sAIMe + dx + dy * 0x10);
+                        m[o + 1] = (unsigned char)((m[o + 1] & 0xF0) | 0x0F);
+                    }
+        }
+        *(short *)(AI_GS + 0x1122 + sAIMe * 2) += (short)(AIRnd(15, 0) + 10);
+        RecordEvent(AITurn(), HIST_EVT_CAPTURE, sAIMe, "Razed");
+        gAI->role[ci] = 0;
+        {
+            /* FUN_1001f5e8: flood 15, the best city to carry on to */
+            short n = AICityCount(), best = -1, bestScore = -1, minMP = AIStackMinMP(s);
+            AIFloodForStack(s, 15);
+            for (k = n - 1; k >= 0; k--) {
+                short cost, e, score;
+                Boolean ok;
+                if (!AIIsCity(k) || k == gAI->questCity || (gAI->cflags[k] & 1)) continue;
+                if (!(AICityOwner(k) == 0x0F || AICityOwner(k) == sAIMe || AIAtWar(AICityOwner(k)))) continue;
+                cost = AICityReachCost(k, false, &ok);
+                if (!ok) continue;
+                if (AICityOwner(k) == sAIMe) { cost += 20; e = 15; }
+                else e = AIWinEstimate(s, AICityX(k), AICityY(k));
+                if (e < 51 || cost >= minMP) score = (e < 11) ? -2 : (short)(e * 5 - cost + 100);
+                else score = (short)(e * 10 - cost + 400);
+                if (bestScore < score) { bestScore = score; best = k; }
+            }
+            return best;
+        }
+    }
+    AISack(ci);
+    return -1;
+}
+
+/* FUN_1001bdc8: visited cities with no enemy within 25 send their surplus
+ * (more than three units with MP >= minMoves on (x+1,y)) to the staging city */
+static void AIFrontVisited(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short i, k;
+    for (i = 0; i < 6; i++) {
+        short ci = fr->visited[i], near = 0;
+        unsigned char nb[6], nd[6];
+        AIStack s;
+        if (ci == -1 || ci == fr->staging || !AIIsCity(ci) || AICityOwner(ci) != sAIMe) continue;
+        AINeighbours(ci, nb, nd);
+        for (k = 5; k >= 0; k--) {
+            short o;
+            if (nb[k] == 0xFF) continue;
+            o = AICityOwner(nb[k]);
+            if (o != 0x0F && o != sAIMe && nd[k] < 25) near++;
+        }
+        if (near != 0) continue;
+        AIGarrison(ci, true);
+        if (AIStackAt(AICityX(ci) + 1, AICityY(ci), 0, 0, fr->minMoves, &s) > 3) {
+            AISetOrders(&s, 1, fr->staging, 0);
+            AIMoveStack(&s, sAIOrd[AIStackLead(&s)].destX, sAIOrd[AIStackLead(&s)].destY);
+        }
+    }
+}
+/* FUN_1001bfa0: a captured city joins the front; the staging may move */
+static short AIFrontPressure(short ci, short p)
+{
+    unsigned char nb[6], nd[6];
+    short k, n = 0;
+    AINeighbours(ci, nb, nd);
+    for (k = 0; k < 6; k++) {
+        if (nb[k] == 0xFF || AICityOwner(nb[k]) != p) continue;
+        if (nd[k] < 10) n++;
+        if (nd[k] < 20) n++;
+        if (nd[k] < 30) n++;
+        if (nd[k] < 50) n++;
+    }
+    return n;
+}
+static Boolean AIFrontAfterCapture(short f, short newCity)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short staging = fr->staging, i, pNew, pOld;
+    Boolean none = false, present = false;
+    if (staging == newCity) return false;
+    AIGarrison(newCity, true);
+    for (i = 0; i < 6; i++) if (fr->targets[i] == newCity) { fr->targets[i] = -1; break; }
+    pNew = AIFrontPressure(newCity, fr->targetPlayer);
+    pOld = AIFrontPressure(staging, fr->targetPlayer);
+    if (pNew == 0 && pOld == 0) none = true;
+    if (pOld < pNew) staging = newCity;
+    for (i = 0; i < 6; i++) if (fr->visited[i] == staging) present = true;
+    if (!present) for (i = 0; i < 6; i++) if (fr->visited[i] == -1) { fr->visited[i] = staging; break; }
+    if (none) { AIFrontReset(f); return false; }
+    fr->staging = staging;
+    gAI->role[newCity] = 7;
+    AIFrontVisited(f);
+    return true;
+}
+/* FUN_1001c2dc: the attack stack goes for the target (and on through the
+ * front's targets when razing); returns 1 captured / 3 stopped */
+static short AIFrontAttack(short f, AIStack *s, short target)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short lead = AIStackLead(s), i;
+    if (lead >= 0 && !AIIsCity(target)) {
+        short best = -1, bestD = 1000;
+        for (i = 0; i < 6; i++) {
+            short t = fr->targets[i], d;
+            if (t == -1 || !AIIsCity(t)) continue;
+            d = AIDist(AIRecX(lead), AIRecY(lead), AICityX(t), AICityY(t));
+            if (d < bestD) { best = t; bestD = d; }
+        }
+        if (best != -1) target = best;
+    }
+    for (;;) {
+        short nTargets = 0, prevOwner, r, tries = 0;
+        for (i = 0; i < 6; i++) if (fr->targets[i] != -1) nTargets++;
+        for (i = s->n - 1; i >= 0; i--) if (!AIRecMine(s->rec[i])) { short j; for (j = i; j < s->n - 1; j++) s->rec[j] = s->rec[j + 1]; s->n--; }
+        if (s->n == 0 || !AIIsCity(target)) return 3;
+        prevOwner = AICityOwner(target);
+        AISetOrders(s, 1, target, 0);
+        do {
+            lead = AIStackLead(s);
+            r = AIMoveStack(s, sAIOrd[lead].destX, sAIOrd[lead].destY);
+        } while (r == 6 && s->n > 0 && ++tries < 3);
+        if (r == 1) { AIDisbandStack(s); AIFrontValidateStacks(f); return 3; }
+        AIFrontValidateStacks(f);
+        if (AICityOwner(target) != sAIMe || prevOwner == sAIMe) return 3;
+        if (AIHomeCity(sAIMe) == target) break;
+        if (nTargets < 2 || !(fr->flags & 1)) {
+            if (fr->flags & 2) AISack(target);
+            else if (fr->flags & 4) AIPillage(target);
+            break;
+        }
+        target = AIRaze(target, s);
+        if (target == -1) return 1;
+    }
+    AIFrontAfterCapture(f, target);
+    return 1;
+}
+/* FUN_1001b584: enemy stacks of the target player in the field within 15 */
+static short AIFieldAttack(AIStack *s, short targetPlayer, short radius)
+{
+    short lead = AIStackLead(s), x, y, px, py, bestX = -1, bestY = -1, bestEst = 0, minMP, i, savedTarget = -1;
+    if (lead < 0 || (AI_REC(lead)[0x2C] & ARMY_EMBARKED_BIT)) return 0;
+    x = AIRecX(lead); y = AIRecY(lead); minMP = AIStackMinMP(s);
+    for (px = (short)(x - radius); px < x + radius; px++) {
+        for (py = (short)(y - radius); py < y + radius; py++) {
+            short t, cost, units = 0, str = 0, heroes = 0, est;
+            Boolean enemy = false;
+            if (px < 0 || py < 0 || px >= sMapWidth || py >= sMapHeight) continue;
+            for (i = 0; i < AIArmyCount(); i++) {
+                unsigned char *a = AI_REC(i);
+                short k;
+                if (AIRecX(i) != px || AIRecY(i) != py || a[0x16] == 0xFF) continue;
+                if ((short)(unsigned char)a[0x15] != targetPlayer) continue;
+                enemy = true;
+                for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) { units++; str += a[0x1e + k]; if (a[0x16 + k] == 0x1C) heroes++; }
+            }
+            if (!enemy) continue;
+            t = GetTerrainType(px, py);
+            if (t == 10 || t == 3 || t == 2) continue;
+            cost = sAIFloodCost[py * PATH_GRID_W + px];
+            if (cost < 0 || cost == PATH_COST_BLOCK || cost > minMP - 1) continue;
+            if (sOptHiddenMap && !FogGetBit(sFogExplored[sAIMe], px, py)) continue;
+            est = AIWinEstimate(s, px, py);
+            if (est > 75 && ((units > 2 && str > 10) || heroes) && bestEst < est) { bestX = px; bestY = py; bestEst = est; }
+        }
+    }
+    if (bestX == -1) return 0;
+    if (sAIOrd[lead].type == 1) savedTarget = sAIOrd[lead].target;
+    AISetOrders(s, 4, 0, AIO_RELEASED);
+    for (i = 0; i < s->n; i++) { sAIOrd[s->rec[i]].destX = bestX; sAIOrd[s->rec[i]].destY = bestY; }
+    AIMoveStack(s, bestX, bestY);
+    for (i = 0; i < s->n; i++)
+        if (savedTarget != -1) { sAIOrd[s->rec[i]].type = 1; sAIOrd[s->rec[i]].target = (unsigned char)savedTarget; }
+    return 2;
+}
+/* FUN_1001c6fc: the nearest target-player city within a path of 50 with a
+ * win estimate > 75; a field attack first (the city only after one) */
+static short AIFrontMoveStack(short f, AIStack *s, short targetPlayer)
+{
+    short ci, best = -1, bestCost = 1000, minMP = AIStackMinMP(s), r;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        short cost;
+        Boolean ok;
+        if (!AIIsCity(ci) || AICityOwner(ci) != targetPlayer) continue;
+        cost = AICityReachCost(ci, false, &ok);
+        if (!ok || cost >= 50 || cost >= minMP) continue;
+        if (AIWinEstimate(s, AICityX(ci), AICityY(ci)) <= 75) continue;
+        if (cost < bestCost) { best = ci; bestCost = cost; }
+    }
+    r = AIFieldAttack(s, targetPlayer, 15);
+    if (r != 0 && best != -1 && s->n > 0) r = AIFrontAttack(f, s, best);
+    return r;
+}
+/* FUN_1001c854: the registered attack stacks move on */
+static void AIFrontMoveStacks(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short k;
+    for (k = 3; k >= 0; k--) {
+        short u;
+        AIStack s;
+        AIFrontValidateStacks(f);
+        u = fr->stacks[k];
+        if (u == -1) continue;
+        if (AIStackAt(AIRecX(u), AIRecY(u), sAIOrd[u].front, sAIOrd[u].type, 0, &s) == 0) continue;
+        AIFloodForStack(&s, 15);
+        AIFrontMoveStack(f, &s, fr->targetPlayer);
+        return;                                 /* (the original stops after the first stack) */
+    }
+}
+/* FUN_1001ca30: register the strongest non-hero record of the stack */
+static void AIFrontRegisterStack(short f, const AIStack *s)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short k, i, best = -1, bestStr = -1;
+    for (k = 3; k >= 0; k--) if (fr->stacks[k] == -1) break;
+    if (k < 0) return;
+    for (i = s->n - 1; i >= 0; i--) {
+        unsigned char *a = AI_REC(s->rec[i]);
+        if (AIRecHasHero(s->rec[i])) break;
+        if (bestStr < (short)a[0x1e]) { best = s->rec[i]; bestStr = a[0x1e]; }
+    }
+    if (best != -1) fr->stacks[k] = best;
+}
+/* FUN_1001cb24: launch a new attack stack from the staging strike tile */
+static Boolean AIFrontLaunch(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    AIStack s;
+    short n, i, best = -1, bestScore = -1, minMP;
+    n = AIStackAtAny(AICityX(fr->staging) + 1, AICityY(fr->staging), 0, &s);
+    if (n == 0) return false;
+    minMP = AIStackMinMP(&s);
+    for (i = 0; i < 6; i++) {
+        short t = fr->targets[i], div, turns, est, sc;
+        if (t == -1) continue;
+        div = (short)(minMP - 2); if (div < 1) div = 1;
+        turns = (short)(fr->targetDist[i] / div + 1);
+        est = AIWinEstimate(&s, AICityX(t), AICityY(t));
+        sc = (short)(10 - turns); if (sc < 0) sc = 0;
+        sc = (short)(sc + est + fr->targetNeigh[i] + AIRnd(4, 0));
+        if (turns == 1) sc += 100;
+        if ((est > 75 || n > 7) && bestScore < sc) { best = t; bestScore = sc; }
+    }
+    if (best == -1) return false;
+    AIFrontRegisterStack(f, &s);
+    for (i = 0; i < s.n; i++) sAIOrd[s.rec[i]].front = (unsigned char)(f + 1);
+    AIFrontAttack(f, &s, best);
+    return true;
+}
+/* FUN_1001cd68: one front's turn */
+static Boolean AIFrontStep(short f)
+{
+    AIFront *fr = &gAI->fronts[f];
+    short home = AIHomeCity(sAIMe), holder, g;
+    Boolean shared = false;
+    if (home >= 0) {
+        holder = AICityOwner(home);
+        if (holder != 0x0F && holder != sAIMe) {
+            Boolean targeted = false;
+            for (g = gAI->frontCount - 1; g >= 0; g--) if (gAI->fronts[g].active && gAI->fronts[g].targetPlayer == holder) targeted = true;
+            if (!targeted) { AIResetOldestFront(); return false; }
+        }
+    }
+    if (AIFrontValidateTargets(f) == 0) { AIFrontReset(f); return false; }
+    AIFrontSingleTarget(f);
+    for (g = gAI->frontCount - 1; g >= 0; g--)
+        if (gAI->fronts[g].active && g != f && gAI->fronts[g].staging == fr->staging) shared = true;
+    if ((shared || AICityOwner(fr->staging) != sAIMe) && !AIFrontRepickStaging(f)) return false;
+    AIFrontMoveStacks(f);
+    if (!fr->active) return false;
+    AIGarrison(fr->staging, true);
+    if (AIFrontLaunch(f) && fr->staging >= 0) AIGarrison(fr->staging, true);
+    if (!fr->active) return false;
+    AIFrontVisited(f);
+    return true;
+}
+/* FUN_1001d014 (step 4) */
+static void AIStepAttackGroups(void)
+{
+    short ci, f;
+    if (gAI->rolesPassCount == 0) return;
+    AIClassifyCities();
+    for (ci = AICityCount() - 1; ci >= 0; ci--)
+        if (AIIsCity(ci) && AICityOwner(ci) == sAIMe && gAI->role[ci] == 7) gAI->role[ci] = 8;
+    for (f = 0; f < gAI->frontCount; f++) {
+        if (!gAI->fronts[f].active) continue;
+        if (gAI->fronts[f].staging >= 0 && gAI->fronts[f].staging < AI_MAX_CITIES) gAI->role[gAI->fronts[f].staging] = 7;
+        if (AIFrontStep(f)) gAI->fronts[f].active++;
+    }
+    AIOrdSync();
+}
+
+/* ------------------------------------------------------------------ */
+/* step 11: FUN_10013040 / FUN_10012cc8 neighbour raids                 */
+/* ------------------------------------------------------------------ */
+static const short kAIRaidRoles[7] = {5, 8, 6, 4, 14, 7, -1};    /* PEF 0xad28 */
+static void AIRaid(short ci)
+{
+    short x = AICityX(ci), y = AICityY(ci), n, k, best = -1, bestTurns = 100, thr, minMP;
+    unsigned char bestEst = 0, nb[6], nd[6];
+    Boolean abort = false;
+    AIStack s;
+    if (gAI->role[ci] == 7) { if (gAI->unitCount[ci] < 12) return; }
+    else x++;
+    thr = (AIGold() < 40 && AIIncome() < AIUpkeep()) ? 65 : 85;
+    n = AIStackAtAny(x, y, 8, &s);
+    if (n == 0 || !(n > 3 || (gAI->role[ci] != 6 && gAI->role[ci] != 7))) return;
+    minMP = AIStackMinMP(&s);
+    AINeighbours(ci, nb, nd);
+    for (k = 5; k >= 0; k--) {
+        short o;
+        unsigned char w;
+        if (nb[k] == 0xFF || (gAI->cflags[nb[k]] & 1)) continue;
+        o = AICityOwner(nb[k]);
+        if (o == sAIMe || !AIIsCity(nb[k]) || nb[k] == gAI->questCity) continue;
+        if (!(o == 0x0F || AIAtWar(o))) continue;
+        w = (unsigned char)AIWinEstimate(&s, AICityX(nb[k]), AICityY(nb[k]));
+        if (w == 0) {
+            if ((n < 4 && nd[k] < 25) || (n < 6 && nd[k] < 15)) abort = true;
+        } else if (w >= thr) {
+            short div = (short)(minMP - 2), turns;
+            if (div < 1) div = 1;
+            turns = (short)(nd[k] / div + 1);
+            if (turns < bestTurns || (turns == bestTurns && bestEst < w)) { best = nb[k]; bestTurns = turns; bestEst = w; }
+        }
+    }
+    if (abort || best == -1) return;
+    AISetOrders(&s, 1, best, 0);
+    AIMoveStack(&s, sAIOrd[AIStackLead(&s)].destX, sAIOrd[AIStackLead(&s)].destY);
+}
+static void AIStepRaids(void)
+{
+    short ci;
+    if (gAI->passive) return;
+    for (ci = AICityCount() - 1; ci >= 0; ci--) {
+        if (!AIIsCity(ci) || AICityOwner(ci) != sAIMe) continue;
+        if (!AIRoleInList(gAI->role[ci], kAIRaidRoles) || gAI->unitCount[ci] < 4) continue;
+        AIRaid(ci);
+    }
+    AIOrdSync();
+}
+
+/* ===================================================================
  * ExecuteAITurn: the original's step dispatcher (FUN_1000c9c8 ..
- * FUN_1000d808, progress values as the original reports them).  Steps
- * whose bodies are not ported yet are no-ops (marked).
+ * FUN_1000d808, progress values as the original reports them).
  * =================================================================== */
 static void ExecuteAITurn(short aiPlayer)
 {
     if (*gGameState == 0 || aiPlayer < 0 || aiPlayer > 7) return;
     sAIMe = aiPlayer;
     gAI = &sAIBlocks[aiPlayer];
-    if (!gAI->inited) AIInitBlock(aiPlayer);        /* FUN_10020ae8 (a loaded game starts afresh) */
+    if (!gAI->inited) AIInitBlock(aiPlayer);        /* FUN_10020ae8 */
+    AIOrigEnsure();
     AIOrdSync();
 
     /* the turn-start hero offer (PPC FUN_10032a24, as for a human) */
     AIHeroOffer(aiPlayer);
     AIOrdSync();
 
-    /* step 0 (FUN_1000c9c8): neighbour table, role reset */
+    /* step 0 (FUN_1000c9c8): ally flag, neighbour table, role reset */
+    sAIAllyFlag[aiPlayer] = gAI->allyHumans;
     AIStep0();
     AISetProgress(10);
-    /* step 1 (FUN_1000cafc): diplomacy FUN_10011804 [legacy remake rules
-     * until ported], heroes FUN_100164e4 [not ported: hero count only] */
-    AIDiplomacyLegacy(aiPlayer);
-    AICountHeroes();
+    /* step 1 (FUN_1000cafc): diplomacy FUN_10011804, heroes FUN_100164e4 */
+    AIStepDiplomacy();
+    AIStepHeroes();
     AISetProgress(15);
-    /* step 2 (FUN_1000cb54): FUN_10013774 release units (hidden map) [not ported] */
+    /* step 2 (FUN_1000cb54): FUN_10013774 release units (hidden map) */
+    if (AIHidden()) AIStepRelease();
     AISetProgress(20);
-    /* step 3 (FUN_1000cbb8): FUN_10014214 hero + flyer expeditions [not ported] */
+    /* step 3 (FUN_1000cbb8): FUN_10014214 hero + flyer expeditions */
+    AIStepExpeditions();
     AISetProgress(25);
-    /* step 4 (FUN_1000cc08): FUN_1001d014 attack groups [not ported] */
+    /* step 4 (FUN_1000cc08): FUN_1001d014 attack groups */
+    AIStepAttackGroups();
     AISetProgress(30);
     /* step 5 (FUN_1000cc58): FUN_10013484 execute orders */
     AIStepExecute();
@@ -26672,10 +28106,12 @@ static void ExecuteAITurn(short aiPlayer)
     /* step 10 (FUN_1000cdf4): FUN_10013484 execute orders again */
     AIStepExecute();
     AISetProgress(65);
-    /* step 11 (FUN_1000ce44): FUN_10013040 neighbour raids [not ported] */
+    /* step 11 (FUN_1000ce44): FUN_10013040 neighbour raids */
+    AIStepRaids();
     /* step 12 (FUN_1000ce88): FUN_10020ec4 hidden-map roles */
     AIStepHiddenRoles();
-    /* step 13 (FUN_1000ced8): FUN_1000f410 open a front [not ported] */
+    /* step 13 (FUN_1000ced8): FUN_1000f410 open a front */
+    AIStepOpenFront();
     AISetProgress(70);
     /* step 14 (FUN_1000cf28): FUN_10014d14 hero cities */
     AIStepHeroCities();
@@ -26698,7 +28134,6 @@ static void ExecuteAITurn(short aiPlayer)
     gAI = NULL;
     sAIMe = -1;
 }
-
 
 
 /* ===================================================================
@@ -29221,7 +30656,7 @@ static void AdvanceToNextPlayer(void)
  *         viewport/selection state (20B)
  * =================================================================== */
 #define SAVE_MAGIC  0x574C3253   /* 'WL2S' */
-#define SAVE_VERSION 6
+#define SAVE_VERSION 7
 
 static FSSpec sSaveFileSpec;
 static Boolean sSaveFileValid = false;
@@ -29385,6 +30820,23 @@ static Boolean SaveGameToFile(FSSpec *spec)
         FSWrite(refNum, &count, &sSgnSignpostCount);
         count = sizeof(sSgnSignposts);
         FSWrite(refNum, &count, sSgnSignposts);
+    }
+
+    /* v7: the computer players' state (the original's 'AI  ' 10000: the
+     * per-player blocks and the neighbour table; here also the per-record
+     * orders and the module's statics) */
+    {
+        short aiHdr[8];
+        aiHdr[0] = sAIOrdValid; aiHdr[1] = (short)sAINbValid; aiHdr[2] = (short)sAIOrigValid;
+        aiHdr[3] = sAILastX; aiHdr[4] = sAILastY; aiHdr[5] = sAIExpandLastTarget; aiHdr[6] = sAIExpandLastCity;
+        aiHdr[7] = (short)sizeof(AIBlock);
+        count = sizeof(aiHdr); FSWrite(refNum, &count, aiHdr);
+        count = sizeof(sAIBlocks); FSWrite(refNum, &count, sAIBlocks);
+        count = sizeof(sAIOrd); FSWrite(refNum, &count, sAIOrd);
+        count = sizeof(sAINbIdx); FSWrite(refNum, &count, sAINbIdx);
+        count = sizeof(sAINbDist); FSWrite(refNum, &count, sAINbDist);
+        count = sizeof(sAIOrigOwner); FSWrite(refNum, &count, sAIOrigOwner);
+        count = sizeof(sAIAllyFlag); FSWrite(refNum, &count, sAIAllyFlag);
     }
 
     FSClose(refNum);
@@ -29578,6 +31030,23 @@ static Boolean LoadGameFromFile(FSSpec *spec)
         }
     } else {
         sSgnSignpostCount = 0;
+    }
+
+    /* v7: the computer players' state */
+    AIResetAll();
+    if (version >= 7) {
+        short aiHdr[8];
+        count = sizeof(aiHdr);
+        if (FSRead(refNum, &count, aiHdr) == noErr && aiHdr[7] == (short)sizeof(AIBlock)) {
+            count = sizeof(sAIBlocks); FSRead(refNum, &count, sAIBlocks);
+            count = sizeof(sAIOrd); FSRead(refNum, &count, sAIOrd);
+            count = sizeof(sAINbIdx); FSRead(refNum, &count, sAINbIdx);
+            count = sizeof(sAINbDist); FSRead(refNum, &count, sAINbDist);
+            count = sizeof(sAIOrigOwner); FSRead(refNum, &count, sAIOrigOwner);
+            count = sizeof(sAIAllyFlag); FSRead(refNum, &count, sAIAllyFlag);
+            sAIOrdValid = aiHdr[0]; sAINbValid = (Boolean)aiHdr[1]; sAIOrigValid = (Boolean)aiHdr[2];
+            sAILastX = aiHdr[3]; sAILastY = aiHdr[4]; sAIExpandLastTarget = aiHdr[5]; sAIExpandLastCity = aiHdr[6];
+        } else AIResetAll();
     }
 
     /* Restore map dimensions from game state */
