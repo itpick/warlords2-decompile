@@ -936,12 +936,14 @@ static unsigned char sUnitTypeTableBase[MAX_UNIT_TYPES * UNIT_TYPE_ENTRY]; /* or
  * Erythea: Mirea's SCN slots 01 04 05 0a are Heavy Inf., Heavy Cav., Navy
  * (dropped, not a port) and Catapults, and the starting type 4 is Heavy Cav.
  * (upkeep 8/2 = 4, as the original shows). Reorder so index == sprite. */
+static short sUnitDatOrder[MAX_UNIT_TYPES];   /* standard id of army-file entry i */
 static void IndexUnitTypesBySprite(unsigned char *tbl, short count)
 {
     static unsigned char tmp[MAX_UNIT_TYPES * UNIT_TYPE_ENTRY];
     Boolean seen[MAX_UNIT_TYPES];
     short i;
-    for (i = 0; i < count; i++) seen[i] = false;
+    for (i = 0; i < count; i++) { seen[i] = false; sUnitDatOrder[i] = i; }
+    for (i = 0; i < count; i++) sUnitDatOrder[i] = tbl[i * UNIT_TYPE_ENTRY] < count ? tbl[i * UNIT_TYPE_ENTRY] : i;
     for (i = 0; i < count; i++) {
         short k = tbl[i * UNIT_TYPE_ENTRY];
         if (k >= count || seen[k]) return;      /* not a permutation: leave as is */
@@ -22803,6 +22805,181 @@ static void DrawProdView(short L, short T, short owner, short unitType)
     }
 }
 
+/* T3DButton with a two-line ('\r') label */
+static void DrawT3DButton2(const Rect *r, ConstStr255Param label)
+{
+    RGBColor black = {0, 0, 0};
+    Str255 a, b;
+    short i, fnum, w;
+    a[0] = b[0] = 0;
+    for (i = 1; i <= label[0] && label[i] != '\r'; i++) a[++a[0]] = label[i];
+    for (i++; i <= label[0]; i++) b[++b[0]] = label[i];
+    DrawT3DBevel(r);
+    GetFNum("\pChicago", &fnum);
+    TextFont(fnum); TextSize(12); TextFace(0);
+    if (b[0] == 0) {
+        w = StringWidth(a);
+        DrawEmbossedStringIn(a, (r->left + r->right - w + 1) / 2 - 1, (r->top + r->bottom) / 2 + 4, &black, 0x8888, 0xDDDD);
+    } else {
+        w = StringWidth(a);
+        DrawEmbossedStringIn(a, (r->left + r->right - w + 1) / 2 - 1, r->top + 15, &black, 0x8888, 0xDDDD);
+        w = StringWidth(b);
+        DrawEmbossedStringIn(b, (r->left + r->right - w + 1) / 2 - 1, r->top + 29, &black, 0x8888, 0xDDDD);
+    }
+}
+
+/* Two-line sunken label ('\r' break), TxSt 1015, left aligned */
+static void DrawSunkenText2(const Rect *v, ConstStr255Param s)
+{
+    Str255 a, b;
+    short i;
+    Rect r = *v;
+    a[0] = b[0] = 0;
+    for (i = 1; i <= s[0] && s[i] != '\r'; i++) a[++a[0]] = s[i];
+    for (i++; i <= s[0]; i++) b[++b[0]] = s[i];
+    r.bottom = r.top + 19;
+    DrawSunkenText(&r, a, IlluriaFont(), 17, -2);
+    OffsetRect(&r, 0, 20);
+    if (b[0]) DrawSunkenText(&r, b, IlluriaFont(), 17, -2);
+}
+
+static void FormatTwoStr(ConstStr255Param fmt, ConstStr255Param a, ConstStr255Param b, Str255 out)
+{
+    short i, k = 0;
+    out[0] = 0;
+    for (i = 1; i <= fmt[0]; i++) {
+        if (fmt[i] == '%' && i < fmt[0] && fmt[i + 1] == 's') {
+            ConstStr255Param v = (k++ == 0) ? a : b; short j;
+            for (j = 1; j <= v[0] && out[0] < 255; j++) out[++out[0]] = v[j];
+            i++;
+        } else if (out[0] < 255) out[++out[0]] = fmt[i];
+    }
+}
+
+static void DrawBigShieldAt(short side, short x, short y)
+{
+    RGBColor key;
+    CGrafPtr sp; GDHandle sd;
+    GrafPtr port;
+    Rect b;
+    if (sShieldBigGW == NULL) return;
+    GetPort(&port);
+    b = (*GetGWorldPixMap(sShieldBigGW))->bounds;
+    GetGWorld(&sp, &sd); SetGWorld(sShieldBigGW, NULL);
+    GetCPixel(b.right - 1, b.bottom - 1, &key);
+    SetGWorld(sp, sd);
+    SetPort(port);
+    BlitKeyedColor(sShieldBigGW, &key, side * 32, 0, 32, 36, x, y);
+}
+
+/* View 3310 Build Production (PPC FUN_10049930 / FUN_10049048 / FUN_10049aec):
+ * buy a new unit type into the city's selected slot. */
+static void ShowBuildProduction(short ci)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    unsigned char *ext = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+    unsigned char *city = sCityData + ci * 0x20;
+    short owner = *(short *)(city + 4), sel = 0, k, list[MAX_UNIT_TYPES], nl = 0;
+    Rect armR[20], doneR, doneRing, r;
+    Boolean done = false, redraw = true;
+    WindowPtr win;
+    EventRecord e;
+    Str255 str, fmt, a, b;
+
+    for (k = 0; k < sUnitTypeCount && nl < 20; k++) {
+        short t = sUnitDatOrder[k];
+        short cost = (short)(sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1e] | (sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1f] << 8));
+        if (cost < 0 || t == 0x1C) continue;
+        list[nl++] = t;
+    }
+    /* first free slot after a filled one (slot 3 down), else 0 */
+    for (k = 3; k >= 1; k--)
+        if (*(short *)(ext + 0x06 + k * 2) < 0 && *(short *)(ext + 0x06 + (k - 1) * 2) >= 0) { sel = k; break; }
+    for (k = 0; k < 20; k++) SetRect(&armR[k], 30 + 120 * (k % 4), 95 + 31 * (k / 4), 30 + 120 * (k % 4) + 32, 95 + 31 * (k / 4) + 30);
+    SetRect(&doneR, 406, 307, 478, 336);
+    doneRing = doneR; InsetRect(&doneRing, -4, -4);
+    win = NewMacAppWindow(494, 352);
+    if (win == NULL) return;
+    while (!done) {
+        if (redraw) {
+            short gold = *(short *)(gs + 0x186 + owner * 0x14), side = owner >= 0 && owner < 8 ? owner : 8;
+            unsigned char *fn = gs + owner * FACTION_NAME_LEN; short len = 0;
+            SetPort(win);
+            DrawPictAt(1001, 7, 7);
+            DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 345); DrawPictAt(1008, 487, 0);
+            DrawBigShieldAt(side, 15 + 4, 15 + 2);
+            DrawBigShieldAt(side, 439 + 4, 15 + 2);
+            GetDATRawString(583, str);
+            SetRect(&r, 57, 15, 57 + 380, 55);  DrawSunkenText(&r, str, IlluriaFont(), 36, 1);
+            while (len < 14 && fn[len]) len++;
+            a[0] = (unsigned char)len; BlockMoveData(fn, a + 1, len);
+            CityNameP(ci, b);
+            GetDATRawString(584, fmt); FormatTwoStr(fmt, a, b, str);
+            SetRect(&r, 7, 58, 487, 77);  DrawSunkenText(&r, str, IlluriaFont(), 17, 1);
+            for (k = 0; k < nl; k++) {
+                short t = list[k], cost = GetUnitTypeStat(t, 4), s2;
+                Boolean have = false;
+                for (s2 = 0; s2 < 4; s2++) if (*(short *)(ext + 0x06 + s2 * 2) == t) have = true;
+                cost = (short)(sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1e] | (sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1f] << 8));
+                if (gold < cost || have) {
+                    DrawProdView(armR[k].left, armR[k].top, owner, -1);
+                    DrawArmySpriteAt(owner, t, armR[k].left, armR[k].top, true);
+                } else DrawProdView(armR[k].left, armR[k].top, owner, t);
+                NumToString((long)cost, str);
+                str[++str[0]] = ' '; str[++str[0]] = 'g'; str[++str[0]] = 'p';
+                SetRect(&r, armR[k].left + 33, armR[k].top + 6, armR[k].left + 83, armR[k].top + 25);
+                DrawSunkenText(&r, str, IlluriaFont(), 17, -2);
+            }
+            GetDATRawString(586, str);
+            SetRect(&r, 30, 268, 180, 287);  DrawSunkenText(&r, str, IlluriaFont(), 17, -2);
+            for (k = 0; k < 4; k++) {
+                short t = *(short *)(ext + 0x06 + k * 2);
+                DrawProdView(31 + 40 * k, 290, owner, t >= 0 && t < MAX_UNIT_TYPES ? t : -1);
+                if (k == sel && t < 0) {
+                    RGBColor lav = {0xBBBB, 0xBBBB, 0xFFFF};
+                    Rect o; SetRect(&o, 31 + 40 * k + 4, 290 + 4, 31 + 40 * k + 27, 290 + 26);
+                    RGBForeColor(&lav); PaintOval(&o);
+                }
+            }
+            GetDATRawString(585, fmt); FormatHeroLine(fmt, "\p", gold, str);
+            SetRect(&r, 211, 285, 361, 304);  DrawSunkenText(&r, str, IlluriaFont(), 17, -2);
+            { RGBColor black = {0, 0, 0}; RGBForeColor(&black); PenSize(3, 3); FrameRoundRect(&doneRing, 16, 16); PenSize(1, 1); }
+            DrawT3DButton(&doneR, "\pDone");
+            redraw = false;
+        }
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == keyDown) { char c = e.message & charCodeMask; if (c == '\r' || c == 3 || c == 27) done = true; continue; }
+        {
+            Point pt = e.where;
+            SetPort(win); GlobalToLocal(&pt);
+            if (PtInRect(pt, &doneRing)) { done = true; continue; }
+            for (k = 0; k < 4; k++) {
+                Rect pr; SetRect(&pr, 31 + 40 * k, 290, 63 + 40 * k, 320);
+                if (PtInRect(pt, &pr)) { sel = k; redraw = true; }
+            }
+            for (k = 0; k < nl; k++) if (PtInRect(pt, &armR[k])) {
+                short t = list[k], s2, cost, gold = *(short *)(gs + 0x186 + owner * 0x14), filled = 0;
+                Boolean have = false;
+                for (s2 = 0; s2 < 4; s2++) if (*(short *)(ext + 0x06 + s2 * 2) == t) have = true;
+                cost = (short)(sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1e] | (sUnitTypeTable[t * UNIT_TYPE_ENTRY + 0x1f] << 8));
+                if (have || gold < cost) break;
+                if (*(short *)(ext + 0x02) == *(short *)(ext + 0x06 + sel * 2)) {   /* overwrote what it built */
+                    *(short *)(ext + 0x02) = -1; *(short *)(ext + 0x58) = -1;
+                }
+                *(short *)(ext + 0x06 + sel * 2) = t;
+                *(short *)(gs + 0x186 + owner * 0x14) = gold - cost;
+                for (s2 = 0; s2 < 4; s2++) if (*(short *)(ext + 0x06 + s2 * 2) >= 0) filled++;
+                *(short *)(city + 0x06) = filled < 3 ? 1 : 2;
+                if (sel < 3 && *(short *)(ext + 0x06 + (sel + 1) * 2) < 0) sel++;
+                redraw = true;
+                break;
+            }
+        }
+    }
+    CloseMacAppWindow(win);
+    FinalizeCitySlots();
+}
+
 static void ShowCityWindow(short cityIndex, short startTab)
 {
     WindowPtr      win = NULL;
@@ -22812,7 +22989,7 @@ static void ShowCityWindow(short cityIndex, short startTab)
     Boolean        mine;
     short          cityX, cityY;
     Boolean        done = false, cancelled = false, redraw = true, tutorialChecked = false;
-    Rect           winRect, overR, tabR[4], doneOuter, doneBtn, armR[4], stopR;
+    Rect           winRect, overR, tabR[4], doneOuter, doneBtn, armR[4], stopR, bldR[3];
     unsigned long  openTick = TickCount();
 
     if (*gGameState == 0 || *gExtState == 0) return;
@@ -22872,6 +23049,8 @@ reloadCity:
         SetRect(&armR[i], CITY_PANE_L + 8 + 48 * i, CITY_PANE_T + 82,
                 CITY_PANE_L + 8 + 48 * i + 32, CITY_PANE_T + 82 + 30);
     SetRect(&stopR, CITY_PANE_L + 200, CITY_PANE_T + 80, CITY_PANE_L + 236, CITY_PANE_T + 116);
+    for (i = 0; i < 3; i++)
+        SetRect(&bldR[i], CITY_PANE_L + 16, CITY_PANE_T + 123 + 48 * i, CITY_PANE_L + 16 + 48, CITY_PANE_T + 123 + 48 * i + 36);
 
     FlushEvents(mDownMask | keyDownMask, 0);
 cityLoop:
@@ -22953,6 +23132,34 @@ cityLoop:
             PenSize(1, 1);
             DrawT3DButton(&doneBtn, ViewString(s, 1000, 5, "\pDone"));
 
+            if (tab == 1) {
+                /* View 3302 Build: shields, income/defence/owner as on Info (one
+                 * pixel lower), Re-name / Raze / Build Prod T3DButtons 48x36 at
+                 * (16, 123/171/219) with their captions at (72, +1) (STR# 3300). */
+                short P = CITY_PANE_L, T = CITY_PANE_T, side = (owner >= 0 && owner < 8) ? owner : 8, b2;
+                Str255 fmt;
+                static const short lbl[3] = {3, 4, 5}, cap[3] = {7, 8, 11};
+                DrawBigShieldAt(side, P + 8 + 4, T + 42 + 2);
+                DrawBigShieldAt(side, P + 208 + 4, T + 42 + 2);
+                GetDATRawString(602, fmt); FormatHeroLine(fmt, "\p", *(short *)(city + 0x08), s);
+                SetRect(&r, P + 52, T + 47, P + 52 + 156, T + 47 + 19);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                GetDATRawString(603, fmt); FormatHeroLine(fmt, "\p", *(short *)(city + 0x06), s);
+                SetRect(&r, P + 52, T + 67, P + 52 + 156, T + 67 + 19);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                {
+                    Str255 pn; unsigned char *fn = gs + owner * FACTION_NAME_LEN; short len = 0;
+                    while (len < 14 && fn[len]) len++;
+                    pn[0] = (unsigned char)len; BlockMoveData(fn, pn + 1, len);
+                    GetDATRawString(606, fmt); FormatHeroLine(fmt, pn, 0, s);
+                    SetRect(&r, P + 52, T + 91, P + 52 + 203, T + 91 + 19);  DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                }
+                for (b2 = 0; b2 < 3; b2++) {
+                    GetIndString(s, 3300, lbl[b2]);
+                    DrawT3DButton2(&bldR[b2], s);
+                    GetIndString(s, 3300, cap[b2]);
+                    SetRect(&r, P + 72, T + 124 + 48 * b2, P + 72 + 183, T + 124 + 48 * b2 + 40);
+                    DrawSunkenText2(&r, s);
+                }
+            }
             if (tab == 0) {
                 /* View 3301 Info (pane origin (245,20)): owner shields 'sid1'
                  * (8,42) / 'sid2' (208,42); "Income: %d gold" (52,46),
@@ -23095,6 +23302,13 @@ cityLoop:
             GlobalToLocal(&lp);
             if (PtInRect(lp, &doneOuter)) {
                 done = true;
+            } else if (tab == 1 && mine && PtInRect(lp, &bldR[2])) {
+                ShowBuildProduction(cityIndex);
+                SetPort(win);
+                redraw = true;
+                goto reloadCity;
+            } else if (tab == 1 && (PtInRect(lp, &bldR[0]) || PtInRect(lp, &bldR[1]))) {
+                SysBeep(1);   /* TODO: Rename (text dialog) / Raze (confirm dialog) */
             } else if (tab == 2 && PtInRect(lp, &stopR) && selectedType >= 0) {
                 selectedType = -1;
                 redraw = true;
@@ -23102,7 +23316,7 @@ cityLoop:
                 for (i = 0; i < 4; i++)
                     if (PtInRect(lp, &tabR[i]) && i != tab) {
                         if (i == 0) { tab = 0; redraw = true; }
-                        else if (i == 2) {
+                        else if (i == 1 || i == 2) {
                             /* panes 1-3 show the player's own city nearest to the
                              * one viewed (PPC FUN_1002bf64) */
                             if (!mine) {
@@ -23115,10 +23329,10 @@ cityLoop:
                                     if (dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; best = ci; }
                                 }
                                 if (best < 0) { SysBeep(1); break; }
-                                cityIndex = best; tab = 2;
+                                cityIndex = best; tab = i;
                                 goto reloadCity;
                             }
-                            tab = 2; redraw = true;
+                            tab = i; redraw = true;
                         } else {
                             /* TODO: Build (View 3302) and Vectoring (View 3304) panes */
                             SysBeep(1);
