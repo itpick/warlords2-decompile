@@ -1174,8 +1174,8 @@ static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
  * (the original's ~1.75 s per computer player) to speed up test iterations. */
 #define DEV_FAST_TURNS 0
 #define DEV_SHIP_PROBE 0   /* DEV: temporary ship-on-land probe */
-/* DEV: 1 draws the system-font glyph capture sheet at launch (warlords2-web
- * tools/glyphcap) and waits for a click. */
+/* DEV: 1 draws the system-font (2: Chicago 12) glyph capture sheet at launch (warlords2-web
+ * tools/glyphcap) and waits for a click; 3 draws the smoothed-text blend table. */
 #define DEV_GLYPH_SHEET 0
 static short     sAIProgress = 0;
 static Str255    sInfoMsg;                /* info-area message over the AI turn display */         /* its flag strip as a progress bar, 0-100 */
@@ -35136,18 +35136,19 @@ int main(void)
         DrawMenuBar();
     }
 
-#if DEV_GLYPH_SHEET
-    /* DEV: glyph capture sheet. Four sheets (fg on bg) of 16x14 cells, 32x24,
-     * chars 0x20-0xFF, each glyph drawn alone with DrawChar at cell (x+8, y+18)
-     * after EraseRect in the bg colour. Row y+23 holds a black run from the pen
-     * of length CharWidth (the advance). Above each sheet, 4 black bars (rows
-     * top, +3, +6, +9) of length ascent, descent, leading, widMax (GetFontInfo).
-     * Sheet origins (global): (0,40) (512,40) (0,410) (512,410). */
+#if DEV_GLYPH_SHEET == 3
+    /* DEV: smoothed-text blend table. The system font's 'w' (Charcoal 12 inks all
+     * 15 coverage levels) drawn in each fore grey over each pltt 1000 entry: cell
+     * i = fore * 256 + entry at local (i % 64 * 16, i / 64 * 14), 16x14, erased
+     * to the entry (PmBackColor), pen at (+3, +11), clipped to the cell. Fores:
+     * 0000 8888 DDDD 7777 BBBB 4444 AAAA FFFF/FFFF/CCCC FFFF 5555. */
     {
-        static const unsigned short kSheet[4][2] = {   /* fg grey, bg grey */
-            {0x0000, 0xFFFF}, {0x0000, 0xDDDD}, {0x7777, 0xDDDD}, {0x7777, 0xFFFF} };
-        Rect wr; WindowPtr gw; short sh, ch; FontInfo fi;
-        RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+        static const unsigned short kFore[10][3] = {
+            {0,0,0}, {0x8888,0x8888,0x8888}, {0xDDDD,0xDDDD,0xDDDD}, {0x7777,0x7777,0x7777},
+            {0xBBBB,0xBBBB,0xBBBB}, {0x4444,0x4444,0x4444}, {0xAAAA,0xAAAA,0xAAAA},
+            {0xFFFF,0xFFFF,0xCCCC}, {0xFFFF,0xFFFF,0xFFFF}, {0x5555,0x5555,0x5555} };
+        Rect wr, cr; WindowPtr gw; short i;
+        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
         PaletteHandle gp = GetNewPalette(1000);
         SetRect(&wr, 0, 24, 1024, 768);
         gw = NewCWindow(NULL, &wr, "\p", true, plainDBox, (WindowPtr)-1L, false, 0);
@@ -35155,12 +35156,62 @@ int main(void)
         SetPort(gw);
         RGBBackColor(&white); EraseRect(&gw->portRect);
         TextFont(0); TextSize(12); TextFace(0);
+        for (i = 0; i < 10 * 256; i++) {
+            short cx = (i % 64) * 16, cy = (i / 64) * 14;
+            RGBColor fg;
+            fg.red = kFore[i / 256][0]; fg.green = kFore[i / 256][1]; fg.blue = kFore[i / 256][2];
+            SetRect(&cr, cx, cy, cx + 16, cy + 14);
+            ClipRect(&cr);
+            PmBackColor(i % 256); EraseRect(&cr);
+            RGBForeColor(&fg); MoveTo(cx + 3, cy + 11); DrawChar('w');
+        }
+        ClipRect(&gw->portRect);
+        RGBBackColor(&white);
+        while (!Button()) ;
+        while (Button()) ;
+        FlushEvents(everyEvent, 0);
+        DisposeWindow(gw);
+    }
+#endif
+#if DEV_GLYPH_SHEET == 1 || DEV_GLYPH_SHEET == 2
+    /* DEV: glyph capture sheet. Four sheets (fg on bg) of 16x14 cells, 32x24,
+     * chars 0x20-0xFF, each glyph drawn alone with DrawChar at cell (x+8, y+18)
+     * after EraseRect in the bg colour. Row y+23 holds a black run from the pen
+     * of length CharWidth (the advance). Above each sheet, 4 black bars (rows
+     * top, +3, +6, +9) of length ascent, descent, leading, widMax (GetFontInfo).
+     * Sheet origins (global): (0,40) (512,40) (0,410) (512,410). */
+    {
+        /* DEV_GLYPH_FONT names the family (font 0 = the system font, Charcoal on
+         * 8.6); pages of four sheets, each page waits for a click. */
+        static const unsigned short kSheet[][2] = {   /* fg grey, bg grey */
+#if DEV_GLYPH_SHEET == 2
+            /* Chicago 12: T3DButton label layers (0x0000 / 0xDDDD / 0x8888 on the 0xBBBB
+             * face), plain black on white; disabled label 0x7777 / 0xBBBB on 0xCCCC;
+             * emboss greys 0x4444 / 0xAAAA (labels on marble) */
+            {0x0000, 0xBBBB}, {0xDDDD, 0xBBBB}, {0x8888, 0xBBBB}, {0x0000, 0xFFFF},
+            {0x7777, 0xCCCC}, {0xBBBB, 0xCCCC}, {0x4444, 0xFFFF}, {0xAAAA, 0x0000} };
+        const unsigned char *fontName = "\pChicago";
+#else
+            {0x0000, 0xFFFF}, {0x0000, 0xDDDD}, {0x7777, 0xDDDD}, {0x7777, 0xFFFF} };
+        const unsigned char *fontName = NULL;
+#endif
+        Rect wr; WindowPtr gw; short sh, ch, fnum = 0, page; FontInfo fi;
+        RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+        PaletteHandle gp = GetNewPalette(1000);
+        SetRect(&wr, 0, 24, 1024, 768);
+        gw = NewCWindow(NULL, &wr, "\p", true, plainDBox, (WindowPtr)-1L, false, 0);
+        if (gp != NULL) { SetPalette(gw, gp, true); ActivatePalette(gw); }
+        SetPort(gw);
+        if (fontName != NULL) GetFNum(fontName, &fnum);
+        for (page = 0; page < (short)(sizeof kSheet / sizeof kSheet[0]) / 4; page++) {
+        RGBBackColor(&white); EraseRect(&gw->portRect);
+        TextFont(fnum); TextSize(12); TextFace(0);
         GetFontInfo(&fi);
         for (sh = 0; sh < 4; sh++) {
             short ox = (sh & 1) * 512, oy = 40 + (sh >> 1) * 370 - 24;   /* local */
             RGBColor fg, bg; short k, vals[4];
-            fg.red = fg.green = fg.blue = kSheet[sh][0];
-            bg.red = bg.green = bg.blue = kSheet[sh][1];
+            fg.red = fg.green = fg.blue = kSheet[page * 4 + sh][0];
+            bg.red = bg.green = bg.blue = kSheet[page * 4 + sh][1];
             vals[0] = fi.ascent; vals[1] = fi.descent; vals[2] = fi.leading; vals[3] = fi.widMax;
             RGBForeColor(&black);
             for (k = 0; k < 4; k++) if (vals[k] > 0) { MoveTo(ox, oy + k * 3); LineTo(ox + vals[k] - 1, oy + k * 3); }
@@ -35178,6 +35229,7 @@ int main(void)
         RGBForeColor(&black); RGBBackColor(&white);
         while (!Button()) ;
         while (Button()) ;
+        }
         FlushEvents(everyEvent, 0);
         DisposeWindow(gw);
     }
