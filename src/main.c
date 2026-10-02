@@ -527,7 +527,7 @@ static const ItemDef sItemTable[MAX_ITEMS] = {
     /* Flying items (stack flies) */
     {"Wings of Flying",   5, 0}, {"Witch's Broom",      5, 0},
     {"Wand of Flight",    5, 0}, {"Magic Carpet",       5, 0},
-    {"Wings of Eagle",    5, 0},
+    {"Wings of the Eagle", 5, 0},
     /* Movement items (doubles move) */
     {"Boots of Speed",    6, 0}, {"Cup of Haste",       6, 0},
     {"Ring of Travel",    6, 0}, {"Phantom Steed",      6, 0},
@@ -802,6 +802,97 @@ static void LoadDATItemDefs(void)
         }
     }
     HUnlock(h);
+}
+
+/* ===== Game item records (PPC 1.0.7 FUN_1003956c) =====
+ * gs+0xD12 + i*0x1E, 22 records (i = 0..21):
+ *   +0x00 name[20], +0x14 type (byte), +0x15 value (byte),
+ *   +0x16 status (short): 0 not in play / sunk, 1 on the ground,
+ *                         2 hidden in a ruin, 3 carried
+ *   +0x18 carrier (short): army index (carried) / site index (hidden)
+ *   +0x1A, +0x1C ground x, y (shorts).
+ * Records 0-7 are the per-player Standards (type 8), 8-21 unique picks
+ * from the 39-entry ITM list (sItemTable).  Hero item slots hold the
+ * 1-based record number. */
+#define GAME_ITEM_COUNT     22
+#define ITEM_ST_NONE        0
+#define ITEM_ST_GROUND      1
+#define ITEM_ST_RUIN        2
+#define ITEM_ST_CARRIED     3
+#define ITEM_STATUS(r)      (*(short *)((r) + 0x16))
+#define ITEM_CARRIER(r)     (*(short *)((r) + 0x18))
+
+/* Site reward kinds (site record +0x0C; temples/empty sites have no search) */
+#define SITE_KIND(s)        ((s)[0x0C])
+#define SITE_ALLY_RANK(s)   ((s)[0x0E])  /* 0-3 strongest, 4-6 next, 0xFF weakest */
+#define SITE_ITEM(s)        ((s)[0x10])
+#define SITE_HARD(s)        ((s)[0x1C])
+#define SITE_GUARDIAN(s)    ((s)[0x1A])
+#define SITE_EMPTY          0
+#define SITE_TEMPLE         1
+#define SITE_ITEM_KIND      2
+#define SITE_SAGE           3
+#define SITE_GOLD           4
+#define SITE_ALLIES         5
+
+/* Per-player Standard names, read from SCN+0xCE9 + i*0x1D at GameInit
+ * (before anything is written over that part of gs). */
+static char sStandardNames[8][20];
+
+/* GameItemRec — record for a 1-based item id, NULL if out of range. */
+static unsigned char *GameItemRec(short itemId)
+{
+    if (*gGameState == 0 || itemId < 1 || itemId > GAME_ITEM_COUNT) return NULL;
+    return (unsigned char *)*gGameState + 0xD12 + (itemId - 1) * 0x1E;
+}
+
+static short GameItemType(short itemId)
+{
+    unsigned char *r = GameItemRec(itemId);
+    return r ? (short)r[0x14] : 0;
+}
+
+static short GameItemValue(short itemId)
+{
+    unsigned char *r = GameItemRec(itemId);
+    return r ? (short)r[0x15] : 0;
+}
+
+/* GameItemPName — the record's name as a Pascal string. */
+static void GameItemPName(short itemId, Str255 out)
+{
+    unsigned char *r = GameItemRec(itemId);
+    short n = 0;
+    if (r) while (n < 19 && r[n]) { out[n + 1] = r[n]; n++; }
+    out[0] = (unsigned char)n;
+}
+
+/* GameItemDef — copy a record's name/type/value into an ItemDef view so the
+ * display code can keep its ItemDef shape (never read sItemTable[id-1] for a
+ * game item: the records are random picks). */
+static const ItemDef *GameItemDef(short itemId, ItemDef *buf)
+{
+    unsigned char *r = GameItemRec(itemId);
+    short n = 0;
+    if (r) while (n < 19 && r[n]) { buf->name[n] = (char)r[n]; n++; }
+    buf->name[n] = 0;
+    buf->type = r ? (short)r[0x14] : 0;
+    buf->value = r ? (short)r[0x15] : 0;
+    return buf;
+}
+
+/* "Special" item (FUN_1003956c): movement, flying, command > 1, standard. */
+static Boolean IsSpecialItemTV(short type, short value)
+{
+    return type == ITEM_TYPE_MOVEMENT || type == ITEM_TYPE_FLYING ||
+           (type == ITEM_TYPE_COMMAND && value > 1) || type == ITEM_TYPE_FLAT_PLUS;
+}
+
+/* Dice: 1dS = 1..S */
+static short RollDie(short sides)
+{
+    if (sides < 1) return 1;
+    return (short)((unsigned short)Random() % (unsigned short)sides) + 1;
 }
 
 /* Player colors for faction borders and city/temple owner dots */
@@ -1759,6 +1850,25 @@ static void GameInit(void)
     gs  = (unsigned char *)*gGameState;
     ext = (*gExtState != 0) ? (unsigned char *)*gExtState : NULL;
 
+    /* --- Per-player Standard names (SCN+0xCE9 + i*0x1D: name[20], type 8,
+     * value 0; e.g. Isles "White Standard", others "Knight Standard").  gs
+     * is a raw SCN copy here; read it before the item records at gs+0xD12
+     * (which overlap it) are built.  Random maps have no SCN block. --- */
+    for (i = 0; i < 8; i++) {
+        const unsigned char *src = gs + 0xCE9 + i * 0x1D;
+        Boolean ok = !sRandomMap && src[0] >= 'A' && src[0] <= 'Z';
+        for (j = 0; ok && j < 20 && src[j]; j++)
+            if (src[j] < 0x20 || src[j] > 0x7E) ok = false;
+        if (ok) {
+            for (j = 0; j < 19 && src[j]; j++) sStandardNames[i][j] = (char)src[j];
+            sStandardNames[i][j] = 0;
+        } else {
+            static const char kStd[] = "Knight Standard";
+            for (j = 0; kStd[j]; j++) sStandardNames[i][j] = kStd[j];
+            sStandardNames[i][j] = 0;
+        }
+    }
+
     /* --- Basic game state fields (68k CODE_117 FUN_00001ab6) --- */
 
     /* Current turn = 1 */
@@ -2295,120 +2405,165 @@ static void GameInit(void)
         }
     }
 
-    /* --- Activate ~30% of ruins/temples as searchable (68k CODE_117 FUN_0000185e) --- */
+    /* --- Ruins, temples and items (PPC 1.0.7 FUN_1003956c) ---
+     * Every non-temple site ("ruin") gets a fixed reward kind at game start:
+     *   - ruins*3/10 random ruins are HARD (site+0x1C);
+     *   - item records 8..21 are unique picks from the ITM list, the first
+     *     p = ruins*2/10 of them "special" (movement, flying, command > 1,
+     *     standard); special items hide only in HARD ruins, the others only in
+     *     normal ones; only slots < 8+k (k = min(2d3+1, p)) or >= 8+p, and
+     *     below N = min(22, 8 + ruins/3 + 1d5-3), are placed (status 2),
+     *     the rest stay out of the game (status 0);
+     *   - the other ruins: hard -> allies/allies/gold, normal far (> 14 tiles
+     *     from every living capital) -> sage/gold/allies/sage/gold, normal
+     *     near -> sage/gold/allies;
+     *   - allies ruins draw an army type by strength rank (hard: 4 strongest,
+     *     far: next 3, near: weakest; resolved at search time because the
+     *     army set is not loaded yet), every other ruin has a guardian 1d9.
+     * Site record use: +0x0C kind, +0x0E ally rank, +0x10 item record,
+     * +0x1A guardian, +0x1C hard, +0x1D searchable, +0x1E visited bits. */
     {
         short siteCount = sCityCount;
-        short numToActivate, activated = 0;
+        short siteIdx[140], ruinIdx[140];
+        short nSites = 0, ruins = 0;
+        unsigned char usedItm[MAX_ITEMS];
+        short p, nHard, nItems, k, s;
         if (siteCount > 139) siteCount = 139;
 
-        /* Initialize all sites: active=0, richness=0, visited_bitmask=0xFF.
-         * site[0x1C] = richness flag (68k: comes from SCN data, affects gold/ally rewards)
-         * site[0x1D] = active flag (1=searchable, 0=inactive) — separate from richness */
         for (i = 0; i < siteCount; i++) {
-            unsigned char *site = sCityData +i * 0x20;
-            site[0x1C] = 0;     /* richness: 0=basic, nonzero=rich */
-            site[0x1D] = 0;     /* not active */
-            site[0x1E] = 0xFF;  /* visited bitmask: all bits set */
-        }
-
-        /* Copy richness from gs+0x811 raw SCN data (stride 0x1F = 31 bytes).
-         * site+0x1C determines gold reward (500 vs 1000) and ally count (0-1 vs 2-3).
-         * gs+0x811 ruin entries map 1:1 to sCityData ruin entries by order. */
-        {
-            short scnRuinIdx = 0;
-            for (i = 0; i < siteCount; i++) {
-                unsigned char *site = sCityData +i * 0x20;
-                short sType = (short)(unsigned char)site[0x17];
-                if (sType >= 2 && sType <= 5) {
-                    if (scnRuinIdx < 40) {
-                        unsigned char *scnSite = gs + 0x811 + scnRuinIdx * 0x1F;
-                        site[0x1C] = scnSite[0x1C];  /* copy richness from SCN */
-                    }
-                    scnRuinIdx++;
-                }
-            }
-        }
-
-        /* Randomly activate ~30% of ruins/temples/libraries.
-         * First count eligible sites, then activate up to 30% of them. */
-        {
-            short eligibleCount = 0, attempts = 0;
-            for (i = 0; i < siteCount; i++) {
-                short sType = (short)(unsigned char)(sCityData +i * 0x20)[0x17];
-                if (sType >= 2 && sType <= 5) eligibleCount++;
-            }
-            numToActivate = (eligibleCount * 3) / 10;
-            if (numToActivate < 1 && eligibleCount > 0) numToActivate = 1;
-            if (numToActivate > eligibleCount) numToActivate = eligibleCount;
-
-            while (activated < numToActivate && attempts < siteCount * 10) {
-                short idx = (short)((unsigned short)Random() % siteCount);
-                unsigned char *site = sCityData +idx * 0x20;
-                short sType = (short)(unsigned char)site[0x17];
-                attempts++;
-                if (site[0x1D] != 0) continue;  /* already active */
-                if (sType >= 2 && sType <= 5) {
-                    site[0x1D] = 1;  /* mark active (searchable) */
-                    site[0x1E] = 0;  /* clear visited bitmask */
-                    activated++;
-                }
-            }
-        }
-    }
-
-    /* --- Place items in ruins (68k CODE_117 FUN_00000f68) --- */
-    /* 68k pre-places 8-22 items at activated ruin/temple/library sites.
-     * Items are from sItemTable, assigned to specific ruins so each item
-     * can only be found once. Powerful items placed farther from capitals. */
-    {
-        short siteCount = sCityCount;
-        short itemIdx = 0;
-        short activeSites[40];
-        short activeCount = 0;
-        unsigned short rSeed2 = (unsigned short)TickCount();
-        if (siteCount > 139) siteCount = 139;
-
-        /* Collect activated site types 2-5 (item/defended/gold/ally) */
-        for (i = 0; i < siteCount; i++) {
-            unsigned char *site = sCityData +i * 0x20;
+            unsigned char *site = sCityData + i * 0x20;
             short sType = (short)(unsigned char)site[0x17];
-            if (sType >= 2 && sType <= 5 && site[0x1D] != 0) {
-                if (activeCount < 40)
-                    activeSites[activeCount++] = i;
+            if (sType < 2) continue;
+            for (j = 0x0C; j < 0x14; j++) site[j] = 0;
+            SITE_KIND(site) = (sType == 2) ? SITE_TEMPLE : SITE_EMPTY;
+            SITE_ITEM(site) = 0xFF;
+            SITE_GUARDIAN(site) = 0;
+            SITE_HARD(site) = 0;
+            site[0x1D] = 0;                              /* not searchable */
+            site[0x1E] = (sType == 2) ? 0xFF : 0x00;     /* visited bits */
+            siteIdx[nSites++] = i;
+            if (sType != 2) ruinIdx[ruins++] = i;
+        }
+
+        /* Item records: 0-7 Standards, 8-21 unique ITM picks */
+        for (s = 0; s < GAME_ITEM_COUNT; s++) {
+            unsigned char *ir = gs + 0xD12 + s * 0x1E;
+            for (j = 0; j < 0x1E; j++) ir[j] = 0;
+            ITEM_STATUS(ir) = ITEM_ST_NONE;
+            ITEM_CARRIER(ir) = -1;
+        }
+        for (s = 0; s < 8; s++) {
+            unsigned char *ir = gs + 0xD12 + s * 0x1E;
+            for (j = 0; j < 19 && sStandardNames[s][j]; j++) ir[j] = (unsigned char)sStandardNames[s][j];
+            ir[0x14] = ITEM_TYPE_FLAT_PLUS;
+            ir[0x15] = 0;
+        }
+        for (k = 0; k < MAX_ITEMS; k++) usedItm[k] = 0;
+        p = (short)(ruins * 2 / 10);
+        for (s = 8; s < GAME_ITEM_COUNT; s++) {
+            unsigned char *ir = gs + 0xD12 + s * 0x1E;
+            short wantSpecial = (s < 8 + p) ? 1 : 0;
+            short pick = -1, tries, c;
+            for (tries = 0; tries < 1000 && pick < 0; tries++) {
+                c = (short)((unsigned short)Random() % MAX_ITEMS);
+                if (usedItm[c]) continue;
+                if ((IsSpecialItemTV(sItemTable[c].type, sItemTable[c].value) ? 1 : 0) != wantSpecial)
+                    continue;
+                pick = c;
+            }
+            for (c = 0; pick < 0 && c < MAX_ITEMS; c++)   /* list exhausted */
+                if (!usedItm[c]) pick = c;
+            if (pick < 0) break;
+            usedItm[pick] = 1;
+            for (j = 0; j < 19 && sItemTable[pick].name[j]; j++)
+                ir[j] = (unsigned char)sItemTable[pick].name[j];
+            ir[0x14] = (unsigned char)sItemTable[pick].type;
+            ir[0x15] = (unsigned char)sItemTable[pick].value;
+        }
+
+        /* Hard ruins */
+        nHard = (short)(ruins * 3 / 10);
+        {
+            short done = 0, tries = 0;
+            while (done < nHard && tries < 2000) {
+                unsigned char *site = sCityData +
+                    ruinIdx[(unsigned short)Random() % (unsigned short)ruins] * 0x20;
+                tries++;
+                if (SITE_HARD(site)) continue;
+                SITE_HARD(site) = 1;
+                done++;
             }
         }
 
-        /* Shuffle active sites for randomized item placement */
-        for (i = activeCount - 1; i > 0; i--) {
-            rSeed2 = rSeed2 * 25173 + 13849;
-            { short swapIdx = (short)(rSeed2 % (i + 1));
-              short tmp = activeSites[i];
-              activeSites[i] = activeSites[swapIdx];
-              activeSites[swapIdx] = tmp; }
+        /* Item placement */
+        if (nSites > 0) {
+            nItems = (short)(8 + ruins / 3 + (RollDie(5) - 3));
+            if (nItems > GAME_ITEM_COUNT) nItems = GAME_ITEM_COUNT;
+            k = (short)(RollDie(3) + RollDie(3) + 1);
+            if (k > p) k = p;
+            for (s = 8; s < GAME_ITEM_COUNT; s++) {
+                unsigned char *ir = gs + 0xD12 + s * 0x1E;
+                short special = IsSpecialItemTV(ir[0x14], ir[0x15]) ? 1 : 0;
+                short tries, found = -1;
+                if (ir[0] == 0) continue;
+                if (!(s < nItems && (s < 8 + k || s >= 8 + p))) continue;  /* not in game */
+                for (tries = 0; tries <= 100; tries++) {
+                    short si = siteIdx[(unsigned short)Random() % (unsigned short)nSites];
+                    unsigned char *site = sCityData + si * 0x20;
+                    if (site[0x17] == 2) continue;                    /* temple */
+                    if (SITE_KIND(site) != SITE_EMPTY) continue;      /* already used */
+                    if ((SITE_HARD(site) ? 1 : 0) != special) continue;
+                    found = si;
+                    break;
+                }
+                if (found < 0) continue;                              /* status 0 */
+                {
+                    unsigned char *site = sCityData + found * 0x20;
+                    ITEM_STATUS(ir) = ITEM_ST_RUIN;
+                    ITEM_CARRIER(ir) = found;
+                    *(short *)(ir + 0x1A) = *(short *)(site + 0x00);
+                    *(short *)(ir + 0x1C) = *(short *)(site + 0x02);
+                    SITE_KIND(site) = SITE_ITEM_KIND;
+                    SITE_ITEM(site) = (unsigned char)s;
+                }
+            }
         }
 
-        /* Place items at ruins (up to 22 items, max one per site) */
-        for (i = 0; i < activeCount && itemIdx < 22 && itemIdx < MAX_ITEMS; i++) {
-            unsigned char *site = sCityData +activeSites[i] * 0x20;
-            unsigned char *itemRec = gs + 0xD12 + itemIdx * 0x1E;
-            const ItemDef *itemDef = &sItemTable[itemIdx];
-            short nameLen = 0;
-
-            /* Copy item name */
-            while (nameLen < 19 && itemDef->name[nameLen] != '\0') {
-                itemRec[nameLen] = (unsigned char)itemDef->name[nameLen];
-                nameLen++;
+        /* Fixed rewards for the remaining ruins, guardians, ally ranks */
+        for (s = 0; s < ruins; s++) {
+            unsigned char *site = sCityData + ruinIdx[s] * 0x20;
+            Boolean isFar = true;
+            if (SITE_KIND(site) == SITE_EMPTY) {
+                if (SITE_HARD(site)) {
+                    static const unsigned char kHard[3] = {SITE_ALLIES, SITE_ALLIES, SITE_GOLD};
+                    SITE_KIND(site) = kHard[RollDie(3) - 1];
+                } else {
+                    short pl, sx = *(short *)(site + 0x00), sy = *(short *)(site + 0x02);
+                    for (pl = 0; pl < 8; pl++) {
+                        short cx, cy, dx, dy;
+                        if (*(short *)(gs + 0x138 + pl * 2) == 0) continue;
+                        GetCapitalXY(pl, &cx, &cy);
+                        if (cx <= 0 && cy <= 0) continue;
+                        dx = sx - cx; if (dx < 0) dx = -dx;
+                        dy = sy - cy; if (dy < 0) dy = -dy;
+                        if (dx <= 14 && dy <= 14) { isFar = false; break; }
+                    }
+                    if (isFar) {
+                        static const unsigned char kFar[5] =
+                            {SITE_SAGE, SITE_GOLD, SITE_ALLIES, SITE_SAGE, SITE_GOLD};
+                        SITE_KIND(site) = kFar[RollDie(5) - 1];
+                    } else {
+                        static const unsigned char kNear[3] = {SITE_SAGE, SITE_GOLD, SITE_ALLIES};
+                        SITE_KIND(site) = kNear[RollDie(3) - 1];
+                    }
+                }
+                if (SITE_KIND(site) == SITE_ALLIES)
+                    SITE_ALLY_RANK(site) = SITE_HARD(site) ? (unsigned char)(RollDie(4) - 1) :
+                                           isFar ? (unsigned char)(3 + RollDie(3)) : 0xFF;
             }
-            itemRec[nameLen] = 0;
-
-            /* Set type, value, and location */
-            itemRec[0x14] = (unsigned char)itemDef->type;
-            itemRec[0x15] = (unsigned char)itemDef->value;
-            itemRec[0x16] = 1;  /* status: in ruin */
-            *(short *)(itemRec + 0x18) = activeSites[i];  /* site index */
-            *(short *)(itemRec + 0x1A) = *(short *)(site + 0x00);  /* X */
-            *(short *)(itemRec + 0x1C) = *(short *)(site + 0x02);  /* Y */
-            itemIdx++;
+            if (SITE_KIND(site) != SITE_ALLIES)
+                SITE_GUARDIAN(site) = (unsigned char)RollDie(9);
+            site[0x1D] = 1;                                   /* searchable */
         }
     }
 
@@ -8356,12 +8511,8 @@ static Boolean ShowGameSetup(void)
                 gs[0x1142 + i * 0x0C + b] = 0;
         }
 
-        /* Clear item records (gs+0xD12, 0x1E bytes x 22 items max) */
-        for (i = 0; i < 22; i++) {
-            short b;
-            for (b = 0; b < 0x1E; b++)
-                gs[0xD12 + i * 0x1E + b] = 0;
-        }
+        /* Item records (gs+0xD12) are NOT cleared here: GameInit already
+         * built the Standards and placed the ruin items (FUN_1003956c). */
 
         /* Set not-playing factions' capitals to neutral army ownership */
         {
@@ -10555,11 +10706,10 @@ static void ShowSiteInfo(short siteIndex)
             const char *tl;
             Boolean explored;
             RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+            /* the original only distinguishes temples and ruins; what a ruin
+             * holds (site+0x0C) is unknown until it is searched */
             if (siteType == 2) tl = "Temple";
-            else if (siteType == 3) tl = "Sage";
-            else if (siteType == 4) tl = "Ruin";
-            else if (siteType == 5) tl = "Library";
-            else tl = "Site";
+            else tl = "Ruin";
             explored = (curPlayer >= 0 && curPlayer < 8) ?
                        (site[0x1E] & (1 << curPlayer)) != 0 : false;
             RGBForeColor(&white);
@@ -11985,8 +12135,9 @@ static void ShowArmyInspect(short armyIndex)
                             short ii, itemCount = 0;
                             for (ii = 0; ii < ITEM_SLOTS; ii++) {
                                 short itemId = *(short *)(army + 0x3A + ii * 2);
-                                if (itemId > 0 && itemId <= MAX_ITEMS) {
-                                    const ItemDef *item = &sItemTable[itemId - 1];
+                                if (itemId > 0 && itemId <= GAME_ITEM_COUNT) {
+                                    ItemDef itemBuf;
+                                    const ItemDef *item = GameItemDef(itemId, &itemBuf);
                                     Str255 pn;
                                     short nl = 0;
                                     while (nl < 19 && item->name[nl] != '\0') nl++;
@@ -12687,7 +12838,7 @@ static Boolean TryMergeArmies(short movingIdx)
                                     /* Update item record carrier to target army */
                                     if (itemId >= 1 && itemId <= 22) {
                                         unsigned char *itemRec = gs + 0xD12 + (itemId - 1) * 0x1E;
-                                        if (itemRec[0x16] == 3)
+                                        if (ITEM_STATUS(itemRec) == ITEM_ST_CARRIED)
                                             *(short *)(itemRec + 0x18) = i;
                                     }
                                 }
@@ -13598,6 +13749,48 @@ static short ExecutePathSteps(short armyIdx)
 
 
 /* ===================================================================
+ * DropHeroItems — the army's hero dies: every carried item drops at the
+ * death tile (status 1), or is lost (status 0, "sunk!") on water terrain
+ * (68k CODE_042 FUN_00000930).  Clears the army's item slots.
+ * =================================================================== */
+static void DropHeroItems(short armyIndex)
+{
+    unsigned char *gs, *army;
+    short ax, ay, si;
+    Boolean onWater = false;
+    if (*gGameState == 0 || armyIndex < 0) return;
+    gs = (unsigned char *)*gGameState;
+    army = gs + 0x1604 + armyIndex * 0x42;
+    ax = *(short *)(army + 0x00);
+    ay = *(short *)(army + 0x02);
+    if (*gMapTiles != 0 &&
+        ax >= 0 && ax < sMapWidth && ay >= 0 && ay < sMapHeight) {
+        unsigned char *md = (unsigned char *)*gMapTiles;
+        unsigned char ti = md[ay * 0xE0 + ax * 2];
+        unsigned char tt = gs[ti + TERRAIN_TYPE_OFS];
+        if (tt == 2) onWater = true;  /* 68k: terrain type 2 (Water) */
+    }
+    for (si = 0; si < ITEM_SLOTS; si++) {
+        short itemId = *(short *)(army + 0x3A + si * 2);
+        unsigned char *itemRec = GameItemRec(itemId);
+        if (itemRec != NULL) {
+            if (onWater) {
+                ITEM_STATUS(itemRec) = ITEM_ST_NONE;    /* sunk */
+                ITEM_CARRIER(itemRec) = -1;
+                *(short *)(itemRec + 0x1A) = -1;
+                *(short *)(itemRec + 0x1C) = -1;
+            } else {
+                ITEM_STATUS(itemRec) = ITEM_ST_GROUND;
+                ITEM_CARRIER(itemRec) = -1;
+                *(short *)(itemRec + 0x1A) = ax;
+                *(short *)(itemRec + 0x1C) = ay;
+            }
+        }
+        *(short *)(army + 0x3A + si * 2) = 0;
+    }
+}
+
+/* ===================================================================
  * RemoveArmy — Remove an army from the army list by shifting later
  * entries down.  Adjusts sSelectedArmy if needed.
  * =================================================================== */
@@ -13619,48 +13812,10 @@ static void RemoveArmy(short armyIndex)
         for (u = 0; u < 4; u++) {
             if ((short)(unsigned char)army[0x16 + u] == 0x1C && owner < 8) {
                 unsigned char *heroRec = gs + 0x1422 + owner * 0x2C;
-                short ax = *(short *)(army + 0x00);
-                short ay = *(short *)(army + 0x02);
-                short si;
-
-                /* Drop items on hero death (68k CODE_042 FUN_00000930).
-                 * If hero dies on water (sea), items are permanently lost.
-                 * Otherwise items drop at death location. */
-                {
-                    Boolean onWater = false;
-                    if (*gMapTiles != 0 &&
-                        ax >= 0 && ax < sMapWidth && ay >= 0 && ay < sMapHeight) {
-                        unsigned char *md = (unsigned char *)*gMapTiles;
-                        unsigned char ti = md[ay * 0xE0 + ax * 2];
-                        unsigned char tt = gs[ti + TERRAIN_TYPE_OFS];
-                        if (tt == 2) onWater = true;  /* 68k: terrain type 2 (Water) */
-                    }
-                    for (si = 0; si < ITEM_SLOTS; si++) {
-                        short itemId = *(short *)(army + 0x3A + si * 2);
-                        if (itemId > 0 && itemId <= 22) {
-                            unsigned char *itemRec = gs + 0xD12 + (itemId - 1) * 0x1E;
-                            if (onWater) {
-                                /* 68k: items lost at sea — status 0, no location */
-                                itemRec[0x16] = 0;
-                                *(short *)(itemRec + 0x18) = 0;
-                                *(short *)(itemRec + 0x1A) = -1;
-                                *(short *)(itemRec + 0x1C) = -1;
-                            } else {
-                                /* 68k: items drop at death coordinates */
-                                itemRec[0x16] = 1;  /* status: on ground */
-                                *(short *)(itemRec + 0x18) = 0;  /* clear carrier */
-                                *(short *)(itemRec + 0x1A) = ax;
-                                *(short *)(itemRec + 0x1C) = ay;
-                            }
-                        }
-                        *(short *)(army + 0x3A + si * 2) = 0;
-                    }
-                }
+                /* Drop items on hero death (68k CODE_042 FUN_00000930). */
+                DropHeroItems(armyIndex);
 
                 heroRec[0x00] = 0;  /* clear active flag */
-                /* Clear hero command state on death */
-                *(gs + owner * 0x1e + 0xd28) = 0;
-                *(short *)(gs + owner * 0x1e + 0xd2a) = -1;
                 /* Record hero death event (68k CODE_054 event type 3) */
                 { short turn = *(short *)(gs + 0x136);
                   char heroName[40];
@@ -13704,7 +13859,7 @@ static void RemoveArmy(short armyIndex)
         short ii;
         for (ii = 0; ii < 22; ii++) {
             unsigned char *itemRec = gs + 0xD12 + ii * 0x1E;
-            if (itemRec[0x16] == 3) {  /* status: carried by army */
+            if (ITEM_STATUS(itemRec) == ITEM_ST_CARRIED) {  /* status: carried by army */
                 short carrierIdx = *(short *)(itemRec + 0x18);
                 if (carrierIdx > armyIndex)
                     *(short *)(itemRec + 0x18) = carrierIdx - 1;
@@ -18293,6 +18448,21 @@ static void ShowShortcutsDialog(void)
  * Quest types: CAPTURE (take enemy city), EXPLORE (search ruins),
  * CONQUER (own N cities total), GOLD (accumulate N gold).
  * =================================================================== */
+/* QuestRewardItem — a quest's artifact reward is one of the game's item
+ * records that is not in play (status 0), so the hero slots keep holding
+ * valid record numbers; 0 when every record is in play. */
+static short QuestRewardItem(long rnd)
+{
+    short ids[GAME_ITEM_COUNT], n = 0, i;
+    for (i = 9; i <= GAME_ITEM_COUNT; i++) {
+        unsigned char *r = GameItemRec(i);
+        if (r != NULL && r[0] != 0 && ITEM_STATUS(r) == ITEM_ST_NONE) ids[n++] = i;
+    }
+    if (n == 0) return 0;
+    if (rnd < 0) rnd = -rnd;
+    return ids[rnd % n];
+}
+
 static void GenerateQuest(short player)
 {
     unsigned char *gs;
@@ -18334,7 +18504,7 @@ static void GenerateQuest(short player)
                 q->type = QUEST_CAPTURE;
                 q->target = enemyCity;
                 q->reward = 500;
-                q->rewardItem = (short)((rnd / 11) % MAX_ITEMS) + 1;
+                q->rewardItem = QuestRewardItem(rnd / 11);
             } else {
                 /* No enemy cities; fall through to conquer quest */
                 q->type = QUEST_CONQUER;
@@ -18348,7 +18518,7 @@ static void GenerateQuest(short player)
             q->type = QUEST_EXPLORE;
             q->target = 3;  /* search 3 ruins */
             q->reward = 400;
-            q->rewardItem = (short)((rnd / 13) % MAX_ITEMS) + 1;
+            q->rewardItem = QuestRewardItem(rnd / 13);
             break;
         case QUEST_CONQUER: {
             /* Own N cities: current + 3 to 5 more */
@@ -18369,7 +18539,7 @@ static void GenerateQuest(short player)
             q->target = 800 + (short)(rnd % 500);
             q->progress = *(short *)(gs + 0x186 + player * 0x14);
             q->reward = 0;  /* reward IS the gold (you get to keep it) */
-            q->rewardItem = (short)((rnd / 17) % MAX_ITEMS) + 1;
+            q->rewardItem = QuestRewardItem(rnd / 17);
             break;
     }
 }
@@ -18443,7 +18613,9 @@ static void CheckQuestProgress(short player)
                     short u;
                     for (u = 0; u < 4; u++) {
                         if ((unsigned char)army[0x16 + u] == 0x1C) {
-                            GiveItemToHero(ai, q->rewardItem);
+                            { unsigned char *qr = GameItemRec(q->rewardItem);
+                              if (qr != NULL && ITEM_STATUS(qr) == ITEM_ST_NONE)
+                                  GiveItemToHero(ai, q->rewardItem); }
                             goto questItemDone;
                         }
                     }
@@ -18548,8 +18720,9 @@ static void ShowQuestDialog(void)
                     NumToString((long)q->reward, numStr);
                     DrawString(numStr);
                 }
-                if (q->rewardItem > 0 && q->rewardItem <= MAX_ITEMS) {
-                    const ItemDef *itm = &sItemTable[q->rewardItem - 1];
+                if (q->rewardItem > 0 && q->rewardItem <= GAME_ITEM_COUNT) {
+                    ItemDef itmBuf;
+                    const ItemDef *itm = GameItemDef(q->rewardItem, &itmBuf);
                     Str255 iname;
                     short nl = 0;
                     MoveTo(40, 125);
@@ -18655,8 +18828,9 @@ static void ShowQuestDialog(void)
                     NumToString((long)q->reward, numStr); DrawString(numStr);
                     DrawString(GetCachedString(STR_QUEST, 15, "\p gold"));
                 }
-                if (q->rewardItem > 0 && q->rewardItem <= MAX_ITEMS) {
-                    const ItemDef *itm = &sItemTable[q->rewardItem - 1];
+                if (q->rewardItem > 0 && q->rewardItem <= GAME_ITEM_COUNT) {
+                    ItemDef itmBuf;
+                    const ItemDef *itm = GameItemDef(q->rewardItem, &itmBuf);
                     Str255 iname;
                     short nl = 0;
                     if (q->reward > 0) DrawString("\p + ");
@@ -19284,13 +19458,14 @@ static void GetHeroItemBonus(short armyIdx,
 
     for (slot = 0; slot < ITEM_SLOTS; slot++) {
         short itemId = *(short *)(army + 0x3A + slot * 2);
-        if (itemId <= 0 || itemId > MAX_ITEMS) continue;
+        if (itemId <= 0 || itemId > GAME_ITEM_COUNT) continue;
         {
-            const ItemDef *item = &sItemTable[itemId - 1];  /* 1-based */
-            switch (item->type) {
-                case ITEM_TYPE_BATTLE:   *outBattle += item->value; break;
-                case ITEM_TYPE_COMMAND:  *outCommand += item->value; break;
-                case ITEM_TYPE_GOLD:     *outGold += item->value; break;
+            /* type/value from the game's item record (gs+0xD12) */
+            short iType = GameItemType(itemId), iVal = GameItemValue(itemId);
+            switch (iType) {
+                case ITEM_TYPE_BATTLE:   *outBattle += iVal; break;
+                case ITEM_TYPE_COMMAND:  *outCommand += iVal; break;
+                case ITEM_TYPE_GOLD:     *outGold += iVal; break;
                 case ITEM_TYPE_FLYING:   *outFlying = true; break;
                 case ITEM_TYPE_MOVEMENT: *outDoubleMove = true; break;
                 case ITEM_TYPE_FLAT_PLUS: *outCommand += 1; break;  /* 68k FUN_000027de: flat +1 command */
@@ -19343,7 +19518,7 @@ static short GetEffectiveUnitClass(short armyIdx)
 /* ===================================================================
  * GiveItemToHero — Assigns an item to the first empty slot of a hero.
  * Returns true if item was added, false if all slots full.
- * itemId is 1-based index into sItemTable.
+ * itemId is the 1-based game item record (gs+0xD12).
  * =================================================================== */
 static Boolean GiveItemToHero(short armyIdx, short itemId)
 {
@@ -19358,15 +19533,30 @@ static Boolean GiveItemToHero(short armyIdx, short itemId)
         if (*(short *)(army + 0x3A + slot * 2) == 0) {
             *(short *)(army + 0x3A + slot * 2) = itemId;
             /* Update item record table: status=3 (carried), carrier=armyIdx */
-            if (itemId >= 1 && itemId <= 22) {
+            if (itemId >= 1 && itemId <= GAME_ITEM_COUNT) {
                 unsigned char *itemRec = gs + 0xD12 + (itemId - 1) * 0x1E;
-                itemRec[0x16] = 3;  /* status: carried by hero */
-                *(short *)(itemRec + 0x18) = armyIdx;
+                ITEM_STATUS(itemRec) = ITEM_ST_CARRIED;
+                ITEM_CARRIER(itemRec) = armyIdx;
             }
             return true;
         }
     }
     return false;  /* all slots full */
+}
+
+/* ===================================================================
+ * GiveStartingStandard — a hero hired while turn (gs+0x136) <= 1 gets its
+ * player's Standard (item record = player, type 8: +1 command), carried.
+ * =================================================================== */
+static void GiveStartingStandard(short player, short armyIdx)
+{
+    unsigned char *gs, *ir;
+    if (*gGameState == 0 || player < 0 || player >= 8 || armyIdx < 0) return;
+    gs = (unsigned char *)*gGameState;
+    if (*(short *)(gs + 0x136) > 1) return;
+    ir = GameItemRec((short)(player + 1));
+    if (ir == NULL || ir[0] == 0 || ITEM_STATUS(ir) != ITEM_ST_NONE) return;
+    GiveItemToHero(armyIdx, (short)(player + 1));
 }
 
 /* ===================================================================
@@ -19397,7 +19587,9 @@ static void CheckGroundItemPickup(short armyIdx)
     /* Scan all items for ground items at this tile */
     for (ii = 0; ii < 22; ii++) {
         unsigned char *ir = gs + 0xD12 + ii * 0x1E;
-        if (ir[0x16] == 1 &&
+        /* only items lying on the ground (status 1); ruin items (status 2)
+         * are found by searching */
+        if (ITEM_STATUS(ir) == ITEM_ST_GROUND &&
             *(short *)(ir + 0x1A) == ax &&
             *(short *)(ir + 0x1C) == ay) {
             /* Try to give this item to the hero */
@@ -19408,6 +19600,217 @@ static void CheckGroundItemPickup(short armyIdx)
             /* If slots full, leave item on ground (can be picked up later) */
         }
     }
+}
+
+/* ===================================================================
+ * Ruin search core (PPC 1.0.7 FUN_1003956c reward kinds, site+0x0C).
+ * Shared by the Heroes > Search handler (human) and the AI movement code.
+ * =================================================================== */
+
+/* RankedAllyType — army type for an allies ruin.  Army types ranked by
+ * strength (strongest first), skipping type 5 and the hero like the original
+ * (and any naval type); rank 0-3 = hard ruins, 4-6 = far ruins, 0xFF = the
+ * weakest type (near ruins). */
+static short RankedAllyType(unsigned char rank)
+{
+    short types[MAX_UNIT_TYPES], n = 0, t, a, cnt;
+    cnt = sUnitTypesLoaded ? sUnitTypeCount : 5;
+    if (cnt > 0x1C) cnt = 0x1C;                      /* 0x1C = hero */
+    for (t = 0; t < cnt; t++) {
+        if (t == 5) continue;
+        if (sUnitTypesLoaded) {
+            if (GetUnitTypeStat(t, 0) <= 0) continue;
+            if (sUnitTypeTable[t * UNIT_TYPE_ENTRY + UTE_STAT_NAVAL] >= 1) continue;
+        }
+        types[n++] = t;
+    }
+    if (n == 0) return 0;
+    for (a = 1; a < n; a++) {                        /* stable, descending */
+        short key = types[a], ks = GetUnitTypeStat(key, 0), b = a - 1;
+        while (b >= 0 && GetUnitTypeStat(types[b], 0) < ks) { types[b + 1] = types[b]; b--; }
+        types[b + 1] = key;
+    }
+    if (rank == 0xFF || rank >= n) return types[n - 1];
+    return types[rank];
+}
+
+/* AddAlliesToStack — `count` units of `type` join the army's stack: empty
+ * unit slots of the army first, then new armies on the same tile.
+ * Returns the number of units added. */
+static short AddAlliesToStack(short armyIdx, short type, short count)
+{
+    unsigned char *gs, *army;
+    short added = 0, hp, mv;
+    if (*gGameState == 0 || armyIdx < 0) return 0;
+    gs = (unsigned char *)*gGameState;
+    army = gs + 0x1604 + armyIdx * 0x42;
+    hp = GetUnitTypeStat(type, 0);
+    mv = GetUnitTypeStat(type, 3);
+    if (hp < 1) hp = 3;
+    if (mv < 1) mv = 10;
+    while (added < count) {
+        unsigned char *dst = NULL;
+        short ds = -1, k;
+        for (k = 0; k < 4; k++)
+            if ((unsigned char)army[0x16 + k] == 0xFF) { dst = army; ds = k; break; }
+        if (dst == NULL) {
+            short n = *(short *)(gs + 0x1602);
+            if (n >= 100) break;
+            dst = gs + 0x1604 + n * 0x42;
+            for (k = 0; k < 0x42; k++) dst[k] = 0;
+            *(short *)(dst + 0) = *(short *)(army + 0);
+            *(short *)(dst + 2) = *(short *)(army + 2);
+            dst[0x15] = army[0x15]; dst[0x2f] = army[0x2f];
+            *(short *)(dst + 0x34) = -1; *(short *)(dst + 0x36) = -1;
+            for (k = 0; k < 4; k++) dst[0x16 + k] = 0xFF;
+            *(short *)(gs + 0x1602) = n + 1;
+            ds = 0;
+        }
+        dst[0x16 + ds] = (unsigned char)type;
+        dst[0x1a + ds] = (unsigned char)mv;
+        dst[0x1e + ds] = (unsigned char)hp;
+        dst[0x22 + ds] = 0;
+        dst[0x26 + ds] = 0;
+        SetMedals(dst, ds, 0);
+        if (ds == 0)
+            dst[0x14] = (sUnitTypesLoaded && type < sUnitTypeCount) ?
+                        sUnitTypeTable[type * UNIT_TYPE_ENTRY] : (unsigned char)type;
+        RecalcArmyStrength(dst);
+        added++;
+    }
+    return added;
+}
+
+/* SiteMarkExplored — the ruin is empty/explored for everyone (kind 0). */
+static void SiteMarkExplored(unsigned char *site)
+{
+    SITE_KIND(site) = SITE_EMPTY;
+    SITE_ITEM(site) = 0xFF;
+    SITE_GUARDIAN(site) = 0;
+    site[0x1D] = 0;       /* no longer searchable */
+    site[0x1E] = 0xFF;    /* explored for every player */
+}
+
+/* SiteGuardianFight — the hero fights the ruin's guardian (68k CODE_074
+ * FUN_000021cc + FUN_000029e6):
+ *   victoryScore = ((heroStr + itemBonus - guardianStr) * 5)
+ *                + (armiesAtTile * 3) + 90;  roll 1..100 <= score wins.
+ * Win: the guardian is gone, returns true.  Loss: the hero dies (its items
+ * drop at the ruin), returns false; the ruin keeps its guardian. */
+static Boolean SiteGuardianFight(short armyIdx, unsigned char *site)
+{
+    unsigned char *gs, *army;
+    short heroStr = 0, heroSlot = -1, guardianStr = 5, itemBonus = 0;
+    short armiesAtTile = 0, ax, ay, u, ac;
+    unsigned char guardType = SITE_GUARDIAN(site);
+    if (guardType == 0) return true;
+    if (*gGameState == 0 || armyIdx < 0) return true;
+    gs = (unsigned char *)*gGameState;
+    army = gs + 0x1604 + armyIdx * 0x42;
+    ax = *(short *)(army + 0x00);
+    ay = *(short *)(army + 0x02);
+    for (u = 0; u < 4; u++)
+        if ((unsigned char)army[0x16 + u] == 0x1C) {
+            heroStr = (short)(unsigned char)army[0x1e + u];
+            heroSlot = u;
+            break;
+        }
+    {
+        short bB, cB, gB;
+        Boolean fB, mB;
+        GetHeroItemBonus(armyIdx, &bB, &cB, &gB, &fB, &mB);
+        itemBonus = bB;
+    }
+    if (sUnitTypesLoaded && guardType < sUnitTypeCount) {
+        short g2 = GetUnitTypeStat(guardType, 0);
+        if (g2 > 0) guardianStr = g2;
+    } else if (guardType <= 9) {
+        static const short defGuardStr[] = {0, 5, 7, 4, 3, 8, 8, 8, 8, 7};
+        guardianStr = defGuardStr[guardType];
+    }
+    ac = *(short *)(gs + 0x1602);
+    if (ac > 100) ac = 100;
+    for (u = 0; u < ac; u++) {
+        unsigned char *a = gs + 0x1604 + u * 0x42;
+        if (*(short *)(a + 0x00) == ax && *(short *)(a + 0x02) == ay) armiesAtTile++;
+    }
+    if ((short)((unsigned short)Random() % 100) + 1 <=
+        ((heroStr + itemBonus - guardianStr) * 5) + (armiesAtTile * 3) + 90) {
+        SITE_GUARDIAN(site) = 0;
+        return true;
+    }
+    if (heroSlot >= 0) {
+        short owner = (short)(unsigned char)army[0x15];
+        DropHeroItems(armyIdx);
+        if (owner >= 0 && owner < 8) {
+            unsigned char *hr = gs + 0x1422 + owner * 0x2C;
+            if (hr[0x00] != 0 && *(short *)(hr + 0x04) == armyIdx) hr[0x00] = 0;
+        }
+        army[0x16 + heroSlot] = 0xFF;
+        army[0x1e + heroSlot] = 0;
+        RecalcArmyStrength(army);
+    }
+    return false;
+}
+
+/* SearchSiteReward — hand out a non-temple ruin's fixed reward to the hero
+ * army and mark the ruin explored.  Item: the hero takes it (status 3; with
+ * full item slots it is left on the ground there).  Gold: 3d500+500 (hard
+ * 3d1000+1000).  Allies: 1d2 (hard +2) units of the ruin's ally type join
+ * the stack.  Sage: nothing here (the caller runs the sage).
+ * Returns the kind that was searched. */
+static short SearchSiteReward(short armyIdx, short siteIdx,
+                              short *outGold, short *outItemId,
+                              short *outAllyType, short *outAllies)
+{
+    unsigned char *gs, *army, *site;
+    short kind, owner;
+    *outGold = 0; *outItemId = 0; *outAllyType = 0; *outAllies = 0;
+    if (*gGameState == 0 || armyIdx < 0 || siteIdx < 0) return SITE_EMPTY;
+    gs = (unsigned char *)*gGameState;
+    army = gs + 0x1604 + armyIdx * 0x42;
+    site = sCityData + siteIdx * 0x20;
+    owner = (short)(unsigned char)army[0x15];
+    kind = SITE_KIND(site);
+    switch (kind) {
+    case SITE_ITEM_KIND: {
+        short id = (short)SITE_ITEM(site) + 1;
+        unsigned char *ir = GameItemRec(id);
+        if (ir != NULL && ITEM_STATUS(ir) == ITEM_ST_RUIN) {
+            if (!GiveItemToHero(armyIdx, id)) {
+                ITEM_STATUS(ir) = ITEM_ST_GROUND;
+                ITEM_CARRIER(ir) = -1;
+                *(short *)(ir + 0x1A) = *(short *)(site + 0x00);
+                *(short *)(ir + 0x1C) = *(short *)(site + 0x02);
+            }
+            *outItemId = id;
+        }
+        break;
+    }
+    case SITE_GOLD: {
+        short g = SITE_HARD(site) ?
+            (short)(RollDie(1000) + RollDie(1000) + RollDie(1000) + 1000) :
+            (short)(RollDie(500) + RollDie(500) + RollDie(500) + 500);
+        if (owner >= 0 && owner < 8) {
+            short *pg = (short *)(gs + 0x186 + owner * 0x14);
+            long ng = (long)*pg + g;
+            *pg = (short)(ng > 30000 ? 30000 : ng);   /* 68k gold cap */
+        }
+        *outGold = g;
+        break;
+    }
+    case SITE_ALLIES: {
+        short n = RollDie(2) + (SITE_HARD(site) ? 2 : 0);
+        short t = RankedAllyType(SITE_ALLY_RANK(site));
+        *outAllyType = t;
+        *outAllies = AddAlliesToStack(armyIdx, t, n);
+        break;
+    }
+    default:
+        break;
+    }
+    SiteMarkExplored(site);
+    return kind;
 }
 
 /* ===================================================================
@@ -19513,8 +19916,9 @@ static void ShowItemsDialog(short armyIdx)
         DrawString(slotStr);
         DrawString("\p.  ");
 
-        if (itemId > 0 && itemId <= MAX_ITEMS) {
-            const ItemDef *item = &sItemTable[itemId - 1];
+        if (itemId > 0 && itemId <= GAME_ITEM_COUNT) {
+            ItemDef itemBuf;
+            const ItemDef *item = GameItemDef(itemId, &itemBuf);
             Str255 nm;
             short nl = 0;
             const char *typeName;
@@ -19758,7 +20162,10 @@ static void ShowHeroInspect(void)
             SetRect(&r, 331, 121, 361, 140); DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
             GetDATRawString(681, s);
             SetRect(&r, 245, 141, 328, 160); DrawSunkenText(&r, s, IlluriaFont(), 17, -1);
-            NumToString((long)(a[0x22 + u] + cB), fmt); s[0] = 1; s[1] = '+'; BlockMoveData(fmt + 1, s + 2, fmt[0]); s[0] += fmt[0];
+            {   /* PPC FUN_100954fc area: cmdTable[min(9, strength + battle items)] + command items */
+                static const short kCmd[10] = {0, 0, 0, 0, 1, 1, 1, 2, 2, 3};
+                short sb = a[0x1e + u] + bB; if (sb > 9) sb = 9; if (sb < 0) sb = 0;
+                NumToString((long)(kCmd[sb] + cB), fmt); } s[0] = 1; s[1] = '+'; BlockMoveData(fmt + 1, s + 2, fmt[0]); s[0] += fmt[0];
             SetRect(&r, 331, 141, 361, 160); DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
             GetDATRawString(682, s);
             SetRect(&r, 388, 121, 471, 140); DrawSunkenText(&r, s, IlluriaFont(), 17, -1);
@@ -19794,17 +20201,32 @@ static void ShowHeroInspect(void)
                     short id = *(short *)(a + 0x3A + it * 2);
                     unsigned char *ir;
                     short nl = 0;
-                    if (id < 1 || id > 22) continue;
+                    if (id < 1 || id > GAME_ITEM_COUNT) continue;
                     ir = gs + 0xD12 + (id - 1) * 0x1E;
                     while (nl < 19 && ir[nl]) { s[nl + 1] = ir[nl]; nl++; }
                     s[0] = (unsigned char)nl;
-                    if (sItemTable[id - 1].type == ITEM_TYPE_BATTLE || sItemTable[id - 1].type == ITEM_TYPE_COMMAND) {
-                        Str255 v; short j;
-                        const char *tag = sItemTable[id - 1].type == ITEM_TYPE_BATTLE ? " (bat +" : " (com +";
-                        for (j = 0; tag[j]; j++) s[++s[0]] = tag[j];
-                        NumToString((long)sItemTable[id - 1].value, v);
-                        for (j = 1; j <= v[0]; j++) s[++s[0]] = v[j];
-                        s[++s[0]] = ')';
+                    {   /* "%s (%s)": sunk! / com +1 / com +n / bat +n / fly /
+                         * move / gold +n, from the item record */
+                        const char *tag = NULL;
+                        Boolean withVal = false;
+                        short ty = (short)ir[0x14], j;
+                        if (ITEM_STATUS(ir) == ITEM_ST_NONE) tag = "sunk!";
+                        else if (ty == ITEM_TYPE_FLAT_PLUS) tag = "com +1";
+                        else if (ty == ITEM_TYPE_COMMAND) { tag = "com +"; withVal = true; }
+                        else if (ty == ITEM_TYPE_BATTLE)  { tag = "bat +"; withVal = true; }
+                        else if (ty == ITEM_TYPE_FLYING)  tag = "fly";
+                        else if (ty == ITEM_TYPE_MOVEMENT) tag = "move";
+                        else if (ty == ITEM_TYPE_GOLD)    { tag = "gold +"; withVal = true; }
+                        if (tag != NULL) {
+                            s[++s[0]] = ' '; s[++s[0]] = '(';
+                            for (j = 0; tag[j]; j++) s[++s[0]] = tag[j];
+                            if (withVal) {
+                                Str255 v;
+                                NumToString((long)ir[0x15], v);
+                                for (j = 1; j <= v[0]; j++) s[++s[0]] = v[j];
+                            }
+                            s[++s[0]] = ')';
+                        }
                     }
                     MoveTo(carrR.left + 4, carrR.top + 14 + 20 * row++);
                     DrawString(s);
@@ -21953,13 +22375,12 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
          * 0 = male, 1 = female. Used by IsHeroFemale() for sprite remapping. */
         *(short *)(gs + 0x594 + playerIdx * 2) = isFemaleHero ? 1 : 0;
 
-        /* 68k CODE_064: write hero command state (per-player, stride 0x1e).
-         * State 3 = hero commanding an army. Also store the hero's army index.
-         * Used by map rendering (path indicators), combat (hero stats), and AI. */
+        /* gs+0xD12+p*0x1E (stride 0x1E) is player p's Standard item record,
+         * not a "hero command state": a hero hired on turn 1 (the initial
+         * offer) carries its player's Standard (FUN_1003956c). */
         {
             short heroArmyIdx = *(short *)(gs + 0x1602) - 1;  /* just-added hero */
-            *(gs + playerIdx * 0x1e + 0xd28) = 3;  /* commanding */
-            *(short *)(gs + playerIdx * 0x1e + 0xd2a) = heroArmyIdx;
+            GiveStartingStandard(playerIdx, heroArmyIdx);
         }
 
         /* 68k CODE_064 FUN_00000100: allied units join hired hero.
@@ -23702,8 +24123,7 @@ static void AIGiveInitialHero(short p)
     for (j = 0; j < nlen; j++) h[0x04 + j] = name[j + 1];
     *(short *)(gs + 0x594 + p * 2) =
         (nameIdx == 1 || nameIdx == 4 || nameIdx == 9 || nameIdx == 14 || nameIdx == 17) ? 1 : 0;
-    *(gs + p * 0x1e + 0xd28) = 3;
-    *(short *)(gs + p * 0x1e + 0xd2a) = n;
+    GiveStartingStandard(p, n);   /* turn-1 hero carries its Standard */
     {
         unsigned char *hr = gs + 0x1422 + p * 0x2C;
         hr[0] = 1; hr[1] = 0; hr[2] = 0; hr[3] = (unsigned char)(TickCount() & 0xFF);
@@ -24215,8 +24635,10 @@ static void ExecuteAITurn(short aiPlayer)
                             if (armyCount > 100) armyCount = 100;
                             break;
                         }
-                        /* AI hero auto-search ruins (68k CODE_074 + CODE_082):
-                         * Check per-player visited bitmask, don't deactivate site. */
+                        /* AI hero searches a ruin it stands on (68k CODE_074 +
+                         * CODE_082): guardian fight, then the ruin's fixed
+                         * FUN_1003956c reward (same core as Heroes > Search);
+                         * a sage gives the AI the sage's money. */
                         { short ru; Boolean hasHero2 = false;
                           for (ru = 0; ru < 4; ru++)
                               if ((unsigned char)army[0x16 + ru] == 0x1C) { hasHero2 = true; break; }
@@ -24224,64 +24646,24 @@ static void ExecuteAITurn(short aiPlayer)
                               for (ru = 0; ru < cityCount; ru++) {
                                   unsigned char *rsite = sCityData +ru * 0x20;
                                   short rsT = (short)(unsigned char)rsite[0x17];
-                                  if (rsT >= 2 && rsT <= 6 &&
-                                      rsite[0x1D] != 0 &&
+                                  if (rsT >= 3 && rsT <= 6 &&
+                                      rsite[0x1D] != 0 && SITE_KIND(rsite) != SITE_EMPTY &&
                                       *(short *)(rsite + 0x00) == nx &&
                                       *(short *)(rsite + 0x02) == ny) {
-                                      /* Check visited bitmask — skip if already searched */
-                                      if (aiPlayer >= 0 && aiPlayer < 8 &&
-                                          (rsite[0x1E] & (1 << aiPlayer)) != 0) break;
-                                      /* 68k CODE_074 FUN_000021cc: guardian combat for types
-                                       * 2 (temple) and 4 (treasure). Type 3 is library (no guardian),
-                                       * type 5 is ally (no guardian). */
-                                      if ((rsT == 2 || rsT == 4) && rsite[0x1A] != 0) {
-                                          short hStr = 0, gStr = 5, iBonus = 0;
-                                          short aTile = 0, ac2, vic;
-                                          { short u2; for (u2 = 0; u2 < 4; u2++) {
-                                              if ((unsigned char)army[0x16 + u2] == 0x1C)
-                                                  { hStr = (short)(unsigned char)army[0x1e + u2]; break; }
-                                          }}
-                                          /* AI item bonus (68k always computes this) */
-                                          { short bBAI, cBAI, gBAI; Boolean fBAI, mBAI;
-                                            GetHeroItemBonus(ai, &bBAI, &cBAI, &gBAI, &fBAI, &mBAI);
-                                            iBonus = bBAI;
-                                          }
-                                          { unsigned char gt = rsite[0x1A];
-                                            if (gt > 0 && gt < sUnitTypeCount && sUnitTypesLoaded) {
-                                                short gs2 = GetUnitTypeStat(gt, 0);
-                                                if (gs2 > 0) gStr = gs2;
-                                            }
-                                          }
-                                          ac2 = *(short *)(gs + 0x1602);
-                                          if (ac2 > 100) ac2 = 100;
-                                          { short ai3; for (ai3 = 0; ai3 < ac2; ai3++) {
-                                              unsigned char *a2 = gs + 0x1604 + ai3 * 0x42;
-                                              if (*(short *)(a2 + 0x00) == nx &&
-                                                  *(short *)(a2 + 0x02) == ny) aTile++;
-                                          }}
-                                          vic = ((hStr + iBonus - gStr) * 5) + (aTile * 3) + 90;
-                                          if ((short)((unsigned short)Random() % 100) + 1 > vic) {
-                                              /* AI hero LOSES guardian combat (roll > threshold)
-                                               * 68k: roll <= threshold → hero wins (~90% with base 90) */
-                                              { short u2; for (u2 = 0; u2 < 4; u2++) {
-                                                  if ((unsigned char)army[0x16 + u2] == 0x1C) {
-                                                      army[0x16 + u2] = 0xFF;
-                                                      army[0x1e + u2] = 0;
-                                                      RecalcArmyStrength(army);
-                                                      break;
-                                                  }
-                                              }}
-                                              rsite[0x1E] |= (unsigned char)(1 << aiPlayer);
-                                              break;
-                                          }
+                                      short rg, rItem, rAT, rAN, rKind;
+                                      if (SITE_GUARDIAN(rsite) != 0 &&
+                                          !SiteGuardianFight(ai, rsite))
+                                          break;   /* AI hero died; ruin unchanged */
+                                      rKind = SearchSiteReward(ai, ru, &rg, &rItem, &rAT, &rAN);
+                                      if (rKind == SITE_SAGE && aiPlayer >= 0 && aiPlayer < 8) {
+                                          short *pg = (short *)(gs + 0x186 + aiPlayer * 0x14);
+                                          long ng = (long)*pg + (short)((unsigned short)Random() % 500);
+                                          *pg = (short)(ng > 30000 ? 30000 : ng);
                                       }
-                                      /* 68k CODE_109: AI marks ruin as visited but gets
-                                       * NO rewards (no gold, items, or allies). The AI search
-                                       * function does not call the reward function FUN_000021cc. */
+                                      armyCount = *(short *)(gs + 0x1602);   /* allies may add armies */
+                                      if (armyCount > 100) armyCount = 100;
                                       RecordEvent(*(short *)(gs + 0x136), HIST_EVT_SEARCH,
                                                   aiPlayer, "AI searched ruins");
-                                      /* Mark visited (68k: per-player bitmask, NOT deactivation) */
-                                      rsite[0x1E] |= (unsigned char)(1 << aiPlayer);
                                       break;
                                   }
                               }
@@ -24802,9 +25184,10 @@ static void ExecuteAITurn(short aiPlayer)
                         newHero[0x04 + nlen] = 0;
                         /* Write gender flag */
                         *(short *)(gs + 0x594 + aiPlayer * 2) = isFemale ? 1 : 0;
-                        /* 68k CODE_064: write hero command state */
-                        *(gs + aiPlayer * 0x1e + 0xd28) = 3;  /* commanding */
-                        *(short *)(gs + aiPlayer * 0x1e + 0xd2a) = armyCount;
+                        /* gs+0xD12+p*0x1E is player p's Standard item
+                         * record (not a "command state"): only a turn-1
+                         * hero gets it (FUN_1003956c) */
+                        GiveStartingStandard(aiPlayer, armyCount);
                         /* Write hero record at gs+0x1422+player*0x2C */
                         {
                             unsigned char *heroRec = gs + 0x1422 + aiPlayer * 0x2C;
@@ -27090,11 +27473,12 @@ static void AdvanceToNextPlayer(void)
                             NumToString((long)q->reward, rStr);
                             DrawString(rStr);
                         }
-                        if (q->rewardItem > 0 && q->rewardItem <= MAX_ITEMS) {
+                        if (q->rewardItem > 0 && q->rewardItem <= GAME_ITEM_COUNT) {
                             MoveTo(30, 64);
                             DrawString(GetCachedString(STR_QUEST, 6, "\pArtifact: "));
                             {
-                                const ItemDef *itm = &sItemTable[q->rewardItem - 1];
+                                ItemDef itmBuf;
+                                const ItemDef *itm = GameItemDef(q->rewardItem, &itmBuf);
                                 Str255 iname;
                                 short nl = 0;
                                 while (nl < 19 && itm->name[nl]) nl++;
@@ -28746,261 +29130,132 @@ static void HandleMenuChoice(long menuResult)
                     if (*(short *)(site + 0x00) == ax &&
                         *(short *)(site + 0x02) == ay) {
                         short siteType = (short)(unsigned char)site[0x17];
-                        if (siteType >= 2 && siteType <= 6 &&
+                        /* sType 2 = temple (no search); explored ruins have
+                         * kind 0 and are no longer searchable */
+                        if (siteType >= 3 &&
+                            (site[0x1D] == 0 || SITE_KIND(site) == SITE_EMPTY)) {
+                            ShowBriefMessage("\pAlready searched!");
+                            foundRuin = true;
+                            break;
+                        }
+                        if (siteType >= 3 && siteType <= 6 &&
                             site[0x1D] != 0) {
                             short curPlayer = *(short *)(gs + 0x110);
-                            /* 68k CODE_074: per-player visited bitmask at site+0x1E.
-                             * Each player can search the same site once. Skip if
-                             * this player's bit is already set. */
-                            if (curPlayer >= 0 && curPlayer < 8 &&
-                                (site[0x1E] & (1 << curPlayer)) != 0) {
-                                ShowBriefMessage("\pAlready searched!");
-                                break;
-                            }
                             short gold = 0;
-                            short rewardType;  /* 0=gold, 1=item, 2=ally, 3=sage/map, 4=gold+dir, 5=multi-ally */
+                            short rewardType;  /* display: 0/7 gold, 1 item, 3 sage map, 5 allies */
                             short foundItemId = 0;
                             short allyTypeUsed = 0;
+                            short alliesAdded = 0;
+                            short kind = (short)SITE_KIND(site);
                             Boolean gotAlly = false;
                             WindowPtr rwWin;
                             GWorldPtr rwGW = NULL;
                             Rect rwR, rwGR;
-                            const unsigned char *siteTypeName;
-                            /* 68k: site type label for dialog display */
-                            switch (siteType) {
-                                case 2: siteTypeName = "\pTemple"; break;
-                                case 3: siteTypeName = "\pLibrary"; break;
-                                case 4: siteTypeName = "\pRuin"; break;
-                                case 5: siteTypeName = "\pRuin"; break;
-                                case 6: siteTypeName = "\pLibrary"; break;
-                                default: siteTypeName = "\pRuin"; break;
-                            }
 
-                            /* 68k CODE_074 FUN_00001fbe: deterministic reward based on site type.
-                             * Type 2 = temple (guardian + item), Type 3 = library (sage dialog),
-                             * Type 4 = treasure (guardian + gold), Type 5 = ally (no guardian).
-                             * 68k type 3 = library; there is NO "stronghold" type. */
-                            switch (siteType) {
-                                case 2: rewardType = 1; break;  /* item */
-                                case 4: rewardType = 0; break;  /* gold/treasure */
-                                case 5: rewardType = 5; break;  /* ally recruitment */
-                                case 3:  /* 68k: type 3 = library (sage dialog) */
-                                case 6: {
-                                    /* Library: interactive Sage dialog (68k View 4120).
-                                     * Player chooses: Items / Maps / Money / Done. */
-                                    short sageChoice = ShowSageDialog();
-                                    if (sageChoice == 0) {
-                                        /* 68k CODE_066 FUN_00000630: library money is always
-                                         * Random(500), NOT variable range like ruins. */
-                                        gold = (short)((unsigned short)Random() % 500);
-                                        { short *pg = (short *)(gs + 0x186 + curPlayer * 0x14);
-                                          *pg = *pg + gold;
-                                          if (*pg > 30000) *pg = 30000;
-                                        }
-                                        rewardType = 7;  /* gold already awarded; skip standard calc */
-                                    } else {
-                                        rewardType = sageChoice;  /* 1=items, 3=maps, -1=cancel */
-                                    }
-                                    break;
+                            /* FUN_1003956c reward kinds (site+0x0C): the
+                             * guardian is fought first; a lost fight kills the
+                             * hero and leaves the ruin (and guardian) as is. */
+                            if (SITE_GUARDIAN(site) != 0 &&
+                                !SiteGuardianFight(sSelectedArmy, site)) {
+                                foundRuin = true;
+                                PlaySound(SND_DRAMATIC);
+                                {
+                                    short rwW3 = 300, rwH3 = 120;
+                                    SetRect(&rwR, 0, 0, rwW3, rwH3);
+                                    OffsetRect(&rwR,
+                                        (qd.screenBits.bounds.right - rwW3) / 2,
+                                        (qd.screenBits.bounds.bottom - rwH3) / 2);
                                 }
-                                default: rewardType = 0; break;
-                            }
-
-                            /* Sage dialog cancel: no reward, don't consume search */
-                            if (rewardType < 0) break;
-
-                            /* 68k CODE_074 FUN_000021cc + FUN_000029e6: unified guardian combat.
-                             * Applies to types 2 (temple) and 4 (treasure) when guardian exists.
-                             * Type 3 = library (no guardian), Type 5 = ally (no guardian).
-                             * Formula: victoryScore = ((heroStr + itemBonus - guardianStr) * 5)
-                             *                       + (armiesAtTile * 3) + 90
-                             * 68k: roll <= victoryScore → hero WINS (~90% with base 90).
-                             *       roll > victoryScore → hero LOSES (hero dies). */
-                            if ((siteType == 2 || siteType == 4) &&
-                                site[0x1A] != 0 && rewardType >= 0) {
-                                short heroStr = 0, heroSlot = -1;
-                                short guardianStr = 5;
-                                short itemBonus = 0;
-                                short armiesAtTile = 0;
-                                short victoryScore, roll;
-                                short ai2;
-                                { short u;
+                                rwWin = NewCWindow(NULL, &rwR, "\p", true,
+                                                   plainDBox, (WindowPtr)-1L, false, 0);
+                                SetRect(&rwGR, 0, 0, rwR.right - rwR.left,
+                                                     rwR.bottom - rwR.top);
+                                if (rwWin) NewGWorld(&rwGW, 0, &rwGR, NULL, NULL, 0);
+                                if (rwWin && rwGW) {
+                                    CGrafPtr sp5; GDHandle sd5;
+                                    EventRecord re5;
+                                    GetGWorld(&sp5, &sd5);
+                                    SetGWorld(rwGW, NULL);
+                                    LockPixels(GetGWorldPixMap(rwGW));
+                                    DrawMarbleBackground(&rwGR);
+                                    { RGBColor gbdr = {0xCC00, 0x3333, 0x3333};
+                                      RGBForeColor(&gbdr);
+                                      PenSize(2, 2); FrameRect(&rwGR); PenSize(1, 1); }
+                                    { RGBColor red = {0xFFFF, 0x5555, 0x5555};
+                                      RGBForeColor(&red);
+                                      TextFont(2); TextSize(14); TextFace(bold);
+                                      MoveTo(50, 30);
+                                      DrawString("\pGuardian Defeats Hero!");
+                                      TextFace(0); }
+                                    { RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
+                                      RGBForeColor(&white);
+                                      TextFont(3); TextSize(12);
+                                      MoveTo(30, 60);
+                                      DrawString("\pThe guardian was too powerful.");
+                                      MoveTo(30, 80);
+                                      DrawString("\pYour hero has fallen in battle."); }
+                                    SetGWorld(sp5, sd5);
+                                    { PixMapHandle pm = GetGWorldPixMap(rwGW);
+                                      SetPort(rwWin);
+                                      CopyBits((BitMap *)*pm,
+                                               &rwWin->portBits,
+                                               &rwGR, &rwGR, srcCopy, NULL); }
+                                    { unsigned long tEnd = TickCount() + 180;
+                                      while (TickCount() < tEnd) {
+                                          if (WaitNextEvent(mDownMask | keyDownMask,
+                                                            &re5, 1, NULL)) break;
+                                      }
+                                    }
+                                    UnlockPixels(GetGWorldPixMap(rwGW));
+                                }
+                                if (rwGW) DisposeGWorld(rwGW);
+                                if (rwWin) DisposeWindow(rwWin);
+                                { short alive = 0, u;
                                   for (u = 0; u < 4; u++) {
-                                      if ((unsigned char)army[0x16 + u] == 0x1C &&
-                                          (unsigned char)army[0x1e + u] > 0) {
-                                          heroStr = (short)(unsigned char)army[0x1e + u];
-                                          heroSlot = u;
-                                          break;
-                                      }
+                                      if (army[0x16 + u] != 0xFF &&
+                                          army[0x1e + u] > 0) alive++;
+                                  }
+                                  if (alive == 0) {
+                                      army[0x16] = 0xFF;
+                                      army[0x17] = 0xFF;
+                                      army[0x18] = 0xFF;
+                                      army[0x19] = 0xFF;
+                                      army[0x15] = 0x0F;
+                                      sSelectedArmy = -1; sPreviewPathLen = 0; sPreviewGridValid = false; sInfoStackBackupSaved = false; { GrafPtr _sp; GetPort(&_sp); if (gInfoWindow && *gInfoWindow) { SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect); } SetPort(_sp); }
                                   }
                                 }
-                                { short bB, cB, gB;
-                                  Boolean fB, mB;
-                                  GetHeroItemBonus(sSelectedArmy, &bB, &cB, &gB, &fB, &mB);
-                                  itemBonus = bB;
-                                }
-                                { unsigned char guardType = site[0x1A];
-                                  if (guardType > 0 && guardType < sUnitTypeCount &&
-                                      sUnitTypesLoaded) {
-                                      short gs2 = GetUnitTypeStat(guardType, 0);
-                                      if (gs2 > 0) guardianStr = gs2;
-                                  } else if (guardType > 0 && guardType <= 9) {
-                                      static const short defGuardStr[] =
-                                          {0, 5, 7, 4, 3, 8, 8, 8, 8, 7};
-                                      guardianStr = defGuardStr[guardType];
-                                  }
-                                }
-                                { short ac = *(short *)(gs + 0x1602);
-                                  if (ac > 100) ac = 100;
-                                  for (ai2 = 0; ai2 < ac; ai2++) {
-                                      unsigned char *a = gs + 0x1604 + ai2 * 0x42;
-                                      if (*(short *)(a + 0x00) == ax &&
-                                          *(short *)(a + 0x02) == ay)
-                                          armiesAtTile++;
-                                  }
-                                }
-                                victoryScore = ((heroStr + itemBonus - guardianStr) * 5)
-                                             + (armiesAtTile * 3) + 90;
-                                roll = (short)((unsigned short)Random() % 100) + 1;
-                                if (roll <= victoryScore) {
-                                    /* Hero WINS guardian combat (68k: roll <= threshold = win).
-                                     * Clear guardian, continue to reward. */
-                                    site[0x1A] = 0;
-                                } else {
-                                    /* Hero LOSES — hero unit dies (68k: roll > threshold) */
-                                    if (heroSlot >= 0) {
-                                        army[0x16 + heroSlot] = 0xFF;
-                                        army[0x1e + heroSlot] = 0;
-                                        RecalcArmyStrength(army);
-                                    }
-                                    if (curPlayer >= 0 && curPlayer < 8)
-                                        site[0x1E] |= (unsigned char)(1 << curPlayer);
-                                    foundRuin = true;
-                                    PlaySound(SND_DRAMATIC);
-                                    {
-                                        short rwW3 = 300, rwH3 = 120;
-                                        SetRect(&rwR, 0, 0, rwW3, rwH3);
-                                        OffsetRect(&rwR,
-                                            (qd.screenBits.bounds.right - rwW3) / 2,
-                                            (qd.screenBits.bounds.bottom - rwH3) / 2);
-                                    }
-                                    rwWin = NewCWindow(NULL, &rwR, "\p", true,
-                                                       plainDBox, (WindowPtr)-1L, false, 0);
-                                    SetRect(&rwGR, 0, 0, rwR.right - rwR.left,
-                                                         rwR.bottom - rwR.top);
-                                    if (rwWin) NewGWorld(&rwGW, 0, &rwGR, NULL, NULL, 0);
-                                    if (rwWin && rwGW) {
-                                        CGrafPtr sp5; GDHandle sd5;
-                                        EventRecord re5;
-                                        GetGWorld(&sp5, &sd5);
-                                        SetGWorld(rwGW, NULL);
-                                        LockPixels(GetGWorldPixMap(rwGW));
-                                        DrawMarbleBackground(&rwGR);
-                                        { RGBColor gbdr = {0xCC00, 0x3333, 0x3333};
-                                          RGBForeColor(&gbdr);
-                                          PenSize(2, 2); FrameRect(&rwGR); PenSize(1, 1); }
-                                        { RGBColor red = {0xFFFF, 0x5555, 0x5555};
-                                          RGBForeColor(&red);
-                                          TextFont(2); TextSize(14); TextFace(bold);
-                                          MoveTo(50, 30);
-                                          DrawString("\pGuardian Defeats Hero!");
-                                          TextFace(0); }
-                                        { RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                                          RGBForeColor(&white);
-                                          TextFont(3); TextSize(12);
-                                          MoveTo(30, 60);
-                                          DrawString("\pThe guardian was too powerful.");
-                                          MoveTo(30, 80);
-                                          DrawString("\pYour hero has fallen in battle."); }
-                                        SetGWorld(sp5, sd5);
-                                        { PixMapHandle pm = GetGWorldPixMap(rwGW);
-                                          SetPort(rwWin);
-                                          CopyBits((BitMap *)*pm,
-                                                   &rwWin->portBits,
-                                                   &rwGR, &rwGR, srcCopy, NULL); }
-                                        { unsigned long tEnd = TickCount() + 180;
-                                          while (TickCount() < tEnd) {
-                                              if (WaitNextEvent(mDownMask | keyDownMask,
-                                                                &re5, 1, NULL)) break;
-                                          }
-                                        }
-                                        UnlockPixels(GetGWorldPixMap(rwGW));
-                                    }
-                                    if (rwGW) DisposeGWorld(rwGW);
-                                    if (rwWin) DisposeWindow(rwWin);
-                                    { short alive = 0, u;
-                                      for (u = 0; u < 4; u++) {
-                                          if (army[0x16 + u] != 0xFF &&
-                                              army[0x1e + u] > 0) alive++;
-                                      }
-                                      if (alive == 0) {
-                                          army[0x16] = 0xFF;
-                                          army[0x17] = 0xFF;
-                                          army[0x18] = 0xFF;
-                                          army[0x19] = 0xFF;
-                                          army[0x15] = 0x0F;
-                                          sSelectedArmy = -1; sPreviewPathLen = 0; sPreviewGridValid = false; sInfoStackBackupSaved = false; { GrafPtr _sp; GetPort(&_sp); if (gInfoWindow && *gInfoWindow) { SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect); } SetPort(_sp); }
-                                      }
-                                    }
-                                    break;
-                                }
+                                break;
                             }
 
-                            if (rewardType == 1) {
-                                /* Item reward: check for pre-placed item at this ruin (68k FUN_00000f68).
-                                 * Search gs+0xD12 for an item with status=1 (in ruin) at this location. */
-                                short ii;
-                                foundItemId = 0;
-                                for (ii = 0; ii < 22; ii++) {
-                                    unsigned char *ir = gs + 0xD12 + ii * 0x1E;
-                                    if (ir[0x16] == 1 &&
-                                        *(short *)(ir + 0x1A) == ax &&
-                                        *(short *)(ir + 0x1C) == ay) {
-                                        foundItemId = ii + 1;  /* 1-based */
-                                        break;
-                                    }
-                                }
-                                if (foundItemId == 0) {
-                                    /* 68k: type 2 sites always have pre-placed items.
-                                     * If not found, fall back to gold instead of
-                                     * generating random (invalid) item IDs. */
-                                    rewardType = 0;
-                                } else if (!GiveItemToHero(sSelectedArmy, foundItemId)) {
-                                    /* Hero slots full — fall back to gold */
-                                    rewardType = 0;
-                                    foundItemId = 0;
+                            if (kind == SITE_SAGE) {
+                                /* Sage (68k View 4120): Items / Maps / Money.
+                                 * Cancel leaves the ruin unexplored. */
+                                short sageChoice = ShowSageDialog();
+                                short g0, i0, t0, n0;
+                                if (sageChoice < 0) break;
+                                if (sageChoice == 3) {
+                                    rewardType = 3;
                                 } else {
-                                    /* 68k CODE_074: clear site type after item taken so
-                                     * it can't be searched again */
-                                    site[0x17] = 0;
-                                }
-                            }
-
-                            if (rewardType == 2) {
-                                /* Ally joins: add a unit to an empty slot */
-                                short slot;
-                                gotAlly = false;
-                                for (slot = 0; slot < 4; slot++) {
-                                    if ((unsigned char)army[0x16 + slot] == 0xFF) {
-                                        /* Pick ally type from first 4 unit types */
-                                        short allyType = (short)((unsigned short)Random() % 4);
-                                        short aHP = GetUnitTypeStat(allyType, 0);
-                                        short aMv = GetUnitTypeStat(allyType, 3);
-                                        if (aHP < 1) aHP = 3;
-                                        if (aMv < 1) aMv = 10;
-                                        army[0x16 + slot] = (unsigned char)allyType;
-                                        army[0x1e + slot] = (unsigned char)aHP;
-                                        army[0x1a + slot] = (unsigned char)aMv;
-                                        army[0x22 + slot] = 0;
-                                        army[0x26 + slot] = 0;
-                                        allyTypeUsed = allyType;
-                                        RecalcArmyStrength(army);
-                                        gotAlly = true;
-                                        break;
+                                    /* 68k CODE_066 FUN_00000630: sage money is
+                                     * Random(500) (the "items" choice too) */
+                                    gold = (short)((unsigned short)Random() % 500);
+                                    { short *pg = (short *)(gs + 0x186 + curPlayer * 0x14);
+                                      long ng = (long)*pg + gold;
+                                      *pg = (short)(ng > 30000 ? 30000 : ng);
                                     }
+                                    rewardType = 7;
                                 }
-                                if (!gotAlly) {
-                                    rewardType = 0;  /* no room, give gold instead */
+                                SearchSiteReward(sSelectedArmy, ci, &g0, &i0, &t0, &n0);
+                            } else {
+                                SearchSiteReward(sSelectedArmy, ci, &gold, &foundItemId,
+                                                 &allyTypeUsed, &alliesAdded);
+                                if (kind == SITE_ITEM_KIND && foundItemId > 0) {
+                                    rewardType = 1;
+                                } else if (kind == SITE_ALLIES) {
+                                    rewardType = 5;
+                                    gotAlly = (alliesAdded > 0);
+                                } else {
+                                    rewardType = 0;   /* gold */
                                 }
                             }
 
@@ -29027,89 +29282,10 @@ static void HandleMenuChoice(long menuResult)
                                 }
                             }
 
-                            if (rewardType == 0 || rewardType == 4) {
-                                /* Gold reward (68k CODE_074 type 4).
-                                 * 68k uses site+0x1C: nonzero = rich site (Random(1000)),
-                                 * zero = basic (Random(500)). */
-                                /* 68k: site[0x1C] richness byte != 0 = rich (1000 range) */
-                                if (site[0x1C] != 0)
-                                    gold = (short)((unsigned short)Random() % 1000);
-                                else
-                                    gold = (short)((unsigned short)Random() % 500);
-                                {
-                                    short *pg = (short *)(gs + 0x186 + curPlayer * 0x14);
-                                    *pg = *pg + gold;
-                                    if (*pg > 30000) *pg = 30000; /* 68k gold cap */
-                                }
-                            }
-
-                            if (rewardType == 5) {
-                                /* Ally recruitment (68k CODE_074 type 5):
-                                 * allyCount = Random(2), +2 if site+0x1C nonzero.
-                                 * Result: 0-1 allies (basic) or 2-3 allies (special). */
-                                short allyCount;
-                                short spawned = 0;
-                                short hs2;
-                                allyCount = (short)((unsigned short)Random() % 2);
-                                if (site[0x1C] != 0) allyCount += 2;
-                                for (hs2 = 0; hs2 < allyCount; hs2++) {
-                                    short slot;
-                                    for (slot = 0; slot < 4; slot++) {
-                                        if ((unsigned char)army[0x16 + slot] == 0xFF) {
-                                            short at = (short)((unsigned short)Random() % 4);
-                                            short sHP = GetUnitTypeStat(at, 0);
-                                            short sMv = GetUnitTypeStat(at, 3);
-                                            if (sHP < 1) sHP = 3;
-                                            if (sMv < 1) sMv = 10;
-                                            army[0x16 + slot] = (unsigned char)at;
-                                            army[0x1e + slot] = (unsigned char)sHP;
-                                            army[0x1a + slot] = (unsigned char)sMv;
-                                            army[0x22 + slot] = 0;
-                                            army[0x26 + slot] = 0;
-                                            allyTypeUsed = at;
-                                            spawned++;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (spawned > 0) {
-                                    RecalcArmyStrength(army);
-                                    gotAlly = true;
-                                } else {
-                                    /* No empty slots — fall back to gold */
-                                    rewardType = 0;
-                                    gold = (short)((unsigned short)Random() % 500);
-                                    {
-                                        short *pg2 = (short *)(gs + 0x186 + curPlayer * 0x14);
-                                        *pg2 = *pg2 + gold;
-                                        if (*pg2 > 30000) *pg2 = 30000;
-                                    }
-                                }
-                            }
-
-                            /* 68k CODE_074: set player's bit in visited bitmask.
-                             * Active flag stays set — other players can still search. */
-                            if (curPlayer >= 0 && curPlayer < 8)
-                                site[0x1E] |= (unsigned char)(1 << curPlayer);
+                            /* SearchSiteReward marked the ruin explored for
+                             * every player (kind 0, visited bits 0xFF). */
                             foundRuin = true;
-                            if (rewardType == -1) {
-                                /* Type 2 guardian defeat: hero died, check empty army */
-                                PlaySound(SND_DRAMATIC);
-                                { short alive2 = 0, u2;
-                                  for (u2 = 0; u2 < 4; u2++) {
-                                      if (army[0x16 + u2] != 0xFF &&
-                                          army[0x1e + u2] > 0) alive2++;
-                                  }
-                                  if (alive2 == 0) {
-                                      army[0x16] = 0xFF; army[0x17] = 0xFF;
-                                      army[0x18] = 0xFF; army[0x19] = 0xFF;
-                                      army[0x15] = 0x0F;
-                                      sSelectedArmy = -1; sPreviewPathLen = 0; sPreviewGridValid = false; sInfoStackBackupSaved = false; { GrafPtr _sp; GetPort(&_sp); if (gInfoWindow && *gInfoWindow) { SetPort((WindowPtr)*gInfoWindow); InvalRect(&((WindowPtr)*gInfoWindow)->portRect); } SetPort(_sp); }
-                                  }
-                                }
-                            } else {
-                                PlaySound(SND_ORCH);  /* fanfare for ruin discovery */
-                            }
+                            PlaySound(SND_ORCH);  /* fanfare for ruin discovery */
 
                             /* NOTE: 68k CODE_074 gives NO XP from ruin search.
                              * Hero XP only comes from combat. Removed fabricated +2 XP. */
@@ -29214,7 +29390,8 @@ static void HandleMenuChoice(long menuResult)
                                     TextFont(3); TextSize(12);
 
                                     if (rewardType == 1 && foundItemId > 0) {
-                                        const ItemDef *itm = &sItemTable[foundItemId - 1];
+                                        ItemDef itmBuf;
+                                        const ItemDef *itm = GameItemDef(foundItemId, &itmBuf);
                                         Str255 iname;
                                         short nl = 0;
                                         MoveTo(20, textY);
@@ -29968,8 +30145,8 @@ static void TryAutoSearchRuin(short armyIdx)
             short siteType = (short)(unsigned char)site[0x17];
             if (*(short *)(site + 0x00) == ax &&
                 *(short *)(site + 0x02) == ay &&
-                (siteType >= 2 && siteType <= 6) &&
-                site[0x1D] != 0) {
+                (siteType >= 3 && siteType <= 6) &&
+                site[0x1D] != 0 && SITE_KIND(site) != SITE_EMPTY) {
                 /* Auto-search: dispatch to Heroes > Search handler */
                 HandleMenuChoice((6L << 16) | 4);
                 return;
