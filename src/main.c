@@ -1539,6 +1539,9 @@ static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
 static void DrawT3DFrame(const Rect *v);
+static WindowPtr NewMacAppWindow(short w, short h);
+static void DrawPictAt(short id, short x, short y);
+static void CloseMacAppWindow(WindowPtr win);
 static void DisposeOverMap(WindowPtr win);
 static Boolean AIMovesShown(void);
 static void DrawSunkenText2(const Rect *v, ConstStr255Param s);
@@ -15028,124 +15031,30 @@ static void ShowCityCaptureNotification(short capturer, short prevOwner,
  * =================================================================== */
 static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
 {
-    WindowPtr notWin;
-    GWorldPtr offGW;
-    Rect winRect, gwRect;
-    EventRecord evt;
-    CGrafPtr savePort;
-    GDHandle saveGD;
-    unsigned long ticks;
+    /* View 1020 notice (PPC): "%s, thy empire has fallen!" / "thou art
+     * vanquished!" / "thou art no more!" / "thy cities are as dust!"
+     * (DAT 207-210, picked at random), shown at the turn change. */
     unsigned char *gs = (unsigned char *)*gGameState;
-
-    PlaySound(SND_DRAMATIC);  /* dramatic event for player elimination */
-
-    SetRect(&winRect, 0, 0, 320, 120);
-    OffsetRect(&winRect, 190, 180);
-    notWin = NewCWindow(NULL, &winRect, "\pPlayer Eliminated!", true,
-                        dBoxProc, (WindowPtr)-1, false, 0);
-    SetRect(&gwRect, 0, 0, 320, 120);
-    NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
-    if (!notWin || !offGW) {
-        if (offGW) DisposeGWorld(offGW);
-        if (notWin) DisposeWindow(notWin);
-        return;
-    }
-
-    GetGWorld(&savePort, &saveGD);
-    SetGWorld(offGW, NULL);
-    LockPixels(GetGWorldPixMap(offGW));
-
-    /* Marble background with gold border */
-    {
-        RGBColor gold = {0xFFFF, 0xCCCC, 0x0000};
-        DrawMarbleBackground(&gwRect);
-        RGBForeColor(&gold);
-        PenSize(3, 3);
-        FrameRect(&gwRect);
-        PenNormal();
-    }
-
-    {
-        RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-        RGBColor elimColor = sPlayerColors[eliminatedPlayer < 8 ? eliminatedPlayer + 1 : 8];
-        char elimName[24];
-        short elen;
-
-        /* Title */
-        RGBForeColor(&white);
-        TextSize(14);
-        TextFace(bold);
-        MoveTo(60, 30);
-        DrawString(GetCachedString(STR_HERO_DIPLO, 7, "\pPlayer Eliminated!"));
-        TextFace(0);
-        TextSize(11);
-
-        /* Eliminated player name */
-        BlockMoveData(gs + eliminatedPlayer * 20, elimName, 20);
-        elimName[19] = 0;
-        for (elen = 0; elen < 19 && elimName[elen]; elen++) {}
-
-        MoveTo(30, 60);
-        RGBForeColor(&elimColor);
-        {
-            Str255 pstr;
-            pstr[0] = (unsigned char)elen;
-            BlockMoveData(elimName, &pstr[1], elen);
-            DrawString(pstr);
-        }
-
-        RGBForeColor(&white);
-        DrawString(GetCachedString(STR_HERO_DIPLO, 8, "\p has been destroyed!"));
-
-        /* By whom */
-        if (byPlayer >= 0 && byPlayer < 8) {
-            RGBColor byColor = sPlayerColors[byPlayer + 1];
-            char byName[24];
-            short blen;
-            BlockMoveData(gs + byPlayer * 20, byName, 20);
-            byName[19] = 0;
-            for (blen = 0; blen < 19 && byName[blen]; blen++) {}
-
-            MoveTo(30, 80);
-            RGBForeColor(&white);
-            DrawString(GetCachedString(STR_HERO_DIPLO, 9, "\pConquered by "));
-            RGBForeColor(&byColor);
-            {
-                Str255 pstr2;
-                pstr2[0] = (unsigned char)blen;
-                BlockMoveData(byName, &pstr2[1], blen);
-                DrawString(pstr2);
-            }
-        }
-
-        RGBForeColor(&white);
-        TextSize(9);
-        MoveTo(210, 110);
-        DrawString(GetCachedString(STR_MISC, 17, "\pClick to continue"));
-    }
-
-    UnlockPixels(GetGWorldPixMap(offGW));
-    SetGWorld(savePort, saveGD);
-
-    {
-        PixMapHandle srcPM = GetGWorldPixMap(offGW);
-        SetPort(notWin);
-        LockPixels(srcPM);
-        CopyBits((BitMap *)*srcPM,
-                 &((GrafPtr)notWin)->portBits,
-                 &gwRect, &gwRect, srcCopy, NULL);
-        UnlockPixels(srcPM);
-    }
-
-    /* Wait for click or 4 seconds */
-    ticks = TickCount() + SpeedTicks(240);
-    while (TickCount() < ticks) {
-        if (WaitNextEvent(mDownMask | keyDownMask, &evt, 5, NULL))
-            break;
-    }
-
-    DisposeGWorld(offGW);
-    DisposeWindow(notWin);
+    unsigned char *fn = gs + eliminatedPlayer * FACTION_NAME_LEN;
+    Str255 nm, fmt, line;
+    short len = 0;
+    WindowPtr win;
+    Rect v;
+    EventRecord e;
+    (void)byPlayer;
+    while (len < 14 && fn[len]) len++;
+    nm[0] = (unsigned char)len; BlockMoveData(fn, nm + 1, len);
+    GetDATRawString(207 + (short)((unsigned short)Random() % 4), fmt);
+    FormatHeroLine(fmt, nm, 0, line);
+    win = NewMacAppWindow(392, 94);
+    if (win == NULL) return;
+    DrawPictAt(1001, 7, 7);
+    DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 87); DrawPictAt(1009, 385, 0);
+    SetRect(&v, 19, 35, 19 + 352, 35 + 19);
+    DrawSunkenText(&v, line, IlluriaFont(), 17, 1);
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) if (WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) break;
+    CloseMacAppWindow(win);
 }
 
 
@@ -22683,8 +22592,10 @@ static short CheckVictoryConditions(void)
             unsigned char *ct = sCityData + cci * 0x20;
             if ((short)(unsigned char)ct[0x17] < 2) totalC++;
         }
-        if (totalC < 1 || winnerC > totalC / 2)
-            return (lastAlive == curPlayer) ? 1 : -1;
+        /* the original: every other side eliminated, neutral cities
+         * don't matter (Isles hot-seat win with 9 cities still neutral) */
+        (void)winnerC; (void)totalC;
+        return (lastAlive == curPlayer) ? 1 : -1;
     }
 
     /* Dominant player victory (68k CODE_130 FUN_000006d2):
@@ -22754,198 +22665,29 @@ static short CheckVictoryConditions(void)
  * =================================================================== */
 static void ShowVictoryDialog(Boolean victory)
 {
-    WindowPtr vicWin;
-    GWorldPtr offGW;
-    Rect winRect, gwRect;
-    Boolean vicDone;
-    EventRecord vicEvt;
-    CGrafPtr savePort;
-    GDHandle saveGD;
-    PicHandle bgPict;
-    short winW = 360, winH = 260;
-
-    PlaySound(victory ? SND_ORCH : SND_DRAMATIC);
-
-    /* Try to load victory/defeat artwork PICT */
-    bgPict = GetPicture(victory ? 4501 : 4502);
-    if (bgPict) {
-        Rect pf = (**bgPict).picFrame;
-        winW = pf.right - pf.left;
-        winH = pf.bottom - pf.top;
-    }
-
-    SetRect(&winRect, 0, 0, winW, winH);
-    OffsetRect(&winRect,
-        (qd.screenBits.bounds.right - winW) / 2,
-        (qd.screenBits.bounds.bottom - winH) / 2);
-    vicWin = NewCWindow(NULL, &winRect,
-                        victory ? "\pVICTORY!" : "\pDefeat...", true,
-                        dBoxProc, (WindowPtr)-1, false, 0);
-    SetRect(&gwRect, 0, 0, winW, winH);
-    NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
-    if (vicWin == NULL || offGW == NULL) {
-        if (offGW) DisposeGWorld(offGW);
-        if (vicWin) DisposeWindow(vicWin);
-        return;
-    }
-
-    GetGWorld(&savePort, &saveGD);
-    SetGWorld(offGW, NULL);
-    LockPixels(GetGWorldPixMap(offGW));
-
-    /* Background: original PICT artwork or fallback color */
-    if (bgPict) {
-        DrawPicture(bgPict, &gwRect);
-    } else {
-        RGBColor bg;
-        if (victory) {
-            bg.red = 0xFFFF; bg.green = 0xFFFF; bg.blue = 0x8888;
-        } else {
-            bg.red = 0x4444; bg.green = 0x2222; bg.blue = 0x2222;
-        }
-        RGBForeColor(&bg);
-        PaintRect(&gwRect);
-    }
-
-    {
-        RGBColor textColor;
-        if (victory) {
-            textColor.red = 0; textColor.green = 0; textColor.blue = 0;
-        } else {
-            textColor.red = 0xFFFF; textColor.green = 0xCCCC; textColor.blue = 0xCCCC;
-        }
-        RGBForeColor(&textColor);
-        TextSize(14);
-        TextFace(bold);
-        MoveTo(80, 40);
-        if (victory) {
-            DrawString(GetCachedString(STR_VICTORY, 0, "\pGlorious Victory!"));
-        } else {
-            DrawString(GetCachedString(STR_VICTORY, 1, "\pYou Have Been Defeated!"));
-        }
-        TextFace(0);
-        TextSize(10);
-
-        if (*gGameState != 0) {
-            unsigned char *gs = (unsigned char *)*gGameState;
-            short curPlayer = *(short *)(gs + 0x110);
-            Str255 numStr;
-
-            /* Faction shield next to title */
-            {
-                Rect shR;
-                SetRect(&shR, 40, 22, 40 + BIG_SHIELD_W, 22 + BIG_SHIELD_H);
-                DrawBigShield(curPlayer, &shR);
-            }
-
-            MoveTo(40, 80);
-            if (victory) {
-                DrawString(GetCachedString(STR_VICTORY, 2, "\pAll enemies have been vanquished."));
-                MoveTo(40, 100);
-                DrawString(GetCachedString(STR_VICTORY, 3, "\pYour kingdom reigns supreme!"));
-            } else {
-                DrawString(GetCachedString(STR_VICTORY, 4, "\pYour forces have been eliminated."));
-                MoveTo(40, 100);
-                DrawString(GetCachedString(STR_VICTORY, 5, "\pThe realm falls to darkness..."));
-            }
-
-            MoveTo(40, 130);
-            DrawString(GetCachedString(STR_VICTORY, 6, "\pTurns played: "));
-            NumToString((long)*(short *)(gs + 0x136), numStr);
-            DrawString(numStr);
-
-            MoveTo(40, 150);
-            {
-                short gold = *(short *)(gs + 0x186 + curPlayer * 0x14);
-                DrawString(GetCachedString(STR_VICTORY, 7, "\pFinal treasury: "));
-                NumToString((long)gold, numStr);
-                DrawString(numStr);
-                DrawString(GetCachedString(STR_VICTORY, 16, "\p gold"));
-            }
-
-            /* Battle statistics from history */
-            {
-                short ei2, battlesWon = 0, battlesLost = 0, citiesCap = 0, heroesHired = 0;
-                for (ei2 = 0; ei2 < sHistoryCount; ei2++) {
-                    if (sHistoryEvents[ei2].player == curPlayer) {
-                        if (sHistoryEvents[ei2].eventType == HIST_EVT_BATTLE) {
-                            if (sHistoryEvents[ei2].text[0] == 'W')
-                                battlesWon++;
-                            else
-                                battlesLost++;
-                        } else if (sHistoryEvents[ei2].eventType == HIST_EVT_CAPTURE) {
-                            citiesCap++;
-                        } else if (sHistoryEvents[ei2].eventType == HIST_EVT_HERO) {
-                            heroesHired++;
-                        }
-                    }
-                }
-
-                MoveTo(40, 170);
-                DrawString(GetCachedString(STR_VICTORY, 8, "\pBattles: "));
-                NumToString((long)battlesWon, numStr); DrawString(numStr);
-                DrawString(GetCachedString(STR_VICTORY, 17, "\p won, "));
-                NumToString((long)battlesLost, numStr); DrawString(numStr);
-                DrawString(GetCachedString(STR_VICTORY, 18, "\p lost"));
-
-                MoveTo(40, 186);
-                DrawString(GetCachedString(STR_VICTORY, 19, "\pCities captured: "));
-                NumToString((long)citiesCap, numStr); DrawString(numStr);
-
-                MoveTo(40, 202);
-                DrawString(GetCachedString(STR_VICTORY, 20, "\pHeroes recruited: "));
-                NumToString((long)heroesHired, numStr); DrawString(numStr);
-            }
-        }
-    }
-
-    /* OK button */
-    {
-        Rect okRect;
-        RGBColor black = {0, 0, 0};
-        SetRect(&okRect, 140, 228, 220, 250);
-        RGBForeColor(&black);
-        FrameRoundRect(&okRect, 8, 8);
-        MoveTo(166, 244);
-        DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
-    }
-
-    UnlockPixels(GetGWorldPixMap(offGW));
-    SetGWorld(savePort, saveGD);
-
-    SetPort(vicWin);
-    {
-        Rect dr = vicWin->portRect;
-        LockPixels(GetGWorldPixMap(offGW));
-        CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                 &((GrafPtr)vicWin)->portBits,
-                 &gwRect, &dr, srcCopy, NULL);
-        UnlockPixels(GetGWorldPixMap(offGW));
-    }
-
-    vicDone = false;
-    while (!vicDone) {
-        if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &vicEvt, 30, NULL)) {
-            if (vicEvt.what == mouseDown || vicEvt.what == keyDown)
-                vicDone = true;
-            else if (vicEvt.what == updateEvt &&
-                     (WindowPtr)vicEvt.message == vicWin) {
-                Rect dr;
-                BeginUpdate(vicWin);
-                SetPort(vicWin);
-                dr = vicWin->portRect;
-                LockPixels(GetGWorldPixMap(offGW));
-                CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                         &((GrafPtr)vicWin)->portBits,
-                         &gwRect, &dr, srcCopy, NULL);
-                UnlockPixels(GetGWorldPixMap(offGW));
-                EndUpdate(vicWin);
-            }
-        }
-    }
-
-    DisposeGWorld(offGW);
-    DisposeWindow(vicWin);
+    /* View 4510 (PPC FUN_10040a38): 382x378 marble, "Congratulations"
+     * (Illuria 36), PICT 4501 framed at (10,47), "You have conquered the
+     * world!" (STR# 4510); RINT12/21 plays; a click returns to the map,
+     * which stays in a post-victory state (End Turn disabled). */
+    WindowPtr win;
+    Rect r, v;
+    Str255 s;
+    EventRecord e;
+    if (!victory) return;
+    win = NewMacAppWindow(382, 378);
+    if (win == NULL) return;
+    DrawPictAt(1001, 7, 7);
+    DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 371); DrawPictAt(1007, 375, 0);
+    SetRect(&r, 10, 47, 372, 348);
+    DrawT3DFrame(&r);
+    DrawPictAt(4501, 11, 48);
+    GetIndString(s, 4510, 1);
+    SetRect(&v, 7, 9, 375, 49); DrawSunkenText(&v, s[0] ? s : "\pCongratulations", IlluriaFont(), 36, 1);
+    GetIndString(s, 4510, 2);
+    SetRect(&v, 8, 351, 376, 370); DrawSunkenText(&v, s[0] ? s : "\pYou have conquered the world!", IlluriaFont(), 17, 1);
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) if (WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) break;
+    CloseMacAppWindow(win);
 }
 
 
@@ -27033,8 +26775,7 @@ static void AdvanceToNextPlayer(void)
                           RecordEvent(turnNum, HIST_EVT_ELIMINATE, pi, nm);
                         }
                         /* Notify human player of elimination (68k shows this) */
-                        if (*(short *)(gs + 0xd0 + curP * 2) == 0)
-                            ShowEliminationNotification(pi, curP);
+                        ShowEliminationNotification(pi, curP);
                     }
                 }
             }
