@@ -1174,6 +1174,9 @@ static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
  * (the original's ~1.75 s per computer player) to speed up test iterations. */
 #define DEV_FAST_TURNS 0
 #define DEV_SHIP_PROBE 0   /* DEV: temporary ship-on-land probe */
+/* DEV: 1 draws the system-font glyph capture sheet at launch (warlords2-web
+ * tools/glyphcap) and waits for a click. */
+#define DEV_GLYPH_SHEET 0
 static short     sAIProgress = 0;
 static Str255    sInfoMsg;                /* info-area message over the AI turn display */         /* its flag strip as a progress bar, 0-100 */
 static Boolean   sDragPreview = false;
@@ -35133,6 +35136,52 @@ int main(void)
         DrawMenuBar();
     }
 
+#if DEV_GLYPH_SHEET
+    /* DEV: glyph capture sheet. Four sheets (fg on bg) of 16x14 cells, 32x24,
+     * chars 0x20-0xFF, each glyph drawn alone with DrawChar at cell (x+8, y+18)
+     * after EraseRect in the bg colour. Row y+23 holds a black run from the pen
+     * of length CharWidth (the advance). Above each sheet, 4 black bars (rows
+     * top, +3, +6, +9) of length ascent, descent, leading, widMax (GetFontInfo).
+     * Sheet origins (global): (0,40) (512,40) (0,410) (512,410). */
+    {
+        static const unsigned short kSheet[4][2] = {   /* fg grey, bg grey */
+            {0x0000, 0xFFFF}, {0x0000, 0xDDDD}, {0x7777, 0xDDDD}, {0x7777, 0xFFFF} };
+        Rect wr; WindowPtr gw; short sh, ch; FontInfo fi;
+        RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+        PaletteHandle gp = GetNewPalette(1000);
+        SetRect(&wr, 0, 24, 1024, 768);
+        gw = NewCWindow(NULL, &wr, "\p", true, plainDBox, (WindowPtr)-1L, false, 0);
+        if (gp != NULL) { SetPalette(gw, gp, true); ActivatePalette(gw); }
+        SetPort(gw);
+        RGBBackColor(&white); EraseRect(&gw->portRect);
+        TextFont(0); TextSize(12); TextFace(0);
+        GetFontInfo(&fi);
+        for (sh = 0; sh < 4; sh++) {
+            short ox = (sh & 1) * 512, oy = 40 + (sh >> 1) * 370 - 24;   /* local */
+            RGBColor fg, bg; short k, vals[4];
+            fg.red = fg.green = fg.blue = kSheet[sh][0];
+            bg.red = bg.green = bg.blue = kSheet[sh][1];
+            vals[0] = fi.ascent; vals[1] = fi.descent; vals[2] = fi.leading; vals[3] = fi.widMax;
+            RGBForeColor(&black);
+            for (k = 0; k < 4; k++) if (vals[k] > 0) { MoveTo(ox, oy + k * 3); LineTo(ox + vals[k] - 1, oy + k * 3); }
+            for (ch = 0x20; ch <= 0xFF; ch++) {
+                short cx = ox + ((ch - 0x20) & 15) * 32, cy = oy + 16 + ((ch - 0x20) >> 4) * 24;
+                Rect cr; short w;
+                SetRect(&cr, cx, cy, cx + 32, cy + 24);
+                RGBBackColor(&bg); EraseRect(&cr);
+                RGBForeColor(&fg); MoveTo(cx + 8, cy + 18); DrawChar((char)ch);
+                w = CharWidth((char)ch);
+                RGBForeColor(&black);
+                if (w > 0) { MoveTo(cx + 8, cy + 23); LineTo(cx + 8 + w - 1, cy + 23); }
+            }
+        }
+        RGBForeColor(&black); RGBBackColor(&white);
+        while (!Button()) ;
+        while (Button()) ;
+        FlushEvents(everyEvent, 0);
+        DisposeWindow(gw);
+    }
+#endif
     /* === Scenario Selection Screen (before creating game windows) === */
     ScanForScenarios();   /* while the splash is still up, like the original */
     if (sSplashWin != NULL) {
