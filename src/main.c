@@ -9413,7 +9413,7 @@ static void DrawMapInWindow(WindowPtr win)
      * last tile shows the army's ghost. No preview on plain hover. */
     /* A selected army with a pending order shows its remaining path the same
      * way (original turn 3: selecting the hero drew rings to its ghost). */
-    if (!sDragPreview && sSelectedArmy >= 0 && hasScn &&
+    if (!sDragPreview && sSelectedArmy >= 0 && hasScn && sAITurnPlayer < 0 &&   /* no path for AI moves */
         sSelectedArmy < *(short *)(scnData + 0x1602)) {
         static long lastSig = -1;
         unsigned char *sa = scnData + 0x1604 + sSelectedArmy * 0x42;
@@ -9433,7 +9433,7 @@ static void DrawMapInWindow(WindowPtr win)
             }
         }
     }
-    if ((sDragPreview || (sSelectedArmy >= 0 && hasScn &&
+    if (sAITurnPlayer < 0 && (sDragPreview || (sSelectedArmy >= 0 && hasScn &&
          *(short *)(scnData + 0x1604 + sSelectedArmy * 0x42 + 0x32) != 0)) &&
         sPreviewPathLen > 1 && sSelectedArmy >= 0 && hasScn) {
         static const char *ringArt[14] = {
