@@ -1072,9 +1072,8 @@ static const short   sPathDY[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 /* Stack movement request (PPC 1.0.7 FUN_100445a8 struct + the stack scan at
  * PPC_0002.c 5398-5438): mode and abilities come from ALL units of the moving
  * stack, not from the lead unit. Per-tile flag grid (FUN_10044110):
- *   bits 0-2 cost, 0x08 water, 0x10 land or landing place (every land type,
- *   bridge, anchor, coastal city tile - NOT "port"), 0x20 hills, 0x40 forest,
- *   0x80 city (68k CODE_042 FUN_00001670). */
+ *   bits 0-2 cost, 0x08 water, 0x10 port (bridge, anchor, coastal city),
+ *   0x20 hills, 0x40 forest, 0x80 city. */
 #define PFLAG_WATER  0x08
 #define PFLAG_PORT   0x10
 #define PFLAG_HILLS  0x20
@@ -12640,111 +12639,8 @@ static void RecalcArmyStrength(unsigned char *army)
     *(short *)(army + 0x2a) = str;
 }
 
-/* ===================================================================
- * TryMergeArmies — Merge movingArmy into a friendly army at same tile.
- *
- * Transfers units from movingArmy into empty slots of target army.
- * If all units transferred, removes movingArmy.
- * Returns true if movingArmy was removed (fully merged).
- * =================================================================== */
-static Boolean TryMergeArmies(short movingIdx)
-{
-    unsigned char *gs, *movArmy, *tgtArmy;
-    short armyCount, mx, my, mOwner, i, slot, tgtSlot;
-
-    if (*gGameState == 0) return false;
-    gs = (unsigned char *)*gGameState;
-    armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
-    if (movingIdx < 0 || movingIdx >= armyCount) return false;
-
-    movArmy = gs + 0x1604 + movingIdx * 0x42;
-    mx = *(short *)(movArmy + 0x00);
-    my = *(short *)(movArmy + 0x02);
-    mOwner = (short)(unsigned char)movArmy[0x15];
-
-    /* Find first friendly army at same location (not self) */
-    for (i = 0; i < armyCount; i++) {
-        if (i == movingIdx) continue;
-        tgtArmy = gs + 0x1604 + i * 0x42;
-        if (*(short *)(tgtArmy + 0x00) == mx &&
-            *(short *)(tgtArmy + 0x02) == my &&
-            (short)(unsigned char)tgtArmy[0x15] == mOwner) {
-
-            /* Try to transfer units from moving to target */
-            for (slot = 0; slot < 4; slot++) {
-                if (movArmy[0x16 + slot] == 0xFF && movArmy[0x1e + slot] == 0)
-                    continue;  /* empty slot in moving army */
-
-                /* Find empty slot in target army */
-                for (tgtSlot = 0; tgtSlot < 4; tgtSlot++) {
-                    if (tgtArmy[0x16 + tgtSlot] == 0xFF ||
-                        (tgtArmy[0x16 + tgtSlot] == 0 && tgtArmy[0x1e + tgtSlot] == 0)) {
-                        /* Transfer unit */
-                        tgtArmy[0x16 + tgtSlot] = movArmy[0x16 + slot];
-                        tgtArmy[0x1a + tgtSlot] = movArmy[0x1a + slot];
-                        tgtArmy[0x1e + tgtSlot] = movArmy[0x1e + slot];
-                        tgtArmy[0x22 + tgtSlot] = movArmy[0x22 + slot];
-                        tgtArmy[0x26 + tgtSlot] = movArmy[0x26 + slot];
-                        /* Transfer hero name and items if unit is a hero (0x1C) */
-                        if (movArmy[0x16 + slot] == 0x1C) {
-                            short hni;
-                            for (hni = 0; hni < 16; hni++)
-                                tgtArmy[0x04 + hni] = movArmy[0x04 + hni];
-                            {
-                                short itm;
-                                for (itm = 0; itm < ITEM_SLOTS; itm++) {
-                                    short itemId = *(short *)(movArmy + 0x3A + itm * 2);
-                                    *(short *)(tgtArmy + 0x3A + itm * 2) = itemId;
-                                    *(short *)(movArmy + 0x3A + itm * 2) = 0;
-                                    /* Update item record carrier to target army */
-                                    if (itemId >= 1 && itemId <= 22) {
-                                        unsigned char *itemRec = gs + 0xD12 + (itemId - 1) * 0x1E;
-                                        if (ITEM_STATUS(itemRec) == ITEM_ST_CARRIED)
-                                            *(short *)(itemRec + 0x18) = i;
-                                    }
-                                }
-                            }
-                            /* Update hero instance record with new army index */
-                            if (mOwner >= 0 && mOwner < 8) {
-                                unsigned char *hr = gs + 0x1422 + mOwner * 0x2C;
-                                if (hr[0x00] != 0 && *(short *)(hr + 0x04) == movingIdx)
-                                    *(short *)(hr + 0x04) = i;
-                            }
-                        }
-                        /* Mark source slot as empty */
-                        movArmy[0x16 + slot] = 0xFF;
-                        movArmy[0x1e + slot] = 0;
-                        break;
-                    }
-                }
-            }
-
-            /* Recalculate target army strength */
-            RecalcArmyStrength(tgtArmy);
-
-            /* Check if moving army is now empty */
-            {
-                Boolean allEmpty = true;
-                for (slot = 0; slot < 4; slot++) {
-                    if (movArmy[0x16 + slot] != 0xFF || movArmy[0x1e + slot] > 0) {
-                        allEmpty = false;
-                        break;
-                    }
-                }
-                if (allEmpty) {
-                    RemoveArmy(movingIdx);
-                    return true;
-                }
-            }
-
-            /* Recalculate moving army strength if partial transfer */
-            RecalcArmyStrength(movArmy);
-            return false;
-        }
-    }
-    return false;
-}
+/* (TryMergeArmies, the remake's record auto-merge, was removed: the original
+ * never merges unit records - see ExecutePathSteps.) */
 
 
 /* ===================================================================
@@ -13013,26 +12909,32 @@ static short PathCityIndexAt(short x, short y)
 }
 
 /* ===================================================================
- * BuildPathFlagGrid — PPC FUN_10044110 + FUN_10042d2c/FUN_10042bb4, the
- * 68k original being CODE_042 FUN_00001670 (the PPC switch is lost in the
- * decompile).  Per tile: cost = table[type] (PPC data 0x17576; a road
- * overlay makes it 1; flyers pay 1 on road/bridge/city, else 2) OR'ed with
- *   0x10 on every land type (the default), forest 0x50, hills 0x30,
- *   bridge 0x18, Water/Shore 0x08 only, city 0x90 (+0x08 when coastal),
- *   anchor tile (MAP flag byte bit 0x80) +0x18, coastal city tiles +0x18.
- * So bit 0x10 means "land or a landing place", NOT "port": a ground stack
- * may step between land and open water anywhere; what the bit controls is
- * the budget's trans rule (PathStepCost) and the search's disembark
- * penalty.  A foreign or neutral city costs 0 (blocked unless it is the
- * destination); own cities cost 1 and ARE routed through; a neutral city
+ * BuildPathFlagGrid — PPC FUN_10044110 + FUN_10042d2c/FUN_10042bb4.
+ * Per tile (PPC 1.0.7 jump table, read from the code section at
+ * 0x1004457c): cost = table[type] (PPC data 0x17576; a road overlay makes
+ * it 1; flyers pay 1 on road/bridge/city, else 2) OR'ed with
+ *   bridge 0x18, Water/Shore 0x08, forest 0x40, hills 0x20,
+ *   road/mountains/plains/marsh/type 9/ruin: nothing,
+ *   city: own -> 0x80 | (0x18 when coastal); foreign -> cost 0, 0x80,
+ *   anchor tile (MAP flag byte bit 0x80) +0x10.
+ * So bit 0x10 marks a PORT: bridges, anchors and coastal cities are the
+ * only places where a ground stack may pass between land and water (the
+ * search and the trace refuse every other land<->water step).  The city
+ * a path is aimed at is opened by FUN_10042d2c(req, 1) with cost 1 and
+ * 0x18 when coastal, whoever owns it (that is how a boat attacks a coastal
+ * city from any adjacent water tile); here every coastal city gets 0x18,
+ * which is equivalent because a foreign city is blocked unless it is the
+ * destination.  Own cities cost 1 and are routed through; a neutral city
  * costs 1 in the ground search of a non-human player type (FUN_10042d2c),
  * the execution still stops in front of it.
+ * (The 68k CD build, CODE_042 FUN_00001670, differs: there plain land has
+ * 0x10 too and cities 0x90, so boats could land anywhere.  The PPC 1.0.7
+ * build is the reference.)
  * =================================================================== */
 static void BuildPathFlagGrid(void)
 {
     static const unsigned char kCost[12]  = {1, 1, 1, 2, 4, 6, 0, 2, 5, 2, 1, 2};
-    static const unsigned char kTFlag[12] = {0x10, 0x18, 0x08, 0x08, 0x50, 0x30,
-                                             0x10, 0x10, 0x10, 0x10, 0x90, 0x10};
+    static const unsigned char kTFlag[12] = {0, 0x18, 0x08, 0x08, 0x40, 0x20, 0, 0, 0, 0, 0x80, 0};
     unsigned char *gs, *mapData, *rd = NULL;
     short x, y, maxX, maxY, me, ci, n;
     Boolean human;
@@ -13057,7 +12959,7 @@ static void BuildPathFlagGrid(void)
             if (sPathMode == PMODE_FLYING)
                 c = (type == 0 || type == 1 || type == 10 || road) ? 1 : 2;
             f = (unsigned char)(kTFlag[type] | c);
-            if (mapData[y * 0xE0 + x * 2 + 1] & 0x80) f |= PFLAG_WATER | PFLAG_PORT;  /* anchor: 0x18 */
+            if (mapData[y * 0xE0 + x * 2 + 1] & 0x80) f |= PFLAG_PORT;     /* anchor: +0x10 */
             sPathFlagGrid[rowOff + x] = f;
         }
     }
@@ -13088,12 +12990,12 @@ static void BuildPathFlagGrid(void)
 }
 
 /* Cost of entering a tile while executing a path (PPC FUN_100445fc).
- * *trans is set when a ground stack that is not embarked enters open water
- * (a tile without bit 0x10: not land, bridge, anchor or coastal city); the
- * steps after that cost 0x80 each, so the move ends on that first water
- * tile and the stack boards there (PathBoardOrLand).  An embarked stack
- * never trips it: every land tile carries 0x10, so it sails and then walks
- * inland on its sea MP, and lands (MP 0) where its move ends. */
+ * *trans is set when a ground stack steps off a port onto the other
+ * element: not embarked and the tile is open water (no 0x10), or embarked
+ * and the tile is open land; the steps after that cost 0x80 each, so the
+ * move ends on that first tile and the stack boards / lands there
+ * (PathBoardOrLand, MP 0).  Leaving a coastal city or an anchor therefore
+ * costs the rest of the turn: one tile out and stop. */
 static short PathStepCost(short x, short y, short *trans)
 {
     unsigned char f;
@@ -13121,10 +13023,9 @@ static short PathStepCost(short x, short y, short *trans)
 
 /* Relaxation cost in the search (PPC FUN_10043248).  The search expands
  * from the destination: cur is the tile already reached, nbr the tile
- * being labelled (closer to the unit); the cost charged is nbr's.  With
- * bit 0x10 on every land tile, portOk only fails between two open-water
- * tiles whose water bits differ, i.e. never: a ground stack boards and
- * lands anywhere; the disembark penalty steers the choice. */
+ * being labelled (closer to the unit); the cost charged is nbr's.  A
+ * ground stack may step between land and water only when one of the two
+ * tiles is a port (bit 0x10); the disembark penalty steers the choice. */
 static short PathRelaxCost(unsigned char fc, unsigned char fn, Boolean nbrIsSrc)
 {
     short c = fn & 7;
@@ -13392,6 +13293,30 @@ static short ComputeWavefrontPath(short srcX, short srcY,
     PathBuildStack(armyIdx, armyIdx == sSelectedArmy);
     if (sPathMoverCount == 0) return -1;
     BuildPathFlagGrid();
+    /* An adjacent destination (FUN_10043e60 -> FUN_100428dc): a one-step
+     * path without a search when the stack flies, or when both tiles are
+     * on the same element (Water/Shore or not) and the tile's terrain cost
+     * is not 0; otherwise the full search decides (a land<->water step
+     * then needs a port on one side). */
+    {
+        short ddx = dstX - srcX, ddy = dstY - srcY;
+        if (ddx >= -1 && ddx <= 1 && ddy >= -1 && ddy <= 1) {
+            static const unsigned char kCost[12] = {1, 1, 1, 2, 4, 6, 0, 2, 5, 2, 1, 2};
+            short ts = GetTerrainType(srcX, srcY), td = GetTerrainType(dstX, dstY);
+            Boolean ok = true;
+            if (td > 11) td = 7;
+            if (sPathMode != PMODE_FLYING) {
+                if (((ts == 2 || ts == 3) ? 1 : 0) != ((td == 2 || td == 3) ? 1 : 0)) ok = false;
+                else if (kCost[td] == 0) ok = false;
+            }
+            if (ok) {
+                sPathDirBuffer[0] = (unsigned char)PathDirFromDelta(ddx, ddy);
+                sPathDirBuffer[1] = 0xFF;
+                sPathLength = 1;
+                return 1;
+            }
+        }
+    }
     PathSetPenalty(srcX, srcY, dstX, dstY);
     if (!PathSearch(srcX, srcY, dstX, dstY, 0) &&
         !PathSearch(srcX, srcY, dstX, dstY, 1))
@@ -13458,22 +13383,26 @@ static void PathMoveStackTo(short nx, short ny)
 /* Boarding / landing after a ground stack's move (PPC FUN_100171d4 tail
  * + FUN_10017c28): a non-embarked stack ending on Water/Shore becomes
  * embarked, an embarked stack ending on land (not bridge/water/shore)
- * lands; both set the stack's MP to 0. */
-static void PathBoardOrLand(short x, short y)
+ * lands; both set the stack's MP to 0.  Returns 1 boarded, 2 landed, else
+ * 0: FUN_10017cb4 turns the move's result into 2 (stop) when either
+ * happened, so a stack that boards or lands on its way does NOT go on to
+ * attack the city or army in front of it this move. */
+static short PathBoardOrLand(short x, short y)
 {
     unsigned char *gs = (unsigned char *)*gGameState;
     short t = GetTerrainType(x, y), k;
     Boolean board = false, land = false;
-    if (sPathMode != PMODE_GROUND) return;
+    if (sPathMode != PMODE_GROUND) return 0;
     if (!(sPathFlags & PABIL_EMBARKED)) { if (t == 2 || t == 3) board = true; }
     else if (t != 1 && t != 2 && t != 3) land = true;
-    if (!board && !land) return;
+    if (!board && !land) return 0;
     for (k = 0; k < sPathMoverCount; k++) {
         unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
         if (board) a[0x2C] |= ARMY_EMBARKED_BIT; else a[0x2C] &= ~ARMY_EMBARKED_BIT;
         a[0x2e] = 0;
     }
     if (board) sPathFlags |= PABIL_EMBARKED; else sPathFlags &= ~PABIL_EMBARKED;
+    return board ? 1 : 2;
 }
 
 /* After a battle the stack advances into the target tile (PPC
@@ -13538,7 +13467,7 @@ static short ExecutePathSteps(short armyIdx)
     unsigned char cumBuf[PATH_MAX_STEPS];
     short armyCount, mp, i, x, y, trans = 0, budget = 0, committed = 0, pending = 0;
     short result = 0, blockedIdx = -1, blockedX = -1, blockedY = -1, stackUnits = 0;
-    short stepsTaken = 0, k, s, finalX = -1, finalY = -1;
+    short stepsTaken = 0, k, s, finalX = -1, finalY = -1, transEnded = 0;
     long cum = 0;
     Boolean wasSelected;
 
@@ -13612,12 +13541,14 @@ static short ExecutePathSteps(short armyIdx)
             short left = (short)(unsigned char)a[0x2e] - (short)cumBuf[committed - 1];
             a[0x2e] = (unsigned char)(left < 0 ? 0 : left);
         }
-        PathBoardOrLand(x, y);
+        transEnded = PathBoardOrLand(x, y);
         CheckGroundItemPickup(armyIdx);           /* 68k CODE_074 */
     }
 
-    /* --- the blocked tile is the target and the stack stands beside it: attack --- */
-    if ((result == 5 || result == 3) && blockedIdx == committed &&
+    /* --- the blocked tile is the target and the stack stands beside it: attack
+     *     (not when the approach boarded or landed: FUN_10017cb4 makes that a
+     *     plain stop with MP 0, the orders stay for next turn) --- */
+    if ((result == 5 || result == 3) && blockedIdx == committed && !transEnded &&
         blockedIdx == sPathLength - 1 && blockedIdx < budget) {
         short c = (short)(sPathFlagGrid[blockedY * PATH_GRID_W + blockedX] & 7);
         if (c < 1) c = 1;
@@ -32871,13 +32802,22 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
     dir = PathDirFromDelta(dx, dy);
     if (dir < 0) return false;
 
-    /* One step through the stack executor: stack mode/abilities, boats,
-     * the 8-unit tile limit and the stop rules (attack when the tile holds
-     * a foreign city or army) all apply as for a dragged path. */
-    sPathTargetX = newX; sPathTargetY = newY;
-    sPathDirBuffer[0] = (unsigned char)dir;
-    sPathDirBuffer[1] = 0xFF;
-    sPathLength = 1;
+    /* One step through the pathfinder and the stack executor (PPC
+     * FUN_10018180 -> FUN_10017cb4 -> FUN_10043e60): stack mode/abilities,
+     * boats, the 8-unit tile limit and the stop rules (attack when the tile
+     * holds a foreign city or army) all apply as for a dragged path.  A step
+     * between land and water is refused unless a port is involved, in which
+     * case the search may route the step through the port; no path: the
+     * original beeps (FUN_10093928) and nothing moves. */
+    (void)dir;
+    {
+        short len = ComputeWavefrontPath(curX, curY, newX, newY, sSelectedArmy);
+        if (len <= 0) {
+            if (len < 0 && *(short *)(gs + 0xd0 + currentPlayer * 2) == 0)
+                PlaySound(SND_CHORD);
+            return false;
+        }
+    }
     took = ExecutePathSteps(sSelectedArmy);
     if (took == 0)
         return false;
