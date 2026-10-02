@@ -16242,352 +16242,201 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
  * tab: 0=Armies, 1=Cities, 2=Gold, 3=Production, 4=Winning
  * =================================================================== */
 static short sLastReportTab = 0;
+/* armies produced for the human this turn (Production report), filled by
+ * ProcessStartOfTurn */
+static short sProdThisTurn = 0;
+static short sProdTypes[30], sProdCity[30];
+
 static void ShowReportDialog(short tab)
 {
-    WindowPtr rptWin;
-    GWorldPtr offGW;
-    Rect winRect, gwRect, okRect;
-    Boolean rptDone, needsRedraw;
+    /* View 3700 (PPC FUN_10050a48 / FUN_100501f4 / FUN_1004f704 / FUN_1004fbdc):
+     * 508x352 on WDEF 128 variant 7, placed like the city window; marble with
+     * edge PICTs 1004/1005/1006/1008; 2x minimap (20,20) 224x312 in a
+     * T3DFrameAdorner; title (245,20) Illuria 36; tab T3DIconButtons 40x40 at
+     * v 61, h 253/301/349/397/445 (cicn 3700/3500/3501/3701/3502); subtitle
+     * (245,103) and result line (245,281) Illuria 17; OK (420,307) 72x29.
+     * Bars (TBarGraph at (245,125)): one row per player 0-7 at y 30+14p, 8px
+     * high, 8x8 tiles from the map-shield sheet (320+8(p%4), 40+8(p/4)),
+     * length value*240/max; a sunken frame around each; a scale line with
+     * ticks and "0" / max/2 / max above it. */
+    static const short tabX[5] = {253, 301, 349, 397, 445};
+    static const short tabIcon[5] = {3700, 3500, 3501, 3701, 3502};
+    unsigned char *gs;
+    WindowPtr win;
+    Rect r, okR, okRing, tabR[5], overR;
+    short cur, p, k, vals[8], max, i;
+    Boolean alive[8], done = false, redraw = true;
+    EventRecord e;
+    Str255 s, fmt;
+    RGBColor black = {0, 0, 0}, dark = {0x6666, 0x6666, 0x6666}, light = {0xC0C0, 0xC0C0, 0xC0C0};
+    RGBColor cream = {0xFFFF, 0xFFFF, 0xDADA};
 
     if (*gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+    cur = *(short *)(gs + 0x110);
     if (tab < 0) tab = sLastReportTab;
-    sLastReportTab = tab;
+    if (tab < 0 || tab > 4) tab = 0;
+    for (k = 0; k < 5; k++) SetRect(&tabR[k], tabX[k], 61, tabX[k] + 40, 101);
+    SetRect(&okRing, 420, 307, 492, 336);
+    okR = okRing; InsetRect(&okR, 4, 4);
+    SetRect(&overR, 20, 20, 244, 332);
 
-    SetRect(&winRect, 0, 0, 400, 320);
-    OffsetRect(&winRect, 140, 80);
-    rptWin = NewCWindow(NULL, &winRect, "\p", true,
-                        plainDBox, (WindowPtr)-1L, false, 0);
-    SetRect(&gwRect, 0, 0, 400, 320);
-    NewGWorld(&offGW, 0, &gwRect, NULL, NULL, 0);
-
-    if (rptWin == NULL || offGW == NULL) {
-        if (offGW) DisposeGWorld(offGW);
-        if (rptWin) DisposeWindow(rptWin);
-        return;
-    }
-
-    SetPort(rptWin);
-    FlushEvents(everyEvent, 0);
-    SetRect(&okRect, 160, 286, 240, 308);
-    needsRedraw = true;
-    rptDone = false;
-
-    while (!rptDone) {
-        EventRecord rptEvt;
-
-        if (needsRedraw) {
-            CGrafPtr savePort;
-            GDHandle saveGD;
-            GetGWorld(&savePort, &saveGD);
-            SetGWorld(offGW, NULL);
-            LockPixels(GetGWorldPixMap(offGW));
-
-            /* Background */
-            DrawMarbleBackground(&gwRect);
-
-            /* Title */
-            {
-                RGBColor black = {0, 0, 0};
-                static const unsigned char *tabNames[] = {
-                    "\pArmies Report", "\pCities Report", "\pGold Report",
-                    "\pProduction Report", "\pWinning Report"
-                };
-                RGBForeColor(&black);
-                TextFont(2);
-                TextSize(14);
-                TextFace(bold);
-                MoveTo(130, 22);
-                if (tab >= 0 && tab <= 4)
-                    DrawString(tabNames[tab]);
-                else
-                    DrawString(GetCachedString(STR_REPORT, 11, "\pReport"));
-                TextFace(0);
-                TextSize(9);
-                TextFont(3);
-            }
-
-            /* Tab buttons along top */
-            {
-                RGBColor black = {0, 0, 0};
-                RGBColor hilite = {0x8888, 0x8888, 0xFFFF};
-                RGBColor normal = {0xCCCC, 0xCCCC, 0xCCCC};
-                static const unsigned char *tabs[] = {
-                    "\pArmies", "\pCities", "\pGold", "\pProd", "\pWinning"
-                };
-                short t;
-                for (t = 0; t < 5; t++) {
-                    Rect tr;
-                    SetRect(&tr, 10 + t * 76, 30, 82 + t * 76, 48);
-                    RGBForeColor(t == tab ? &hilite : &normal);
-                    PaintRoundRect(&tr, 6, 6);
-                    RGBForeColor(&black);
-                    FrameRoundRect(&tr, 6, 6);
-                    MoveTo(tr.left + 8, 44);
-                    DrawString(tabs[t]);
+    win = NewMacAppWindow(508, 352);
+    if (win == NULL) return;
+    while (!done) {
+        if (redraw) {
+            short own = 0, rank = 0;
+            long score[8];
+            sLastReportTab = tab;
+            /* data */
+            for (p = 0; p < 8; p++) {
+                short units = 0, cities = 0, inc = 0, ci, ai, n = *(short *)(gs + 0x1602);
+                long citySum = 0, str = 0, gold = *(short *)(gs + 0x186 + p * 0x14);
+                alive[p] = *(short *)(gs + 0x138 + p * 2) != 0;
+                if (n > 100) n = 100;
+                for (ai = 0; ai < n; ai++) {
+                    unsigned char *a = gs + 0x1604 + ai * 0x42;
+                    if ((short)(unsigned char)a[0x15] != p) continue;
+                    for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) { units++; str += a[0x1e + k]; }
                 }
-            }
-
-            /* Separator line below tabs */
-            {
-                RGBColor gray = {0x9999, 0x9999, 0x9999};
-                RGBForeColor(&gray);
-                MoveTo(10, 52);
-                LineTo(390, 52);
-            }
-
-            /* Column headers */
-            {
-                RGBColor black = {0, 0, 0};
-                RGBForeColor(&black);
-                TextFace(bold);
-                MoveTo(20, 68);
-                DrawString(GetCachedString(STR_REPORT, 0, "\pPlayer"));
-                if (tab == 0) {
-                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 1, "\pArmies"));
-                    MoveTo(200, 68); DrawString(GetCachedString(STR_REPORT, 2, "\pUnits"));
-                    MoveTo(280, 68); DrawString(GetCachedString(STR_REPORT, 3, "\pStrength"));
-                } else if (tab == 1) {
-                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 4, "\pCities"));
-                    MoveTo(220, 68); DrawString(GetCachedString(STR_REPORT, 5, "\pIncome"));
-                } else if (tab == 2) {
-                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 6, "\pGold"));
-                    MoveTo(220, 68); DrawString(GetCachedString(STR_REPORT, 7, "\pIncome/Turn"));
-                } else if (tab == 3) {
-                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 4, "\pCities"));
-                    MoveTo(220, 68); DrawString(GetCachedString(STR_REPORT, 8, "\pProducing"));
-                } else {
-                    MoveTo(120, 68); DrawString(GetCachedString(STR_REPORT, 4, "\pCities"));
-                    MoveTo(200, 68); DrawString(GetCachedString(STR_REPORT, 1, "\pArmies"));
-                    MoveTo(280, 68); DrawString(GetCachedString(STR_REPORT, 9, "\pScore"));
+                for (ci = 0; ci < sCityCount && ci < 99; ci++) {
+                    unsigned char *c = sCityData + ci * 0x20;
+                    if (c[0x17] >= 2 || *(short *)(c + 4) != p) continue;
+                    cities++;
+                    inc += *(short *)(c + 0x08);
+                    citySum += (long)*(short *)(c + 0x06) * *(short *)(c + 0x08);
                 }
-                TextFace(0);
+                if (gold > 10000) gold = 10000;
+                score[p] = (gold + 5L * inc + str + citySum) / 30;
+                if (score[p] < 1) score[p] = 1;
+                if (score[p] > 500) score[p] = 500;
+                switch (tab) {
+                case 0: vals[p] = units; break;
+                case 1: vals[p] = cities; break;
+                case 2: vals[p] = (short)(gold < 0 ? 0 : gold); break;
+                default: vals[p] = 0; break;
+                }
+                if (p == cur) own = (tab == 0) ? units : (tab == 1) ? cities : (short)*(short *)(gs + 0x186 + p * 0x14);
             }
+            if (tab == 4) {
+                for (p = 0; p < 8; p++) if (alive[p] && score[p] > score[cur]) rank++;
+                for (p = 0; p < 8; p++) vals[p] = (short)(score[p] / 5);
+            }
+            max = 0;
+            for (p = 0; p < 8; p++) if (alive[p] && vals[p] > max) max = vals[p];
+            if (max & 1) max++;
+            if (tab == 4) max = 100;
 
-            /* Per-player data rows */
-            {
-                unsigned char *gs = (unsigned char *)*gGameState;
-                short pi;
-                short armyCount = *(short *)(gs + 0x1602);
-                short cityCount = sCityCount;
-                short rowNum = 0;
-                if (armyCount > 100) armyCount = 100;
-                if (cityCount > 139) cityCount = 139;
+            SetPort(win);
+            DrawPictAt(1001, 7, 7);
+            DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 345); DrawPictAt(1008, 501, 0);
+            r = overR; InsetRect(&r, -1, -1);
+            DrawT3DFrame(&r);
+            DrawOverviewTo((GrafPtr)win, overR, kOvOverlays);
+            SetPort(win);
+            GetDATRawString(388 + tab, s);
+            SetRect(&r, 245, 20, 501, 59);  DrawSunkenText(&r, s, IlluriaFont(), 36, 1);
+            for (k = 0; k < 5; k++) DrawT3DIconButton(&tabR[k], CachedCIcon(tabIcon[k]), true);
+            GetDATRawString(393 + tab, s);
+            SetRect(&r, 245, 103, 501, 122); DrawSunkenText(&r, s, IlluriaFont(), 17, 1);
+            switch (tab) {
+            case 0: GetDATRawString(own == 1 ? 398 : 399, fmt); break;
+            case 1: GetDATRawString(own == 1 ? 400 : 401, fmt); break;
+            case 2: GetDATRawString(402, fmt); break;
+            case 3: own = sProdThisTurn; GetDATRawString(own == 1 ? 404 : 403, fmt); break;
+            default: GetDATRawString(405 + rank, fmt); break;
+            }
+            FormatHeroLine(fmt, "\p", own, s);
+            SetRect(&r, 245, 281, 501, 300); DrawSunkenText(&r, s, IlluriaFont(), 17, 1);
 
-                for (pi = 0; pi < 8; pi++) {
-                    short alive = *(short *)(gs + 0x138 + pi * 2);
-                    short yPos;
-                    Str255 numStr;
-                    short pArmies = 0, pUnits = 0, pStr = 0;
-                    short pCities = 0, pIncome = 0, pProducing = 0;
-                    short pGold, ai, ci;
-                    RGBColor pColor;
-
-                    if (!alive) continue;
-                    yPos = 88 + rowNum * 26;
-                    rowNum++;
-                    pColor = sPlayerColors[pi < 8 ? pi + 1 : 8];
-
-                    /* Count armies/units/strength for this player */
-                    for (ai = 0; ai < armyCount; ai++) {
-                        unsigned char *army = gs + 0x1604 + ai * 0x42;
-                        if ((short)(unsigned char)army[0x15] == pi) {
-                            short u;
-                            pArmies++;
-                            pStr += *(short *)(army + 0x2a);
-                            for (u = 0; u < 4; u++)
-                                if ((unsigned char)army[0x16 + u] != 0xFF) pUnits++;
-                        }
+            if (tab != 3) {
+                short bx = 245, by = 125;
+                /* scale: dark, light (+2,+2), cream (+1,+1) */
+                static const short tick[5][2] = {{7,16},{67,18},{127,16},{187,18},{247,16}};
+                for (k = 0; k < 3; k++) {
+                    short d = (k == 0) ? 0 : (k == 1) ? 2 : 1;
+                    RGBForeColor(k == 0 ? &dark : k == 1 ? &light : &cream);
+                    MoveTo(bx + 7 + d + (k == 2 ? 1 : 0), by + 22 + d);
+                    LineTo(bx + 7 + d + (k == 2 ? 1 : 0) + 240, by + 22 + d);
+                    for (i = 0; i < 5; i++) {
+                        MoveTo(bx + tick[i][0] + d, by + tick[i][1] + d);
+                        LineTo(bx + tick[i][0] + d, by + 22 + d);
                     }
-
-                    /* Count cities/income for this player */
-                    for (ci = 0; ci < cityCount; ci++) {
-                        unsigned char *city = sCityData +ci * 0x20;
-                        if (*(short *)(city + 0x04) == pi) {
-                            pCities++;
-                            pIncome += *(short *)(city + 0x08);
-                            /* "Producing" counts only cities actively building a
-                             * unit (ext production type >= 0; -1 = idle). Without
-                             * this it equalled the Cities column. */
-                            if (*gExtState != 0) {
-                                unsigned char *ext = (unsigned char *)*gExtState;
-                                if (*(short *)(ext + 0x24c + ci * 0x5c + 0x02) >= 0)
-                                    pProducing++;
-                            } else {
-                                pProducing++;
-                            }
-                        }
-                    }
-
-                    pGold = *(short *)(gs + 0x186 + pi * 0x14);
-
-                    /* Alternating row background */
-                    if (rowNum % 2 == 0) {
-                        Rect rowBg;
-                        RGBColor altBg = {0xDDDD, 0xDDDD, 0xCCCC};
-                        SetRect(&rowBg, 10, yPos - 12, 390, yPos + 8);
-                        RGBForeColor(&altBg);
-                        PaintRect(&rowBg);
-                    }
-
-                    /* Draw player shield icon (or color bar fallback) */
-                    {
-                        Rect colorBar;
-                        SetRect(&colorBar, 18, yPos - 12, 38, yPos + 6);
-                        if (sShieldsLoaded && (sShieldIcons[pi] != NULL || sShieldSmallGW != NULL)) {
-                            DrawShieldIcon(pi, &colorBar);
-                        } else {
-                            RGBColor black = {0, 0, 0};
-                            RGBForeColor(&pColor);
-                            PaintRect(&colorBar);
-                            RGBForeColor(&black);
-                            FrameRect(&colorBar);
-                        }
-                    }
-
-                    /* Player name from faction names */
-                    {
-                        RGBColor black = {0, 0, 0};
+                }
+                {
+                    FontInfo fi; short w;
+                    TextFont(IlluriaFont()); TextSize(17); TextFace(0);
+                    GetFontInfo(&fi);
+                    RGBForeColor(&cream);
+                    s[0] = 1; s[1] = '0';
+                    w = StringWidth(s); MoveTo(bx + 5 - w / 2, by + fi.ascent); DrawString(s);
+                    NumToString((long)(max / 2), s);
+                    w = StringWidth(s); MoveTo(bx + 127 - w / 2, by + fi.ascent); DrawString(s);
+                    NumToString((long)max, s);
+                    w = StringWidth(s); MoveTo(bx + 251 - w, by + fi.ascent); DrawString(s);
+                }
+                for (p = 0; p < 8; p++) {
+                    short top = by + 30 + 14 * p, len, x;
+                    if (!alive[p]) continue;
+                    len = (max < 1) ? 1 : (short)((long)(vals[p] < 0 ? 0 : vals[p]) * 240 / max);
+                    if (len < 1) len = 1;
+                    if (sShieldSmallGW != NULL) {
+                        PixMapHandle pm = GetGWorldPixMap(sShieldSmallGW);
+                        Rect sr, dr;
+                        short sx = 320 + 8 * (p % 4), sy = 40 + 8 * (p / 4);
+                        LockPixels(pm);
                         RGBForeColor(&black);
-                        MoveTo(42, yPos);
-                        {
-                            unsigned char *fname = gs + pi * FACTION_NAME_LEN;
-                            Str255 pname;
-                            short len = 0;
-                            while (len < FACTION_NAME_LEN - 1 && fname[len] != 0) len++;
-                            pname[0] = (unsigned char)len;
-                            BlockMoveData(fname, pname + 1, len);
-                            DrawString(pname);
+                        { RGBColor w2 = {0xFFFF, 0xFFFF, 0xFFFF}; RGBBackColor(&w2); }
+                        for (x = 0; x < len; x += 8) {
+                            short w = (len - x < 8) ? len - x : 8;
+                            SetRect(&sr, sx, sy, sx + w, sy + 8);
+                            SetRect(&dr, bx + 9 + x, top, bx + 9 + x + w, top + 8);
+                            CopyBits((BitMap *)*pm, &win->portBits, &sr, &dr, srcCopy, NULL);
                         }
+                        UnlockPixels(pm);
                     }
-
-                    /* Draw values + bar chart (68k CODE_053 FUN_00000e08) */
-                    {
-                        RGBColor black = {0, 0, 0};
-                        short barValue = 0, barMax = 1;
-                        RGBForeColor(&black);
-
-                        if (tab == 0) {
-                            MoveTo(130, yPos); NumToString((long)pArmies, numStr); DrawString(numStr);
-                            MoveTo(210, yPos); NumToString((long)pUnits, numStr); DrawString(numStr);
-                            MoveTo(290, yPos); NumToString((long)pStr, numStr); DrawString(numStr);
-                            barValue = pArmies; barMax = armyCount > 0 ? armyCount : 1;
-                        } else if (tab == 1) {
-                            MoveTo(130, yPos); NumToString((long)pCities, numStr); DrawString(numStr);
-                            MoveTo(230, yPos); NumToString((long)pIncome, numStr); DrawString(numStr);
-                            barValue = pCities; barMax = cityCount > 0 ? cityCount : 1;
-                        } else if (tab == 2) {
-                            MoveTo(130, yPos); NumToString((long)pGold, numStr); DrawString(numStr);
-                            MoveTo(230, yPos); NumToString((long)pIncome, numStr); DrawString(numStr);
-                            barValue = pGold > 0 ? pGold : 0; barMax = 10000;
-                        } else if (tab == 3) {
-                            MoveTo(130, yPos); NumToString((long)pCities, numStr); DrawString(numStr);
-                            MoveTo(230, yPos); NumToString((long)pProducing, numStr); DrawString(numStr);
-                            barValue = pProducing; barMax = cityCount > 0 ? cityCount : 1;
-                        } else {
-                            /* 68k CODE_053 FUN_00000a14 case 4: winners score */
-                            short av = 0, sa;
-                            short normalizer;
-                            short rawScore, score;
-                            short cappedGold = pGold;
-                            for (sa = 0; sa < armyCount; sa++) {
-                                unsigned char *a2 = gs + 0x1604 + sa * 0x42;
-                                if ((short)(unsigned char)a2[0x15] == pi) {
-                                    av += (short)(unsigned char)a2[0x14] * *(short *)(a2 + 0x2a);
-                                }
-                            }
-                            if (cappedGold > 10000) cappedGold = 10000;
-                            normalizer = armyCount / 10;
-                            if (normalizer < 1) normalizer = 1;
-                            rawScore = (pIncome + cappedGold / 8 + av) / normalizer;
-                            if (rawScore > 500) rawScore = 500;
-                            if (rawScore < 1) rawScore = 1;
-                            score = rawScore / 5;
-                            MoveTo(130, yPos); NumToString((long)pCities, numStr); DrawString(numStr);
-                            MoveTo(210, yPos); NumToString((long)pArmies, numStr); DrawString(numStr);
-                            MoveTo(290, yPos); NumToString((long)score, numStr); DrawString(numStr);
-                            barValue = score; barMax = 100;
-                        }
-                        /* 68k CODE_053 FUN_00000e08: horizontal bar chart.
-                         * Draw a colored bar proportional to the primary metric. */
-                        { Rect barR;
-                          short barW = (short)((long)barValue * 60 / barMax);
-                          if (barW < 0) barW = 0;
-                          if (barW > 60) barW = 60;
-                          if (barW > 0) {
-                              SetRect(&barR, 340, yPos - 10, 340 + barW, yPos + 2);
-                              RGBForeColor(&pColor);
-                              PaintRect(&barR);
-                              RGBForeColor(&black);
-                              FrameRect(&barR);
-                          }
-                        }
-                    }
+                    RGBForeColor(&dark);
+                    MoveTo(bx + 8, top + 8); LineTo(bx + 8, top - 1); LineTo(bx + 8 + len + 1, top - 1);
+                    RGBForeColor(&light);
+                    MoveTo(bx + 8 + len + 1, top); LineTo(bx + 8 + len + 1, top + 8); LineTo(bx + 9, top + 8);
+                }
+            } else {
+                /* View 3702: framed list of this turn's new armies */
+                Rect lf;
+                SetRect(&lf, 253, 122, 253 + 233, 122 + 154);
+                DrawT3DFrame(&lf);
+                for (k = 0; k < sProdThisTurn && k < 5; k++) {
+                    Str255 nm;
+                    NumToString((long)(k + 1), s);
+                    SetRect(&r, lf.left + 3, lf.top + 2 + 30 * k + 6, lf.left + 18, lf.top + 2 + 30 * k + 25);
+                    DrawSunkenText(&r, s, IlluriaFont(), 17, -2);
+                    DrawArmySpriteAt(cur, sUnitTypesLoaded ? sUnitTypeTable[sProdTypes[k] * UNIT_TYPE_ENTRY] : sProdTypes[k],
+                                     lf.left + 19, lf.top + 2 + 30 * k, false);
+                    CityNameP(sProdCity[k], nm);
+                    SetRect(&r, lf.left + 59, lf.top + 2 + 30 * k + 6, lf.right - 4, lf.top + 2 + 30 * k + 25);
+                    DrawSunkenText(&r, nm, IlluriaFont(), 17, -2);
                 }
             }
-
-            /* OK button */
-            {
-                RGBColor black = {0, 0, 0};
-                RGBColor btnBg = {0xDDDD, 0xDDDD, 0xDDDD};
-                RGBForeColor(&btnBg);
-                PaintRoundRect(&okRect, 8, 8);
-                RGBForeColor(&black);
-                FrameRoundRect(&okRect, 8, 8);
-                MoveTo(186, 302);
-                DrawString(GetCachedString(STR_COMMON_BUTTONS, 1, "\pOK"));
-            }
-
-            UnlockPixels(GetGWorldPixMap(offGW));
-            SetGWorld(savePort, saveGD);
-
-            /* Blit */
-            SetPort(rptWin);
-            {
-                Rect dr = rptWin->portRect;
-                LockPixels(GetGWorldPixMap(offGW));
-                CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                         &((GrafPtr)rptWin)->portBits,
-                         &gwRect, &dr, srcCopy, NULL);
-                UnlockPixels(GetGWorldPixMap(offGW));
-            }
-            needsRedraw = false;
+            RGBForeColor(&black);
+            PenSize(3, 3); FrameRoundRect(&okRing, 16, 16); PenSize(1, 1);
+            GetIndString(s, 3300, 1);
+            DrawT3DButton(&okR, s[0] ? s : "\pOK");
+            redraw = false;
         }
-
-        if (WaitNextEvent(mDownMask | keyDownMask | updateMask, &rptEvt, 30, NULL)) {
-            if (rptEvt.what == mouseDown) {
-                Point mp = rptEvt.where;
-                SetPort(rptWin);
-                GlobalToLocal(&mp);
-
-                /* Check tab clicks */
-                if (mp.v >= 30 && mp.v <= 48) {
-                    short t;
-                    for (t = 0; t < 5; t++) {
-                        if (mp.h >= 10 + t * 76 && mp.h <= 82 + t * 76) {
-                            tab = t;
-                            sLastReportTab = tab;
-                            needsRedraw = true;
-                            break;
-                        }
-                    }
-                } else if (PtInRect(mp, &okRect)) {
-                    rptDone = true;
-                }
-            } else if (rptEvt.what == keyDown) {
-                char ch = rptEvt.message & charCodeMask;
-                if (ch == '\r' || ch == 3 || ch == 27)
-                    rptDone = true;
-            } else if (rptEvt.what == updateEvt &&
-                       (WindowPtr)rptEvt.message == rptWin) {
-                BeginUpdate(rptWin);
-                needsRedraw = true;
-                EndUpdate(rptWin);
-            }
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == keyDown) {
+            char c = e.message & charCodeMask;
+            if (c == '\r' || c == 3 || c == 27) done = true;
+            continue;
+        }
+        {
+            Point pt = e.where;
+            SetPort(win); GlobalToLocal(&pt);
+            if (PtInRect(pt, &okRing)) done = true;
+            for (k = 0; k < 5; k++) if (PtInRect(pt, &tabR[k]) && k != tab) { tab = k; redraw = true; }
         }
     }
-
-    DisposeGWorld(offGW);
-    DisposeWindow(rptWin);
+    CloseMacAppWindow(win);
 }
 
 
@@ -25555,6 +25404,7 @@ static void ProcessStartOfTurn(short player)
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
+    if (*(short *)(gs + 0xd0 + player * 2) == 0) sProdThisTurn = 0;
     ext = (*gExtState != 0) ? (unsigned char *)*gExtState : NULL;
     isHuman = (*(short *)(gs + 0xd0 + player * 2) == 0);
 
@@ -26134,6 +25984,11 @@ static void ProcessStartOfTurn(short player)
                      * instant teleport: X=-1,Y=-1,status='e' → placed at dest next turn;
                      * we simplify by spawning directly at the destination). */
 
+                    if (*(short *)(gs + 0xd0 + player * 2) == 0 &&
+                        (mergeIdx >= 0 || newIdx >= 0) && sProdThisTurn < 30) {
+                        sProdTypes[sProdThisTurn] = prodType;
+                        sProdCity[sProdThisTurn++] = i;
+                    }
                     /* Notify human player of completed production */
                     if (*(short *)(gs + 0xd0 + player * 2) == 0 &&
                         (mergeIdx >= 0 || newIdx >= 0)) {
