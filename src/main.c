@@ -29377,21 +29377,10 @@ static void HandleMenuChoice(long menuResult)
                             if (kind == SITE_SAGE) {
                                 /* Sage (68k View 4120): Items / Maps / Money.
                                  * Cancel leaves the ruin unexplored. */
-                                short sageChoice = ShowSageDialog();
+                                short sageChoice = ShowSageDialog();   /* applies money / maps itself */
                                 short g0, i0, t0, n0;
                                 if (sageChoice < 0) break;
-                                if (sageChoice == 3) {
-                                    rewardType = 3;
-                                } else {
-                                    /* 68k CODE_066 FUN_00000630: sage money is
-                                     * Random(500) (the "items" choice too) */
-                                    gold = (short)((unsigned short)Random() % 500);
-                                    { short *pg = (short *)(gs + 0x186 + curPlayer * 0x14);
-                                      long ng = (long)*pg + gold;
-                                      *pg = (short)(ng > 30000 ? 30000 : ng);
-                                    }
-                                    rewardType = 7;
-                                }
+                                rewardType = 8;   /* nothing more to show or do */
                                 SearchSiteReward(sSelectedArmy, ci, &g0, &i0, &t0, &n0);
                             } else {
                                 SearchSiteReward(sSelectedArmy, ci, &gold, &foundItemId,
@@ -29786,172 +29775,102 @@ static void HandleMenuChoice(long menuResult)
  * =================================================================== */
 static short ShowSageDialog(void)
 {
-    WindowPtr sageWin;
-    GWorldPtr offGW = NULL;
-    Rect winRect, screenRect;
-    Boolean done = false;
-    short result = -1;
-
-    screenRect = qd.screenBits.bounds;
-    /* 280x220 centered window */
-    SetRect(&winRect,
-        (screenRect.right - 280) / 2,
-        (screenRect.bottom - 220) / 2,
-        (screenRect.right - 280) / 2 + 280,
-        (screenRect.bottom - 220) / 2 + 220);
-
-    sageWin = NewCWindow(NULL, &winRect, "\p", true,
-                          plainDBox, (WindowPtr)-1L, false, 0);
-    if (sageWin == NULL) return -1;
-    SetPort(sageWin);
-
+    /* View 4120 "A Sage!" (508x352 like the city window): minimap (20,20)
+     * 224x312; title (245,20); greeting str1-5 (DAT 361-365) at y 83..163;
+     * result lines lin1-3 at y 209/229/249; Items / Money / Maps T3DButtons
+     * (260/342/424, 311) 64x21, then OK. Money: a gem worth 3d500+500 gp.
+     * Maps: point at the map; a 1d10+15 square around the point is revealed
+     * (CODE_066). Items (the hard ruins' finds) is not offered yet. */
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short cur = *(short *)(gs + 0x110), choice = -1, k;
+    WindowPtr win = NewMacAppWindow(508, 352);
+    Rect r, overR, btn[3], okR, okRing;
+    Str255 s, fmt;
+    EventRecord e;
+    if (win == NULL) return -1;
+    SetRect(&overR, 20, 20, 244, 332);
+    for (k = 0; k < 3; k++) SetRect(&btn[k], 260 + 82 * k, 311, 324 + 82 * k, 332);
+    SetRect(&okRing, 420, 307, 492, 336); okR = okRing; InsetRect(&okR, 4, 4);
+    DrawPictAt(1001, 7, 7);
+    DrawPictAt(1004, 0, 0); DrawPictAt(1005, 0, 7); DrawPictAt(1006, 0, 345); DrawPictAt(1008, 501, 0);
+    r = overR; InsetRect(&r, -1, -1); DrawT3DFrame(&r);
+    DrawOverviewTo((GrafPtr)win, overR, kOvOverlays);
+    SetPort(win);
+    GetIndString(s, 4120, 1);
+    SetRect(&r, 245, 20, 501, 59); DrawSunkenText(&r, s[0] ? s : "\pA Sage!", IlluriaFont(), 36, 1);
+    for (k = 0; k < 5; k++) {
+        GetDATRawString(361 + k, s);
+        SetRect(&r, 245, 83 + 20 * k, 501, 102 + 20 * k); DrawSunkenText(&r, s, IlluriaFont(), 17, 1);
+    }
+    for (k = 0; k < 3; k++) {
+        GetIndString(s, 4120, 2 + k);
+        if (k == 0) DrawT3DButtonDim(&btn[k], s); else DrawT3DButton(&btn[k], s);
+    }
+    FlushEvents(mDownMask | keyDownMask, 0);
+    while (choice < 0) {
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == keyDown) { if ((e.message & charCodeMask) == 27) break; continue; }
+        { Point pt = e.where; SetPort(win); GlobalToLocal(&pt);
+          if (PtInRect(pt, &btn[1])) choice = 2; else if (PtInRect(pt, &btn[2])) choice = 3; }
+    }
+    if (choice < 0) { CloseMacAppWindow(win); return -1; }
+    /* the buttons go; the answer and OK appear */
     {
-        Rect obounds;
-        SetRect(&obounds, 0, 0, 280, 220);
-        NewGWorld(&offGW, 0, &obounds, NULL, NULL, 0);
+        PicHandle marble = GetPicture(1001);
+        SetRect(&r, 245, 205, 501, 340);
+        ClipRect(&r);
+        if (marble) { Rect pf = (**marble).picFrame; OffsetRect(&pf, 7 - pf.left, 7 - pf.top); DrawPicture(marble, &pf); }
+        ClipRect(&win->portRect);
     }
-
-    FlushEvents(everyEvent, 0);
-
-    while (!done) {
-        EventRecord evt;
-        {
-            Rect r;
-            CGrafPtr sp; GDHandle sd;
-            SetRect(&r, 0, 0, 280, 220);
-
-            if (offGW != NULL) {
-                GetGWorld(&sp, &sd);
-                SetGWorld(offGW, NULL);
-                LockPixels(GetGWorldPixMap(offGW));
-            }
-
-            /* Marble background */
-            DrawMarbleBackground(&r);
-
-            /* Border */
-            {
-                RGBColor gold = {0xCCCC, 0x9999, 0x3333};
-                RGBForeColor(&gold);
-                PenSize(3, 3);
-                FrameRect(&r);
-                PenSize(1, 1);
-            }
-
-            /* Title */
-            {
-                RGBColor titleCol = {0xFFFF, 0xCCCC, 0x3333};
-                RGBForeColor(&titleCol);
-                TextFont(2); TextSize(18); TextFace(bold);
-                MoveTo(60, 35);
-                DrawString(GetCachedString(STR_SEARCH_TEMPLE, 16,
-                    "\pA wise sage speaks to your hero!"));
-            }
-
-            /* Subtitle */
-            {
-                RGBColor subCol = {0xCCCC, 0xCCCC, 0xCCCC};
-                RGBForeColor(&subCol);
-                TextFont(3); TextSize(10); TextFace(0);
-                MoveTo(60, 55);
-                DrawString("\pChoose your reward:");
-            }
-
-            /* 3 reward buttons + Done */
-            {
-                static const short bx[] = {30, 30, 30, 190};
-                static const short by[] = {75, 115, 155, 175};
-                static const short bw[] = {140, 140, 140, 60};
-                static const short bh[] = {28, 28, 28, 28};
-                RGBColor btnFg = {0xFFFF, 0xFFFF, 0xFFFF};
-                RGBColor btnBd = {0x4444, 0x4444, 0x4444};
-                RGBColor txtCol = {0, 0, 0};
-                short b;
-                const unsigned char *labels[4];
-                labels[0] = "\pItems";
-                labels[1] = "\pMaps";
-                labels[2] = "\pMoney";
-                labels[3] = "\pDone";
-
-                for (b = 0; b < 4; b++) {
-                    Rect btn;
-                    SetRect(&btn, bx[b], by[b], bx[b] + bw[b], by[b] + bh[b]);
-                    RGBForeColor(&btnFg);
-                    PaintRoundRect(&btn, 8, 8);
-                    RGBForeColor(&btnBd);
-                    PenSize(2, 2);
-                    FrameRoundRect(&btn, 8, 8);
-                    PenSize(1, 1);
-
-                    /* Button text */
-                    TextFont(3); TextSize(12); TextFace(bold);
-                    RGBForeColor(&txtCol);
-                    MoveTo(bx[b] + 12, by[b] + 19);
-                    DrawString(labels[b]);
-
-                    /* Description text */
-                    if (b < 3) {
-                        RGBColor descCol = {0x5555, 0x5555, 0x5555};
-                        RGBForeColor(&descCol);
-                        TextSize(9); TextFace(0);
-                        if (b == 0) {
-                            MoveTo(bx[b] + 12 + 50, by[b] + 19);
-                            DrawString("\p- Receive a magic item");
-                        } else if (b == 1) {
-                            MoveTo(bx[b] + 12 + 48, by[b] + 19);
-                            DrawString("\p- Reveal map area");
-                        } else {
-                            MoveTo(bx[b] + 12 + 56, by[b] + 19);
-                            DrawString("\p- Receive gold");
-                        }
-                    }
-                }
-            }
-
-            /* Blit */
-            if (offGW != NULL) {
-                UnlockPixels(GetGWorldPixMap(offGW));
-                SetGWorld(sp, sd);
-                SetPort(sageWin);
-                CopyBits((BitMap *)*GetGWorldPixMap(offGW),
-                         &((GrafPtr)sageWin)->portBits,
-                         &r, &sageWin->portRect,
-                         srcCopy, NULL);
-            }
+    if (choice == 2) {
+        short gold = 500 + 3 + (short)((unsigned short)Random() % 500) + (short)((unsigned short)Random() % 500) +
+                     (short)((unsigned short)Random() % 500);
+        long ng = (long)*(short *)(gs + 0x186 + cur * 0x14) + gold;
+        *(short *)(gs + 0x186 + cur * 0x14) = (short)(ng > 30000 ? 30000 : ng);
+        GetDATRawString(345, s);
+        SetRect(&r, 245, 209, 501, 228); DrawSunkenText(&r, s, IlluriaFont(), 17, 1);
+        GetDATRawString(346, fmt); FormatHeroLine(fmt, "\p", gold, s);
+        SetRect(&r, 245, 229, 501, 248); DrawSunkenText(&r, s, IlluriaFont(), 17, 1);
+    } else {
+        Boolean picked = false;
+        for (k = 0; k < 3; k++) {
+            GetDATRawString(347 + k, s);
+            SetRect(&r, 245, 209 + 20 * k, 501, 228 + 20 * k); DrawSunkenText(&r, s, IlluriaFont(), 17, 1);
         }
-
-        WaitNextEvent(everyEvent, &evt, 30, NULL);
-
-        if (evt.what == mouseDown) {
-            Point localPt = evt.where;
-            SetPort(sageWin);
-            GlobalToLocal(&localPt);
-            {
-                Rect btn0, btn1, btn2, btn3;
-                SetRect(&btn0, 30, 75, 170, 103);
-                SetRect(&btn1, 30, 115, 170, 143);
-                SetRect(&btn2, 30, 155, 170, 183);
-                SetRect(&btn3, 190, 175, 250, 203);
-                if (PtInRect(localPt, &btn0)) { result = 1; done = true; }  /* items */
-                else if (PtInRect(localPt, &btn1)) { result = 3; done = true; }  /* maps */
-                else if (PtInRect(localPt, &btn2)) { result = 0; done = true; }  /* money */
-                else if (PtInRect(localPt, &btn3)) { result = -1; done = true; }  /* done */
-            }
+        while (!picked) {
+            if (!WaitNextEvent(mDownMask, &e, 5, NULL)) continue;
+            { Point pt = e.where; SetPort(win); GlobalToLocal(&pt);
+              if (PtInRect(pt, &overR)) {
+                  short cx = (pt.h - overR.left) / 2, cy = (pt.v - overR.top) / 2;
+                  short w = 15 + 1 + (short)((unsigned short)Random() % 10);
+                  short h = 15 + 1 + (short)((unsigned short)Random() % 10);
+                  short x0 = cx - (8 + 1 + (short)((unsigned short)Random() % 5));
+                  short y0 = cy - (8 + 1 + (short)((unsigned short)Random() % 5));
+                  short x, y;
+                  for (y = y0; y < y0 + h; y++)
+                      for (x = x0; x < x0 + w; x++)
+                          if (x >= 0 && y >= 0 && x < sMapWidth && y < sMapHeight) {
+                              FogSetBit(sFogExplored[cur], x, y);
+                              FogSetBit(sFogVisible[cur], x, y);
+                          }
+                  picked = true;
+              } }
         }
-        else if (evt.what == keyDown) {
-            char key = evt.message & charCodeMask;
-            if (key == 0x1B) { result = -1; done = true; }  /* Escape */
-            else if (key == '1' || key == 'i' || key == 'I') { result = 1; done = true; }
-            else if (key == '2' || key == 'm' || key == 'M') { result = 3; done = true; }
-            else if (key == '3' || key == '$') { result = 0; done = true; }
-            else if (key == 0x0D || key == 0x03) { result = -1; done = true; }  /* Enter/Return */
-        }
+        BuildOverviewBase();
+        DrawOverviewTo((GrafPtr)win, overR, kOvOverlays);
+        SetPort(win);
     }
-
-    if (offGW != NULL)
-        DisposeGWorld(offGW);
-    DisposeWindow(sageWin);
-    return result;
+    { RGBColor black = {0, 0, 0}; RGBForeColor(&black); PenSize(3, 3); FrameRoundRect(&okRing, 16, 16); PenSize(1, 1); }
+    GetIndString(s, 1000, 2);
+    DrawT3DButton(&okR, s[0] ? s : "\pOK");
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) {
+        if (!WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) continue;
+        if (e.what == keyDown) break;
+        { Point pt = e.where; SetPort(win); GlobalToLocal(&pt); if (PtInRect(pt, &okRing)) break; }
+    }
+    CloseMacAppWindow(win);
+    return choice;
 }
 
 
