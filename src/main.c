@@ -1544,6 +1544,7 @@ static void DrawPictAt(short id, short x, short y);
 static void CloseMacAppWindow(WindowPtr win);
 static void DisposeOverMap(WindowPtr win);
 static Boolean AIMovesShown(void);
+static short UnitStatLE(short t, short k);
 static void DrawSunkenText2(const Rect *v, ConstStr255Param s);
 static void FormatTwoNums(ConstStr255Param fmt, short a, short b, Str255 out);
 static short GetMedals(const unsigned char *a, short k);
@@ -9756,7 +9757,14 @@ static void DrawMapInWindow(WindowPtr win)
                         if (*(short *)(e + 2) >= 0) pc++;
                         tmr = *(short *)(e + 0x58);
                     }
-                    len += sprintf(o + len, " %d:%d/%d/%d p%d t%d", pl, u, recs, ord, pc, tmr);
+                    {   short bestS = 0, ci2;
+                        for (ci2 = 0; ex && ci2 < sCityCount && ci2 < 99; ci2++) {
+                            unsigned char *c = sCityData + ci2 * 0x20, *e = ex + 0x24c + ci2 * 0x5c; short kk2;
+                            if (c[0x17] >= 2 || *(short *)(c + 4) != pl) continue;
+                            for (kk2 = 0; kk2 < 4; kk2++) { short t = *(short *)(e + 6 + kk2 * 2); if (t >= 0 && UnitStatLE(t, 0) > bestS) bestS = UnitStatLE(t, 0); }
+                        }
+                        len += sprintf(o + len, " %d:%du%dg s%d", pl, u, *(short *)(scnData + 0x186 + pl * 0x14), bestS);
+                    }
                 }
             }
         }
