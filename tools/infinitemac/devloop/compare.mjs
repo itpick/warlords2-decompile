@@ -27,7 +27,10 @@ const MOVIES = path.join(REPO, '.devloop', 'movies');
 const call = async (port, ep, q = {}) => {
   const u = new URL(`http://127.0.0.1:${port}/${ep}`);
   for (const [k, v] of Object.entries(q)) u.searchParams.set(k, String(v));
-  const r = await fetch(u); return (await r.text()).trim();
+  for (let tries = 0; ; tries++) {     // the bridge can drop a request under load
+    try { const r = await fetch(u); return (await r.text()).trim(); }
+    catch (e) { if (tries >= 3) throw e; await new Promise(r => setTimeout(r, 500)); }
+  }
 };
 
 const recs = {};
@@ -49,8 +52,10 @@ async function run(side) {
         let k = 0;
         while (rec.on) {
           const t = Date.now();
-          const f = await call(port, 'shot', { name: `__rec_${name}_${side}_${String(k++).padStart(5, '0')}` });
-          rec.frames.push([f, t]);
+          try {
+            const f = await call(port, 'shot', { name: `__rec_${name}_${side}_${String(k++).padStart(5, '0')}` });
+            rec.frames.push([f, t]);
+          } catch (e) { await new Promise(r => setTimeout(r, 200)); }
         }
       })();
     }

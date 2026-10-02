@@ -14,6 +14,7 @@
 #ifndef MODERN_BUILD
 
 #include <StandardFile.h>
+#include <stdio.h>
 
 /* QuickTime Movie Toolbox constant (not in Retro68 multiversal headers) */
 #ifndef newMovieActive
@@ -1048,6 +1049,11 @@ static WindowPtr sTooltipWin = NULL;
 static Boolean   sShowCityLabels = false;  /* remake debug overlay; off = original */
 static GWorldPtr sHaloGW = NULL;          /* PICT 1002 selection halo frames */
 static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
+/* DEV ONLY - REVERT BEFORE TIMING COMPARISONS: 1 skips the per-AI-turn holds
+ * (the original's ~1.75 s per computer player) to speed up test iterations. */
+#define DEV_FAST_TURNS 1
+#define DEV_SHIP_PROBE 0   /* DEV: temporary ship-on-land probe */
+static short     sAIProgress = 0;         /* its flag strip as a progress bar, 0-100 */
 static Boolean   sDragPreview = false;     /* mouse held on the map with an army selected */
 static short     sPathTargetX = -1, sPathTargetY = -1;  /* current path search target */
 static RGBColor  sHaloKey;
@@ -1437,6 +1443,7 @@ static CIconHandle CachedCIcon(short id);
 static void DrawT3DIconButton(const Rect *r, CIconHandle ic, Boolean enabled);
 static void DrainUpdates(void);
 static void DrawT3DFrame(const Rect *v);
+static void DrawProdView(short L, short T, short owner, short unitType);
 static void GetDATRawString(short rawIdx, Str255 out);
 static void FormatHeroLine(ConstStr255Param fmt, ConstStr255Param city, short num, Str255 out);
 #define kOvFrame    1   /* viewport frame (overview window) */
@@ -8386,6 +8393,10 @@ static void DrawMapInWindow(WindowPtr win)
     short          tilesWide, tilesHigh;
     Boolean        hasScn;
     short          i;
+    GWorldPtr      bufGW = NULL;
+    WindowPtr      realWin = win;
+    CGrafPtr       bufSavePort = NULL;
+    GDHandle       bufSaveDev = NULL;
 
     if (!sMapLoaded || *gMapTiles == 0)
         return;
@@ -8403,6 +8414,40 @@ static void DrawMapInWindow(WindowPtr win)
      * sub-tile scroll exposes on the right/bottom) */
     tilesWide = (winRect.right - winRect.left) / TERRAIN_TILE_W + 2;
     tilesHigh = (winRect.bottom - winRect.top) / TERRAIN_TILE_H + 2;
+
+    /* Double buffer the map area (terrain, roads, cities, armies, path):
+     * drawn straight to the window the layers showed one after another,
+     * which blinked while a path was dragged. */
+    {
+        static GWorldPtr sMapBufGW = NULL;
+        static short sBufW = 0, sBufH = 0;
+        short bw = win->portRect.right - win->portRect.left;
+        short bh = win->portRect.bottom - win->portRect.top;
+        if (sMapBufGW != NULL && (bw != sBufW || bh != sBufH)) {
+            DisposeGWorld(sMapBufGW); sMapBufGW = NULL;
+        }
+        if (sMapBufGW == NULL) {
+            Rect b;
+            Handle ct = (Handle)sGameCTab;
+            SetRect(&b, 0, 0, bw, bh);
+            if (ct == NULL || HandToHand(&ct) != noErr) ct = NULL;
+            if (NewGWorld(&sMapBufGW, 8, &b, (CTabHandle)ct, NULL, 0) != noErr) sMapBufGW = NULL;
+            sBufW = bw; sBufH = bh;
+        }
+        if (sMapBufGW != NULL && LockPixels(GetGWorldPixMap(sMapBufGW))) {
+            GetGWorld(&bufSavePort, &bufSaveDev);
+            realWin = win;
+            SetGWorld(sMapBufGW, NULL);
+            win = (WindowPtr)sMapBufGW;
+            bufGW = sMapBufGW;
+            {   /* a GWorld keeps its last colours: the map's CopyBits colourise
+                 * with fore/back, so start from black on white every time */
+                RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+                RGBForeColor(&black); RGBBackColor(&white);
+                PenNormal(); TextMode(srcOr);
+            }
+        }
+    }
 
     /* Sub-tile scroll: draw everything in unscrolled coordinates with the
      * port origin moved by the pixel remainder, clipped to the map area. */
@@ -8882,6 +8927,22 @@ static void DrawMapInWindow(WindowPtr win)
                  * Uses IsHeroFemale() which scans hero instance records. */
                 if (spriteIdx == 0x1C && IsHeroFemale(i))
                     spriteIdx = 0x1D;
+#if DEV_SHIP_PROBE   /* DEV: label armies drawn as a ship that hold no naval unit */
+                if (spriteIdx == 5) {
+                    char b[64]; Str255 ps; short n;
+                    RGBColor yel = {0xFFFF, 0xFFFF, 0}, blk = {0, 0, 0};
+                    { unsigned char *md0 = (unsigned char *)*gMapTiles; short ti = md0[ay * 0xE0 + ax * 2];
+                      sprintf(b, "#%d o%d t%d,%d,%d,%d tt%d n%d", i, owner, army[0x16], army[0x17], army[0x18], army[0x19],
+                              scnData[ti + TERRAIN_TYPE_OFS], ArmyIsNaval(i)); }
+                    for (n = 0; b[n] && n < 60; n++) ps[n + 1] = b[n];
+                    ps[0] = (unsigned char)n;
+                    TextFont(4); TextSize(9); TextMode(srcCopy);
+                    RGBForeColor(&yel); RGBBackColor(&blk);
+                    MoveTo(screenX, screenY + 48); DrawString(ps);
+                    TextMode(srcOr); RGBForeColor(&blk);
+                    { RGBColor w = {0xFFFF,0xFFFF,0xFFFF}; RGBBackColor(&w); }
+                }
+#endif
 
                 /* Each 512x64 sheet has unit types in a 16x2 grid (32px cells).
                  * Sheet per faction: sArmyGW[owner]. */
@@ -9239,6 +9300,19 @@ static void DrawMapInWindow(WindowPtr win)
                     UnlockPixels(pm);
                 }
                 DrawArmySpriteAt(selOwner, selSprite, screenX + 8, screenY + 7, false);
+#if DEV_SHIP_PROBE
+                if (selSprite == 5) {
+                    char b[64]; Str255 ps; short n;
+                    RGBColor yel = {0xFFFF, 0xFFFF, 0}, blk = {0, 0, 0}, w = {0xFFFF,0xFFFF,0xFFFF};
+                    sprintf(b, "SEL#%d o%d t%d,%d,%d,%d", sSelectedArmy, selOwner, selArmy[0x16], selArmy[0x17], selArmy[0x18], selArmy[0x19]);
+                    for (n = 0; b[n] && n < 60; n++) ps[n + 1] = b[n];
+                    ps[0] = (unsigned char)n;
+                    TextFont(4); TextSize(9); TextMode(srcCopy);
+                    RGBForeColor(&yel); RGBBackColor(&blk);
+                    MoveTo(screenX, screenY + 58); DrawString(ps);
+                    TextMode(srcOr); RGBForeColor(&blk); RGBBackColor(&w);
+                }
+#endif
             }
 
             /* Destination of a pending order: the original draws a ghost of
@@ -9436,6 +9510,47 @@ static void DrawMapInWindow(WindowPtr win)
     SetOrigin(0, 0);
     ClipRect(&win->portRect);
 
+#if DEV_SHIP_PROBE
+    {   /* DEV: which army is selected */
+        char b[48]; Str255 ps; short n;
+        RGBColor yel = {0xFFFF, 0xFFFF, 0}, blk = {0, 0, 0}, w = {0xFFFF, 0xFFFF, 0xFFFF};
+        sprintf(b, "sel=%d n=%d", sSelectedArmy, hasScn ? *(short *)(scnData + 0x1602) : -1);
+        if (hasScn) {   /* every army whose sprite is the ship */
+            short q, nn = *(short *)(scnData + 0x1602), yy = 24;
+            for (q = 0; q < nn && q < 100; q++) {
+                unsigned char *qa = scnData + 0x1604 + q * 0x42;
+                if (qa[0x14] == 5) {
+                    char b2[64]; Str255 p2; short m;
+                    sprintf(b2, "#%d o%d (%d,%d) t%d,%d,%d,%d nav%d", q, qa[0x15], *(short *)qa, *(short *)(qa + 2),
+                            qa[0x16], qa[0x17], qa[0x18], qa[0x19], ArmyIsNaval(q));
+                    for (m = 0; b2[m] && m < 60; m++) p2[m + 1] = b2[m];
+                    p2[0] = (unsigned char)m;
+                    TextFont(4); TextSize(9); TextMode(srcCopy);
+                    { RGBColor y2 = {0xFFFF, 0xFFFF, 0}, k2 = {0, 0, 0}; RGBForeColor(&y2); RGBBackColor(&k2); }
+                    MoveTo(4, yy); DrawString(p2); yy += 11;
+                }
+            }
+        }
+        for (n = 0; b[n] && n < 40; n++) ps[n + 1] = b[n];
+        ps[0] = (unsigned char)n;
+        TextFont(4); TextSize(9); TextMode(srcCopy);
+        RGBForeColor(&yel); RGBBackColor(&blk);
+        MoveTo(4, 12); DrawString(ps);
+        TextMode(srcOr); RGBForeColor(&blk); RGBBackColor(&w);
+    }
+#endif
+    if (bufGW != NULL) {                    /* copy the finished map to the window */
+        RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+        Rect mr = winRect;
+        SetGWorld(bufSavePort, bufSaveDev);
+        win = realWin;
+        SetOrigin(0, 0);
+        ClipRect(&win->portRect);
+        RGBForeColor(&black); RGBBackColor(&white);
+        CopyBits((BitMap *)*GetGWorldPixMap(bufGW), &((GrafPtr)win)->portBits, &mr, &mr, srcCopy, NULL);
+        UnlockPixels(GetGWorldPixMap(bufGW));
+    }
+
     /* --- Native Mac scrollbar controls --- */
     {
         /* Only update values, not position/size (those are set on create/resize) */
@@ -9472,8 +9587,9 @@ static void DrawMapInWindow(WindowPtr win)
         OffsetRect(&mapClip, sViewPixX, sViewPixY);
         ClipRect(&mapClip);
     }
-    /* --- Draw movement path for selected army (if has waypoint) --- */
-    if (sSelectedArmy >= 0 && hasScn && scnData != NULL) {
+    /* --- (remake-only yellow dotted path and red X: the original draws rings
+     *      and a ghost instead, see the path preview) --- */
+    if (0 && sSelectedArmy >= 0 && hasScn && scnData != NULL) {
         unsigned char *selA = scnData + 0x1604 + sSelectedArmy * 0x42;
         if (*(short *)(selA + 0x32) != 0) {
             /* Army has movement orders — draw dotted path to target */
@@ -15136,6 +15252,62 @@ static void ShowRuinsNotice(ConstStr255Param cname)
     CloseMacAppWindow(win);
 }
 
+/* View 3810 (PPC FUN_100466d4): 302x314, marble with edge PICTs 1004/1005/
+ * 1006/1013; 'head' (7,11) 288x39 TxSt 1005 "Pillage!"/"Sack!"; str1-str4
+ * (7, 62/82/112/132) 288 wide TxSt 1015: "The city of %s is pillaged/sacked",
+ * "for %d gold!", "Ability to produce %d unit(s) has been lost", "and only
+ * %d unit(s) remain(s)"; a framed list (15,167) 271x130 headed "Destroyed"
+ * (7,10) / "Gold" (183,10), rows arm (24,30+30k) TProdView, typ (64,36+30k)
+ * 115 wide, gol (183,36+30k) 80 wide "%d gp".  Dismissed by a click. */
+static void ShowPillageReport(Boolean sack, short ci, short owner, short gold,
+                              const short *lost, short nLost, short nLeft)
+{
+    WindowPtr win = NewMacAppWindow(302, 314);
+    Str255 s, fmt, cname, num;
+    Rect v, list;
+    EventRecord e;
+    short k;
+    if (win == NULL) return;
+    CityNameP(ci, cname);
+    DrawPictAt(1001, 7, 7);
+    DrawPictAt(1004, 0, 0);
+    DrawPictAt(1005, 0, 7);
+    DrawPictAt(1006, 0, 307);
+    DrawPictAt(1013, 295, 0);
+    GetDATRawString(sack ? 378 : 377, s);
+    SetRect(&v, 7, 11, 295, 50);    DrawSunkenText(&v, s, IlluriaFont(), 36, 1);
+    GetDATRawString(sack ? 382 : 381, fmt); FormatHeroLine(fmt, cname, 0, s);
+    SetRect(&v, 7, 62, 295, 81);    DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    GetDATRawString(383, fmt); FormatHeroLine(fmt, cname, gold, s);
+    SetRect(&v, 7, 82, 295, 101);   DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    GetDATRawString(nLost == 1 ? 384 : 385, fmt); FormatHeroLine(fmt, cname, nLost, s);
+    SetRect(&v, 7, 112, 295, 131);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    GetDATRawString(nLeft == 1 ? 386 : 387, fmt); FormatHeroLine(fmt, cname, nLeft, s);
+    SetRect(&v, 7, 132, 295, 151);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
+    SetRect(&list, 15, 167, 15 + 271, 167 + 130);
+    DrawT3DFrame(&list);
+    GetDATRawString(379, s);
+    SetRect(&v, list.left + 7, list.top + 10, list.left + 107, list.top + 29);
+    DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
+    GetDATRawString(380, s);
+    SetRect(&v, list.left + 183, list.top + 10, list.left + 263, list.top + 29);
+    DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
+    for (k = 0; k < nLost && k < 3; k++) {
+        DrawProdView(list.left + 24, list.top + 30 + 30 * k, owner, lost[k]);
+        GetUnitTypeName(lost[k], s);
+        SetRect(&v, list.left + 64, list.top + 36 + 30 * k, list.left + 179, list.top + 55 + 30 * k);
+        DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
+        NumToString((long)(GetUnitTypeStat(lost[k], 4) / 2), num);
+        BlockMoveData(num, s, num[0] + 1);
+        s[++s[0]] = ' '; s[++s[0]] = 'g'; s[++s[0]] = 'p';
+        SetRect(&v, list.left + 183, list.top + 36 + 30 * k, list.left + 263, list.top + 55 + 30 * k);
+        DrawSunkenText(&v, s, IlluriaFont(), 17, -2);
+    }
+    FlushEvents(mDownMask | keyDownMask, 0);
+    for (;;) if (WaitNextEvent(mDownMask | keyDownMask, &e, 5, NULL)) break;
+    CloseMacAppWindow(win);
+}
+
 static void AddPlayerGold(short p, short g)
 {
     unsigned char *gs = (unsigned char *)*gGameState;
@@ -15158,16 +15330,22 @@ static void ApplyVictoryChoice(short choice, short ci, short owner)
     case 0:                                     /* Occupy: the city window */
         ShowCityBuildSelection(ci);
         break;
-    case 1:                                     /* Pillage: the last slot */
-        AddPlayerGold(owner, PillageValue(ci));
+    case 1: {                                   /* Pillage: the last slot */
+        short g = PillageValue(ci);
+        AddPlayerGold(owner, g);
         if (ext && n > 0) *(short *)(ext + 0x06 + (n - 1) * 2) = -1;
+        if (n > 0) ShowPillageReport(false, ci, owner, g, &slot[n - 1], 1, n - 1);
         *infamy += 1 + (short)((unsigned short)Random() % 5);
         break;
-    case 2:                                     /* Sack: all but the first */
-        AddPlayerGold(owner, SackValue(ci));
+    }
+    case 2: {                                   /* Sack: all but the first */
+        short g = SackValue(ci);
+        AddPlayerGold(owner, g);
         if (ext) for (i = 1; i < n; i++) *(short *)(ext + 0x06 + i * 2) = -1;
+        if (n > 1) ShowPillageReport(true, ci, owner, g, &slot[1], n - 1, 1);
         *infamy += 6 + (short)((unsigned short)Random() % 10);
         break;
+    }
     case 3: {                                   /* Raze: a neutral ruin */
         Str255 cname;
         CityNameP(ci, cname);
@@ -15732,13 +15910,11 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         if (r == 1 || r == -1) {
             RemoveArmy(d);
             if (mv > d) mv--;
-            if (sSelectedArmy > d) sSelectedArmy--; else if (sSelectedArmy == d) sSelectedArmy = -1;
             if (a > d) a--;
         }
         if (r == 0 || r == -1) {
             RemoveArmy(a);
             if (mv == a) mv = -1; else if (mv > a) mv--;
-            if (sSelectedArmy == a) sSelectedArmy = -1; else if (sSelectedArmy > a) sSelectedArmy--;
         }
         if (r != 0 && r != 1 && r != -1) break;
     }
@@ -23094,6 +23270,49 @@ static void ShowCityProductionDialog(short cityIndex)
  *
  * Also processes income and production for the AI player.
  * =================================================================== */
+/* AI turn display (PPC FUN_100651cc / FUN_10055c64 / FUN_100171d4): with the
+ * map not hidden every computer stack's move is shown - the stack is
+ * selected (halo), RevealTile keeps it in view and the map is redrawn on
+ * every step, 1 tick per tile; no path dots, no sounds. */
+static void AISetProgress(short pct)
+{
+    sAIProgress = pct;
+    if (gInfoWindow != NULL && *gInfoWindow != 0) {
+        GrafPtr sp;
+        GetPort(&sp);
+        SetPort((WindowPtr)*gInfoWindow);
+        InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
+        SetPort(sp);
+    }
+}
+
+static Boolean AIMovesShown(void)
+{
+    return sGameSpeed < 3 && !sOptHiddenMap;
+}
+
+static void AIShowStack(short armyIdx)
+{
+    unsigned char *a;
+    unsigned long t;
+    EventRecord ev;
+    if (!AIMovesShown() || *gGameState == 0) return;
+    a = (unsigned char *)*gGameState + 0x1604 + armyIdx * 0x42;
+    t = TickCount();
+    sSelectedArmy = armyIdx; sStackCount = 0;
+    sHaloFrame = 0;
+    RevealTile(*(short *)(a + 0x00), *(short *)(a + 0x02));
+    if (gMainGameWindow != NULL && *gMainGameWindow != 0) {
+        GrafPtr sp;
+        GetPort(&sp);
+        SetPort((WindowPtr)*gMainGameWindow);
+        InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+        SetPort(sp);
+    }
+    DrainUpdates();
+    while (TickCount() - t < 1) WaitNextEvent(0, &ev, 0, NULL);
+}
+
 static void ExecuteAITurn(short aiPlayer)
 {
     unsigned char *gs;
@@ -23557,6 +23776,8 @@ static void ExecuteAITurn(short aiPlayer)
                 short unitClass = GetEffectiveUnitClass(ai);
                 short pathLen = ComputeWavefrontPath(curX, curY, tgtX, tgtY, unitClass);
                 if (pathLen > 0) {
+                    AISetProgress((short)(5 + 90L * ai / (armyCount > 0 ? armyCount : 1)));
+                    AIShowStack(ai);
                     for (steps = 0; steps < pathLen && sPathDirBuffer[steps] != 0xFF; steps++) {
                         short dir, movePts, nx, ny, cost;
                         armyCount = *(short *)(gs + 0x1602);
@@ -23578,6 +23799,7 @@ static void ExecuteAITurn(short aiPlayer)
                         army[0x2e] = (unsigned char)(movePts - cost);
                         army[0x2d] = 0;
                         if (sOptHiddenMap) FogRevealUnit(aiPlayer, nx, ny, ArmyIsNaval(ai));
+                        AIShowStack(ai);
                         CheckGroundItemPickup(ai);
                         if (CheckAndResolveCombat(ai)) {
                             armyCount = *(short *)(gs + 0x1602);
@@ -25807,15 +26029,21 @@ static void AdvanceToNextPlayer(void)
                 InvalidateAllGameWindows();
                 DrainUpdates();
                 {
-                    unsigned long aiStart = TickCount();
+                    unsigned long aiEnd, aiStart = TickCount();
                     EventRecord ev;
+                    AISetProgress(5);
+                    DrainUpdates();
                     ExecuteAITurn(nextPlayer);
-                    /* The original's AI turns each take ~1.75 s on screen
-                     * (turn 1 -> 2: seven AIs, banner after 14 s) */
-                    while (TickCount() - aiStart < 105)
-                        WaitNextEvent(0, &ev, 2, NULL);
+                    AISetProgress(100);
+                    DrainUpdates();
+                    /* PPC FUN_1000d808: the next player follows 60 ticks after */
+                    aiEnd = TickCount();
+                    while (!DEV_FAST_TURNS &&
+                           (TickCount() - aiEnd < 60 || TickCount() - aiStart < 105))
+                        WaitNextEvent(0, &ev, 2, NULL);   /* ~1.75 s idle AI turn, measured */
                 }
                 sAITurnPlayer = -1;
+                sSelectedArmy = -1; sStackCount = 0;   /* FUN_1000d808: halo off */
                 /* Redraw map after AI turn */
                 if (*gMainGameWindow != 0) {
                     SetPort((WindowPtr)*gMainGameWindow);
@@ -31298,8 +31526,11 @@ static void HandleUpdate(EventRecord *event)
                 GetBackColor(&savedBg);
                 RGBForeColor(&black);
                 RGBBackColor(&sFlagBgColor);
-                SetRect(&sr, 133, 0, 133 + 182, 18);
-                SetRect(&dr, r.left + 21, r.top + 90, r.left + 21 + 182, r.top + 108);
+                {   /* the strip is a 'prog' control (PPC FUN_10080cf0), max 100 */
+                    short w = (short)(182L * sAIProgress / 100);
+                    SetRect(&sr, 133, 0, 133 + w, 18);
+                    SetRect(&dr, r.left + 21, r.top + 90, r.left + 21 + w, r.top + 108);
+                }
                 CopyBits((BitMap *)*pm, &win->portBits, &sr, &dr, 36, NULL);
                 RGBBackColor(&savedBg);
                 UnlockPixels(pm);

@@ -178,17 +178,6 @@
 "wait": 5000
 },
 {
-"click": [
-617,
-470
-],
-"orig": null
-},
-{
-"wait": 3000,
-"orig": null
-},
-{
 "shot": "hover_path.turn2"
 },
 {
@@ -361,17 +350,6 @@
 },
 {
 "wait": 5000
-},
-{
-"click": [
-617,
-470
-],
-"orig": null
-},
-{
-"wait": 3000,
-"orig": null
 },
 {
 "shot": "fight_turn3.t3"
@@ -771,6 +749,30 @@
 },
 {
 "shot": "battle.victory"
+},
+{
+"click": [
+471,
+390
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "battle.pillage"
+},
+{
+"click": [
+512,
+384
+]
+},
+{
+"wait": 2500
+},
+{
+"shot": "battle.after"
 },
 {
 "audio": "stop"

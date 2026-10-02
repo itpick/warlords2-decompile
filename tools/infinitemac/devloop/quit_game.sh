@@ -14,5 +14,12 @@ $W key Meta+q >/dev/null; sleep 5
 [ "$($W front)" = "game" ] || exit 0
 $W key Meta+d >/dev/null; sleep 5        # the original's "Save changes?" alert: Don't Save
 [ "$($W front)" = "game" ] || exit 0
+# A modal game window (the original's city window, a dialog) blocks Cmd-Q:
+# close it with Escape / Return, then try again.
+for k in Escape Enter Escape; do $W key $k >/dev/null; sleep 2; done
+$W key Meta+q >/dev/null; sleep 5
+[ "$($W front)" = "game" ] || exit 0
+$W key Meta+d >/dev/null; sleep 5
+[ "$($W front)" = "game" ] || exit 0
 echo "could not quit the game (modal dialog?); use: WL_PORT=$WL_PORT $W reload"
 exit 1

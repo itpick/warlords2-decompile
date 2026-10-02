@@ -1,5 +1,1 @@
-{"steps":[{"click":[512,330]},{"wait":5000},
-          {"click":[617,470],"orig":null},{"wait":3000,"orig":null},
-          {"shot":"turn2"},
-          {"click":[478,500]},{"wait":2000},{"shot":"sel"},
-          {"move":[598,580]},{"wait":2500},{"shot":"hover"}]}
+{"steps": [{"click": [512, 330]}, {"wait": 5000}, {"shot": "turn2"}, {"click": [478, 500]}, {"wait": 2000}, {"shot": "sel"}, {"move": [598, 580]}, {"wait": 2500}, {"shot": "hover"}]}
