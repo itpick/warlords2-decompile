@@ -8263,6 +8263,7 @@ static short RunMoreGameSetup(char names[][FACTION_NAME_LEN + 1], short factionC
  * Returns true if "Begin Game" was clicked, false on Escape.
  * =================================================================== */
 static short PathCityIndexAt(short x, short y);   /* defined with the path code below */
+static void HeroPlaceOnCity(short ci, short *ox, short *oy);
 
 static Boolean ShowGameSetup(void)
 {
@@ -23159,7 +23160,9 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             for (b = 0; b < 0x42; b++)
                 armyBase[b] = 0;
 
-            /* Place at spawn city */
+            /* FUN_10033280 places the hero with FUN_1004a350(city, 1),
+             * after the dialog, not on the city corner the offer showed. */
+            HeroPlaceOnCity(PathCityIndexAt(heroX, heroY), &heroX, &heroY);
             *(short *)(armyBase + 0x00) = heroX;
             *(short *)(armyBase + 0x02) = heroY;
 
@@ -24740,6 +24743,42 @@ static short SplitUnitsOff(short idx, short nLeave)
     return n;
 }
 
+/* FUN_1004a350(city, 1): the first of the city's four tiles with fewer
+ * than 8 units (dx 0,1,0,1 / dy 0,0,1,1, TOC-0x1980/0x1984). When all four
+ * are full, up to 20 tries of city + Dice(1,3,-2) on each axis; stop when
+ * the map word's army bit (>> 20, byte 1 bit 0x10) is clear. The last pair
+ * is kept if every try is occupied. */
+static void HeroPlaceOnCity(short ci, short *ox, short *oy)
+{
+    static const short dx[4] = {0, 1, 0, 1}, dy[4] = {0, 0, 1, 1};
+    unsigned char *gs, *c, *md;
+    short t, x, y, i, k, units, n, tries;
+    if (ci < 0 || ci >= sCityCount || *gGameState == 0) return;
+    gs = (unsigned char *)*gGameState;
+    c = sCityData + ci * 0x20;
+    n = *(short *)(gs + 0x1602);
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
+    for (t = 0; t < 4; t++) {
+        x = *(short *)(c + 0) + dx[t];
+        y = *(short *)(c + 2) + dy[t];
+        units = 0;
+        for (i = 0; i < n && units < 8; i++) {
+            unsigned char *a = ARMY_REC(i);
+            if (*(short *)(a + 0) != x || *(short *)(a + 2) != y) continue;
+            for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) units++;
+        }
+        if (units < 8) { *ox = x; *oy = y; return; }
+    }
+    md = (*gMapTiles != 0) ? (unsigned char *)*gMapTiles : NULL;
+    for (tries = 0; tries < 20; tries++) {
+        x = (short)(*(short *)(c + 0) + Dice(1, 3, -2));
+        y = (short)(*(short *)(c + 2) + Dice(1, 3, -2));
+        *ox = x; *oy = y;
+        if (md == NULL || x < 0 || y < 0 || x >= sMapWidth || y >= sMapHeight) continue;
+        if ((md[y * 0xE0 + x * 2 + 1] & 0x10) == 0) return;
+    }
+}
+
 /* AIGiveInitialHero — every computer player starts, like the human, with a
  * free hero at its capital (the original's turn-1 AI stacks are unit + hero:
  * that is what keeps a Knight AI home on turn 1). */
@@ -24752,6 +24791,7 @@ static void AIGiveInitialHero(short p)
     if (n >= MAX_ARMIES) return;
     GetCapitalXY(p, &cx, &cy);
     if (cx <= 0 && cy <= 0) return;
+    HeroPlaceOnCity(PathCityIndexAt(cx, cy), &cx, &cy);   /* FUN_1004a350(city, 1) */
     h = ARMY_REC(n);
     for (j = 0; j < 0x42; j++) h[j] = 0;
     *(short *)(h + 0) = cx; *(short *)(h + 2) = cy;
@@ -26834,7 +26874,7 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
         else { q = (kept == 0) ? 1 : 0; per = (kept == 0) ? 8 : kept; }
         for (i = 0; i < listed; i++) {
             if (out[i].rec == -1) continue;
-            if (q != 0) gAI->poolCount[ci]++;   /* strike quadrant 0 does not count */
+            if (q == 0) gAI->poolCount[ci]++;   /* FUN_10010b30: +0x1e6 counts quadrant 0 only */
             AISnapUnit(out[i].rec, out[i].slot, &snaps[picked]);
             snaps[picked].qx = (short)(cx + kAIQuadDX[q & 3]);
             snaps[picked].qy = (short)(cy + kAIQuadDY[q & 3]);
@@ -27521,6 +27561,7 @@ static void AIHeroOffer(short aiPlayer)
                 unsigned char *city = sCityData +pickCity * 0x20;
                 short cx = *(short *)(city + 0x00);
                 short cy = *(short *)(city + 0x02);
+                HeroPlaceOnCity(pickCity, &cx, &cy);   /* FUN_10033280: FUN_1004a350(city, 1) */
                 armyCount = *(short *)(gs + 0x1602);
                 if (armyCount < MAX_ARMIES) {
                     unsigned char *newHero = ARMY_REC(armyCount);
