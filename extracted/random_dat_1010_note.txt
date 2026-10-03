@@ -24,3 +24,13 @@ After that swap
     7 (-1, 1)
 
 FUN_100517f8 then adds the short at state index (playerCount + 0x30) onto the land factor. That add is not included in the 15 above.
+
+Fields the generator now reads, after the byte swap
+  +0x34  16   player-city stamps (class byte 6), FUN_100a2760
+  +0x36  16   neutral-city stamps (class byte 5), FUN_100a28dc
+  +0x3e   4   FUN_100ab368(1) walks
+  +0x40   4   FUN_100ab368(0) walks
+  +0xb8  -1, +0xba 1   the (dx, dy) pair the road turn uses when its index stays -1
+  +0x3c  15 and +0xbc the eight pairs, already wired
+
+FUN_1009ebec compares dy/dx with four doubles from the code data segment, not from this resource. They sit in /tmp/wl2_data.bin at file offset 0x2b628 (the pointer FUN_1009ebec loads, plus 8). Saved as extracted/random_dir_slopes.bin.

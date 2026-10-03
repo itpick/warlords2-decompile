@@ -82,6 +82,8 @@ static Boolean sDone      = false;
 /* Map loading state */
 static Boolean sMapLoaded = false;
 static Boolean sRandomMap = false;  /* true if map was procedurally generated */
+static short sRmCityX[32], sRmCityY[32], sRmCityType[32];
+static short sRmCityCount = 0;
 static short   sMapWidth  = 0;
 static short   sMapHeight = 0;
 
@@ -5142,6 +5144,8 @@ static void ScanForScenarios(void)
 
 #define TT_WATER  0
 #define TT_GRASS  1
+#define TT_FOREST 2
+#define TT_MTN    3
 #define TT_SWAMP  5
 
 /* FUN_100a271c land-mass stage. Classification bytes, not Grasslands
@@ -5179,6 +5183,436 @@ static void RmClamp(short *x, short *y)
     if (*x >= 0x70) *x = 0x6F;
     if (*y >= 0x9C) *y = 0x9B;
 }
+
+/* File shorts from extracted/random_dat_1010_prefix.bin, after FUN_100525a0.
+ * Dialog adds (player count, city slider, water style) are not applied:
+ * this port has no those parameters, same as the land factor. */
+static short RandomMapPlayerCityCount(void) { return 16; } /* +0x34 */
+static short RandomMapNeutralCityCount(void) { return 16; } /* +0x36 */
+static short RandomMapForestWalks(void) { return 4; }      /* +0x3e */
+static short RandomMapMountainWalks(void) { return 4; }    /* +0x40 */
+
+/* Signed divide-by-8 the PPC uses. -1 stays -1, so the road turn can
+ * read the pair at file +0xb8 instead of wrapping into the compass. */
+static short RmWrap8(int v)
+{
+    int adj = (v >> 3) + ((v < 0 && (v & 7) != 0) ? 1 : 0);
+    return (short)((short)v + (short)(adj * -8));
+}
+
+static void RmIndexedDelta(short index, short *dx, short *dy)
+{
+    short i = RmWrap8(index);
+    if (i == -1) {
+        *dx = -1; /* file +0xb8 */
+        *dy = 1;  /* file +0xba */
+        return;
+    }
+    if (!RandomMapDirDelta(i, dx, dy)) {
+        *dx = 0;
+        *dy = 0;
+    }
+}
+
+/* FUN_1009ebec. Same-x or same-y is a cardinal step. Otherwise dy/dx,
+ * rounded the way the PPC frsp of those small ints does (exact), compared
+ * with the four data-segment doubles in extracted/random_dir_slopes.bin. */
+static double RmSlope(short i)
+{
+    static const unsigned char k[4][8] = {
+        {0x40,0x03,0x4f,0xdf,0x3b,0x64,0x5a,0x1d},
+        {0x3f,0xda,0x7e,0xf9,0xdb,0x22,0xd0,0xe5},
+        {0xbf,0xda,0x7e,0xf9,0xdb,0x22,0xd0,0xe5},
+        {0xc0,0x03,0x4f,0xdf,0x3b,0x64,0x5a,0x1d}
+    };
+    double v;
+    BlockMoveData(k[i], &v, sizeof v);
+    return v;
+}
+
+static void RmStepToward(short x1, short y1, short x2, short y2,
+                         short *dx, short *dy)
+{
+    double ratio;
+    if (x2 == x1) {
+        *dx = 0;
+        if (y2 == y1) *dy = 0;
+        else if (y2 < y1) *dy = -1;
+        else *dy = 1;
+        return;
+    }
+    if (y2 == y1) {
+        *dy = 0;
+        *dx = (x2 < x1) ? -1 : 1;
+        return;
+    }
+    ratio = (double)(y2 - y1) / (double)(x2 - x1);
+    if (x1 > x2) {
+        if (ratio >= RmSlope(0))      { *dx = 0;  *dy = -1; }
+        else if (ratio >= RmSlope(1)) { *dx = -1; *dy = -1; }
+        else if (ratio >= RmSlope(2)) { *dx = -1; *dy = 0; }
+        else if (ratio >= RmSlope(3)) { *dx = -1; *dy = 1; }
+        else                          { *dx = 0;  *dy = 1; }
+    } else {
+        if (ratio >= RmSlope(0))      { *dx = 0; *dy = 1; }
+        else if (ratio >= RmSlope(1)) { *dx = 1; *dy = 1; }
+        else if (ratio >= RmSlope(2)) { *dx = 1; *dy = 0; }
+        else if (ratio >= RmSlope(3)) { *dx = 1; *dy = -1; }
+        else                          { *dx = 0; *dy = -1; }
+    }
+}
+
+static short RmChebyshev(short x1, short y1, short x2, short y2)
+{
+    short dx = (short)(x1 > x2 ? x1 - x2 : x2 - x1);
+    short dy = (short)(y1 > y2 ? y1 - y2 : y2 - y1);
+    return dx > dy ? dx : dy;
+}
+
+static void RmTurnDir(short *dx, short *dy)
+{
+    short i, sx, sy, n;
+    for (i = 0; i < 8; i++) {
+        RandomMapDirDelta(i, &sx, &sy);
+        if (sx == *dx && sy == *dy) break;
+    }
+    n = Dice(1, 5, (short)(i - 2));
+    RmIndexedDelta(n, dx, dy);
+}
+
+static short RandomMapHasStepNeighbor(const unsigned char *g, short x, short y,
+                                      short code);
+
+static void RmPaint75(unsigned char *g, short x, short y, unsigned char byte)
+{
+    unsigned char c;
+    if (x < 0 || y < 0 || x >= 112 || y >= 156) return;
+    c = g[(long)y * 112 + x];
+    if (c == 7 || c == 5) g[(long)y * 112 + x] = byte;
+}
+
+/* FUN_100a2cc0. Walks toward the target. Within Chebyshev 3 it always
+ * steps at the target. Farther away, Dice(1,3,0) keeps the fresh step,
+ * repeats the first step, or turns via FUN_1009f2a4. Center paints when
+ * the cell is 7 or 5. Width 2 paints the dir+2 and dir+6 neighbors;
+ * width 3 paints those neighbors at twice the step. */
+static void RmPaintCorridor(unsigned char *g, short x, short y,
+                            short x2, short y2, short width, unsigned char byte)
+{
+    short firstDx, firstDy, dx, dy;
+    RmStepToward(x, y, x2, y2, &firstDx, &firstDy);
+    for (;;) {
+        short dist, roll, dir, sx, sy, i;
+        short px, py, p2x, p2y;
+        RmStepToward(x, y, x2, y2, &dx, &dy);
+        dist = RmChebyshev(x, y, x2, y2);
+        if (dist < 3) {
+            x = (short)(x + dx);
+            y = (short)(y + dy);
+        } else {
+            roll = Dice(1, 3, 0);
+            if (roll == 1) {
+                x = (short)(x + dx);
+                y = (short)(y + dy);
+            } else if (roll == 2) {
+                dx = firstDx;
+                dy = firstDy;
+                x = (short)(x + dx);
+                y = (short)(y + dy);
+            } else if (roll == 3) {
+                RmTurnDir(&dx, &dy);
+                x = (short)(x + dx);
+                y = (short)(y + dy);
+                firstDx = dx;
+                firstDy = dy;
+            }
+        }
+        dir = -1;
+        for (i = 0; i < 8; i++) {
+            RandomMapDirDelta(i, &sx, &sy);
+            if (sx == dx && sy == dy) dir = i;
+        }
+        if (dir >= 0 && (width == 2 || width == 3)) {
+            short mul = (short)(width == 2 ? 1 : 2);
+            short dA = RmWrap8(dir + 2);
+            short dB = RmWrap8(dir + 6);
+            RmIndexedDelta(dA, &sx, &sy);
+            px = (short)(x + sx * mul);
+            py = (short)(y + sy * mul);
+            RmIndexedDelta(dB, &sx, &sy);
+            p2x = (short)(x + sx * mul);
+            p2y = (short)(y + sy * mul);
+        } else {
+            px = x; py = y; p2x = x; p2y = y;
+        }
+        RmClamp(&x, &y);
+        RmPaint75(g, x, y, byte);
+        if (dir >= 0 && (width == 2 || width == 3)) {
+            RmClamp(&px, &py);
+            RmPaint75(g, px, py, byte);
+            RmPaint75(g, p2x, p2y, byte);
+        }
+        if (x == x2 && y == y2) return;
+    }
+}
+
+typedef struct {
+    short x, y, type, nAlly;
+    short ally[3];
+} RmCity;
+
+static void RmStampCities(unsigned char *g, RmCity *cities, short *nOut)
+{
+    short n = 0, i, count, byte, type;
+    count = RandomMapPlayerCityCount();
+    byte = 6;
+    type = 2;
+    for (;;) {
+        for (i = 0; i < count; i++) {
+            short x, y;
+            do {
+                x = Dice(1, 0x70, -1);
+                y = Dice(1, 0x9C, -1);
+            } while (g[(long)y * 112 + x] != 7);
+            g[(long)y * 112 + x] = (unsigned char)byte;
+            cities[n].x = x;
+            cities[n].y = y;
+            cities[n].type = type;
+            cities[n].nAlly = 0;
+            n++;
+        }
+        if (type == 1) break;
+        count = RandomMapNeutralCityCount();
+        byte = 5;
+        type = 1;
+    }
+    *nOut = n;
+}
+
+/* FUN_100a2a58. Neutral cities roll Dice(1,2,-1) allies, player cities
+ * Dice(1,4,-1), each capped at count-1. Each ally is the closest city
+ * not already chosen, by FUN_1009eb70 Chebyshev. */
+static void RmAssignAllies(RmCity *cities, short n)
+{
+    short i;
+    if (n < 2) return;
+    for (i = 0; i < n; i++) {
+        short want, a, c;
+        if (cities[i].type == 1) want = Dice(1, 2, -1);
+        else want = Dice(1, 4, -1);
+        if (want > (short)(n - 1)) want = (short)(n - 1);
+        cities[i].nAlly = want;
+        for (a = 0; a < want; a++) {
+            short best = -1, bestD = 10000, j;
+            for (j = 0; j < n; j++) {
+                short seen, d;
+                if (j == i) continue;
+                seen = 0;
+                for (c = 0; c < a; c++) if (cities[i].ally[c] == j) seen = 1;
+                if (seen) continue;
+                d = RmChebyshev(cities[j].x, cities[j].y, cities[i].x, cities[i].y);
+                if (d < bestD) { bestD = d; best = j; }
+            }
+            cities[i].ally[a] = best;
+        }
+    }
+}
+
+/* FUN_100a33ac. A neutral with no allies, or a player with no allies,
+ * walks to a Dice(1,5,-10) offset. A neutral ally of another neutral
+ * paints byte 5 at width 3. Anything else paints byte 6 at width
+ * Dice(1,2,1). */
+static void RmCityRoads(unsigned char *g, RmCity *cities, short n)
+{
+    short i;
+    if (n < 2) return;
+    RmAssignAllies(cities, n);
+    for (i = 0; i < n; i++) {
+        short a;
+        if (cities[i].nAlly == 0) {
+            short x2 = (short)(cities[i].x + Dice(1, 5, -10));
+            short y2 = (short)(cities[i].y + Dice(1, 5, -10));
+            short width = Dice(1, 2, 1);
+            unsigned char byte = (cities[i].type == 1) ? 5 : 6;
+            RmClamp(&x2, &y2);
+            RmPaintCorridor(g, cities[i].x, cities[i].y, x2, y2, width, byte);
+            continue;
+        }
+        for (a = 0; a < cities[i].nAlly; a++) {
+            short j = cities[i].ally[a];
+            short width;
+            unsigned char byte;
+            if (j < 0 || j >= n) continue;
+            if (cities[i].type == 1 && cities[j].type == 1) {
+                width = 3;
+                byte = 5;
+            } else {
+                width = Dice(1, 2, 1);
+                byte = 6;
+            }
+            RmPaintCorridor(g, cities[i].x, cities[i].y,
+                            cities[j].x, cities[j].y, width, byte);
+        }
+    }
+}
+
+/* FUN_100a35cc, the parts that do not need a shore byte. An interior 7
+ * boxed in by four 6s becomes 6, and the same for 5s. A 6 with a step
+ * neighbor of 3 becomes 7 (none exist yet). Diagonal 6-gaps roll
+ * Dice(1,10,0). */
+static void RmCitySmooth(unsigned char *g)
+{
+    short x, y;
+    for (x = 0; x < 112; x++) {
+        for (y = 0; y < 156; y++) {
+            long idx;
+            unsigned char *c;
+            if (x == 0 || y == 0 || x == 0x6F || y == 0x9B) {
+                /* shore test still runs on the edge */
+            } else {
+                idx = (long)y * 112 + x;
+                c = g + idx;
+                if (*c == 7) {
+                    if (g[idx + 112] == 6 && g[idx + 1] == 6 &&
+                        g[idx - 1] == 6 && g[idx - 112] == 6)
+                        *c = 6;
+                    if (g[idx + 112] == 5 && g[idx + 1] == 5 &&
+                        g[idx - 1] == 5 && g[idx - 112] == 5)
+                        g[idx] = 5;
+                }
+            }
+            if (g[(long)y * 112 + x] == 6 &&
+                RandomMapHasStepNeighbor(g, x, y, 3) == 1)
+                g[(long)y * 112 + x] = 7;
+        }
+    }
+    for (x = 1; x < 0x6F; x++) {
+        for (y = 1; y < 0x9B; y++) {
+            long idx = (long)y * 112 + x;
+            unsigned char se, nw, ne, sw;
+            if (g[idx] != 6) continue;
+            se = g[idx + 112 + 1];
+            nw = g[idx - 112 - 1];
+            ne = g[idx - 112 + 1];
+            sw = g[idx + 112 - 1];
+            if (se == 6 && nw == 6 && ne != 6) {
+                if (sw != 6) {
+                    if (Dice(1, 10, 0) < 6) g[idx - 112 + 1] = 6;
+                    else g[idx + 112 - 1] = 6;
+                }
+            } else if (sw == 6 && ne == 6 && nw != 6 && se != 6) {
+                if (Dice(1, 10, 0) < 6) g[idx - 112 - 1] = 6;
+                else g[idx + 112 + 1] = 6;
+            }
+        }
+    }
+}
+
+static void RmChainStamp(unsigned char *g, short x, short y, short dir,
+                         unsigned char byte)
+{
+    short d1 = RmWrap8(dir + 1);
+    short d2 = RmWrap8(dir + 7);
+    short dx, dy;
+    short px, py;
+    px = x; py = y;
+    RmClamp(&px, &py);
+    g[(long)py * 112 + px] = byte;
+    RmIndexedDelta(d1, &dx, &dy);
+    px = (short)(x + dx); py = (short)(y + dy);
+    RmClamp(&px, &py);
+    g[(long)py * 112 + px] = byte;
+    RmIndexedDelta(d2, &dx, &dy);
+    px = (short)(x + dx); py = (short)(y + dy);
+    RmClamp(&px, &py);
+    g[(long)py * 112 + px] = byte;
+    RmIndexedDelta(d1, &dx, &dy);
+    px = (short)(x + dx * 2); py = (short)(y + dy * 2);
+    RmClamp(&px, &py);
+    g[(long)py * 112 + px] = byte;
+    RmIndexedDelta(d2, &dx, &dy);
+    px = (short)(x + dx * 2); py = (short)(y + dy * 2);
+    RmClamp(&px, &py);
+    g[(long)py * 112 + px] = byte;
+}
+
+/* FUN_100ab368. Two random ends. Each step is FUN_1009ebec toward the
+ * other end. Kind 0 (the +0x40 loop) stamps 5, but only when the cell
+ * under the walker is already 6. Kind 1 (the +0x3e loop) stamps 7 when
+ * the cell is 5 or 6. The end cell itself is not stamped. */
+static void RandomMapChain(unsigned char *g, short kind)
+{
+    short x1 = Dice(1, 0x70, -1);
+    short y1 = Dice(1, 0x9C, -1);
+    short x2 = Dice(1, 0x70, -1);
+    short y2 = Dice(1, 0x9C, -1);
+    short x = x1, y = y1;
+    if (x1 == x2 && y1 == y2) return;
+    for (;;) {
+        short dx, dy, dir, sx, sy, i;
+        unsigned char cell;
+        RmStepToward(x, y, x2, y2, &dx, &dy);
+        dir = -1;
+        for (i = 0; i < 8; i++) {
+            RandomMapDirDelta(i, &sx, &sy);
+            if (sx == dx && sy == dy) dir = i;
+        }
+        cell = g[(long)y * 112 + x];
+        if (kind == 0) {
+            if (cell == 6) RmChainStamp(g, x, y, dir, 5);
+        } else if (cell == 5 || cell == 6) {
+            RmChainStamp(g, x, y, dir, 7);
+        }
+        x = (short)(x + dx);
+        y = (short)(y + dy);
+        if (x == x2 && y == y2) return;
+    }
+}
+
+static void RmPromoteMountains(unsigned char *g)
+{
+    short x, y;
+    for (x = 1; x < 0x6F; x++) {
+        for (y = 1; y < 0x9B; y++) {
+            long idx = (long)y * 112 + x;
+            short n;
+            if (g[idx] != 5) continue;
+            n = (g[idx + 112] == 6) + (g[idx - 112] == 6) +
+                (g[idx + 1] == 6) + (g[idx - 1] == 6);
+            if (n > 2) g[idx] = 6;
+        }
+    }
+}
+
+static void RmPromoteForests(unsigned char *g)
+{
+    short x, y;
+    for (x = 1; x < 0x6F; x++) {
+        for (y = 1; y < 0x9B; y++) {
+            long idx = (long)y * 112 + x;
+            short n;
+            if (g[idx] != 7) continue;
+            n = (g[idx + 112] == 5) + (g[idx - 112] == 5) +
+                (g[idx + 1] == 5) + (g[idx - 1] == 5);
+            if (n > 2) g[idx] = 5;
+        }
+    }
+}
+
+/* FUN_100abcec. FUN_100a39ac is not called: it runs only when
+ * FUN_1002b83c reads a DAT byte other than '0', and that name is not
+ * recovered, so the fringe is not guessed. */
+static void RandomMapMountainForest(unsigned char *g)
+{
+    short i, n;
+    n = RandomMapMountainWalks();
+    for (i = 0; i < n; i++) RandomMapChain(g, 0);
+    n = RandomMapForestWalks();
+    for (i = 0; i < n; i++) RandomMapChain(g, 1);
+    RmPromoteMountains(g);
+    RmPromoteForests(g);
+}
+
 
 static unsigned char RmAt(const unsigned char *g, long idx)
 {
@@ -5425,8 +5859,8 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
     short x, y;
     long i;
 
-    for (i = 0; i < 112L * 156L; i++) classGrid[i] = 7;
-
+    /* Caller already filled 7 and may have stamped 5s and 6s.
+     * Clearing here would drop the city and chain passes. */
     for (x = 0; x < 112; x++) {
         for (y = 0; y < 156; y++) {
             unsigned char c = classGrid[(long)y * 112 + x];
@@ -5442,11 +5876,13 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
     /* Next stage, FUN_100a66a8. It does not run until the step pairs exist. */
     RandomMapSwampStage(classGrid);
 
-    /* 4 is this stage's land and 8 is a swamp. Neither byte is a
-     * Grasslands tile id. 7 stays water: it was only the paintable field. */
+    /* 4 is this stage's land, 8 is a swamp, 6 is a mountain marker,
+     * 5 is a forest marker. 7 stays water: it was only the paintable field. */
     for (i = 0; i < 112L * 156L; i++) {
         if (classGrid[i] == 4) terrain[i] = TT_GRASS;
         else if (classGrid[i] == 8) terrain[i] = TT_SWAMP;
+        else if (classGrid[i] == 6) terrain[i] = TT_MTN;
+        else if (classGrid[i] == 5) terrain[i] = TT_FOREST;
         else terrain[i] = TT_WATER;
     }
 }
@@ -5459,14 +5895,11 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
  * cities, and initializes the game state.
  *
  * Land shape is FUN_100a271c (count 7/5/6, paint 4 only on 7, fill).
- * The land factor and the eight step pairs are the captured DAT 1010 shorts.
- * Forest, mountain, hill, and swamp passes below are still the remake's
- * own clusters; this stage does not describe them.
+ * Cities, the two chain walks, and the swamp stage use the DAT 1010
+ * shorts. Hills and the later road overlay are still the remake's.
  * =================================================================== */
 
 /* Terrain type codes for working buffer */
-#define TT_FOREST 2
-#define TT_MTN    3
 #define TT_HILL   4
 
 /* Tile indices for Grasslands terrain set (from MAPCOLOR analysis) */
@@ -5528,14 +5961,30 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     /* --- Phase 2: Generate terrain --- */
 
-    /* FUN_100a271c replaces the invented seeds and cardinal growth.
-     * The class grid starts as 7 because this stage only paints cells
-     * that are already 7; the earlier coast/city stages that punch holes
-     * in that field are not this function. */
+    /* Class grid starts as 7. Cities stamp 6 and 5, roads and the
+     * mountain/forest walks edit those, then FUN_100a271c paints 4s.
+     * Coast stages that would punch 2s and 3s are not this function. */
     {
         unsigned char *classGrid = (unsigned char *)NewPtrClear(112 * 156);
+        RmCity rmCities[32];
+        short rmCityCount = 0;
+        long ci;
         if (classGrid == NULL) { DisposePtr((Ptr)terrain); return false; }
+        for (ci = 0; ci < 112L * 156L; ci++) classGrid[ci] = 7;
+        RmStampCities(classGrid, rmCities, &rmCityCount);
+        RmCityRoads(classGrid, rmCities, rmCityCount);
+        RmCitySmooth(classGrid);
+        RandomMapMountainForest(classGrid);
         RandomMapGrowLand(classGrid, terrain);
+        /* Keep the stamped sites. The first eight player cities are the
+         * faction starts the army loop indexes. The class byte has
+         * already been consumed by the walks. */
+        for (ci = 0; ci < rmCityCount && ci < 32; ci++) {
+            sRmCityX[ci] = rmCities[ci].x;
+            sRmCityY[ci] = rmCities[ci].y;
+            sRmCityType[ci] = rmCities[ci].type;
+        }
+        sRmCityCount = rmCityCount;
         DisposePtr((Ptr)classGrid);
     }
 
@@ -5549,118 +5998,6 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                 barLeft + 1 + fillW, barTop + barH - 1);
         RGBForeColor(&barFg);
         PaintRect(&fillR);
-    }
-
-    /* Add terrain variety using clustered features */
-
-    /* Mountain chains: 3-5 chains of 8-20 tiles each */
-    {
-        short numChains = 3 + Dice(1, 3, -1);
-        short ch;
-        for (ch = 0; ch < numChains; ch++) {
-            short cx, cy, len, step;
-            short dx, dy;
-            /* Pick random starting point on land */
-            cx = 10 + Dice(1, 92, -1);
-            cy = 10 + Dice(1, 136, -1);
-            len = 8 + Dice(1, 13, -1);
-            /* Pick direction */
-            dx = Dice(1, 3, -1) - 1;  /* -1, 0, 1 */
-            dy = Dice(1, 3, -1) - 1;
-            if (dx == 0 && dy == 0) dx = 1;
-
-            for (step = 0; step < len; step++) {
-                if (cx >= 1 && cx < 111 && cy >= 1 && cy < 155 &&
-                    terrain[cy * 112 + cx] == TT_GRASS) {
-                    terrain[cy * 112 + cx] = TT_MTN;
-                    /* Add hills on sides of mountain chain */
-                    if (cx > 1 && terrain[cy * 112 + cx - 1] == TT_GRASS &&
-                        Dice(1, 100, -1) < 50)
-                        terrain[cy * 112 + cx - 1] = TT_HILL;
-                    if (cx < 110 && terrain[cy * 112 + cx + 1] == TT_GRASS &&
-                        Dice(1, 100, -1) < 50)
-                        terrain[cy * 112 + cx + 1] = TT_HILL;
-                    if (cy > 1 && terrain[(cy-1) * 112 + cx] == TT_GRASS &&
-                        Dice(1, 100, -1) < 40)
-                        terrain[(cy-1) * 112 + cx] = TT_HILL;
-                    if (cy < 154 && terrain[(cy+1) * 112 + cx] == TT_GRASS &&
-                        Dice(1, 100, -1) < 40)
-                        terrain[(cy+1) * 112 + cx] = TT_HILL;
-                }
-                cx += dx;
-                cy += dy;
-                /* Meander: 25% chance to shift direction */
-                if (Dice(1, 4, -1) == 0) {
-                    dx += Dice(1, 3, -1) - 1;
-                    dy += Dice(1, 3, -1) - 1;
-                    if (dx < -1) dx = -1;
-                    if (dx > 1) dx = 1;
-                    if (dy < -1) dy = -1;
-                    if (dy > 1) dy = 1;
-                    if (dx == 0 && dy == 0) dx = 1;
-                }
-            }
-        }
-    }
-
-    /* Forest clusters: 8-12 forest seed points, each grows into a cluster */
-    {
-        short numForests = 8 + Dice(1, 5, -1);
-        short fi;
-        for (fi = 0; fi < numForests; fi++) {
-            short fx = 5 + Dice(1, 102, -1);
-            short fy = 5 + Dice(1, 146, -1);
-            short radius = 3 + Dice(1, 5, -1);
-            short fdx, fdy;
-
-            for (fdy = -radius; fdy <= radius; fdy++) {
-                for (fdx = -radius; fdx <= radius; fdx++) {
-                    short nx = fx + fdx, ny = fy + fdy;
-                    if (nx >= 0 && nx < 112 && ny >= 0 && ny < 156 &&
-                        terrain[ny * 112 + nx] == TT_GRASS) {
-                        /* Higher probability near center */
-                        short dist = (fdx < 0 ? -fdx : fdx) + (fdy < 0 ? -fdy : fdy);
-                        short prob = 80 - dist * 12;
-                        if (prob > 0 && Dice(1, 100, -1) < prob)
-                            terrain[ny * 112 + nx] = TT_FOREST;
-                    }
-                }
-            }
-        }
-    }
-
-    /* Swamp patches: 2-4 swamp areas near water */
-    {
-        short numSwamps = 2 + Dice(1, 3, -1);
-        short si;
-        for (si = 0; si < numSwamps; si++) {
-            /* Find a land tile near water */
-            short attempts = 0;
-            while (attempts < 200) {
-                short sx = 5 + Dice(1, 102, -1);
-                short sy = 5 + Dice(1, 146, -1);
-                if (terrain[sy * 112 + sx] == TT_GRASS &&
-                    ((sx > 0 && terrain[sy*112+sx-1] == TT_WATER) ||
-                     (sx < 111 && terrain[sy*112+sx+1] == TT_WATER) ||
-                     (sy > 0 && terrain[(sy-1)*112+sx] == TT_WATER) ||
-                     (sy < 155 && terrain[(sy+1)*112+sx] == TT_WATER))) {
-                    /* Place 3x3 to 5x5 swamp patch */
-                    short r = 1 + Dice(1, 2, -1);
-                    short sdx, sdy;
-                    for (sdy = -r; sdy <= r; sdy++) {
-                        for (sdx = -r; sdx <= r; sdx++) {
-                            short nx = sx + sdx, ny = sy + sdy;
-                            if (nx >= 0 && nx < 112 && ny >= 0 && ny < 156 &&
-                                terrain[ny * 112 + nx] == TT_GRASS &&
-                                Dice(1, 100, -1) < 70)
-                                terrain[ny * 112 + nx] = TT_SWAMP;
-                        }
-                    }
-                    break;
-                }
-                attempts++;
-            }
-        }
     }
 
     /* Convert terrain types to tile indices and write to map buffer */
@@ -5715,79 +6052,36 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         totalCities = factionCount + neutralCount;
         if (totalCities > 139) totalCities = 139;
 
-        /* Place faction starting cities in quadrants */
-        for (i = 0; i < factionCount && cityCount < 40; i++) {
-            short attempts = 0;
-            while (attempts < 2000) {
-                /* Quadrant layout: 4 columns x 2 rows */
-                short qx = (i % 4) * 28 + 5;
-                short qy = (i / 4) * 78 + 5;
-                short cx = qx + Dice(1, 22, -1);
-                short cy = qy + Dice(1, 68, -1);
-
-                if (cx >= 2 && cx < 110 && cy >= 2 && cy < 154 &&
-                    terrain[cy * 112 + cx] != TT_WATER &&
-                    terrain[cy * 112 + cx] != TT_MTN) {
-                    unsigned char *city = sCityData +cityCount * 0x20;
-                    *(short *)(city + 0x00) = cx;
-                    *(short *)(city + 0x02) = cy;
-                    *(short *)(city + 0x04) = i;
-                    *(short *)(city + 0x06) = 3;   /* defense */
-                    *(short *)(city + 0x08) = 4;   /* income */
-                    *(short *)(city + 0x0A) = cityCount;
-                    city[0x17] = 0;   /* site_type = city */
-                    /* Ensure grass under city */
-                    terrain[cy * 112 + cx] = TT_GRASS;
-                    {
-                        unsigned char *t = map + cy * 0xE0 + cx * 2;
-                        t[0] = RTILE_GRASS;
-                    }
-                    cityCount++;
-                    break;
-                }
-                attempts++;
+        /* Sites stamped by FUN_100a2760 / FUN_100a28dc. Record fields
+         * other than x/y are the city record this game already stores;
+         * owner of the first eight player cities is the faction index
+         * the army loop below reads. */
+        for (i = 0; i < sRmCityCount && cityCount < 140; i++) {
+            unsigned char *city = sCityData + cityCount * 0x20;
+            short cx = sRmCityX[i];
+            short cy = sRmCityY[i];
+            short k;
+            for (k = 0; k < 0x20; k++) city[k] = 0;
+            *(short *)(city + 0x00) = cx;
+            *(short *)(city + 0x02) = cy;
+            if (sRmCityType[i] == 2 && cityCount < 8) {
+                *(short *)(city + 0x04) = cityCount;
+                *(short *)(city + 0x06) = 3;
+                *(short *)(city + 0x08) = 4;
+            } else {
+                *(short *)(city + 0x04) = (short)0xFF;
+                *(short *)(city + 0x06) = 2;
+                *(short *)(city + 0x08) = 3;
             }
-        }
-
-        /* Place neutral cities */
-        for (i = 0; i < neutralCount && cityCount < 40; i++) {
-            short attempts = 0;
-            while (attempts < 500) {
-                short cx = 3 + Dice(1, 106, -1);
-                short cy = 3 + Dice(1, 150, -1);
-                short j;
-                Boolean tooClose = false;
-
-                if (terrain[cy * 112 + cx] == TT_WATER ||
-                    terrain[cy * 112 + cx] == TT_MTN) {
-                    attempts++;
-                    continue;
-                }
-
-                /* Check minimum distance from existing cities */
-                for (j = 0; j < cityCount; j++) {
-                    short ox = *(short *)(sCityData +j * 0x20);
-                    short oy = *(short *)(sCityData +j * 0x20 + 0x02);
-                    short dx = cx - ox, dy = cy - oy;
-                    if (dx < 0) dx = -dx;
-                    if (dy < 0) dy = -dy;
-                    if (dx < 5 && dy < 5) { tooClose = true; break; }
-                }
-
-                if (!tooClose) {
-                    unsigned char *city = sCityData +cityCount * 0x20;
-                    *(short *)(city + 0x00) = cx;
-                    *(short *)(city + 0x02) = cy;
-                    *(short *)(city + 0x04) = (short)0xFF;  /* neutral */
-                    *(short *)(city + 0x06) = 2;   /* defense */
-                    *(short *)(city + 0x08) = 3;   /* income */
-                    *(short *)(city + 0x0A) = cityCount;
-                    city[0x17] = 0;   /* site_type = city */
-                    cityCount++;
-                    break;
-                }
-                attempts++;
+            *(short *)(city + 0x0A) = cityCount;
+            city[0x17] = 0;
+            terrain[cy * 112 + cx] = TT_GRASS;
+            {
+                unsigned char *t = map + cy * 0xE0 + cx * 2;
+                t[0] = RTILE_GRASS;
+                t[1] = 0;
             }
+            cityCount++;
         }
 
         /* Place ruins on land (site_type at offset 0x17, active at 0x1D) */
