@@ -20171,7 +20171,23 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
             if (--tries == 0) break;    /* this ally is lost; the next one still tries */
         }
         if (!placed) continue;
-        if (x == *(short *)(army + 0) && y == *(short *)(army + 2))
+        /* each ally is a unit record of its own (FUN_10021434), never a
+         * slot of the hero's record; packing into a free slot is only the
+         * remake's fallback when the 100-record table is full */
+        if (*(short *)(gs + 0x1602) < 100) {
+            short n = *(short *)(gs + 0x1602);
+            dst = gs + 0x1604 + n * 0x42;
+            for (k = 0; k < 0x42; k++) dst[k] = 0;
+            *(short *)(dst + 0) = x;
+            *(short *)(dst + 2) = y;
+            dst[0x15] = army[0x15]; dst[0x2f] = army[0x2f];
+            *(short *)(dst + 0x34) = -1; *(short *)(dst + 0x36) = -1;
+            for (k = 0; k < 4; k++) dst[0x16 + k] = 0xFF;
+            dst[0x2e] = (unsigned char)mv;   /* FUN_10053838: current MP = the moves */
+            *(short *)(gs + 0x1602) = n + 1;
+            ds = 0;
+        }
+        if (dst == NULL && x == *(short *)(army + 0) && y == *(short *)(army + 2))
             for (k = 0; k < 4; k++)
                 if ((unsigned char)army[0x16 + k] == 0xFF) { dst = army; ds = k; break; }
         if (dst == NULL) {
@@ -30339,6 +30355,25 @@ static void ProcessStartOfTurn(short player)
         }
     }
 
+    /* --- 0c2. Land the side's embarked stacks that stand in a city (PPC
+     * FUN_1006616c, called by the turn-begin handler FUN_100410ec before the
+     * upkeep FUN_1002bbd4 and the MP reset FUN_10064f24): every record of the
+     * side with status != 0 whose tile is in a city's 2x2 (FUN_1002be50)
+     * loses the embarked bit 0x1000.  A stack that took a coastal city from
+     * its boats therefore starts the next turn landed with land MP. --- */
+    {
+        short n = *(short *)(gs + 0x1602);
+        if (n > 100) n = 100;
+        for (i = 0; i < n; i++) {
+            unsigned char *a = gs + 0x1604 + i * 0x42;
+            if ((short)(unsigned char)a[0x15] != player) continue;
+            if (*(short *)(a + 0) < 0 || *(short *)(a + 2) < 0) continue;
+            if (!(a[0x2C] & ARMY_EMBARKED_BIT)) continue;
+            if (QuestCityAt(*(short *)(a + 0), *(short *)(a + 2)) >= 0)
+                a[0x2C] &= ~ARMY_EMBARKED_BIT;
+        }
+    }
+
     /* --- 0d. Hero level-ups (FUN_10033b4c): the computer's before its
      * income and MP reset, the human's after the reset (A-8) --- */
     if (!isHuman) HeroLevelUps(player);
@@ -30417,8 +30452,15 @@ static void ProcessStartOfTurn(short player)
                     short vt = *(short *)(extCity + 0x3e);
                     Boolean vectored = (vt >= 0 && vt < cityCount);
 
-                    /* Look for an existing army to merge into: only on the
-                     * city's own 2x2 tiles (PPC FUN_1004a350) */
+                    /* PPC FUN_1004a350(city, 0): the new unit gets its OWN
+                     * record (FUN_1004a5f0 -> FUN_10021434; the original never
+                     * puts two units in one record) on the first of the city's
+                     * 2x2 tiles holding fewer than 8 units (FUN_1002122c); a
+                     * full city produces nothing and its timer stays 0
+                     * (FUN_1004a854 skips it, FUN_1004af7c re-arms only the
+                     * cities that produced).  Merging into a record's free
+                     * slot is only the remake's fallback when the 100-record
+                     * table is full. */
                     short mergeIdx = -1;
                     short newIdx = -1;
                     short spawnX = cx, spawnY = cy;
@@ -30427,23 +30469,26 @@ static void ProcessStartOfTurn(short player)
                     { static const short adjDX[4] = {0, 1, 0, 1};
                       static const short adjDY[4] = {0, 0, 1, 1};
                       short ti;
-                      for (ti = 0; ti < 4 && mergeIdx < 0; ti++) {
+                      Boolean room = false;
+                      for (ti = 0; ti < 4 && !room; ti++) {
                           short tx = cx + adjDX[ti];
                           short ty = cy + adjDY[ti];
+                          short own;
                           if (tx < 0 || tx >= sMapWidth || ty < 0 || ty >= sMapHeight) continue;
-                          for (ai = 0; ai < armyCount; ai++) {
+                          if (AlliesTileUnits(tx, ty, &own) < 8) { spawnX = tx; spawnY = ty; room = true; }
+                      }
+                      if (!room) {
+                          *(short *)(extCity + 0x58) = 0;
+                          continue;
+                      }
+                      if (armyCount >= 100) {
+                          for (ai = 0; ai < armyCount && mergeIdx < 0; ai++) {
                               unsigned char *a = gs + 0x1604 + ai * 0x42;
-                              if (*(short *)(a + 0x00) == tx && *(short *)(a + 0x02) == ty &&
-                                  (short)(unsigned char)a[0x15] == player) {
-                                  short slot;
-                                  for (slot = 0; slot < 4; slot++) {
-                                      if (a[0x16 + slot] == 0xFF) {
-                                          mergeIdx = ai;
-                                          break;
-                                      }
-                                  }
-                                  if (mergeIdx >= 0) break;
-                              }
+                              short slot;
+                              if (*(short *)(a + 0x00) != spawnX || *(short *)(a + 0x02) != spawnY ||
+                                  (short)(unsigned char)a[0x15] != player) continue;
+                              for (slot = 0; slot < 4; slot++)
+                                  if (a[0x16 + slot] == 0xFF) { mergeIdx = ai; break; }
                           }
                       }
                     }
@@ -30528,41 +30573,7 @@ static void ProcessStartOfTurn(short player)
                             }
                         }
                     } else if (armyCount < 100) {
-                        /* Create new army — PPC FUN_1004a350(city,0): only the
-                         * city's own 2x2 tiles, never outside the walls. */
-                        { static const short adjDX2[4] = {0, 1, 0, 1};
-                          static const short adjDY2[4] = {0, 0, 1, 1};
-                          short ti2;
-                          Boolean foundSpawn = false;
-                          for (ti2 = 0; ti2 < 4 && !foundSpawn; ti2++) {
-                              short sx = cx + adjDX2[ti2];
-                              short sy = cy + adjDY2[ti2];
-                              short ai2; Boolean tileOccupied = false;
-                              if (sx < 0 || sx >= sMapWidth || sy < 0 || sy >= sMapHeight) continue;
-                              /* Check if any army already at this tile */
-                              for (ai2 = 0; ai2 < armyCount; ai2++) {
-                                  unsigned char *ta = gs + 0x1604 + ai2 * 0x42;
-                                  if (*(short *)(ta + 0x00) == sx && *(short *)(ta + 0x02) == sy) {
-                                      tileOccupied = true; break;
-                                  }
-                              }
-                              /* 68k CODE_080 FUN_000017c4: also validate terrain
-                               * traversability — don't spawn land units on water etc. */
-                              if (!tileOccupied && ti2 > 0 && *gMapTiles != 0) {
-                                  unsigned char *md = (unsigned char *)*gMapTiles;
-                                  short tidx = (short)md[sy * 0xE0 + sx * 2];
-                                  short ttype = (short)(unsigned char)gs[tidx + TERRAIN_TYPE_OFS];
-                                  short uc = prodType;
-                                  if (uc < 0 || uc > 28) uc = 0;
-                                  if (ttype >= 0 && ttype <= 8 &&
-                                      sMoveCostTable[ttype * 29 + uc] == 0) {
-                                      tileOccupied = true;  /* treat impassable as occupied */
-                                  }
-                              }
-                              if (!tileOccupied) { spawnX = sx; spawnY = sy; foundSpawn = true; }
-                          }
-                          if (!foundSpawn) { spawnX = cx; spawnY = cy; } /* fallback: stack at city */
-                        }
+                        /* Create new army at the tile FUN_1004a350 chose above */
                         unsigned char *a = gs + 0x1604 + armyCount * 0x42;
                         short j2;
 
@@ -31110,6 +31121,26 @@ static void NotorietyOnStanceDrop(short me)
         else if (prop == 1 && eff == 2)
             *(short *)(gs + 0x1122 + me * 2) += Dice(1, 2, 0) + 1;
     }
+}
+
+/* The player has control (original: from the end of the turn-1 hero offer
+ * on, the auto-opened start-city window already sits over a live button
+ * area and a filled info area - wg_r1_city): make the panels live and paint
+ * them now, before a modal window covers the loop. */
+static void GiveControlNow(void)
+{
+    GrafPtr sp;
+    if (sControlsLive || gInfoWindow == NULL || *gInfoWindow == 0) return;
+    sControlsLive = true;
+    GetPort(&sp);
+    SetPort((WindowPtr)*gInfoWindow);
+    InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
+    if (gStatusWindow != NULL && *gStatusWindow != 0) {
+        SetPort((WindowPtr)*gStatusWindow);
+        InvalRect(&((WindowPtr)*gStatusWindow)->portRect);
+    }
+    SetPort(sp);
+    DrainUpdates();
 }
 
 static void AdvanceToNextPlayer(void)
@@ -31704,6 +31735,7 @@ static void AdvanceToNextPlayer(void)
              * (the first side gets it from the game-start code). */
             if (*(short *)(gs + 0x136) <= 1 && *gExtState != 0) {
                 short hx = 0, hy = 0, hci, hcc = sCityCount;
+                GiveControlNow();
                 if (hcc > 139) hcc = 139;
                 GetCapitalXY(curPlayer, &hx, &hy);
                 for (hci = 0; hci < hcc; hci++) {
@@ -32733,6 +32765,28 @@ static void AdjustGameMenus(void)
     if (m != NULL) {
         if (on) { EnableItem(m, 1); EnableItem(m, 2); }
         else    { DisableItem(m, 1); DisableItem(m, 2); }
+    }
+    /* PPC FUN_1007e0xx (the view's DoSetupMenus, PPC_0003.c 7654-7704): the
+     * window items 0x76f/0x770/0x771 are enabled when the window exists and
+     * named from STR# 2010: "Show ..." (1/3/5) when it is hidden, "Hide ..."
+     * (2/4/6) when it is shown.  Strategy map = the overview, Control window =
+     * the button panel (gInfoWindow), Info window = the gold/stack panel
+     * (gStatusWindow). */
+    if (m != NULL) {
+        static const unsigned char *const kFb[6] = {
+            "\pShow Strategy Map Window", "\pHide Strategy Map Window",
+            "\pShow Control Window", "\pHide Control Window",
+            "\pShow Info Window", "\pHide Info Window" };
+        int *wins[3];
+        short k;
+        wins[0] = gOverviewWindow; wins[1] = gInfoWindow; wins[2] = gStatusWindow;
+        for (k = 0; k < 3; k++) {
+            WindowPtr w = (wins[k] != NULL && *wins[k] != 0) ? (WindowPtr)*wins[k] : NULL;
+            short idx = (w != NULL && ((WindowPeek)w)->visible) ? (short)(k * 2 + 2) : (short)(k * 2 + 1);
+            Str255 t;
+            SetMenuItemText(m, 4 + k, ViewString(t, 2010, idx, kFb[idx - 1]));
+            if (w != NULL) EnableItem(m, 4 + k); else DisableItem(m, 4 + k);
+        }
     }
     m = GetMenuHandle(2);
     if (m != NULL) {
@@ -33848,8 +33902,8 @@ static void HandleMenuChoice(long menuResult)
                     ShowWindow(ow);
             }
             break;
-        case 5: /* Control Window (cmd 0x770) — toggle info panel (same as Info Window) */
-            if (gInfoWindow != NULL) {
+        case 5: /* Control Window (cmd 0x770) — toggle the button panel */
+            if (gInfoWindow != NULL && *gInfoWindow != 0) {
                 WindowPtr iw2 = (WindowPtr)*gInfoWindow;
                 if (((WindowPeek)iw2)->visible)
                     HideWindow(iw2);
@@ -33857,9 +33911,9 @@ static void HandleMenuChoice(long menuResult)
                     ShowWindow(iw2);
             }
             break;
-        case 6: /* Info Window (cmd 0x771) — toggle info panel */
-            if (gInfoWindow != NULL) {
-                WindowPtr iw = (WindowPtr)*gInfoWindow;
+        case 6: /* Info Window (cmd 0x771) — toggle the gold / stack panel */
+            if (gStatusWindow != NULL && *gStatusWindow != 0) {
+                WindowPtr iw = (WindowPtr)*gStatusWindow;
                 if (((WindowPeek)iw)->visible)
                     HideWindow(iw);
                 else
@@ -36500,6 +36554,7 @@ int main(void)
         m = NewMenu(9, "\pGame");
         AppendMenu(m, "\pEnd Turn/E;Save and End Turn;(-;Strategy Map;Control Window;Info Window;Clean Up Windows");
         AppendMenu(m, "\p(-;Game Settings...;Sound Volumes...;Shortcuts...");
+        SetMenuShiftShortcut(m, 2, 'E');     /* Save and End Turn shift-cmd-E (CMNU 9 style 0x40) */
         InsertMenu(m, 0);
 
         /* The original's picker shows the full menu bar with Edit..History
@@ -36888,6 +36943,7 @@ int main(void)
         if (*gExtState != 0) {
             short t1CC = sCityCount;
             short t1CI;
+            GiveControlNow();
             if (t1CC > 139) t1CC = 139;
             for (t1CI = 0; t1CI < t1CC; t1CI++) {
                 unsigned char *t1City = sCityData +t1CI * 0x20;
@@ -37179,48 +37235,21 @@ int main(void)
             }
         }
 
-        /* Edge scrolling: when mouse is near window edges, auto-scroll */
+        /* No hover edge-scrolling: the original's map view idle (PPC
+         * FUN_10083144) only sets the cursor; the view scrolls by the scroll
+         * bars, the minimap and the game's own centring.  (The remake's old
+         * idle edge-scroll ran the view to the map's top when the mouse was
+         * left near the window's top edge after a click.) */
         if (event.what == nullEvent && sMapLoaded &&
             gMainGameWindow != NULL && *gMainGameWindow != 0) {
             WindowPtr mw = (WindowPtr)*gMainGameWindow;
             if (mw == FrontNonFloat()) {
                 Point mousePt;
-                Rect port = mw->portRect;
-                short edgeZone = 8;
                 Boolean edgeScrolled = false;
-                short scrollAmt = 2;
 
                 GetMouse(&mousePt);
                 SetPort(mw);
                 GlobalToLocal(&mousePt);
-
-                if (mousePt.h >= port.left && mousePt.h < port.right &&
-                    mousePt.v >= port.top && mousePt.v < port.bottom) {
-                    if (mousePt.h < port.left + edgeZone) {
-                        sViewportX -= scrollAmt; edgeScrolled = true;
-                    } else if (mousePt.h > port.right - SCROLLBAR_W - edgeZone) {
-                        sViewportX += scrollAmt; edgeScrolled = true;
-                    }
-                    if (mousePt.v < port.top + edgeZone) {
-                        sViewportY -= scrollAmt; edgeScrolled = true;
-                    } else if (mousePt.v > port.bottom - SCROLLBAR_H - edgeZone) {
-                        sViewportY += scrollAmt; edgeScrolled = true;
-                    }
-                }
-
-                if (edgeScrolled) {
-                    if (sViewportX < 0) sViewportX = 0;
-                    if (sViewportY < 0) sViewportY = 0;
-                    if (sViewportX > sMapWidth - 1) sViewportX = sMapWidth - 1;
-                    if (sViewportY > sMapHeight - 1) sViewportY = sMapHeight - 1;
-                    InvalRect(&port);
-                    if (*gOverviewWindow != 0) {
-                        SetPort((WindowPtr)*gOverviewWindow);
-                        InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
-                    }
-                    /* Dismiss tooltip on scroll */
-                    if (sTooltipWin) { DisposeWindow(sTooltipWin); sTooltipWin = NULL; }
-                }
 
                 /* Terrain tooltip on hover + status bar coordinates */
                 if (!edgeScrolled && *gGameState != 0) {
@@ -37443,8 +37472,12 @@ int main(void)
             if (event.modifiers & cmdKey) {
                 /* Check Cmd+Shift combinations FIRST (before plain Cmd+key) */
                 if ((event.modifiers & shiftKey) && (key == 'e' || key == 'E')) {
-                    /* Cmd+Shift+E = Save and End Turn */
-                    HandleMenuChoice((9L << 16) | 2);
+                    /* Cmd+Shift+E = Save and End Turn (not once the game is won) */
+                    MenuHandle gm9;
+                    AdjustGameMenus();
+                    gm9 = GetMenuHandle(9);
+                    if (gm9 != NULL && ((**gm9).enableFlags & (1L << 2)) != 0)
+                        HandleMenuChoice((9L << 16) | 2);
                 } else if ((event.modifiers & shiftKey) && (key == 'g' || key == 'G')) {
                     /* Cmd+Shift+G = Ungroup */
                     HandleMenuChoice((4L << 16) | 2);
