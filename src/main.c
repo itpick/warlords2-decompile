@@ -1759,6 +1759,7 @@ static void FormatHeroLine(ConstStr255Param fmt, ConstStr255Param city, short nu
 #define kOvFrame    1   /* viewport frame (overview window) */
 #define kOvOverlays 2   /* shields, ruins, armies (not in the city window) */
 static void DrawOverviewTo(GrafPtr port, Rect r, short flags);
+static void OverviewRedrawTile(short x, short y);   /* FUN_10064498 */
 static void HandleUpdate(EventRecord *event);
 static Boolean IsFloatWin(WindowPtr w);
 static WindowPtr FrontNonFloat(void);
@@ -2006,6 +2007,10 @@ static void SiteTilesFor(short p)
         else if (!(SITE_KNOWN(site) & (1 << p)) && *(short *)(gs + 0x11e) != 0) tile = 9;
         else tile = 10;
         md[y * 0xE0 + x * 2] = tile;
+        /* FUN_10039ec8 calls FUN_10064498(0, x, y) when gs+0x11e (quests)
+         * is set, after the tile byte is stored. Mode 0 only repaints the
+         * overview tile; the color tables stay loaded for the whole loop. */
+        if (*(short *)(gs + 0x11e) != 0) OverviewRedrawTile(x, y);
     }
 }
 
@@ -10030,6 +10035,60 @@ static void BuildOverviewBase(void)
     sOverviewBaseFor = (Ptr)*gMapTiles;
 }
 
+/* FUN_10064498(mode, x, y): repaint one overview tile (2x2) into the
+ * offscreen the full build (FUN_10063af8) already filled. Mode 0 and mode 1
+ * write the same pixels; mode 1 only loads and frees MAPCOLOR around the
+ * draw, which this port keeps resident. Hills 0x50..0x5F with no road roll
+ * four fresh Dice(1,3,1) colors, one per pixel, and do not use the pool.
+ * Any other tile reads the same MAPCOLOR byte as BuildOverviewBase, then
+ * the 16-short remap FUN_10063784 installs: a short of 0 is stored as
+ * 0xFF and a short of 15 as 0, and the pixel is always written (water is
+ * not left as the ocean gradient). The only MAPCOLOR byte past that
+ * 16-short table is 16, one past the allocation; the full overview, which
+ * was checked against the original, plots 16 there. No draw when the
+ * offscreen does not exist yet, so the rolls are not spent on nothing. */
+static void OverviewRedrawTile(short x, short y)
+{
+    PixMapHandle pm;
+    unsigned char *base, *mapData, *rdData;
+    long rb;
+    short rd, idx, q;
+
+    if (sOverviewBaseGW == NULL || *gMapTiles == 0) return;
+    if (x < 0 || y < 0 || x >= sMapWidth || y >= sMapHeight) return;
+    mapData = (unsigned char *)*gMapTiles;
+    rdData = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
+    rd = rdData ? (short)(rdData[y * 112 + x] & 0x1F) : 0;
+    idx = rd ? (short)(rd - 1) : mapData[y * 0xE0 + x * 2];
+
+    pm = GetGWorldPixMap(sOverviewBaseGW);
+    if (!LockPixels(pm)) return;
+    base = (unsigned char *)GetPixBaseAddr(pm);
+    rb = (**pm).rowBytes & 0x3FFF;
+    if (!rd && idx >= 0x50 && idx < 0x60) {
+        for (q = 0; q < 4; q++) {
+            unsigned char col = (unsigned char)Dice(1, 3, 1);
+            base[(long)(y * 2 + (q >> 1)) * rb + x * 2 + (q & 1)] = col;
+        }
+    } else if (sMapColorFullLoaded && idx >= 0 && idx < (rd ? 20 : 256)) {
+        for (q = 0; q < 4; q++) {
+            unsigned char b = rd ? sMapColorFull[1120 + q * 20 + idx]
+                                 : sMapColorFull[q * 256 + idx];
+            unsigned char col;
+            if (b < 16) {
+                unsigned short sh = (unsigned short)(sMapColorFull[1024 + b * 2]
+                    | (sMapColorFull[1025 + b * 2] << 8));
+                if (sh == 0) col = 0xFF;
+                else if (sh == 0x0F) col = 0;
+                else col = (unsigned char)sh;
+            } else {
+                col = b;
+            }
+            base[(long)(y * 2 + (q >> 1)) * rb + x * 2 + (q & 1)] = col;
+        }
+    }
+    UnlockPixels(pm);
+}
 
 static void DrawOverviewInWindow(WindowPtr win)
 {
@@ -19433,6 +19492,10 @@ static void QuestGenerate(short isAI, short heroRec)
                 if ((s = QuestSiteAt(x, y)) >= 0) {
                     SITE_KNOWN(sCityData + s * 0x20) |= (unsigned char)(1 << me);
                     SiteTilesFor(me);
+                    /* FUN_10064498(1, item x, item y), not the site origin.
+                     * Mode 1 only loads and frees the color tables around the
+                     * same four pixels; the window refresh is FUN_100635e0. */
+                    OverviewRedrawTile(x, y);
                 }
                 InvalidateAllGameWindows();
             }
