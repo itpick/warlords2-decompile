@@ -5140,6 +5140,217 @@ static void ScanForScenarios(void)
 }
 
 
+#define TT_WATER  0
+#define TT_GRASS  1
+
+/* FUN_100a271c land-mass stage. Classification bytes, not Grasslands
+ * tile indices: 7 is still open, 4 is painted land, 5 and 6 count toward
+ * the target (cities placed by an earlier stage this port does not run).
+ * FUN_10051d60 is a blr. FUN_10051dc8 clamps to 0..111 and 0..155. */
+
+/* state+0x3c, the short FUN_100a1d8c multiplies by (count/100). FUN_100517f8
+ * loads it from RANDOM\RANDOM.DAT and then adds a player-count lookup.
+ * That short is not in the code image. Returning 0 does not guess it:
+ * the target stays 0 and FUN_100a1e28 does not enter the arm loop. */
+static short RandomMapLandFactorFromDat(void)
+{
+    return 0;
+}
+
+/* state+0xbc: eight (dx, dy) shorts, one pair per direction. FUN_100a1e50
+ * only loads them. Nothing in the generator writes them; they come from
+ * the same DAT copy. false means the step is not taken and is not faked. */
+static Boolean RandomMapDirDelta(short dir, short *dx, short *dy)
+{
+    (void)dir;
+    (void)dx;
+    (void)dy;
+    return false;
+}
+
+static void RmClamp(short *x, short *y)
+{
+    if (*x <= 0) *x = 0;
+    if (*y <= 0) *y = 0;
+    if (*x >= 0x70) *x = 0x6F;
+    if (*y >= 0x9C) *y = 0x9B;
+}
+
+static unsigned char RmAt(const unsigned char *g, long idx)
+{
+    if (idx < 0 || idx >= 112L * 156L) return 0;
+    return g[idx];
+}
+
+static void RmPaintIf7(unsigned char *g, short x, short y, short *painted)
+{
+    long idx = (long)y * 112 + x;
+    if (g[idx] == 7) {
+        g[idx] = 4;
+        *painted = (short)(*painted + 1);
+    }
+}
+
+/* One arm, FUN_100a1e50. The seed and the length dice do not need the
+ * step table. Each step would add the pair at +0xbc+(dir*4), clamp, paint
+ * a 7, then roll two side lengths and walk (dir+2)%8 and (dir+6)%8.
+ * Those walks are skipped while RandomMapDirDelta is false, and the side
+ * Dice calls are not made, because they happen after the step. */
+static void RandomMapPaintArm(unsigned char *g, short *painted)
+{
+    short sx, sy, i, dir;
+    short len[8];
+    short wide, bias;
+
+    do {
+        sx = Dice(1, 0x70, -1);
+        sy = Dice(1, 0x9C, -1);
+    } while (g[(long)sy * 112 + sx] != 7);
+
+    if (Dice(1, 100, 0) < 0x41) {
+        for (i = 0; i < 8; i++) len[i] = Dice(1, 8, 2);
+        wide = 4;
+        bias = 2;
+    } else {
+        for (i = 0; i < 8; i++) len[i] = Dice(1, 10, 5);
+        wide = 6;
+        bias = 4;
+    }
+
+    RmPaintIf7(g, sx, sy, painted);
+
+    for (dir = 0; dir < 8; dir++) {
+        short x = sx, y = sy;
+        short step;
+        if (len[dir] <= 0) continue;
+        for (step = 0; step < len[dir]; step++) {
+            short s = (short)(step + 1);
+            short dx, dy, sides, n1, n2, k;
+            short x1, y1;
+            if (!RandomMapDirDelta(dir, &dx, &dy))
+                break;
+            x = (short)(x + dx);
+            y = (short)(y + dy);
+            RmClamp(&x, &y);
+            RmPaintIf7(g, x, y, painted);
+            sides = (short)(wide - (s >> 1));
+            n1 = Dice(1, sides, (short)(bias - (s >> 2)));
+            n2 = Dice(1, sides, (short)(bias - s / 3));
+            x1 = x;
+            y1 = y;
+            for (k = 0; k < n1; k++) {
+                if (!RandomMapDirDelta((short)((dir + 2) & 7), &dx, &dy))
+                    break;
+                x1 = (short)(x1 + dx);
+                y1 = (short)(y1 + dy);
+                RmClamp(&x1, &y1);
+                RmPaintIf7(g, x1, y1, painted);
+            }
+            x1 = x;
+            y1 = y;
+            for (k = 0; k < n2; k++) {
+                if (!RandomMapDirDelta((short)((dir + 6) & 7), &dx, &dy))
+                    break;
+                x1 = (short)(x1 + dx);
+                y1 = (short)(y1 + dy);
+                RmClamp(&x1, &y1);
+                RmPaintIf7(g, x1, y1, painted);
+            }
+        }
+    }
+}
+
+/* FUN_100a2310. A 7 with three or more orthogonal 4s becomes 4.
+ * Then, on an interior 4, one diagonal gap (5, 3, or 7) is filled
+ * when the opposite diagonal pair is already 4. Dice(1,10,0) < 5
+ * picks which gap. That fill does not bump the painted count.
+ * Neighbor bytes are the flat 112-wide buffer, so x-1 on column 0
+ * reads the previous row, matching the original address math. */
+static void RandomMapFill(unsigned char *g, short *painted)
+{
+    short x, y;
+    for (x = 0; x < 112; x++) {
+        for (y = 0; y < 156; y++) {
+            long idx = (long)y * 112 + x;
+            short n;
+            if (g[idx] != 7) continue;
+            n = 0;
+            if (RmAt(g, idx + 112) == 4) n++;
+            if (RmAt(g, idx - 112) == 4) n++;
+            if (RmAt(g, idx + 1) == 4) n++;
+            if (RmAt(g, idx - 1) == 4) n++;
+            if (n >= 3) {
+                g[idx] = 4;
+                *painted = (short)(*painted + 1);
+            }
+        }
+    }
+    for (x = 1; x < 0x6F; x++) {
+        for (y = 1; y < 0x9B; y++) {
+            long idx = (long)y * 112 + x;
+            unsigned char gap;
+            if (g[idx] != 4) continue;
+            if (RmAt(g, idx + 113) == 4 && RmAt(g, idx - 113) == 4) {
+                gap = RmAt(g, idx - 111);
+                if (gap == 5 || gap == 3 || gap == 7) {
+                    gap = RmAt(g, idx + 111);
+                    if (gap == 5 || gap == 3 || gap == 7) {
+                        if (Dice(1, 10, 0) < 5)
+                            g[idx - 111] = 4;
+                        else
+                            g[idx + 111] = 4;
+                        continue;
+                    }
+                }
+            }
+            if (RmAt(g, idx + 111) == 4 && RmAt(g, idx - 111) == 4) {
+                gap = RmAt(g, idx - 113);
+                if (gap == 5 || gap == 3 || gap == 7) {
+                    gap = RmAt(g, idx + 113);
+                    if (gap == 5 || gap == 3 || gap == 7) {
+                        if (Dice(1, 10, 0) < 5)
+                            g[idx - 113] = 4;
+                        else
+                            g[idx + 113] = 4;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* FUN_100a271c: FUN_100a1d8c, then while FUN_100a1e28 is 0, paint one arm
+ * and fill. The bound is (cells that are 7, 5, or 6) / 100 * the DAT
+ * factor, compared as signed shorts. */
+static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
+{
+    short eligible = 0;
+    short painted = 0;
+    short target;
+    short x, y;
+    long i;
+
+    for (i = 0; i < 112L * 156L; i++) classGrid[i] = 7;
+
+    for (x = 0; x < 112; x++) {
+        for (y = 0; y < 156; y++) {
+            unsigned char c = classGrid[(long)y * 112 + x];
+            if (c == 7 || c == 5 || c == 6)
+                eligible = (short)(eligible + 1);
+        }
+    }
+    target = (short)((eligible / 100) * RandomMapLandFactorFromDat());
+    while (painted < target) {
+        RandomMapPaintArm(classGrid, &painted);
+        RandomMapFill(classGrid, &painted);
+    }
+
+    /* Byte 4 is the only land this stage writes. It is not a Grasslands
+     * tile id; the remake's later stages still read TT_GRASS. */
+    for (i = 0; i < 112L * 156L; i++)
+        terrain[i] = (classGrid[i] == 4) ? TT_GRASS : TT_WATER;
+}
+
 /* ===================================================================
  * GenerateRandomMap — Procedurally generate a playable random map
  *
@@ -5147,18 +5358,13 @@ static void ScanForScenarios(void)
  * properties and unit definitions), then generates terrain, places
  * cities, and initializes the game state.
  *
- * Algorithm:
- *   1. Fill with ocean
- *   2. Place seed points and grow landmasses outward
- *   3. Add terrain variety (forest, mountain, hills, swamp)
- *   4. Add shore transition tiles
- *   5. Place 8 faction starting cities + neutral cities
- *   6. Initialize game state and call GameInit()
+ * Land shape is FUN_100a271c (count 7/5/6, paint 4 only on 7, fill).
+ * The DAT land factor and the eight step pairs are not applied.
+ * Forest, mountain, hill, and swamp passes below are still the remake's
+ * own clusters; this stage does not describe them.
  * =================================================================== */
 
 /* Terrain type codes for working buffer */
-#define TT_WATER  0
-#define TT_GRASS  1
 #define TT_FOREST 2
 #define TT_MTN    3
 #define TT_HILL   4
@@ -5179,8 +5385,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 {
     unsigned char *gs, *map;
     unsigned char *terrain;  /* working buffer: terrain types per tile */
-    short x, y, i, pass;
-    short numSeeds;
+    short x, y, i;
     short cityCount = 0;
 
     if (*gGameState == 0 || *gMapTiles == 0) return false;
@@ -5224,44 +5429,15 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     /* --- Phase 2: Generate terrain --- */
 
-    /* Place 4-6 landmass seeds */
-    numSeeds = 4 + Dice(1, 3, -1);
-    for (i = 0; i < numSeeds; i++) {
-        short sx = 15 + Dice(1, 82, -1);
-        short sy = 15 + Dice(1, 126, -1);
-        short dx, dy;
-        /* Create initial 7x7 land patch */
-        for (dy = -3; dy <= 3; dy++) {
-            for (dx = -3; dx <= 3; dx++) {
-                short nx = sx + dx, ny = sy + dy;
-                if (nx >= 1 && nx < 111 && ny >= 1 && ny < 155)
-                    terrain[ny * 112 + nx] = TT_GRASS;
-            }
-        }
-    }
-
-    /* Grow land from seeds: 8 expansion passes with decreasing probability */
-    for (pass = 0; pass < 8; pass++) {
-        for (y = 1; y < 155; y++) {
-            for (x = 1; x < 111; x++) {
-                if (terrain[y * 112 + x] == TT_GRASS) {
-                    short prob = 45 - pass * 3;  /* 45% → 24% */
-                    /* Try to expand in each cardinal direction */
-                    if (terrain[(y-1)*112+x] == TT_WATER &&
-                        Dice(1, 100, -1) < prob)
-                        terrain[(y-1)*112+x] = TT_GRASS;
-                    if (terrain[(y+1)*112+x] == TT_WATER &&
-                        Dice(1, 100, -1) < prob)
-                        terrain[(y+1)*112+x] = TT_GRASS;
-                    if (terrain[y*112+x-1] == TT_WATER &&
-                        Dice(1, 100, -1) < prob)
-                        terrain[y*112+x-1] = TT_GRASS;
-                    if (terrain[y*112+x+1] == TT_WATER &&
-                        Dice(1, 100, -1) < prob)
-                        terrain[y*112+x+1] = TT_GRASS;
-                }
-            }
-        }
+    /* FUN_100a271c replaces the invented seeds and cardinal growth.
+     * The class grid starts as 7 because this stage only paints cells
+     * that are already 7; the earlier coast/city stages that punch holes
+     * in that field are not this function. */
+    {
+        unsigned char *classGrid = (unsigned char *)NewPtrClear(112 * 156);
+        if (classGrid == NULL) { DisposePtr((Ptr)terrain); return false; }
+        RandomMapGrowLand(classGrid, terrain);
+        DisposePtr((Ptr)classGrid);
     }
 
     /* Progress: 40% */
