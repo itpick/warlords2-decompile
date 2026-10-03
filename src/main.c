@@ -5149,24 +5149,27 @@ static void ScanForScenarios(void)
  * the target (cities placed by an earlier stage this port does not run).
  * FUN_10051d60 is a blr. FUN_10051dc8 clamps to 0..111 and 0..155. */
 
-/* state+0x3c, the short FUN_100a1d8c multiplies by (count/100). FUN_100517f8
- * loads it from RANDOM\RANDOM.DAT and then adds a player-count lookup.
- * That short is not in the code image. Returning 0 does not guess it:
- * the target stays 0 and FUN_100a1e28 does not enter the arm loop. */
+/* state+0x3c after FUN_100525a0. Captured from 'DAT ' 1010 "RANDOM"
+ * (see extracted/random_dat_1010_note.txt). FUN_100517f8 adds
+ * state[playerCount + 0x30] after the load; this is the file short only. */
 static short RandomMapLandFactorFromDat(void)
 {
-    return 0;
+    return 15;
 }
 
-/* state+0xbc: eight (dx, dy) shorts, one pair per direction. FUN_100a1e50
- * only loads them. Nothing in the generator writes them; they come from
- * the same DAT copy. false means the step is not taken and is not faked. */
+/* state+0xbc after the same swap. dir*4 is (dx, dy). Not a guessed compass:
+ * these eight pairs are the resource shorts. */
+static const short kRandomMapDirDelta[8][2] = {
+    {0, 1}, {1, 1}, {1, 0}, {1, -1},
+    {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}
+};
+
 static Boolean RandomMapDirDelta(short dir, short *dx, short *dy)
 {
-    (void)dir;
-    (void)dx;
-    (void)dy;
-    return false;
+    if (dir < 0 || dir > 7) return false;
+    *dx = kRandomMapDirDelta[dir][0];
+    *dy = kRandomMapDirDelta[dir][1];
+    return true;
 }
 
 static void RmClamp(short *x, short *y)
@@ -5456,7 +5459,7 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
  * cities, and initializes the game state.
  *
  * Land shape is FUN_100a271c (count 7/5/6, paint 4 only on 7, fill).
- * The DAT land factor and the eight step pairs are not applied.
+ * The land factor and the eight step pairs are the captured DAT 1010 shorts.
  * Forest, mountain, hill, and swamp passes below are still the remake's
  * own clusters; this stage does not describe them.
  * =================================================================== */

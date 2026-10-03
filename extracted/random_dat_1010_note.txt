@@ -1,0 +1,26 @@
+Source
+The running original (InfiniteMac, disk "Warlords II", Power Macintosh 9500, 2026-10-03) completed a random scenario. File > New, "Use Random Map...", OK, Save as "Random scenario". No "Random data not found" dialog. The Warlords II folder stayed 12 items (app, Armies, Cities, six scenarios, Random scenario, Shields, Terrain, Tutorial) and no RANDOM folder or RANDOM.DAT appeared.
+
+FUN_100517f8 does not install a compass. It opens resource type 'DAT ' and reads 42336 bytes: 0x5DD6 into the state, then 0x478A into the map buffer. That resource is 'DAT ' id 1010, name RANDOM, inside Warlords II.app.
+
+Bytes
+warlords-offline/Disk/2d734e68d36ccba327c45e003b36df61.chunk
+offset 178286, length 42336
+SHA-256 1df968c40bc2cbdf07c39b60d60781fa1b1b498b2c5f472cd6c90637bb0663e8
+The same 42336 bytes are the DAT 1010 resource in .devloop/pulled/Warlords II.app (resource fork).
+
+random_dat_1010_prefix.bin is the first 0x264 bytes, the 0x132 shorts copied to state+0. They are stored little-endian. FUN_100525a0 swaps each short before use.
+
+After that swap
+  file offset 0x3c, land factor: 15
+  file offset 0xbc, eight (dx, dy) pairs, one pair per direction:
+    0 (0, 1)
+    1 (1, 1)
+    2 (1, 0)
+    3 (1, -1)
+    4 (0, -1)
+    5 (-1, -1)
+    6 (-1, 0)
+    7 (-1, 1)
+
+FUN_100517f8 then adds the short at state index (playerCount + 0x30) onto the land factor. That add is not included in the 15 above.
