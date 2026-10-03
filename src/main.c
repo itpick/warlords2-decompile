@@ -325,6 +325,8 @@ static void CleanupMusicSystem(void)
 
 static Boolean gMusicLoop = false;
 
+static short Dice(short n, short sides, short add);
+
 static void LoadAndPlayMusic(short state)
 {
     static const short kTurn[8] = {0, 4, 6, 9, 10, 16, 17, 23};
@@ -342,22 +344,42 @@ static void LoadAndPlayMusic(short state)
     gCurrentMusicState = state;
     gMusicLoop = (state != MUSIC_STATE_AITURN);
 
-#define RND(n) ((short)((unsigned short)Random() % (n)))
+    /* PPC FUN_10092484: each tune is a DAT 1002 string picked by
+     * FUN_1005f6b0(group, idx); idx -1 = Dice(1, count, -1) (FUN_1005f50c),
+     * so even a 1-entry group (14 sage) consumes a Random().  Groups:
+     * 8 STARTUP, 9 {12,21,12}, 10 {0,4,6,9,10,16,17,23}, 11 {2,3,5,7,13},
+     * 12 {11}, 13 {1,8}, 14 {14}, 15 {15}, 16 {18}, 17 {19}, 18 {20}. */
     switch (state) {
         case MUSIC_STATE_TITLE:   tuneID = TUNE_RSTARTUP; break;
-        case MUSIC_STATE_TURN:    tuneID = TUNE_RINT_BASE + kTurn[RND(8)]; break;
-        case MUSIC_STATE_AITURN:  tuneID = TUNE_RINT_BASE + kAI[RND(5)]; break;
-        case MUSIC_STATE_VICTORY: tuneID = TUNE_RINT_BASE + kWon[RND(3)]; break;
+        case MUSIC_STATE_TURN:    tuneID = TUNE_RINT_BASE + kTurn[Dice(1, 8, -1)]; break;
+        case MUSIC_STATE_AITURN: {
+            /* no live human left: Dice(1,100,0) < 6 group 12, < 53 group 11,
+             * else group 10; otherwise group 11 */
+            Boolean noHuman = true;
+            short p;
+            if (*gGameState) {
+                unsigned char *g = (unsigned char *)*gGameState;
+                for (p = 0; p < 8; p++)
+                    if (*(short *)(g + 0x138 + p * 2) != 0 && *(short *)(g + 0xd0 + p * 2) == 0) { noHuman = false; break; }
+            }
+            if (noHuman) {
+                short r = Dice(1, 100, 0);
+                if (r < 6)       { (void)Dice(1, 1, -1); tuneID = TUNE_RINT_BASE + 11; }
+                else if (r < 53) tuneID = TUNE_RINT_BASE + kAI[Dice(1, 5, -1)];
+                else             tuneID = TUNE_RINT_BASE + kTurn[Dice(1, 8, -1)];
+            } else tuneID = TUNE_RINT_BASE + kAI[Dice(1, 5, -1)];
+            break;
+        }
+        case MUSIC_STATE_VICTORY: tuneID = TUNE_RINT_BASE + kWon[Dice(1, 3, -1)]; break;
         case MUSIC_STATE_HERO:    tuneID = TUNE_RINT_BASE + 11; break;
-        case MUSIC_STATE_TEMPLE:  tuneID = TUNE_RINT_BASE + (RND(2) ? 8 : 1); break;
-        case MUSIC_STATE_SAGE:    tuneID = TUNE_RINT_BASE + 14; break;
+        case MUSIC_STATE_TEMPLE:  tuneID = TUNE_RINT_BASE + (Dice(1, 2, -1) ? 8 : 1); break;
+        case MUSIC_STATE_SAGE:    (void)Dice(1, 1, -1); tuneID = TUNE_RINT_BASE + 14; break;
         case MUSIC_STATE_PROMOTE: tuneID = TUNE_RINT_BASE + 15; break;
         case MUSIC_STATE_MEDAL:   tuneID = TUNE_RINT_BASE + 18; break;
         case MUSIC_STATE_PEACE:   tuneID = TUNE_RINT_BASE + 19; break;
         case MUSIC_STATE_PEACENO: tuneID = TUNE_RINT_BASE + 20; break;
         default: return;
     }
-#undef RND
 
     /* Load Tune and Head resources by ID (searches all open resource files) */
     tuneH = GetResource('Tune', tuneID);
@@ -571,35 +593,35 @@ typedef struct {
     short value;  /* bonus amount: 1-3 for battle/cmd, 2-6 for gold, 0 for fly/move */
 } ItemDef;
 
-static const ItemDef sItemTable[MAX_ITEMS] = {
-    /* Battle items (+strength to hero) */
+/* The item pool: the scenario's 'ITM ' 10000 (byte-equal to the app's
+ * DAT 1011 in every shipped scenario), read the way PPC FUN_10039180 reads
+ * it (LoadItemPool).  This built-in copy is the same 39 entries in the same
+ * order, used only when neither resource is found. */
+#define ITEM_POOL_MAX    50
+static ItemDef sItemTable[ITEM_POOL_MAX] = {
     {"Firesword",         1, 1}, {"Icesword",           1, 1},
     {"Spear of Ank",      1, 1}, {"Bow of Eldros",      1, 2},
     {"Lightsword",        1, 2}, {"Darksword",          1, 2},
-    {"Staff of Might",    1, 3}, {"Tome of War",        1, 1},
-    {"Sword of Death",    1, 1}, {"Berserker Helm",     1, 2},
-    {"Gem of Attack",     1, 2}, {"Horn of Siege",      1, 3},
-    {"Shield of Courage", 1, 1}, {"Troll Helm",         1, 1},
-    {"Lock of Safety",    1, 2}, {"Chimes of Safety",   1, 2},
-    {"Armour of Gods",    1, 3},
-    /* Command items (+strength to all stacked) */
-    {"Crown of Loriel",   2, 1}, {"Sceptre of Loriel",  2, 1},
-    {"Orb of Loriel",     2, 1}, {"Crimson Banner",     2, 1},
-    {"Horn of Ages",      2, 2}, {"Ring of Power",      2, 2},
-    {"Staff of Ruling",   2, 3},
-    /* Flying items (stack flies) */
+    {"Staff of Might",    1, 3}, {"Crown of Loriel",    2, 1},
+    {"Sceptre of Loriel", 2, 1}, {"Orb of Loriel",      2, 1},
+    {"Crimson Banner",    2, 1}, {"Horn of Ages",       2, 2},
+    {"Ring of Power",     2, 2}, {"Staff of Ruling",    2, 3},
+    {"Tome of War",       1, 1}, {"Sword of Death",     1, 1},
+    {"Berserker Helm",    1, 2}, {"Gem of Attack",      1, 2},
+    {"Horn of Siege",     1, 3}, {"Shield of Courage",  1, 1},
+    {"Troll Helm",        1, 1}, {"Lock of Safety",     1, 2},
+    {"Chimes of Safety",  1, 2}, {"Armour of Gods",     1, 3},
     {"Wings of Flying",   5, 0}, {"Witch's Broom",      5, 0},
     {"Wand of Flight",    5, 0}, {"Magic Carpet",       5, 0},
     {"Wings of the Eagle", 5, 0},
-    /* Movement items (doubles move) */
     {"Boots of Speed",    6, 0}, {"Cup of Haste",       6, 0},
     {"Ring of Travel",    6, 0}, {"Phantom Steed",      6, 0},
     {"Staff of Movement", 6, 0},
-    /* Gold items (+income per city) */
     {"Everful Purse",     7, 2}, {"Eldros's Pouch",     7, 2},
     {"Okradon's Pouch",   7, 4}, {"Silver Purse",       7, 4},
     {"Horn of Plenty",    7, 6}
 };
+static short sItemPoolCount = MAX_ITEMS;   /* the list's count (FUN_10039180 local_644) */
 
 /* ===== Resource String Loading System ===== */
 /* STR# resource IDs */
@@ -819,52 +841,60 @@ static void LoadTerrainDescriptions(void)
     HUnlock(h);
 }
 
-/* ===== DAT 1011 Item Definitions ===== */
-/* Contains 39 ruin items with names, category codes, and bonus values.
- * If loaded successfully, overrides the hardcoded sItemTable names. */
+/* ===== Item pool: 'ITM ' 10000 / DAT 1011 ===== */
 #define DAT_ITEM_DEFS  1011
 
-static Boolean sDAT1011Loaded = false;
+/* PPC FUN_10039180's reader: a 2-character decimal count, 2 bytes skipped
+ * (CR LF), then per entry 26 bytes: name[20] (name[19] forced to NUL; the
+ * first ' ' ends it, '_' before it becomes ' '), 1 skipped, type char-'0',
+ * 1 skipped, value char-'0', 2 skipped.  Returns false (pool untouched) on
+ * a malformed resource. */
+static Boolean LoadItemPool(Handle h)
+{
+    const unsigned char *p;
+    long size;
+    short n, i, j;
+    if (h == NULL) return false;
+    size = GetHandleSize(h);
+    if (size < 4) return false;
+    p = (const unsigned char *)*h;
+    if (p[0] < '0' || p[0] > '9') return false;
+    n = (short)(p[0] - '0');
+    if (p[1] >= '0' && p[1] <= '9') n = (short)(n * 10 + (p[1] - '0'));
+    if (n <= 0 || n > ITEM_POOL_MAX || 4 + (long)n * 26 > size) return false;
+    p += 4;
+    for (i = 0; i < n; i++, p += 26) {
+        ItemDef *it = &sItemTable[i];
+        for (j = 0; j < 19 && p[j] != ' ' && p[j] != 0; j++)
+            it->name[j] = (char)(p[j] == '_' ? ' ' : p[j]);
+        it->name[j] = 0;
+        it->type  = (short)((signed char)p[21] - '0');
+        it->value = (short)((signed char)p[23] - '0');
+    }
+    sItemPoolCount = n;
+    return true;
+}
 
+/* the app's DAT 1011 at start-up (the pool for random maps) */
 static void LoadDATItemDefs(void)
 {
-    Handle h;
-    if (sDAT1011Loaded) return;
-    sDAT1011Loaded = true;
-
-    h = GetResource('DAT ', DAT_ITEM_DEFS);
+    Handle h = GetResource('DAT ', DAT_ITEM_DEFS);
     if (h == NULL) return;
-
     HLock(h);
-    {
-        long size = GetHandleSize(h);
-        const unsigned char *p = (const unsigned char *)*h;
-        short idx = 0;
-
-        /* DAT 1011 format: each entry is a packed record with a Pascal-style
-         * name string followed by type and value fields.
-         * Try parsing as: [name_len] [name_bytes...] [type:2] [value:2]
-         * If that doesn't work, fall back to null-terminated strings. */
-        while ((const char *)p < (const char *)*h + size && idx < MAX_ITEMS) {
-            short nameLen = (short)*p;
-            if (nameLen > 0 && nameLen < 20 &&
-                (const char *)p + 1 + nameLen + 4 <= (const char *)*h + size) {
-                /* Pascal-style entry */
-                ItemDef *item = (ItemDef *)&sItemTable[idx];  /* cast away const to update */
-                short copyLen = nameLen < 19 ? nameLen : 19;
-                BlockMoveData(p + 1, item->name, copyLen);
-                item->name[copyLen] = '\0';
-                item->type = *(short *)(p + 1 + nameLen);
-                item->value = *(short *)(p + 1 + nameLen + 2);
-                p += 1 + nameLen + 4;
-                idx++;
-            } else {
-                /* Skip unknown data */
-                break;
-            }
-        }
-    }
+    (void)LoadItemPool(h);
     HUnlock(h);
+}
+
+/* the scenario's 'ITM ' 10000 (call with the scenario file current);
+ * DAT 1011 when the scenario has none */
+static void LoadScenarioItemPool(void)
+{
+    Handle h = Get1Resource('ITM ', 10000);
+    if (h == NULL) { LoadDATItemDefs(); return; }
+    HLock(h);
+    if (!LoadItemPool(h)) LoadDATItemDefs();
+    HUnlock(h);
+    ReleaseResource(h);
 }
 
 /* ===== Game item records (PPC 1.0.7 FUN_1003956c) =====
@@ -1007,12 +1037,6 @@ static short Dice(short n, short sides, short add)
     return s;
 }
 
-/* Dice: 1dS = 1..S */
-static short RollDie(short sides)
-{
-    if (sides < 1) return 1;
-    return (short)((unsigned short)Random() % (unsigned short)sides) + 1;
-}
 
 /* Player colors for faction borders and city/temple owner dots */
 static RGBColor sPlayerColors[9] = {
@@ -1675,7 +1699,7 @@ static short CalcCityDefense(unsigned char *extCity)
 /* Main map chrome dimensions */
 #define SCROLLBAR_W    15   /* map area ends 15px before port.right (scroll bar overlaps the frame by 1) */
 #define SCROLLBAR_H    15   /* same for the bottom bar (turn strip + h scroll bar) */
-#define TURN_VIEW_W    199  /* TTurnView width at runtime (h scroll bar starts here) */
+#define TURN_VIEW_W    195  /* TTurnView width (h scroll bar starts at window x 195) */
 #define TURN_TEXT_X    3    /* "Turn N" pen x (Chicago 12) */
 static void LayoutMapScrollBars(WindowPtr w);
 static void ComputePathGridOnly(short srcX, short srcY, short armyIdx);
@@ -2083,15 +2107,21 @@ static void AssignCityOwner(short ci, short owner)
     }
 }
 
-/* 68k CODE_117 FUN_00000db4 with weight set 3: the city's best production
- * slot — 10*min(str,9) + 5*(10 - min(turns,10)) + move/2, +1 turn below
- * strength 3, slots 3..0 with a strict '>' (ties keep the later slot).
- * The SCN's per-city slot stats where the scenario has them.  -1: none. */
-static short BestCitySlotType(short ci)
+/* PPC FUN_1001e794 (68k CODE_117 FUN_00000db4): the city's best production
+ * slot under weight set `set` (data+0xadd0/0xade0/0xadf0, 8 shorts each):
+ *   score = sW[set]*min(str,9) + tW[set]*(10 - min(turns',10)) + mW[set]*move/2
+ * turns' = turns+1 when str < 3 (not for set 6); set 4 also needs the type's
+ * flag byte (never used here).  Slots 3..0 with a strict '>' (ties keep the
+ * later slot).  Set 3 = 10/5/1.  The SCN's per-city slot stats where the
+ * scenario has them.  -1: none. */
+static short BestCitySlotTypeW(short ci, short set)
 {
+    static const short kMoveW[8] = {0, 1, 1, 1, 1, 1, 10, 0};
+    static const short kStrW[8]  = {0, 4, 10, 10, 10, 10, 1, 0};
+    static const short kTurnW[8] = {0, 10, 10, 5, 5, 5, 10, 0};
     unsigned char *city;
     short s, best = 0, unitType = -1;
-    if (ci < 0 || ci >= sCityCount || ci >= 139) return -1;
+    if (ci < 0 || ci >= sCityCount || ci >= 139 || set < 0 || set > 7) return -1;
     city = sCityData + ci * 0x20;
     for (s = 3; s >= 0; s--) {
         short pt = *(short *)(city + 0x0C + s * 2);
@@ -2107,9 +2137,9 @@ static short BestCitySlotType(short ci)
             move  = sScnSlotStats[ci][s][2];
         }
         if (str > 9) str = 9;
-        if (str < 3) turns++;
+        if (set != 6 && str < 3) turns++;
         if (turns > 10) turns = 10;
-        score = str * 10 + 5 * (10 - turns) + move / 2;
+        score = (short)(str * kStrW[set] + kTurnW[set] * (10 - turns) + (move * kMoveW[set]) / 2);
         if (score > best) { best = score; unitType = pt; }
     }
     return unitType;
@@ -2858,7 +2888,7 @@ static void GameInit(void)
             Boolean ok = false;
             while (!ok && ++guard < 20000) {
                 Boolean sp;
-                c = Dice(1, MAX_ITEMS, -1);
+                c = Dice(1, sItemPoolCount, -1);   /* FUN_1005f230(1, local_644, -1) */
                 ok = true;
                 for (q = 0; q < s; q++) if (pick8[q] == c) ok = false;
                 if (!ok) continue;
@@ -2971,7 +3001,7 @@ static void GameInit(void)
                 }
                 if (best < 0 || ++guard > 200) break;
                 AssignCityOwner(best, p);
-                if (RollDie(10) <= 5) {   /* Dice(1,10,-1) < 5: even odds */
+                if (Dice(1, 10, -1) < 5) {   /* FUN_1003c068: Dice(1,10,-1) < 5 */
                     unsigned char *pstat = gs + 0x186 + p * 0x14;
                     fromX[p] = *(short *)(pstat + 0x04); fromY[p] = *(short *)(pstat + 0x06);
                 } else {
@@ -2983,259 +3013,56 @@ static void GameInit(void)
         }
     }
 
-    /* --- Create neutral garrison armies (68k CODE_117 FUN_00000be0) --- */
-    /* The original game populates neutral cities with defender armies.
-     * For each neutral city (owner 0xFF), place a garrison army with
-     * 1-3 units of a producible type. */
+    /* --- Starting armies and garrisons: PPC FUN_1002cbbc (68k CODE_117
+     * FUN_00000be0).  Scenarios carry no army data.  One pass over the
+     * cities from the LAST to the first:
+     *   neutral city: gs+0x11a (Neutral Cities) 0 -> the standard 0x0B
+     *     garrison, no roll; else k = Dice(1,4,ns-2) capped at 3;
+     *   owned city: k = 3;
+     *   then n = Dice(1,4,0) units with Quick Start (gs+0x128), else 1, each
+     *   the city's best slot under weight set {1,6,2,3}[k] (FUN_1001e794,
+     *   BestCitySlotTypeW; 3 = 10*str + 5*(10-turns) + move/2, verified 8/8
+     *   on an original Erythea turn-1 save); no scoring slot -> the 0x0B
+     *   garrison (owner 0x0F) instead.
+     * The +2 strength bonuses from gs+0xF0 and the per-type flag table are
+     * not modelled yet. */
     {
-        short siteCount = sCityCount;
-        short armyCount = *(short *)(gs + 0x1602);
-        if (siteCount > 139) siteCount = 139;
-        if (armyCount < 0) armyCount = 0;
-
-        for (i = 0; i < siteCount && armyCount < 100; i++) {
-            unsigned char *site = sCityData +i * 0x20;
-            short sOwner = *(short *)(site + 0x04);
-            short sType = (short)(unsigned char)site[0x17];
-            short sx = *(short *)(site + 0x00);
-            short sy = *(short *)(site + 0x02);
-
-            /* Only garrison actual neutral cities (type 0, owner 0xFF/-1/0x0F) */
-            if (sType != 0) continue;
-            if (sOwner >= 0 && sOwner < 8) continue;  /* player-owned, skip */
-
-            /* Check if city already has an army on it */
-            {
-                Boolean hasArmy = false;
-                for (j = 0; j < armyCount; j++) {
-                    unsigned char *army = gs + 0x1604 + j * 0x42;
-                    if (*(short *)(army + 0x00) == sx &&
-                        *(short *)(army + 0x02) == sy) {
-                        hasArmy = true;
-                        break;
-                    }
-                }
-                if (hasArmy) continue;
-            }
-
-            /* Strong/Active neutrals (68k FUN_00000be0): a real unit from the
-             * city's own slots (FUN_00000db4), one of them — Dice(1,4) with
-             * Quick Start; the standard 0x0B garrison when no slot scores. */
-            if (sNeutralCities >= 1) {
-                short t = BestCitySlotType(i);
-                if (t >= 0) {
-                    *(short *)(gs + 0x1602) = armyCount;
-                    SpawnCityUnits(i, 0x0F, t, sOptQuickStart ? RollDie(4) : 1, true);
-                    armyCount = *(short *)(gs + 0x1602);
-                    continue;
+        static const short kWeightSet[4] = {1, 6, 2, 3};
+        short cc = sCityCount, ci;
+        if (cc > 139) cc = 139;
+        for (ci = cc - 1; ci >= 0 && *(short *)(gs + 0x1602) < 100; ci--) {
+            unsigned char *city = sCityData + ci * 0x20;
+            short o = *(short *)(city + 0x04), k = 3, n, t = -1, a, na;
+            Boolean garrison = false, occupied = false;
+            if (city[0x17] != 0) continue;
+            na = *(short *)(gs + 0x1602);
+            for (a = 0; a < na; a++) {      /* (guard: a re-run GameInit) */
+                unsigned char *ar = gs + 0x1604 + a * 0x42;
+                if (*(short *)(ar + 0) == *(short *)(city + 0) && *(short *)(ar + 2) == *(short *)(city + 2)) {
+                    occupied = true; break;
                 }
             }
-
-            /* Create a garrison army at this city */
-            {
-                unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
-                short garrisonSize = 1;   /* Average: one unit */
-                short prodType;
-
-                /* 68k FUN_00000be0: neutral garrisons are standard type 0x0B
-                 * (verified in an original Erythea turn-1 save and on screen) */
-                prodType = 0x0B;
-
-                /* Clear the entire army record */
-                for (j = 0; j < 0x42; j++) newArmy[j] = 0;
-
-                /* Position */
-                *(short *)(newArmy + 0x00) = sx;
-                *(short *)(newArmy + 0x02) = sy;
-
-                /* Owner: neutral (0x0F) */
-                newArmy[0x15] = 0x0F;
-                newArmy[0x2f] = 0x0F;
-
-                /* Sprite index: look up from unit type table, or use type directly */
-                if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
-                    unsigned char *ute = sUnitTypeTable + prodType * UNIT_TYPE_ENTRY;
-                    newArmy[0x14] = (unsigned char)ute[0x00];
-                } else {
-                    newArmy[0x14] = (unsigned char)prodType;
-                }
-
-                /* Fill unit slots — stats from unit type table (68k FUN_1003b9f8) */
-                {
-                    short uMov = 10, uHP = 3;
-                    if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
-                        short m = GetUnitTypeStat(prodType, 3);
-                        short h = GetUnitTypeStat(prodType, 0);
-                        if (m > 0) uMov = m;
-                        if (h > 0) uHP = h;
-                    }
-                    for (j = 0; j < 4; j++) {
-                        if (j < garrisonSize) {
-                            newArmy[0x16 + j] = (unsigned char)prodType;
-                            newArmy[0x1a + j] = (unsigned char)uMov;
-                            newArmy[0x1e + j] = (unsigned char)uHP;
-                            newArmy[0x22 + j] = 0;   /* defense bonus */
-                            newArmy[0x26 + j] = 0;   /* experience */
-                        } else {
-                            newArmy[0x16 + j] = 0xFF; /* empty slot */
-                        }
-                    }
-                    RecalcArmyStrength(newArmy);
-                }
-
-                /* Movement points and fortification (garrisons are fortified) */
-                newArmy[0x2e] = 20;   /* fortified: leftover(0) + 20 */
-                newArmy[0x2d] = 3;    /* fortification state (68k: garrison = fortified) */
-
-                armyCount++;
+            if (occupied) continue;
+            if (o >= 0 && o < 8 && *(short *)(gs + 0x138 + o * 2) == 0) {
+                AssignCityOwner(ci, 0x0F);   /* FUN_1003c068: a side not in play */
+                o = 0x0F;
             }
-        }
-
-        /* Update army count */
-        *(short *)(gs + 0x1602) = armyCount;
-    }
-
-    /* --- Create player starting armies (68k CODE_117 FUN_00000be0) ---
-     * Scenarios carry no army data: the SCN ends after the city block. At new
-     * game the original gives each owned city (the capitals) ONE unit (more
-     * only when gs+0x128 is set): the production slot that FUN_00000db4 scores
-     * highest with weight set 3 (table at A5+0x15BA2[3]):
-     *   score = 10*min(str,9) + 5*(10 - min(turns,10)) + move/2
-     *   (turns+1 when str < 3; slots scanned 3..0, strict '>' so ties keep the
-     *   later slot). Verified 8/8 against an original Erythea turn-1 save using
-     *   the original's per-city stats; with the SCN slot stats used here it
-     *   matches 7/8 (Starfire differs: the original also reorders slots).
-     * The +2 strength bonuses from gs+0xF0 and the per-type flag table
-     * (_DAT_00028864[t*6+5]) are not modelled yet. */
-    {
-        short armyCount = *(short *)(gs + 0x1602);
-        short fCount = 8;
-        for (i = 0; i < fCount && armyCount < 100; i++) {
-            unsigned char *pstat  = gs + 0x186 + i * 0x14;
-            short pAlive = *(short *)(gs + 0x138 + i * 2);
-            /* Read capital coords from pstat+0x0E/0x10 (68k start_x/start_y).
-             * The capital coord writing loop writes capX/capY here. If it
-             * hasn't run yet (zero from NewPtrClear), fall back to the raw
-             * SCN byte values at pstat[3] (capX) and pstat[5] (capY). */
-            short capX   = *(short *)(pstat + 0x0E);
-            short capY   = *(short *)(pstat + 0x10);
-            short unitType = -1;
-
-            if (!pAlive) continue;
-            if (capX == 0 && capY == 0) {
-                capX = (short)(unsigned char)pstat[3];
-                capY = (short)(unsigned char)pstat[5];
-            }
-            if (capX <= 0 && capY <= 0) continue;
-            if (capX < 0 || capX >= sMapWidth || capY < 0 || capY >= sMapHeight) continue;
-
-            /* Find the capital and pick its best-scoring production slot */
-            {
-                short cityCount2 = sCityCount;
-                if (cityCount2 > 99) cityCount2 = 99;
-                for (j = 0; j < cityCount2; j++) {
-                    unsigned char *city = sCityData + j * 0x20;
-                    if (*(short *)(city + 0x00) == capX &&
-                        *(short *)(city + 0x02) == capY &&
-                        *(short *)(city + 0x04) == i) {
-                        short s, best = 0;
-                        for (s = 3; s >= 0; s--) {
-                            short pt = *(short *)(city + 0x0C + s * 2);
-                            short turns, str, move, score;
-                            if (pt < 0 || pt >= MAX_UNIT_TYPES) continue;
-                            if (sRandomMap) {  /* no SCN slot stats: use the army set */
-                                turns = GetUnitTypeStat(pt, 1);
-                                str   = GetUnitTypeStat(pt, 0);
-                                move  = GetUnitTypeStat(pt, 3);
-                            } else {
-                                turns = sScnSlotStats[j][s][0];
-                                str   = sScnSlotStats[j][s][1];
-                                move  = sScnSlotStats[j][s][2];
-                            }
-                            if (str > 9) str = 9;
-                            if (str < 3) turns++;
-                            if (turns > 10) turns = 10;
-                            score = str * 10 + 5 * (10 - turns) + move / 2;
-                            if (score > best) { best = score; unitType = pt; }
-                        }
-                        if (unitType < 0) {
-                            short pt = *(short *)(city + 0x0C);
-                            if (pt >= 0 && pt < MAX_UNIT_TYPES) unitType = pt;
-                        }
-                        break;
-                    }
+            if (o < 0 || o >= 8) {
+                o = 0x0F;
+                if (sNeutralCities == 0) garrison = true;
+                else if (sNeutralCities > 0) {
+                    k = Dice(1, 4, (short)(sNeutralCities - 2));
+                    if (k > 3) k = 3;
                 }
             }
-            if (unitType < 0) unitType = 0;
-
-            /* Create the army record: one unit of unitType */
-            {
-                unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
-                unsigned char baseMov = 10, hp = 3;
-                short k;
-
-                if (sUnitTypesLoaded && unitType < sUnitTypeCount) {
-                    short mv = GetUnitTypeStat(unitType, 3);
-                    short uHP = GetUnitTypeStat(unitType, 0);
-                    if (mv > 0 && mv <= 99) baseMov = (unsigned char)mv;
-                    if (uHP > 0) hp = (unsigned char)uHP;
-                }
-
-                for (k = 0; k < 0x42; k++) newArmy[k] = 0;
-                *(short *)(newArmy + 0x00) = capX;
-                *(short *)(newArmy + 0x02) = capY;
-                newArmy[0x15] = (unsigned char)i;  /* owner */
-                newArmy[0x2f] = (unsigned char)i;  /* runtime owner */
-
-                /* Sprite: unit type table offset 0x00 = sprite index */
-                if (sUnitTypesLoaded && unitType < sUnitTypeCount)
-                    newArmy[0x14] = sUnitTypeTable[unitType * UNIT_TYPE_ENTRY];
-                else
-                    newArmy[0x14] = (unsigned char)unitType;
-
-                {   /* one unit — Dice(1,4) of them with Quick Start (gs+0x128) */
-                    short nUnits = sOptQuickStart ? RollDie(4) : 1;
-                    for (k = 0; k < 4; k++) {
-                        if (k < nUnits) {
-                            newArmy[0x16 + k] = (unsigned char)unitType;
-                            newArmy[0x1a + k] = baseMov;
-                            newArmy[0x1e + k] = hp;   /* 68k FUN_1003b9f8 init stats */
-                        } else newArmy[0x16 + k] = 0xFF;
-                    }
-                }
-                /* PPC FUN_1002cae8: the starting unit's CURRENT moves are 0;
-                 * the turn-1 reset (FUN_10064f24: base + min(left, 2)) then
-                 * gives exactly the base (the original's Wizard shows 50 on
-                 * turn 1, the remake showed 52) */
-                newArmy[0x2e] = 0;
-                RecalcArmyStrength(newArmy);
-                armyCount++;
+            if (!garrison) {
+                n = sOptQuickStart ? Dice(1, 4, 0) : 1;
+                t = (k >= 0 && k < 4) ? BestCitySlotTypeW(ci, kWeightSet[k]) : -1;
+                if (t < 0) garrison = true;
+                else SpawnCityUnits(ci, o, t, n, o == 0x0F);
             }
-        }
-        *(short *)(gs + 0x1602) = armyCount;
-
-        /* Quick Start: the handed-out cities get their units too (the
-         * original's start-army loop covers every owned city) */
-        if (sOptQuickStart) {
-            short cc = sCityCount, ci;
-            if (cc > 139) cc = 139;
-            for (ci = 0; ci < cc && *(short *)(gs + 0x1602) < 100; ci++) {
-                unsigned char *city = sCityData + ci * 0x20;
-                short o = *(short *)(city + 0x04), t, a, n;
-                Boolean occupied = false;
-                if (city[0x17] != 0 || o < 0 || o >= 8) continue;
-                n = *(short *)(gs + 0x1602);
-                for (a = 0; a < n; a++) {
-                    unsigned char *ar = gs + 0x1604 + a * 0x42;
-                    if (*(short *)(ar + 0) == *(short *)(city + 0) && *(short *)(ar + 2) == *(short *)(city + 2)) {
-                        occupied = true; break;
-                    }
-                }
-                if (occupied) continue;   /* the capital, done above */
-                t = BestCitySlotType(ci);
-                if (t < 0) { t = *(short *)(city + 0x0C); if (t < 0 || t >= MAX_UNIT_TYPES) t = 0; }
-                SpawnCityUnits(ci, o, t, RollDie(4), false);
-            }
+            if (garrison)
+                SpawnCityUnits(ci, 0x0F, 0x0B, 1, true);   /* FUN_10021434: standard garrison */
         }
     }
 
@@ -3658,6 +3485,7 @@ static void TryLoadScenario(void)
         }
     }
 
+    LoadScenarioItemPool();   /* FUN_10039180: the scenario's ITM 10000 */
     CloseResFile(refNum);
 
     /* Allocate extended state if needed (cities, per-army arrays) */
@@ -4099,7 +3927,7 @@ static void InitCitySlotStatsBase(void)
  *   moves below 6 become 6
  *   R < 10: cost -cost/4 when R < 60, else +cost/4   (signed-char maths)
  *   R < 10: turns -1 (floor 1) when R < 60, else +1 */
-#define SLOT_D100() ((short)((unsigned short)Random() % 100) + 1)
+#define SLOT_D100() Dice(1, 100, 0)   /* FUN_1003b9f8: FUN_1005f230(1,100,0) */
 static void JitterCitySlotStats(void)
 {
     short ci, k, cc = sCityCount;
@@ -5252,10 +5080,10 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
     /* --- Phase 2: Generate terrain --- */
 
     /* Place 4-6 landmass seeds */
-    numSeeds = 4 + ((unsigned short)Random() % 3);
+    numSeeds = 4 + Dice(1, 3, -1);
     for (i = 0; i < numSeeds; i++) {
-        short sx = 15 + ((unsigned short)Random() % 82);
-        short sy = 15 + ((unsigned short)Random() % 126);
+        short sx = 15 + Dice(1, 82, -1);
+        short sy = 15 + Dice(1, 126, -1);
         short dx, dy;
         /* Create initial 7x7 land patch */
         for (dy = -3; dy <= 3; dy++) {
@@ -5275,16 +5103,16 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     short prob = 45 - pass * 3;  /* 45% → 24% */
                     /* Try to expand in each cardinal direction */
                     if (terrain[(y-1)*112+x] == TT_WATER &&
-                        ((unsigned short)Random() % 100) < prob)
+                        Dice(1, 100, -1) < prob)
                         terrain[(y-1)*112+x] = TT_GRASS;
                     if (terrain[(y+1)*112+x] == TT_WATER &&
-                        ((unsigned short)Random() % 100) < prob)
+                        Dice(1, 100, -1) < prob)
                         terrain[(y+1)*112+x] = TT_GRASS;
                     if (terrain[y*112+x-1] == TT_WATER &&
-                        ((unsigned short)Random() % 100) < prob)
+                        Dice(1, 100, -1) < prob)
                         terrain[y*112+x-1] = TT_GRASS;
                     if (terrain[y*112+x+1] == TT_WATER &&
-                        ((unsigned short)Random() % 100) < prob)
+                        Dice(1, 100, -1) < prob)
                         terrain[y*112+x+1] = TT_GRASS;
                 }
             }
@@ -5307,18 +5135,18 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     /* Mountain chains: 3-5 chains of 8-20 tiles each */
     {
-        short numChains = 3 + ((unsigned short)Random() % 3);
+        short numChains = 3 + Dice(1, 3, -1);
         short ch;
         for (ch = 0; ch < numChains; ch++) {
             short cx, cy, len, step;
             short dx, dy;
             /* Pick random starting point on land */
-            cx = 10 + ((unsigned short)Random() % 92);
-            cy = 10 + ((unsigned short)Random() % 136);
-            len = 8 + ((unsigned short)Random() % 13);
+            cx = 10 + Dice(1, 92, -1);
+            cy = 10 + Dice(1, 136, -1);
+            len = 8 + Dice(1, 13, -1);
             /* Pick direction */
-            dx = ((unsigned short)Random() % 3) - 1;  /* -1, 0, 1 */
-            dy = ((unsigned short)Random() % 3) - 1;
+            dx = Dice(1, 3, -1) - 1;  /* -1, 0, 1 */
+            dy = Dice(1, 3, -1) - 1;
             if (dx == 0 && dy == 0) dx = 1;
 
             for (step = 0; step < len; step++) {
@@ -5327,24 +5155,24 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                     terrain[cy * 112 + cx] = TT_MTN;
                     /* Add hills on sides of mountain chain */
                     if (cx > 1 && terrain[cy * 112 + cx - 1] == TT_GRASS &&
-                        ((unsigned short)Random() % 100) < 50)
+                        Dice(1, 100, -1) < 50)
                         terrain[cy * 112 + cx - 1] = TT_HILL;
                     if (cx < 110 && terrain[cy * 112 + cx + 1] == TT_GRASS &&
-                        ((unsigned short)Random() % 100) < 50)
+                        Dice(1, 100, -1) < 50)
                         terrain[cy * 112 + cx + 1] = TT_HILL;
                     if (cy > 1 && terrain[(cy-1) * 112 + cx] == TT_GRASS &&
-                        ((unsigned short)Random() % 100) < 40)
+                        Dice(1, 100, -1) < 40)
                         terrain[(cy-1) * 112 + cx] = TT_HILL;
                     if (cy < 154 && terrain[(cy+1) * 112 + cx] == TT_GRASS &&
-                        ((unsigned short)Random() % 100) < 40)
+                        Dice(1, 100, -1) < 40)
                         terrain[(cy+1) * 112 + cx] = TT_HILL;
                 }
                 cx += dx;
                 cy += dy;
                 /* Meander: 25% chance to shift direction */
-                if (((unsigned short)Random() % 4) == 0) {
-                    dx += ((unsigned short)Random() % 3) - 1;
-                    dy += ((unsigned short)Random() % 3) - 1;
+                if (Dice(1, 4, -1) == 0) {
+                    dx += Dice(1, 3, -1) - 1;
+                    dy += Dice(1, 3, -1) - 1;
                     if (dx < -1) dx = -1;
                     if (dx > 1) dx = 1;
                     if (dy < -1) dy = -1;
@@ -5357,12 +5185,12 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     /* Forest clusters: 8-12 forest seed points, each grows into a cluster */
     {
-        short numForests = 8 + ((unsigned short)Random() % 5);
+        short numForests = 8 + Dice(1, 5, -1);
         short fi;
         for (fi = 0; fi < numForests; fi++) {
-            short fx = 5 + ((unsigned short)Random() % 102);
-            short fy = 5 + ((unsigned short)Random() % 146);
-            short radius = 3 + ((unsigned short)Random() % 5);
+            short fx = 5 + Dice(1, 102, -1);
+            short fy = 5 + Dice(1, 146, -1);
+            short radius = 3 + Dice(1, 5, -1);
             short fdx, fdy;
 
             for (fdy = -radius; fdy <= radius; fdy++) {
@@ -5373,7 +5201,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                         /* Higher probability near center */
                         short dist = (fdx < 0 ? -fdx : fdx) + (fdy < 0 ? -fdy : fdy);
                         short prob = 80 - dist * 12;
-                        if (prob > 0 && ((unsigned short)Random() % 100) < prob)
+                        if (prob > 0 && Dice(1, 100, -1) < prob)
                             terrain[ny * 112 + nx] = TT_FOREST;
                     }
                 }
@@ -5383,28 +5211,28 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     /* Swamp patches: 2-4 swamp areas near water */
     {
-        short numSwamps = 2 + ((unsigned short)Random() % 3);
+        short numSwamps = 2 + Dice(1, 3, -1);
         short si;
         for (si = 0; si < numSwamps; si++) {
             /* Find a land tile near water */
             short attempts = 0;
             while (attempts < 200) {
-                short sx = 5 + ((unsigned short)Random() % 102);
-                short sy = 5 + ((unsigned short)Random() % 146);
+                short sx = 5 + Dice(1, 102, -1);
+                short sy = 5 + Dice(1, 146, -1);
                 if (terrain[sy * 112 + sx] == TT_GRASS &&
                     ((sx > 0 && terrain[sy*112+sx-1] == TT_WATER) ||
                      (sx < 111 && terrain[sy*112+sx+1] == TT_WATER) ||
                      (sy > 0 && terrain[(sy-1)*112+sx] == TT_WATER) ||
                      (sy < 155 && terrain[(sy+1)*112+sx] == TT_WATER))) {
                     /* Place 3x3 to 5x5 swamp patch */
-                    short r = 1 + ((unsigned short)Random() % 2);
+                    short r = 1 + Dice(1, 2, -1);
                     short sdx, sdy;
                     for (sdy = -r; sdy <= r; sdy++) {
                         for (sdx = -r; sdx <= r; sdx++) {
                             short nx = sx + sdx, ny = sy + sdy;
                             if (nx >= 0 && nx < 112 && ny >= 0 && ny < 156 &&
                                 terrain[ny * 112 + nx] == TT_GRASS &&
-                                ((unsigned short)Random() % 100) < 70)
+                                Dice(1, 100, -1) < 70)
                                 terrain[ny * 112 + nx] = TT_SWAMP;
                         }
                     }
@@ -5437,7 +5265,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                 } else {
                     /* Add slight variety with adjacent tile indices */
                     short base = typeToTile[tt];
-                    short var = (unsigned short)Random() % 3;
+                    short var = Dice(1, 3, -1);
                     tile[0] = base + var;
                 }
                 tile[1] = 0;
@@ -5461,7 +5289,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
     {
         short factionCount = 8;
         /* 68k CODE_020: neutral count from config, typical 10-15 */
-        short neutralCount = 10 + ((unsigned short)Random() % 6);
+        short neutralCount = 10 + Dice(1, 6, -1);
         short totalCities;
 
         totalCities = factionCount + neutralCount;
@@ -5474,8 +5302,8 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                 /* Quadrant layout: 4 columns x 2 rows */
                 short qx = (i % 4) * 28 + 5;
                 short qy = (i / 4) * 78 + 5;
-                short cx = qx + ((unsigned short)Random() % 22);
-                short cy = qy + ((unsigned short)Random() % 68);
+                short cx = qx + Dice(1, 22, -1);
+                short cy = qy + Dice(1, 68, -1);
 
                 if (cx >= 2 && cx < 110 && cy >= 2 && cy < 154 &&
                     terrain[cy * 112 + cx] != TT_WATER &&
@@ -5505,8 +5333,8 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         for (i = 0; i < neutralCount && cityCount < 40; i++) {
             short attempts = 0;
             while (attempts < 500) {
-                short cx = 3 + ((unsigned short)Random() % 106);
-                short cy = 3 + ((unsigned short)Random() % 150);
+                short cx = 3 + Dice(1, 106, -1);
+                short cy = 3 + Dice(1, 150, -1);
                 short j;
                 Boolean tooClose = false;
 
@@ -5550,8 +5378,8 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             for (ri = 0; ri < ruinCount && cityCount < 40; ri++) {
                 short attempts = 0;
                 while (attempts < 300) {
-                    short rx = 5 + ((unsigned short)Random() % 102);
-                    short ry = 5 + ((unsigned short)Random() % 146);
+                    short rx = 5 + Dice(1, 102, -1);
+                    short ry = 5 + Dice(1, 146, -1);
                     short j;
                     Boolean tooClose = false;
 
@@ -5578,8 +5406,8 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
                         *(short *)(ruin + 0x00) = rx;
                         *(short *)(ruin + 0x02) = ry;
                         *(short *)(ruin + 0x04) = (short)0xFF;  /* no owner */
-                        ruin[0x17] = siteTypes[(unsigned short)Random() % 4];
-                        ruin[0x1C] = (unsigned char)((unsigned short)Random() % 2);  /* richness */
+                        ruin[0x17] = siteTypes[Dice(1, 4, -1)];
+                        ruin[0x1C] = (unsigned char)Dice(1, 2, -1);  /* richness */
                         ruin[0x1D] = 1;  /* active/searchable */
                         cityCount++;
                         break;
@@ -5735,7 +5563,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             {"Wild Men",     "Frost Tribe",  "Barbarians",   "Oinland",        "Horse Kings"},
             {"Zhoragh",      "Black Hand",   "Deathmaster",  "Lich-King",      "Dark Knights"}
         };
-        short nameVariant = (unsigned short)Random() % 5;
+        short nameVariant = Dice(1, 5, -1);
         for (i = 0; i < 8; i++) {
             short j;
             unsigned char *name = gs + i * 20;
@@ -6872,6 +6700,7 @@ static Boolean ShowScenarioSelection(void)
                 }
             }
 
+            LoadScenarioItemPool();   /* FUN_10039180: the scenario's ITM 10000 */
             CloseResFile(refNum);
 
             /* Allocate extended state and run game initialization.
@@ -8390,8 +8219,8 @@ static Boolean ShowGameSetup(void)
         if (*(short *)(gs + 0x122) != 0) {
             short sh;
             for (sh = 0; sh < 20; sh++) {
-                short a = (short)((unsigned short)Random() % 8);
-                short b = (short)((unsigned short)Random() % 8);
+                short a = Dice(1, 8, -1);   /* PPC FUN_1003c838 */
+                short b = Dice(1, 8, -1);
                 short tmp = *(short *)(gs + 0x164 + a * 2);
                 *(short *)(gs + 0x164 + a * 2) = *(short *)(gs + 0x164 + b * 2);
                 *(short *)(gs + 0x164 + b * 2) = tmp;
@@ -8418,7 +8247,7 @@ static Boolean ShowGameSetup(void)
          * that runs after Begin Game): Dice(1,8), +400 for a human side
          * under "I am the Greatest" (gs+0x116). */
         for (i = 0; i < 8; i++) {
-            *(short *)(gs + 0x1122 + i * 2) = RollDie(8);
+            *(short *)(gs + 0x1122 + i * 2) = Dice(1, 8, 0);
             if (sIAmGreatest && *(short *)(gs + 0xd0 + i * 2) == 0)
                 *(short *)(gs + 0x1122 + i * 2) += 400;
             *(short *)(gs + 0x1132 + i * 2) = (short)0xFFFF;  /* history min */
@@ -9990,16 +9819,17 @@ static void DrawMapInWindow(WindowPtr win)
  *   +1120  4 x 20 bytes for road tiles (RD & 0x1F, 1-based)
  * Values are pltt 1000 indices; 5 (water) is left out so the gradient shows.
  * Hill/mountain sprites 80..95 take their pixels from a pool of 256 values
- * 2..4 rolled up front; the 4th read can land one past the pool (white).
- * Validated against the original on Erythea: 100% of uncovered pixels.
+ * 2..4 rolled up front (256 x Dice(1,3,1) on the game's Random() stream,
+ * once per map: the sage's map refresh reuses the pool); the 4th read can
+ * land one past the pool (white).  Validated against the original on
+ * Erythea (100% of uncovered pixels) with the pool that run rolled
+ * (QuickDraw randSeed 0x2AA0D649 at that point).
  * =================================================================== */
 static GWorldPtr sOverviewBaseGW = NULL;
 
 static void BuildOverviewBase(void)
 {
-    unsigned char pool[257];
-    long seed = 0x2AA0D649;      /* QuickDraw randSeed the hill pool was rolled
-                                    from on the reference (Erythea) run */
+    static unsigned char pool[257];
     Rect b;
     PixMapHandle pm;
     unsigned char *base, *mapData, *rdData;
@@ -10011,16 +9841,10 @@ static void BuildOverviewBase(void)
     mapData = (unsigned char *)*gMapTiles;
     rdData = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
 
-    for (i = 0; i < 256; i++) {
-        short r;
-        long v;
-        seed = (long)(((unsigned long long)seed * 16807ULL) % 0x7FFFFFFFUL);
-        r = (short)(seed & 0xFFFF);
-        if (r == -32768) r = 0;
-        v = ((long)(r < 0 ? -r : r) * 3) / 32768 + 1 + 1;   /* RandomRange(1,3,1) */
-        pool[i] = (unsigned char)(v < 2 ? 2 : v > 4 ? 4 : v);
+    if (sOverviewBaseFor != (Ptr)*gMapTiles || pool[0] == 0) {   /* FUN_10063af8 */
+        for (i = 0; i < 256; i++) pool[i] = (unsigned char)Dice(1, 3, 1);
+        pool[256] = 0;
     }
-    pool[256] = 0;
 
     if (sOverviewBaseGW != NULL) { DisposeGWorld(sOverviewBaseGW); sOverviewBaseGW = NULL; }
     SetRect(&b, 0, 0, sMapWidth * 2, sMapHeight * 2);
@@ -14032,8 +13856,8 @@ static void BreakTreaty(short me, short them)
     d2 = gs + 0x1582 + them * 8 + me;
     shown = *d1 & 3;
     rep = (short *)(gs + 0x1122 + me * 2);
-    if (shown == DIPLO_PEACE) *rep += (short)((unsigned short)Random() % 100) + 101;
-    else if (shown == DIPLO_HOSTILE) *rep += (short)((unsigned short)Random() % 15) + 11;
+    if (shown == DIPLO_PEACE) *rep += (short)(Dice(1, 100, 0) + 100);
+    else if (shown == DIPLO_HOSTILE) *rep += (short)(Dice(1, 15, 0) + 10);
     *d1 = (unsigned char)(DIPLO_SET_STATE(*d1, DIPLO_WAR) & 0xFC) | DIPLO_WAR;
     *d2 = (unsigned char)(DIPLO_SET_STATE(*d2, DIPLO_WAR) & 0xFC) | DIPLO_WAR;
 }
@@ -15084,7 +14908,7 @@ static void ShowEliminationNotification(short eliminatedPlayer, short byPlayer)
     nm[0] = (unsigned char)len; BlockMoveData(fn, nm + 1, len);
     /* DAT group 0xC has five lines (206-210, "for thee the war is over!"
      * included), picked uniformly (FUN_1005f678(0xc, -1)) */
-    GetDATRawString(206 + (short)((unsigned short)Random() % 5), fmt);
+    GetDATRawString(206 + Dice(1, 5, -1), fmt);
     FormatHeroLine(fmt, nm, 0, line);
     win = NewMacAppWindow(392, 94);
     if (win == NULL) return;
@@ -15487,10 +15311,10 @@ static short ShowCityVictory(short ci, ConstStr255Param who)
     GetDATRawString(367, s);
     SetRect(&v, 38, 42, 38 + 320, 42 + 39);
     DrawSunkenText(&v, s, IlluriaFont(), 36, 1);
-    GetDATRawString(370 + (short)((unsigned short)Random() % 4), fmt);
+    GetDATRawString(370 + Dice(1, 4, -1), fmt);   /* FUN_1005f678(0x43,-1) */
     FormatHeroLine(fmt, who, 0, s);
     SetRect(&v, 38, 88, 358, 107);   DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
-    GetDATRawString(374 + (short)((unsigned short)Random() % 3), fmt);
+    GetDATRawString(374 + Dice(1, 3, -1), fmt);   /* FUN_1005f678(0x44,-1) */
     FormatHeroLine(fmt, cname, 0, s);
     SetRect(&v, 38, 108, 358, 127);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
     GetDATRawString(368, s);
@@ -15667,7 +15491,7 @@ static void ApplyVictoryChoice(short choice, short ci, short owner)
         if (ext && n > 0) *(short *)(ext + 0x06 + (n - 1) * 2) = -1;
         if (ext) *(short *)(city + 0x06) = CalcCityDefense(ext);   /* FUN_100465a8 -> FUN_10048c90 */
         if (n > 0) ShowPillageReport(false, ci, owner, g, &slot[n - 1], 1, n - 1);
-        *infamy += 1 + (short)((unsigned short)Random() % 5);
+        *infamy += Dice(1, 5, 0);                     /* FUN_10046d7c */
         if (QREC(owner)[0] != 0) (void)QuestCheck(1, g);   /* FUN_10046d7c */
         break;
     }
@@ -15677,7 +15501,7 @@ static void ApplyVictoryChoice(short choice, short ci, short owner)
         if (ext) for (i = 1; i < n; i++) *(short *)(ext + 0x06 + i * 2) = -1;
         if (ext) *(short *)(city + 0x06) = CalcCityDefense(ext);   /* FUN_10046edc -> FUN_10048c90 */
         if (n > 1) ShowPillageReport(true, ci, owner, g, &slot[1], n - 1, 1);
-        *infamy += 6 + (short)((unsigned short)Random() % 10);
+        *infamy += (short)(Dice(1, 10, 0) + 5);       /* FUN_1004702c */
         if (QREC(owner)[0] != 0) (void)QuestCheck(1, g);   /* FUN_1004702c */
         break;
     }
@@ -15697,7 +15521,7 @@ static void ApplyVictoryChoice(short choice, short ci, short owner)
                         m[o + 1] = (m[o + 1] & 0xF0) | 0x0F;
                     }
         }
-        *infamy += 11 + (short)((unsigned short)Random() % 15);
+        *infamy += (short)(Dice(1, 15, 0) + 10);      /* FUN_10047190 */
         InvalidateAllGameWindows();
         if (QREC(owner)[0] != 0) (void)QuestCheck(2, 0);   /* FUN_10047190 */
         break;
@@ -15802,12 +15626,12 @@ static void AwardMedal(const Battle *b, Boolean human)
                 DrawPictAt(1016, 0, 0);
                 DrawPictAt(4410 + medals - 1, 38, 38);
                 DrawProdView(54, 103, owner, t);
-                GetDATRawString(773 + (short)((unsigned short)Random() % 7), str);
+                GetDATRawString(773 + Dice(1, 7, -1), str);   /* FUN_1005f678(0x9f,-1) */
                 SetRect(&v, 92, 103, 92 + 160, 122);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
                 GetUnitTypeName(t, tname);
                 GetDATRawString(780, fmt); FormatHeroLine(fmt, tname, 0, str);
                 SetRect(&v, 92, 123, 92 + 266, 142);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
-                GetDATRawString(781 + (short)((unsigned short)Random() % 4), str);
+                GetDATRawString(781 + Dice(1, 4, -1), str);   /* FUN_1005f678(0xa1,-1) */
                 SetRect(&v, 53, 143, 53 + 191, 162);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
                 GetDATRawString(785 + medals - 1, str);
                 SetRect(&v, 53, 163, 53 + 191, 182);  DrawSunkenText(&v, str, IlluriaFont(), 17, -2);
@@ -16231,9 +16055,9 @@ static void ShowMilitaryAdvisor(short armyIdx, short tx, short ty)
     pic = GetPicture(4420);
     if (pic != NULL) { Rect pr = pictR; InsetRect(&pr, 1, 1); DrawPicture(pic, &pr); }
     DrawT3DFrame(&pictR);
-    GetDATRawString(631 + (short)((unsigned short)Random() % 5), s);
+    GetDATRawString(631 + Dice(1, 5, -1), s);   /* FUN_1005f678(0x7d,-1) */
     SetRect(&v, 7, 205, 295, 224);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
-    GetDATRawString(636 + (short)((unsigned short)Random() % 5), s);
+    GetDATRawString(636 + Dice(1, 5, -1), s);   /* FUN_1005f678(0x7e,-1) */
     SetRect(&v, 7, 225, 295, 244);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
     GetDATRawString(641 + advIdx, s);
     SetRect(&v, 7, 245, 295, 264);  DrawSunkenText(&v, s, IlluriaFont(), 17, 1);
@@ -16500,7 +16324,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             } else if (cityIdx >= 0) {
                 Str255 *wonLine = (firstDef < 0) ? &l2 : &l1;
                 if (firstDef < 0)                               /* the garrison fled */
-                    GetDATRawString(743 + (short)((unsigned short)Random() % 4), l1);
+                    GetDATRawString(743 + Dice(1, 4, -1), l1);   /* FUN_1002f97c: FUN_1005f678(0x8e,-1) */
                 if (heroArmy >= 0) { GetDATRawString(747, fmt); FormatHeroLine(fmt, hname, 0, *wonLine); }
                 else GetDATRawString(748, *wonLine);            /* Your armies have won the city! */
                 if (firstDef >= 0 && sCaptureLoot > 0) {
@@ -20149,29 +19973,71 @@ static short RankedAllyType(unsigned char rank)
 /* AddAlliesToStack — `count` units of `type` join the army's stack: empty
  * unit slots of the army first, then new armies on the same tile.
  * Returns the number of units added. */
+/* units of any owner on tile (x,y) (the original's FUN_1002122c count);
+ * *own = the owner of the first of them (0x0F none) */
+static short AlliesTileUnits(short x, short y, short *own)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short n = *(short *)(gs + 0x1602), i, k, u = 0;
+    *own = 0x0F;
+    if (n > 100) n = 100;
+    for (i = 0; i < n; i++) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        short c = 0;
+        if (*(short *)(a + 0) != x || *(short *)(a + 2) != y) continue;
+        for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) c++;
+        if (c > 0 && u == 0) *own = (short)(unsigned char)a[0x15];
+        u += c;
+    }
+    return u;
+}
+
 static short AddAlliesToStack(short armyIdx, short type, short count)
 {
     unsigned char *gs, *army;
-    short added = 0, hp, mv;
+    short added = 0, hp, mv, owner;
     if (*gGameState == 0 || armyIdx < 0) return 0;
     gs = (unsigned char *)*gGameState;
     army = gs + 0x1604 + armyIdx * 0x42;
+    owner = (short)(unsigned char)army[0x15];
     hp = GetUnitTypeStat(type, 0);
     mv = GetUnitTypeStat(type, 3);
     if (hp < 1) hp = 3;
     if (mv < 1) mv = 10;
     while (added < count) {
         unsigned char *dst = NULL;
-        short ds = -1, k;
-        for (k = 0; k < 4; k++)
-            if ((unsigned char)army[0x16 + k] == 0xFF) { dst = army; ds = k; break; }
+        short ds = -1, k, x = *(short *)(army + 0), y = *(short *)(army + 2), tries = 10;
+        /* PPC FUN_10053838, once per ally from the hero's tile: a tile with
+         * under 8 units that is the side's or empty; else a random walk of
+         * (Dice(1,3,-2), Dice(1,3,-2)) steps, 10 tries, then no ally */
+        for (;;) {
+            short own = 0x0F;
+            short u = (x >= 0 && x < sMapWidth && y >= 0 && y < sMapHeight) ? AlliesTileUnits(x, y, &own) : 99;
+            if (u < 8 && (u == 0 || own == owner)) break;
+            {
+                short ddx = Dice(1, 3, -2), ddy = Dice(1, 3, -2);
+                x = (short)(x + ddx); y = (short)(y + ddy);
+            }
+            if (--tries == 0) return added;
+        }
+        if (x == *(short *)(army + 0) && y == *(short *)(army + 2))
+            for (k = 0; k < 4; k++)
+                if ((unsigned char)army[0x16 + k] == 0xFF) { dst = army; ds = k; break; }
+        if (dst == NULL) {
+            short n = *(short *)(gs + 0x1602), r;
+            for (r = 0; r < n && r < 100 && dst == NULL; r++) {   /* a record of ours there with room */
+                unsigned char *a = gs + 0x1604 + r * 0x42;
+                if (*(short *)(a + 0) != x || *(short *)(a + 2) != y || (short)(unsigned char)a[0x15] != owner) continue;
+                for (k = 0; k < 4; k++) if (a[0x16 + k] == 0xFF) { dst = a; ds = k; break; }
+            }
+        }
         if (dst == NULL) {
             short n = *(short *)(gs + 0x1602);
             if (n >= 100) break;
             dst = gs + 0x1604 + n * 0x42;
             for (k = 0; k < 0x42; k++) dst[k] = 0;
-            *(short *)(dst + 0) = *(short *)(army + 0);
-            *(short *)(dst + 2) = *(short *)(army + 2);
+            *(short *)(dst + 0) = x;
+            *(short *)(dst + 2) = y;
             dst[0x15] = army[0x15]; dst[0x2f] = army[0x2f];
             *(short *)(dst + 0x34) = -1; *(short *)(dst + 0x36) = -1;
             for (k = 0; k < 4; k++) dst[0x16 + k] = 0xFF;
@@ -20188,6 +20054,11 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
             dst[0x14] = (sUnitTypesLoaded && type < sUnitTypeCount) ?
                         sUnitTypeTable[type * UNIT_TYPE_ENTRY] : (unsigned char)type;
         RecalcArmyStrength(dst);
+        if (*gMapTiles != 0 && x >= 0 && x < sMapWidth && y >= 0 && y < sMapHeight) {
+            unsigned char *md = (unsigned char *)*gMapTiles;
+            unsigned short off = (unsigned short)(y * 0xE0 + x * 2);
+            md[off + 1] = (unsigned char)((md[off + 1] & 0xE0) | 0x10 | (owner & 0x0F));
+        }
         added++;
     }
     return added;
@@ -22478,9 +22349,9 @@ static void FormatHeroLine(ConstStr255Param fmt, ConstStr255Param city, short nu
     }
 }
 
-/* 68k CODE_064 (name picker before FUN_0000068e): on turn 1 take the
- * Random(8)th entry of the player's HERONAM list, later a random entry of all
- * of them; the digit after '#' is the gender (non-'0' = female). */
+/* PPC FUN_1003302c (68k CODE_064): the k-th '#' entry of the player's
+ * HERONAM list, k = Dice(1,8,0) on turn 1, else Dice(1,100,0) (the lists
+ * hold 100 names); the digit after '#' is the gender (non-'0' = female). */
 static Boolean PickHeroName(short playerIdx, Str255 name, Boolean *female)
 {
     Handle h = (playerIdx >= 0 && playerIdx < 8) ? sHeroNameDat[playerIdx] : NULL;
@@ -22494,9 +22365,8 @@ static Boolean PickHeroName(short playerIdx, Str255 name, Boolean *female)
     len = GetHandleSize(h);
     for (i = 0; i < len; i++) if (d[i] == '#') count++;
     if (count == 0) return false;
-    if (*(short *)((unsigned char *)*gGameState + 0x136) == 1 && count >= 8)
-        count = 8;
-    want = (short)((unsigned short)Random() % count) + 1;
+    want = (*(short *)((unsigned char *)*gGameState + 0x136) == 1) ? Dice(1, 8, 0) : Dice(1, 100, 0);
+    if (want > count) return false;
     for (i = 0; i < len; i++)
         if (d[i] == '#' && ++seen == want) { i++; break; }
     if (i >= len) return false;
@@ -22513,7 +22383,7 @@ static short HeroAllyType(void)
     short n = 0, t, pick, k = 0;
     for (t = 0; t < 28; t++) if (UnitStatLE(t, 13) != 0) n++;
     if (n == 0) return 0x19;
-    pick = (short)((unsigned short)Random() % n);
+    pick = Dice(1, n, -1);
     for (t = 0; t < 28; t++) {
         if (UnitStatLE(t, 13) == 0) continue;
         if (k == pick) return t;
@@ -22533,7 +22403,7 @@ static void HeroBringsAllies(short player, short heroArmyIdx)
     gs = (unsigned char *)*gGameState;
     if (*(short *)(gs + 0x136) < 2) return;
     type = HeroAllyType();
-    r = (short)((unsigned short)Random() % 100) + 1;
+    r = Dice(1, 100, 0);
     n = (r < 70) ? 1 : (r < 95) ? 2 : 3;
     if (player >= 0 && player < 8 && *(short *)(gs + 0xd0 + player * 2) == 0) {
         Str255 s, fmt;
@@ -22654,21 +22524,12 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             /* Pick name from the full pool of 20. 68k CODE_064 has no gender
              * restriction on the initial offer (the male/female radio works on
              * turn 1 too); the initial hero is just free (heroCost=0). */
-            if (initialOffer) {
-                heroNameIdx = (short)((unsigned short)Random() % 20);
-                heroCost = 0;
-            } else {
-                heroNameIdx = (short)((unsigned short)Random() % 20);
-            }
+            /* (no roll: the built-in pool is only a fallback for a terrain
+             * set without HERONAM lists; the original has none) */
+            heroNameIdx = (short)(playerIdx % NUM_HERO_NAMES);
+            if (initialOffer) heroCost = 0;
             /* heroCost already set above for non-initial offers */
         }
-    }
-
-    /* Name and gender from the faction's HERONAM list (68k CODE_064) */
-    if (!PickHeroName(playerIdx, heroName, &isFemaleHero)) {
-        BlockMoveData(sHeroNames[heroNameIdx], heroName, sHeroNames[heroNameIdx][0] + 1);
-        isFemaleHero = (heroNameIdx == 1 || heroNameIdx == 4 ||
-                        heroNameIdx == 9 || heroNameIdx == 14 || heroNameIdx == 17);
     }
 
     /* Find spawn location (68k CODE_103 FUN_000000be):
@@ -22690,8 +22551,8 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             if ((st2 == 0 || st2 == 1) && *(short *)(c2 + 0x04) == playerIdx)
                 myCities++;
         }
-        /* Pick random city (68k: Random() % playerCityCount, 1-based) */
-        targetN = (myCities > 0) ? (short)((unsigned short)Random() % myCities) + 1 : 1;
+        /* PPC FUN_10032a24: the Dice(1, cities, 0)th owned city */
+        targetN = Dice(1, myCities, 0);
         { short counted = 0;
           for (ci = 0; ci < cityCount; ci++) {
               unsigned char *c2 = sCityData + ci * 0x20;
@@ -22710,6 +22571,14 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
             heroX = *(short *)(spawnCity + 0x00);
             heroY = *(short *)(spawnCity + 0x02);
         }
+    }
+
+    /* Name and gender from the faction's HERONAM list (PPC FUN_1003302c,
+     * run by the hire dialog after FUN_10032a24 picked the city) */
+    if (!PickHeroName(playerIdx, heroName, &isFemaleHero)) {
+        BlockMoveData(sHeroNames[heroNameIdx], heroName, sHeroNames[heroNameIdx][0] + 1);
+        isFemaleHero = (heroNameIdx == 1 || heroNameIdx == 4 ||
+                        heroNameIdx == 9 || heroNameIdx == 14 || heroNameIdx == 17);
     }
 
     heroPict = GetPicture(isFemaleHero ? 3201 : 3200);
@@ -24014,7 +23883,7 @@ cityLoop:
                 FormatHeroLine("\praze %s?", nm, 0, l3);
                 if (sRazingCities == 0 &&
                     AskYesNo("\pRaze City", "\pAre you sure that you", "\pwant to", l3, "\pYou won't be popular!")) {
-                    *(short *)(gs + 0x1122 + curPlayer * 2) += 100 + 1 + (short)((unsigned short)Random() % 25);
+                    *(short *)(gs + 0x1122 + curPlayer * 2) += (short)(Dice(1, 25, 0) + 100);   /* FUN_1004f664 */
                     *(short *)(city + 0x04) = 0x0F;
                     if (*gMapTiles != 0) {
                         unsigned char *m = (unsigned char *)*gMapTiles;
@@ -24583,12 +24452,20 @@ static void AIGiveInitialHero(short p)
     }
     RecalcArmyStrength(h);
     *(short *)(gs + 0x1602) = n + 1;
-    nameIdx = (short)((unsigned short)Random() % 20);
-    name = sHeroNames[nameIdx];
-    nlen = name[0] > 16 ? 16 : name[0];
-    for (j = 0; j < nlen; j++) h[0x04 + j] = name[j + 1];
-    *(short *)(gs + 0x594 + p * 2) =
-        (nameIdx == 1 || nameIdx == 4 || nameIdx == 9 || nameIdx == 14 || nameIdx == 17) ? 1 : 0;
+    {   /* FUN_10033548 -> FUN_1003302c: the HERONAM pick, Dice(1,8,0) on
+         * turn 1 (the built-in pool only without a HERONAM list) */
+        static Str255 pick;
+        Boolean fem = false;
+        nameIdx = (short)(p % NUM_HERO_NAMES);
+        if (PickHeroName(p, pick, &fem)) name = pick;
+        else {
+            name = sHeroNames[nameIdx];
+            fem = (nameIdx == 1 || nameIdx == 4 || nameIdx == 9 || nameIdx == 14 || nameIdx == 17);
+        }
+        nlen = name[0] > 16 ? 16 : name[0];
+        for (j = 0; j < nlen; j++) h[0x04 + j] = name[j + 1];
+        *(short *)(gs + 0x594 + p * 2) = fem ? 1 : 0;
+    }
     GiveStartingStandard(p, n);   /* turn-1 hero carries its Standard */
     {
         unsigned char *hr = gs + 0x1422 + p * 0x2C;
@@ -24749,10 +24626,10 @@ static short AITurn(void)
     short t = *(short *)(AI_GS + 0x136);
     return t < 2 ? 1 : t;
 }
-/* FUN_1005f230(1,n,base): base + Dice(1,n) */
+/* FUN_1005f230(1,n,base) */
 static short AIRnd(short n, short base)
 {
-    return (short)(base + RollDie(n));
+    return Dice(1, n, base);
 }
 /* FUN_1000a884: Euclidean distance, truncated */
 static short AIDist(short x1, short y1, short x2, short y2)
@@ -27330,12 +27207,18 @@ static void AIHeroOffer(short aiPlayer)
                     /* 68k CODE_090/CODE_064: AI heroes get name, gender, and hero record
                      * just like human-hired heroes. */
                     {
-                        short nameIdx = (short)((unsigned short)Random() % 20);
+                        /* FUN_10033548 -> FUN_1003302c: the HERONAM pick
+                         * (the built-in pool only without a HERONAM list) */
+                        static Str255 pick;
+                        short nameIdx = (short)(aiPlayer % NUM_HERO_NAMES);
                         const unsigned char *name = sHeroNames[nameIdx];
-                        short nlen = name[0];
+                        short nlen;
                         short b;
-                        Boolean isFemale = (nameIdx == 1 || nameIdx == 4 ||
-                                            nameIdx == 9 || nameIdx == 14 || nameIdx == 17);
+                        Boolean isFemale = false;
+                        if (PickHeroName(aiPlayer, pick, &isFemale)) name = pick;
+                        else isFemale = (nameIdx == 1 || nameIdx == 4 ||
+                                         nameIdx == 9 || nameIdx == 14 || nameIdx == 17);
+                        nlen = name[0];
                         /* Write name to army record +0x04 */
                         if (nlen > 16) nlen = 16;
                         for (b = 0; b < nlen; b++)
@@ -29578,7 +29461,7 @@ static void HelmetVoice(short sndID)
     BlitKeyedColor(helmGW, &key, 0, 0, 309, 431, X, Y);
 
     PlayVoice(sndID);
-    cnt = 11 + (short)((unsigned short)Random() % 30);   /* Dice(1,30,10) */
+    cnt = Dice(1, 30, 10);                            /* FUN_1005f230(1,0x1e,10) */
     next = TickCount();
     for (;;) {
         SCStatus st;
@@ -29649,9 +29532,12 @@ static void ShowVoiceAdvisor(short p)
     if (V < L) {
         L = (V / 5) * 5; gs[0x108 + p] = (unsigned char)L; gs[0x100 + p] = 2;
         snd = kLose[L / 5 > 6 ? 6 : L / 5];
+        (void)Dice(1, 1, -1);   /* FUN_1005f6b0(0x28..0x2e, -1): a 1-line group still rolls */
     } else if (V >= L + 5) {
         L = (V / 5) * 5; gs[0x108 + p] = (unsigned char)L; gs[0x100 + p] = 1;
-        snd = (L >= 10 && L <= 35) ? kWin[L / 5] : ((Random() & 1) ? SND_VWIN05 : SND_VWIN05A);
+        /* groups 0x30..0x35 hold one line, 0x2f two (vwin05, vwin05a) */
+        snd = (L >= 10 && L <= 35) ? (Dice(1, 1, -1), kWin[L / 5])
+                                   : (Dice(1, 2, -1) ? SND_VWIN05A : SND_VWIN05);
     } else {
         short gold = *(short *)(gs + 0x186 + p * 0x14), heroes = 0, n = *(short *)(gs + 0x1602), ai;
         if (turn % 7 != 0) return;
@@ -29661,11 +29547,13 @@ static void ShowVoiceAdvisor(short p)
             if ((short)(unsigned char)a[0x15] != p) continue;
             for (k = 0; k < 4; k++) if (a[0x16 + k] == 0x1C) heroes++;
         }
-        if (gold < 100) snd = SND_VGOLD00;
-        else if (gold > 2800) snd = (Random() & 1) ? SND_VGOLD01 : SND_VGOLD01A;
-        else if (heroes == 0) snd = SND_VHERO00;
-        else if (heroes >= 5) snd = SND_VHERO01;
-        else if ((unsigned short)Random() % 5 == 0) snd = SND_VMESS00 + (short)((unsigned short)Random() % 4);
+        /* each FUN_1005f6b0(group, -1) rolls Dice(1, lines, -1), one-line
+         * groups (0x36 vgold00, 0x38 vhero00, 0x39 vhero01) included */
+        if (gold < 100) { (void)Dice(1, 1, -1); snd = SND_VGOLD00; }
+        else if (gold > 2800) snd = Dice(1, 2, -1) ? SND_VGOLD01A : SND_VGOLD01;
+        else if (heroes == 0) { (void)Dice(1, 1, -1); snd = SND_VHERO00; }
+        else if (heroes >= 5) { (void)Dice(1, 1, -1); snd = SND_VHERO01; }
+        else if (Dice(1, 5, 0) == 1) snd = SND_VMESS00 + Dice(1, 4, -1);
         else return;
     }
     if (turn == 1) return;                            /* the level moved, nothing said */
@@ -33638,28 +33526,7 @@ static void HandleMenuChoice(long menuResult)
                                 }
                             }
 
-                            if (rewardType == 3) {
-                                /* Sage/map reveal (68k CODE_066 FUN_0000082e):
-                                 * Reveals a random rectangle offset from hero position.
-                                 * Origin: (heroX - Random(5), heroY - Random(5))
-                                 * Size: (Random(10), Random(10))
-                                 * Clamped to map bounds (112x156). */
-                                short rx, ry;
-                                short revX = ax - (short)((unsigned short)Random() % 5);
-                                short revY = ay - (short)((unsigned short)Random() % 5);
-                                short revW = (short)((unsigned short)Random() % 10);
-                                short revH = (short)((unsigned short)Random() % 10);
-                                if (revX < 0) revX = 0;
-                                if (revY < 0) revY = 0;
-                                if (revX + revW > sMapWidth - 1) revW = sMapWidth - 1 - revX;
-                                if (revY + revH > sMapHeight - 1) revH = sMapHeight - 1 - revY;
-                                for (ry = revY; ry < revY + revH; ry++) {
-                                    for (rx = revX; rx < revX + revW; rx++) {
-                                        FogSetBit(sFogExplored[curPlayer], rx, ry);
-                                        FogSetBit(sFogVisible[curPlayer], rx, ry);
-                                    }
-                                }
-                            }
+                            /* (the sage's map is ShowSageDialog's: PPC FUN_10054af4) */
 
                             /* SearchSiteReward marked the ruin explored for
                              * every player (kind 0, visited bits 0xFF). */
@@ -34059,8 +33926,7 @@ static short ShowSageDialog(void)
         ClipRect(&win->portRect);
     }
     if (choice == 2) {
-        short gold = 500 + 3 + (short)((unsigned short)Random() % 500) + (short)((unsigned short)Random() % 500) +
-                     (short)((unsigned short)Random() % 500);
+        short gold = Dice(3, 500, 500);   /* PPC FUN_10054824 */
         long ng = (long)*(short *)(gs + 0x186 + cur * 0x14) + gold;
         *(short *)(gs + 0x186 + cur * 0x14) = (short)(ng > 30000 ? 30000 : ng);
         GetDATRawString(345, s);
@@ -34077,12 +33943,18 @@ static short ShowSageDialog(void)
             if (!WaitNextEvent(mDownMask, &e, 5, NULL)) continue;
             { Point pt = e.where; SetPort(win); GlobalToLocal(&pt);
               if (PtInRect(pt, &overR)) {
+                  /* PPC FUN_10054af4: Dice(1,5,8) left, Dice(1,5,8) up,
+                   * Dice(1,10,15) wide, Dice(1,10,15) high, in that order;
+                   * the corner clamped to 0, the size to 0x6f / 0x9b */
                   short cx = (pt.h - overR.left) / 2, cy = (pt.v - overR.top) / 2;
-                  short w = 15 + 1 + (short)((unsigned short)Random() % 10);
-                  short h = 15 + 1 + (short)((unsigned short)Random() % 10);
-                  short x0 = cx - (8 + 1 + (short)((unsigned short)Random() % 5));
-                  short y0 = cy - (8 + 1 + (short)((unsigned short)Random() % 5));
+                  short da = Dice(1, 5, 8), db = Dice(1, 5, 8);
+                  short w = Dice(1, 10, 15), h = Dice(1, 10, 15);
+                  short x0 = (short)(cx - da), y0 = (short)(cy - db);
                   short x, y;
+                  if (x0 < 0) x0 = 0;
+                  if (y0 < 0) y0 = 0;
+                  if (x0 + w > 0x6f) w = (short)(0x6f - x0);
+                  if (y0 + h > 0x9b) h = (short)(0x9b - y0);
                   for (y = y0; y < y0 + h; y++)
                       for (x = x0; x < x0 + w; x++)
                           if (x >= 0 && y >= 0 && x < sMapWidth && y < sMapHeight) {
