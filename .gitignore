@@ -41,3 +41,7 @@ tools/infinitemac/gowrapper/Warlords II.app/
 tools/infinitemac/*.png
 tools/infinitemac/oracle/out/
 warlords-offline/
+
+# local build outputs
+src/Warlords II Remake
+src/stubs/blr_verified.o
