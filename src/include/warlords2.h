@@ -30,7 +30,7 @@
 
 /* Game constants */
 #define MAX_PLAYERS         8
-#define MAX_ARMIES          200     /* practical max from army_count */
+#define MAX_ARMIES          1000    /* original unit table; records are sArmyTab */
 #define MAX_CITIES          80
 #define MAX_UNIT_TYPES      29      /* 0x1d */
 #define MAX_UNIT_CLASSES    29      /* 0x1d */

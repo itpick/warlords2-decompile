@@ -68,6 +68,14 @@ takes `sizeof(sAIOrd)` for v11, 100 entries for v7..v10).
 Older saves (v1..v10): the records are read with the game state at gs+0x1604
 (100 x 0x42), copied into `sArmyTab`; `sArmyState` is taken from ext+0x56.
 
+
 ## Changed sites
 
-See the "Site list" section at the end (filled in after the change).
+Implemented on main (not committed) from this design. `DEV_SHIP_PROBE` left at 0. `gs+0x182` left at 100 (this doc does not mention it).
+
+- `src/include/warlords2.h`: `MAX_ARMIES` 200 → 1000.
+- `src/main.c`: `sArmyTab` / `ARMY_REC` / `sArmyState`; every army pointer that was `+ 0x1604 + i*0x42` (including `AI_REC` and `QuestRecPtr`); `sArmyVisited` and `sArmySkip` sized to 1000; `AI_MAX_RECS` and `sAIOrd` sized to 1000.
+- `RemoveArmy` shifts visited, Move All skip, and `sArmyState` with the records. Bless bits stay at `ext+0x3500` and still shift, now up to 1000.
+- Dropped the write-only `ext+0x11e` / `ext+0x182` / `ext+0x1e6` army loops. Defend state reads and writes use `sArmyState`.
+- Player production and vectored transit allocate a record only when `armyCount < MAX_ARMIES`; otherwise no unit and the countdown stays 0. The player merge-into-a-free-slot fallback is gone. Neutral garrison packing is unchanged. Hero allies (`AddAlliesToStack`) no longer pack into the hero's record or another record; a full table drops that ally.
+- `SAVE_VERSION` 11. After `'QGRD'`, `'ARMY'` is `short count`, `short 0x42`, the records, then `count` state bytes. v7–v10 read 100 `AIOrder`s; v11 reads `sizeof(sAIOrd)`. Loads before v11 copy 100 records from `gs+0x1604` and state from `ext+0x56`.
