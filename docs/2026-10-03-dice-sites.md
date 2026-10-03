@@ -110,15 +110,6 @@ FUN_10054af4), and the quick-start shuffle in the campaign path.
 
 - These original rolls have no remake counterpart yet, so the remake's
   stream drifts from the original on those paths:
-  - FUN_10027448 (turn start): notoriety changes when a side's stance
-    drops: Peace→Hostile `+Dice(1,2,0)+1`, Peace→War `+Dice(1,10,0)+10`,
-    Hostile→War `+Dice(1,2,0)+1`.
-  - FUN_1001db60 (AI set-up): it hands the neutral cities out to the
-    computer sides, with a `Dice(1,100,0)` per side and `Dice(1,10,-1) < 5`
-    hops.
-  - FUN_1005b938 ('sele' in More Choices): each computer side gets
-    `Dice(1, characters-1, 0)` into gs+0xE0. The remake only keeps the
-    Character flag (0/1).
   - FUN_10064498: the per-tile overview repaint makes 4 × `Dice(1,3,1)` for
     hill tiles. It runs per site at new game when gs+0x11e is set, and on
     later tile changes.
@@ -127,15 +118,6 @@ FUN_10054af4), and the quick-start shuffle in the campaign path.
   - FUN_100577f0, FUN_1009f2a4, FUN_1009f350, FUN_100a01e8, FUN_10051e1c:
     the end/intro animation and random-map helpers.
   - The random-map generator FUN_100a1e50..FUN_100ab368.
-- Global order: within each function the order now matches. Across the new
-  game, though, the remake runs GameInit (sites/items, handout, armies) at
-  scenario load and the slot jitter later (FinalizeCitySlots). The original
-  runs FUN_1003956c → FUN_1003c068 (handout, then jitter) → FUN_1002cbbc
-  (armies) → notoriety. So the jitter's 8-per-slot rolls fall after the
-  armies' rolls instead of before them.
-- The +2 strength terms in FUN_1001e794 (gs+0xF0 and the type flag table)
-  are still not modelled in `BestCitySlotTypeW`. Weight set 4's
-  flag requirement is not modelled either; that set is never used at start.
 - The remake can draw the overview before the game (the picker). That would
   roll the 256-value pool once more than the original, which reads the
   scenario's PICT 10001 there.
@@ -145,3 +127,24 @@ FUN_10054af4), and the quick-start shuffle in the campaign path.
   original does (it picks the line before testing for a human). The remake
   also shows the window for a fallen computer side; that is not a dice
   question and is left as is.
+
+## Follow-up (Oct 3 2026, later)
+
+- New-game order now follows FUN_1003e13c: `BeginNewGame()` (main.c,
+  after GameInit) runs after the helmet's 'vbegin' and once the army set is
+  in: FUN_1003c838 (turn order) -> FUN_1003d4dc (the first living side in
+  the order moves first, a computer side included) -> FUN_1003956c (sites,
+  items) -> FUN_1003c068 (capitals, Quick Start handout by FUN_1000a884
+  distance, then FUN_1003b9f8's sort/base/jitter) -> FUN_1001db60
+  (`AISetupZones`: city+0x2f zones = `sAIOrigOwner`, round-robin with
+  `Dice(1,10,-1) < 5` hops; `Dice(1,100,0)` per side only with no computer
+  side) -> FUN_1002cbbc (armies; `BestCitySlotTypeW` now scores the city's
+  own sorted, jittered slots with the gs+0xF0 and stat-15 +2 terms and set
+  4's flying test) -> notoriety `Dice(1,8,0)` (+400).
+- FUN_10027448: `NotorietyOnStanceDrop` at the end of every turn (human:
+  AdvanceToNextPlayer; computer: ExecuteAITurn step 19).
+- FUN_1005b938: 'sele' rolls `Dice(1, count-1, 0)` per playing computer
+  side (count = the app's DESC K/L/W000.. resources, 9) into gs+0xE0.
+- Each computer side's free turn-1 hero comes at the start of its own first
+  turn (FUN_100651cc -> FUN_10032a24 -> FUN_10033548), not all at game start.
+

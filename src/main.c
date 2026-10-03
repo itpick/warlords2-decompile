@@ -135,6 +135,7 @@ static Boolean sIAmGreatest = false;
 /* Per-faction "Character" (View 3020 'chaN'): the original's enhanced-AI
  * flag at gs+0xE0, only meaningful for computer sides. */
 static Boolean sFactionCharacter[MAX_FACTIONS] = {false, false, false, false, false, false, false, false};
+static short sFactionCharIdx[MAX_FACTIONS];   /* gs+0xE0: the character picked (FUN_1005b938), 0 none */
 
 /* Game speed: 0=Slow, 1=Normal, 2=Fast, 3=Instant */
 static short sGameSpeed = 1;
@@ -1203,6 +1204,7 @@ static unsigned char sMoveCostTable[9 * 29];
 #define PATH_COST_MAX    30000
 #define PATH_COST_BLOCK  30001
 #define PATH_MAX_STEPS   200
+#define PATH_TRACE_MAX   198   /* FUN_100439a4: local_48 < 0xc6 */
 static short         sPathCostGrid[PATH_GRID_W * PATH_GRID_H];   /* cost to the destination; <0 = open (see PathSearch) */
 static unsigned char sPathDirBuffer[PATH_MAX_STEPS];
 static short         sPathLength;
@@ -1716,6 +1718,7 @@ static void SetCitySlotBase(short ci, short k, short t);
 static void InitCitySlotStatsBase(void);
 static void JitterCitySlotStats(void);
 static Boolean sCitySlotStatsPending = false;   /* new game: the slots await base stats + jitter */
+static Boolean sNewGamePending = false;         /* new game: BeginNewGame has yet to deal */
 static void StartingUnitsFromSlots(void);
 static void DrawArmySpriteAt(short owner, short spriteIdx, short x, short y, Boolean faded);
 static void DrawArmyGhostAt(short owner, short spriteIdx, short x, short y);
@@ -2109,36 +2112,40 @@ static void AssignCityOwner(short ci, short owner)
 
 /* PPC FUN_1001e794 (68k CODE_117 FUN_00000db4): the city's best production
  * slot under weight set `set` (data+0xadd0/0xade0/0xadf0, 8 shorts each):
- *   score = sW[set]*min(str,9) + tW[set]*(10 - min(turns',10)) + mW[set]*move/2
- * turns' = turns+1 when str < 3 (not for set 6); set 4 also needs the type's
- * flag byte (never used here).  Slots 3..0 with a strict '>' (ties keep the
- * later slot).  Set 3 = 10/5/1.  The SCN's per-city slot stats where the
- * scenario has them.  -1: none. */
+ *   str' = min(str + (gs+0xF0[current side] ? 2 : 0), 9), +2 more when the
+ *          type's flag-table byte +5 (army-set stat 15) is 1;
+ *   turns' = turns+1 when str' < 3 (not for set 6), capped at 10;
+ *   score = sW[set]*str' + tW[set]*(10 - turns') + mW[set]*move/2
+ * over the city's OWN slot values (city+0x161a types, +0x161e turns, +0x1622
+ * strength, +0x1626 moves), which at new game are the army set's stats after
+ * FUN_1003b9f8's sort and jitter.  Set 4 also needs the flying flag (stat
+ * 16).  Slots 3..0 with a strict '>' (ties keep the later slot).  -1: none. */
 static short BestCitySlotTypeW(short ci, short set)
 {
     static const short kMoveW[8] = {0, 1, 1, 1, 1, 1, 10, 0};
     static const short kStrW[8]  = {0, 4, 10, 10, 10, 10, 1, 0};
     static const short kTurnW[8] = {0, 10, 10, 5, 5, 5, 10, 0};
-    unsigned char *city;
-    short s, best = 0, unitType = -1;
+    unsigned char *gs, *ec;
+    short s, best = 0, unitType = -1, cur;
+    Boolean tech;
+    if (*gGameState == 0 || *gExtState == 0) return -1;
     if (ci < 0 || ci >= sCityCount || ci >= 139 || set < 0 || set > 7) return -1;
-    city = sCityData + ci * 0x20;
+    gs = (unsigned char *)*gGameState;
+    ec = (unsigned char *)*gExtState + 0x24c + ci * 0x5c;
+    cur = *(short *)(gs + 0x110) & 7;
+    tech = *(short *)(gs + 0xf0 + cur * 2) != 0;
     for (s = 3; s >= 0; s--) {
-        short pt = *(short *)(city + 0x0C + s * 2);
+        short pt = *(short *)(ec + 0x06 + s * 2);
         short turns, str, move, score;
         if (pt < 0 || pt >= MAX_UNIT_TYPES) continue;
-        if (sRandomMap || ci >= 99) {
-            turns = GetUnitTypeStat(pt, 1);
-            str   = GetUnitTypeStat(pt, 0);
-            move  = GetUnitTypeStat(pt, 3);
-        } else {
-            turns = sScnSlotStats[ci][s][0];
-            str   = sScnSlotStats[ci][s][1];
-            move  = sScnSlotStats[ci][s][2];
-        }
+        turns = (short)(signed char)ec[0x40 + s];
+        str   = (short)(signed char)ec[0x44 + s] + (tech ? 2 : 0);
+        move  = (short)(signed char)ec[0x48 + s];
         if (str > 9) str = 9;
+        if (sUnitTypesLoaded && pt < sUnitTypeCount && (UnitStatLE(pt, 15) & 0xFF) == 1) str += 2;
         if (set != 6 && str < 3) turns++;
         if (turns > 10) turns = 10;
+        if (set == 4 && !(sUnitTypesLoaded && pt < sUnitTypeCount && (UnitStatLE(pt, 16) & 0xFF) != 0)) continue;
         score = (short)(str * kStrW[set] + kTurnW[set] * (10 - turns) + (move * kMoveW[set]) / 2);
         if (score > best) { best = score; unitType = pt; }
     }
@@ -2753,6 +2760,32 @@ static void GameInit(void)
         *(short *)(gs + 0x1602) = 0;
     }
 
+    /* --- The fight order (gs+0x60C, 29 bytes per side, lower fights first):
+     * the original's FUN_1005668c loads the SCN one byte later than the
+     * remake's raw copy, so its gs+0x60C holds SCN+0x60B (every shipped
+     * scenario: 8 3 1 6 12 28 5 11 ... in all nine rows).  Shift it into
+     * place; rows 0-7 and the first 28 bytes of row 8 (the remake keeps the
+     * terrain table at SCN+0x710, row 8's last byte in the original).  A
+     * random map, or a row that is no permutation of 0..28, gets 0..28. --- */
+    {
+        short pi, ut;
+        Boolean ok = !sRandomMap;
+        for (pi = 0; pi < 9 && ok; pi++) {
+            unsigned long seen = 0;
+            short nb = (pi == 8) ? 28 : 29;
+            for (ut = 0; ut < nb; ut++) {
+                unsigned char v = gs[0x60B + pi * 0x1D + ut];
+                if (v > 28 || (seen & (1UL << v))) { ok = false; break; }
+                seen |= 1UL << v;
+            }
+        }
+        for (pi = 8; pi >= 0; pi--) {          /* backwards: the copy overlaps */
+            short nb = (pi == 8) ? 28 : 29;
+            for (ut = nb - 1; ut >= 0; ut--)
+                gs[0x60C + pi * 0x1D + ut] = ok ? gs[0x60B + pi * 0x1D + ut] : (unsigned char)ut;
+        }
+    }
+
     /* --- Initialize movement cost table (9 terrain x 29 units) --- */
     /* Copy from gs+0x60C (where SCN data lives) into sMoveCostTable,
      * then fill defaults if empty. This must happen BEFORE fight order
@@ -2802,6 +2835,174 @@ static void GameInit(void)
                 }
             }
         }
+    }
+
+    /* (The ruins and items, the Quick Start handout, the slot jitter, the
+     * computer sides' zones and the starting armies are dealt at Begin Game,
+     * in the original's order: BeginNewGame below.) */
+    /* (No per-army stat variance: FUN_1003b9f8 jitters the CITY SLOTS only,
+     * which JitterCitySlotStats ports; the remake's old per-army pass changed
+     * starting units' strength, moves and a[0x22] - now the unit's upkeep -
+     * and consumed Random() calls the original does not make.) */
+
+    /* NOTE: Unit slot sort by fight priority (FUN_100496c8) is NOT done here
+     * because gs+0x60C still contains movement costs at this point (fight order
+     * is initialized later in game setup). The combat code at line ~11063
+     * already sorts slots before each battle. */
+
+    /* --- Center viewport on current player's capital city --- */
+    CenterViewportOnPlayer();
+
+    /* --- Clear fog and defended bits on map tiles and road data (68k CODE_117 step 23) ---
+     * Map tile byte 1: clear bit 5 (visibility), clear bit 4 (army present)
+     * Road data: clear bit 6 (city-defended) for each tile */
+    if (*gMapTiles != 0) {
+        unsigned char *mapData = (unsigned char *)*gMapTiles;
+        unsigned char *roadData = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
+        short mx, my;
+        for (my = 0; my < 156 && my < sMapHeight; my++) {
+            for (mx = 0; mx < 112 && mx < sMapWidth; mx++) {
+                unsigned short off = my * 0xE0 + mx * 2;
+                mapData[off + 1] &= 0xCF;  /* clear bits 4+5 (army present + visibility) */
+                if (roadData)
+                    roadData[my * 0x70 + mx] &= 0xBF;  /* clear bit 6 (city-defended) */
+            }
+        }
+    }
+
+    /* --- Stamp city/site terrain indices into map tiles (68k CODE_128 FUN_000003ae) ---
+     * Cities overwrite the terrain index (byte 0) in a 2x2 area with special values:
+     *   0x0B = capital, 0x0A = player city, 0x0C = neutral city, 0x09 = ruin/site
+     * Also write owner into byte 1 low nibble. */
+    if (*gMapTiles != 0) {
+        unsigned char *mapData = (unsigned char *)*gMapTiles;
+        short siteCount = sCityCount;
+        if (siteCount > 139) siteCount = 139;
+
+        for (i = 0; i < siteCount; i++) {
+            unsigned char *site = sCityData +i * 0x20;
+            short sx = *(short *)(site + 0x00);
+            short sy = *(short *)(site + 0x02);
+            short sOwner = *(short *)(site + 0x04);
+            short sType = (short)(unsigned char)site[0x17];
+            unsigned char terrIdx;
+            unsigned char ownerNibble;
+            Boolean isCapital = false;
+
+            /* Check if this city is a player's capital (matches pstat capital coords) */
+            if (sType == 0 && sOwner >= 0 && sOwner < 8) {
+                unsigned char *pstat = gs + 0x186 + sOwner * 0x14;
+                short capX = *(short *)(pstat + 0x04);
+                short capY = *(short *)(pstat + 0x06);
+                if (capX == sx && capY == sy) isCapital = true;
+            }
+
+            /* Determine terrain index for this site type */
+            if (isCapital)        terrIdx = 0x0B;  /* capital */
+            else if (sType == 0)  terrIdx = (sOwner >= 0 && sOwner < 8) ? 0x0A : 0x0C;  /* city: player=0A, neutral=0C */
+            else                  terrIdx = 0x09;   /* ruin/temple/library */
+
+            ownerNibble = (sOwner >= 0 && sOwner < 8) ? (unsigned char)sOwner : 0x0F;
+
+            /* Stamp tile area: cities are 2x2, ruins/temples are 1x1 */
+            {
+                short dx, dy;
+                short stampW = (sType < 2) ? 2 : 1;
+                short stampH = (sType < 2) ? 2 : 1;
+                for (dy = 0; dy < stampH; dy++) {
+                    for (dx = 0; dx < stampW; dx++) {
+                        short tx = sx + dx;
+                        short ty = sy + dy;
+                        if (tx >= 0 && tx < sMapWidth && ty >= 0 && ty < sMapHeight) {
+                            unsigned short off = ty * 0xE0 + tx * 2;
+                            /* Terrain byte left alone: the scenario's city tiles
+                             * (Erythea 96/97/112/113) are already type 10 (City),
+                             * and the original's minimap draws them (validated
+                             * pixel-exact); the old stamp made them Ruin/Marsh. */
+                            (void)terrIdx;
+                            mapData[off + 1] = (mapData[off + 1] & 0xF0) | (ownerNibble & 0x0F);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /* The original never alters the army set's table: FUN_1003b9f8 gives each
+     * CITY SLOT its type's stats and jitters THOSE at new game
+     * (JitterCitySlotStats, run from FinalizeCitySlots once the table is in;
+     * the city window and the produced units read the slot). */
+    sCitySlotStatsPending = true;
+    sNewGamePending = true;     /* BeginNewGame deals the rest after Begin Game */
+    if (sUnitTypesLoaded && sUnitTypeCount > 0) {
+        BlockMoveData(sUnitTypeTableBase, sUnitTypeTable,
+                      (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
+    }
+    /* --- Initialize fog of war --- */
+    {
+        short p;
+        for (p = 0; p < 8; p++) {
+            for (i = 0; i < FOG_BYTES_PER_PLAYER; i++) {
+                sFogExplored[p][i] = 0;
+                sFogVisible[p][i] = 0;
+            }
+        }
+        /* Reveal initial positions for all players */
+        for (p = 0; p < 8; p++) {
+            if (*(short *)(gs + 0x138 + p * 2) != 0) {
+                FogUpdatePlayer(p);
+            }
+        }
+    }
+}
+
+
+/* ===================================================================
+ * BeginNewGame — the original's new-game deal after Begin Game (PPC 1.0.7
+ * FUN_1003e13c, PPC_0002.c:3974): FUN_1003c838 (the turn order, 20 swaps
+ * with Random Turns) -> FUN_1003d4dc (the first living side in that order
+ * moves first) -> FUN_1003c368: FUN_1003956c (ruins, items) ->
+ * FUN_1003c068 (capitals, Quick Start handout, FUN_1003b9f8 slot jitter) ->
+ * FUN_10025f2c -> FUN_1001db60 (the computer sides' zones) ->
+ * FUN_1002cbbc (starting armies) -> notoriety Dice(1,8,0) per side (+400
+ * for a human under "I am the Greatest").  Every roll in this order.  Runs
+ * once the army set's table is in (the slot stats need it).
+ * =================================================================== */
+static short AIDist(short x1, short y1, short x2, short y2);
+static void AISetupZones(void);
+static short PathCityIndexAt(short x, short y);
+
+static void BeginNewGame(void)
+{
+    unsigned char *gs;
+    short i, j;
+
+    if (!sNewGamePending || *gGameState == 0) return;
+    sNewGamePending = false;
+    gs = (unsigned char *)*gGameState;
+
+    /* --- FUN_1003c838: the turn order --- */
+    for (i = 0; i < 8; i++) *(short *)(gs + 0x164 + i * 2) = i;
+    if (*(short *)(gs + 0x122) != 0) {
+        short sw;
+        for (sw = 0; sw < 20; sw++) {
+            short a = Dice(1, 8, -1);
+            short b = Dice(1, 8, -1);
+            short tmp = *(short *)(gs + 0x164 + b * 2);
+            *(short *)(gs + 0x164 + b * 2) = *(short *)(gs + 0x164 + a * 2);
+            *(short *)(gs + 0x164 + a * 2) = tmp;
+        }
+    }
+    *(short *)(gs + 0x174) = 0;
+    *(short *)(gs + 0x118) = 0;
+
+    /* --- FUN_1003d4dc: the first living side in the order moves first --- */
+    for (i = 0; i < 8; i++) {
+        short p = *(short *)(gs + 0x164 + *(short *)(gs + 0x174) * 2);
+        *(short *)(gs + 0x110) = p;
+        *(short *)(gs + 0x174) += 1;
+        if (*(short *)(gs + 0x174) > 7) *(short *)(gs + 0x118) = 1;
+        if (*(short *)(gs + 0x138 + p * 2) != 0) break;
     }
 
     /* --- Ruins, temples and items (PPC 1.0.7 FUN_1003956c with FUN_10038fb8
@@ -2968,50 +3169,57 @@ static void GameInit(void)
         }
     }
 
-    /* --- Quick Start (68k CODE_117 FUN_00000ad2 / PPC FUN_1003b6xx): every
-     * neutral city is handed out round-robin to the alive sides — each takes
-     * the neutral city nearest to its capital, or (50/50) nearest to the city
-     * it took last — before the garrisons are placed. --- */
-    if (sOptQuickStart) {
-        short fromX[8], fromY[8], p, alive = 0;
-        for (p = 0; p < 8; p++) {
-            unsigned char *pstat = gs + 0x186 + p * 0x14;
-            fromX[p] = *(short *)(pstat + 0x04); fromY[p] = *(short *)(pstat + 0x06);
-            if (fromX[p] == 0 && fromY[p] == 0) {
-                fromX[p] = (short)(unsigned char)pstat[3]; fromY[p] = (short)(unsigned char)pstat[5];
+    /* --- PPC FUN_1003c068: sides 7..0, each side's capital city
+     * (FUN_1002be50 at its start coordinates) takes its owner - neutral for
+     * a side not in play.  Then, with Quick Start (gs+0x128), the neutral
+     * cities are handed out round-robin from the LOWEST living side: each
+     * takes the neutral city nearest to where it stands (FUN_1002bf64:
+     * FUN_1000a884's truncated Euclid, the first index on ties), then
+     * Dice(1,10,-1) < 5 sends it back to its capital, else it stands at the
+     * city it took.  Last, FUN_1003b9f8: the slots' sort, stats and jitter
+     * (FinalizeCitySlots). --- */
+    {
+        short fromX[8], fromY[8], p, side = -1, cc = sCityCount;
+        if (cc > 139) cc = 139;
+        for (p = 7; p >= 0; p--) {
+            short ci;
+            GetCapitalXY(p, &fromX[p], &fromY[p]);
+            ci = PathCityIndexAt(fromX[p], fromY[p]);
+            if (ci < 0) continue;
+            if (*(short *)(gs + 0x138 + p * 2) == 0) {
+                if (*(short *)(sCityData + ci * 0x20 + 0x04) != 0x0F) AssignCityOwner(ci, 0x0F);
+            } else {
+                if (*(short *)(sCityData + ci * 0x20 + 0x04) != p) AssignCityOwner(ci, p);
+                side = p;
             }
-            if (*(short *)(gs + 0x138 + p * 2) != 0) alive++;
         }
-        if (alive > 0) {
-            short cc = sCityCount, guard = 0;
-            if (cc > 139) cc = 139;
-            p = 0;
-            while (*(short *)(gs + 0x138 + p * 2) == 0) p = (short)((p + 1) % 8);
+        if (side != -1 && sOptQuickStart) {
+            short guard = 0;
             for (;;) {
-                long bestD = 0x7FFFFFFFL;
-                short best = -1, ci;
+                short best = -1, bestD = 1000, ci;
                 for (ci = 0; ci < cc; ci++) {
                     unsigned char *city = sCityData + ci * 0x20;
-                    short o = *(short *)(city + 0x04);
-                    long dx, dy, d;
-                    if (city[0x17] != 0 || (o >= 0 && o < 8)) continue;
-                    dx = *(short *)(city + 0x00) - fromX[p]; dy = *(short *)(city + 0x02) - fromY[p];
-                    d = dx * dx + dy * dy;
+                    short d;
+                    if (city[0x17] >= 2 || *(short *)(city + 0x04) != 0x0F) continue;
+                    d = AIDist(fromX[side], fromY[side], *(short *)(city + 0x00), *(short *)(city + 0x02));
                     if (d < bestD) { bestD = d; best = ci; }
                 }
                 if (best < 0 || ++guard > 200) break;
-                AssignCityOwner(best, p);
-                if (Dice(1, 10, -1) < 5) {   /* FUN_1003c068: Dice(1,10,-1) < 5 */
-                    unsigned char *pstat = gs + 0x186 + p * 0x14;
-                    fromX[p] = *(short *)(pstat + 0x04); fromY[p] = *(short *)(pstat + 0x06);
+                AssignCityOwner(best, side);
+                if (Dice(1, 10, -1) < 5) {
+                    GetCapitalXY(side, &fromX[side], &fromY[side]);
                 } else {
-                    fromX[p] = *(short *)(sCityData + best * 0x20 + 0x00);
-                    fromY[p] = *(short *)(sCityData + best * 0x20 + 0x02);
+                    fromX[side] = *(short *)(sCityData + best * 0x20 + 0x00);
+                    fromY[side] = *(short *)(sCityData + best * 0x20 + 0x02);
                 }
-                do { p = (short)((p + 1) % 8); } while (*(short *)(gs + 0x138 + p * 2) == 0);
+                do { side = (short)((side + 1) % 8); } while (*(short *)(gs + 0x138 + side * 2) == 0);
             }
         }
     }
+    FinalizeCitySlots();   /* FUN_1003b9f8 (sCitySlotStatsPending: sort, base stats, jitter) */
+
+    /* --- FUN_10025f2c -> FUN_1001db60: the computer sides' zones --- */
+    AISetupZones();
 
     /* --- Starting armies and garrisons: PPC FUN_1002cbbc (68k CODE_117
      * FUN_00000be0).  Scenarios carry no army data.  One pass over the
@@ -3066,93 +3274,7 @@ static void GameInit(void)
         }
     }
 
-    /* (No per-army stat variance: FUN_1003b9f8 jitters the CITY SLOTS only,
-     * which JitterCitySlotStats ports; the remake's old per-army pass changed
-     * starting units' strength, moves and a[0x22] - now the unit's upkeep -
-     * and consumed Random() calls the original does not make.) */
-
-    /* NOTE: Unit slot sort by fight priority (FUN_100496c8) is NOT done here
-     * because gs+0x60C still contains movement costs at this point (fight order
-     * is initialized later in game setup). The combat code at line ~11063
-     * already sorts slots before each battle. */
-
-    /* --- Center viewport on current player's capital city --- */
-    CenterViewportOnPlayer();
-
-    /* --- Clear fog and defended bits on map tiles and road data (68k CODE_117 step 23) ---
-     * Map tile byte 1: clear bit 5 (visibility), clear bit 4 (army present)
-     * Road data: clear bit 6 (city-defended) for each tile */
-    if (*gMapTiles != 0) {
-        unsigned char *mapData = (unsigned char *)*gMapTiles;
-        unsigned char *roadData = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
-        short mx, my;
-        for (my = 0; my < 156 && my < sMapHeight; my++) {
-            for (mx = 0; mx < 112 && mx < sMapWidth; mx++) {
-                unsigned short off = my * 0xE0 + mx * 2;
-                mapData[off + 1] &= 0xCF;  /* clear bits 4+5 (army present + visibility) */
-                if (roadData)
-                    roadData[my * 0x70 + mx] &= 0xBF;  /* clear bit 6 (city-defended) */
-            }
-        }
-    }
-
-    /* --- Stamp city/site terrain indices into map tiles (68k CODE_128 FUN_000003ae) ---
-     * Cities overwrite the terrain index (byte 0) in a 2x2 area with special values:
-     *   0x0B = capital, 0x0A = player city, 0x0C = neutral city, 0x09 = ruin/site
-     * Also write owner into byte 1 low nibble. */
-    if (*gMapTiles != 0) {
-        unsigned char *mapData = (unsigned char *)*gMapTiles;
-        short siteCount = sCityCount;
-        if (siteCount > 139) siteCount = 139;
-
-        for (i = 0; i < siteCount; i++) {
-            unsigned char *site = sCityData +i * 0x20;
-            short sx = *(short *)(site + 0x00);
-            short sy = *(short *)(site + 0x02);
-            short sOwner = *(short *)(site + 0x04);
-            short sType = (short)(unsigned char)site[0x17];
-            unsigned char terrIdx;
-            unsigned char ownerNibble;
-            Boolean isCapital = false;
-
-            /* Check if this city is a player's capital (matches pstat capital coords) */
-            if (sType == 0 && sOwner >= 0 && sOwner < 8) {
-                unsigned char *pstat = gs + 0x186 + sOwner * 0x14;
-                short capX = *(short *)(pstat + 0x04);
-                short capY = *(short *)(pstat + 0x06);
-                if (capX == sx && capY == sy) isCapital = true;
-            }
-
-            /* Determine terrain index for this site type */
-            if (isCapital)        terrIdx = 0x0B;  /* capital */
-            else if (sType == 0)  terrIdx = (sOwner >= 0 && sOwner < 8) ? 0x0A : 0x0C;  /* city: player=0A, neutral=0C */
-            else                  terrIdx = 0x09;   /* ruin/temple/library */
-
-            ownerNibble = (sOwner >= 0 && sOwner < 8) ? (unsigned char)sOwner : 0x0F;
-
-            /* Stamp tile area: cities are 2x2, ruins/temples are 1x1 */
-            {
-                short dx, dy;
-                short stampW = (sType < 2) ? 2 : 1;
-                short stampH = (sType < 2) ? 2 : 1;
-                for (dy = 0; dy < stampH; dy++) {
-                    for (dx = 0; dx < stampW; dx++) {
-                        short tx = sx + dx;
-                        short ty = sy + dy;
-                        if (tx >= 0 && tx < sMapWidth && ty >= 0 && ty < sMapHeight) {
-                            unsigned short off = ty * 0xE0 + tx * 2;
-                            /* Terrain byte left alone: the scenario's city tiles
-                             * (Erythea 96/97/112/113) are already type 10 (City),
-                             * and the original's minimap draws them (validated
-                             * pixel-exact); the old stamp made them Ruin/Marsh. */
-                            (void)terrIdx;
-                            mapData[off + 1] = (mapData[off + 1] & 0xF0) | (ownerNibble & 0x0F);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    StartingUnitsFromSlots();   /* FUN_1004a5f0: the slot's strength, moves and upkeep */
 
     /* --- Stamp army owners into map tiles (68k CODE_117 FUN_0000035c) ---
      * Write army owner into the tile byte 1 low nibble and set army-present bit. */
@@ -3179,31 +3301,27 @@ static void GameInit(void)
         }
     }
 
-    /* The original never alters the army set's table: FUN_1003b9f8 gives each
-     * CITY SLOT its type's stats and jitters THOSE at new game
-     * (JitterCitySlotStats, run from FinalizeCitySlots once the table is in;
-     * the city window and the produced units read the slot). */
-    sCitySlotStatsPending = true;
-    if (sUnitTypesLoaded && sUnitTypeCount > 0) {
-        BlockMoveData(sUnitTypeTableBase, sUnitTypeTable,
-                      (long)sUnitTypeCount * UNIT_TYPE_ENTRY);
-    }
-    /* --- Initialize fog of war --- */
+
+    /* --- the fog: every living side sees round its units --- */
     {
         short p;
-        for (p = 0; p < 8; p++) {
-            for (i = 0; i < FOG_BYTES_PER_PLAYER; i++) {
-                sFogExplored[p][i] = 0;
-                sFogVisible[p][i] = 0;
-            }
-        }
-        /* Reveal initial positions for all players */
-        for (p = 0; p < 8; p++) {
-            if (*(short *)(gs + 0x138 + p * 2) != 0) {
-                FogUpdatePlayer(p);
-            }
-        }
+        for (p = 0; p < 8; p++)
+            for (i = 0; i < FOG_BYTES_PER_PLAYER; i++) { sFogExplored[p][i] = 0; sFogVisible[p][i] = 0; }
+        for (p = 0; p < 8; p++)
+            if (*(short *)(gs + 0x138 + p * 2) != 0) FogUpdatePlayer(p);
     }
+
+    /* --- FUN_1003c368: notoriety, Dice(1,8,0) per side, +400 for a human
+     * side under "I am the Greatest" (gs+0x116) --- */
+    for (i = 0; i < 8; i++) {
+        *(short *)(gs + 0x1122 + i * 2) = Dice(1, 8, 0);
+        if (*(short *)(gs + 0x116) != 0 && *(short *)(gs + 0xd0 + i * 2) == 0)
+            *(short *)(gs + 0x1122 + i * 2) += 400;
+        *(short *)(gs + 0x1132 + i * 2) = (short)0xFFFF;
+    }
+    (void)j;
+    CenterViewportOnPlayer();
+    SiteTilesFor(*(short *)(gs + 0x110));   /* FUN_10039ec8 */
 }
 
 
@@ -8050,11 +8168,29 @@ static short RunMoreGameSetup(char names[][FACTION_NAME_LEN + 1], short factionC
                 InvalRect(&win->portRect);
             }
             if (PtInRect(pt, &seleR)) {
-                /* 'sele' (FUN_1005b938): every computer side draws a random
-                 * character of its level's set, Dice(1, count-1) - never 0, so
-                 * every Character box ends up checked. */
+                /* 'sele' (FUN_1005b938): sides 0..7, every playing computer
+                 * side draws a character of its level's set, Dice(1, count-1,
+                 * 0) into gs+0xE0 - never 0, so every Character box ends up
+                 * checked.  count = FUN_1003aeb0(7, level): the app's 'DESC'
+                 * resources named K000.., L000.., W000.. up to the first
+                 * missing one (9 each). */
                 for (i = 0; i < MAX_FACTIONS; i++)
                     if (!unused[i] && sFactionAI[i] >= 1 && sFactionAI[i] <= 3) {
+                        static const char kLvl[3] = {'K', 'L', 'W'};
+                        short cnt = 0;
+                        for (cnt = 0; cnt < 30; cnt++) {
+                            Str255 nm;
+                            Handle h;
+                            nm[0] = 4; nm[1] = (unsigned char)kLvl[sFactionAI[i] - 1];
+                            nm[2] = (unsigned char)('0' + cnt / 100); nm[3] = (unsigned char)('0' + (cnt / 10) % 10);
+                            nm[4] = (unsigned char)('0' + cnt % 10);
+                            SetResLoad(false);
+                            h = GetNamedResource('DESC', nm);
+                            SetResLoad(true);
+                            if (h == NULL) break;
+                        }
+                        if (cnt == 0) cnt = 9;   /* (no DESC: the shipped sets hold 9) */
+                        sFactionCharIdx[i] = Dice(1, (short)(cnt - 1), 0);
                         sFactionCharacter[i] = true;
                         InvalRect(&win->portRect);
                     }
@@ -8214,18 +8350,8 @@ static Boolean ShowGameSetup(void)
             *(short *)(gs + 0x164 + i * 2) = i;  /* Sequential turn order */
         }
 
-        /* 68k CODE_130 FUN_000005aa: if Random Turns option is on,
-         * shuffle turn order 20 times using Fisher-Yates-style swaps. */
-        if (*(short *)(gs + 0x122) != 0) {
-            short sh;
-            for (sh = 0; sh < 20; sh++) {
-                short a = Dice(1, 8, -1);   /* PPC FUN_1003c838 */
-                short b = Dice(1, 8, -1);
-                short tmp = *(short *)(gs + 0x164 + a * 2);
-                *(short *)(gs + 0x164 + a * 2) = *(short *)(gs + 0x164 + b * 2);
-                *(short *)(gs + 0x164 + b * 2) = tmp;
-            }
-        }
+        /* (Random Turns' 20 swaps, FUN_1003c838, and the first side,
+         * FUN_1003d4dc, come after the helmet's 'vbegin': BeginNewGame) */
 
         /* Re-initialize diplomacy matrix based on actual option setting.
          * GameInit() set all to peace (0x00), but the user may have
@@ -8243,15 +8369,8 @@ static Boolean ShowGameSetup(void)
             }
         }
 
-        /* Per-side notoriety (PPC FUN_1003c368, the original's game init
-         * that runs after Begin Game): Dice(1,8), +400 for a human side
-         * under "I am the Greatest" (gs+0x116). */
-        for (i = 0; i < 8; i++) {
-            *(short *)(gs + 0x1122 + i * 2) = Dice(1, 8, 0);
-            if (sIAmGreatest && *(short *)(gs + 0xd0 + i * 2) == 0)
-                *(short *)(gs + 0x1122 + i * 2) += 400;
-            *(short *)(gs + 0x1132 + i * 2) = (short)0xFFFF;  /* history min */
-        }
+        /* (Per-side notoriety, FUN_1003c368's Dice(1,8,0): BeginNewGame,
+         * after the starting armies) */
 
         /* Per-side level words (PPC FUN_1005a6ac): Knight 0, Lord 1,
          * Warlord 2 for a computer side; a human side carries 2; a side that
@@ -8276,17 +8395,7 @@ static Boolean ShowGameSetup(void)
             if (ci >= 0) *(short *)(sCityData + ci * 0x20 + 0x04) = 0x0F;
         }
 
-        /* Initialize fight order table (from CODE_060): 29 bytes per player
-         * at gs + (player * 0x1D) + 0x60C.
-         * Default: sequential ordering 0-28 (lower = fights first). */
-        {
-            short pi, ut;
-            for (pi = 0; pi < 9; pi++) {
-                for (ut = 0; ut < 29; ut++) {
-                    gs[ut + pi * 0x1D + 0x60C] = (unsigned char)ut;
-                }
-            }
-        }
+        /* (The fight order, gs+0x60C, is the scenario's: GameInit) */
 
         /* Additional init from 68k CODE_117 FUN_00001ab6 */
         *(short *)(gs + 0x15E) = 0;   /* endgame/domination flag — blocks hero offers */
@@ -8296,7 +8405,8 @@ static Boolean ShowGameSetup(void)
         for (i = 0; i < 8; i++) {
             /* enhanced-AI flag: View 3020's 'Character' checkbox of a computer side */
             *(short *)(gs + 0x0E0 + i * 2) =
-                (sFactionAI[i] >= 1 && sFactionAI[i] <= 3 && sFactionCharacter[i]) ? 1 : 0;
+                (sFactionAI[i] >= 1 && sFactionAI[i] <= 3 && sFactionCharacter[i]) ?
+                (sFactionCharIdx[i] > 0 ? sFactionCharIdx[i] : 1) : 0;
             *(short *)(gs + 0x148 + i * 2) = sOptHiddenMap ? 1 : 0;  /* fog per player */
         }
 
@@ -8313,17 +8423,8 @@ static Boolean ShowGameSetup(void)
             for (b = 0; b < 0x0C; b++)
                 gs[0x1142 + i * 0x0C + b] = 0;
         }
-        /* FUN_10038fb8's known masks with the final options: a hidden site
-         * is unknown to everyone when quests are on */
-        {
-            short cc = sCityCount > 139 ? 139 : sCityCount;
-            for (i = 0; i < cc; i++) {
-                unsigned char *site = sCityData + i * 0x20;
-                if (site[0x17] < 2) continue;
-                SITE_KNOWN(site) = (SITE_HARD(site) && *(short *)(gs + 0x11e) != 0) ? 0 : 0xFF;
-            }
-            SiteTilesFor(*(short *)(gs + 0x110));
-        }
+        /* (The sites and their known masks are dealt with the final
+         * options at BeginNewGame, FUN_1003956c) */
 
         /* Item records (gs+0xD12) are NOT cleared here: GameInit already
          * built the Standards and placed the ruin items (FUN_1003956c). */
@@ -9097,6 +9198,12 @@ static void DrawMapInWindow(WindowPtr win)
             {
                 RGBColor dark = {0x9090, 0x5050, 0x0000}, light = {0xBBBB, 0x7373, 0x0000};
                 RGBColor black = {0, 0, 0};
+                /* FUN_100479f4(0xe) / (0xd): the colours of pltt 1000's
+                 * entries 14 and 13 (the literals only without the palette) */
+                if (sGamePal != NULL) {
+                    GetEntryColor(sGamePal, 14, &dark);
+                    GetEntryColor(sGamePal, 13, &light);
+                }
                 RGBForeColor(&dark);
                 MoveTo(screenX + 2, screenY); Line(0, 39);
                 MoveTo(screenX + 4, screenY); Line(0, 39);
@@ -12114,6 +12221,23 @@ static void NextGroupTurnSync(void)
     }
 }
 
+/* FUN_10055c64's selection side effects on the group it selects: every
+ * member is marked visited (0x200) and FUN_10055ba0(1) sets status bit 1 -
+ * the group is no longer defending. */
+static void SelectGroupFlags(void)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short k, n;
+    if (gs == NULL) return;
+    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    for (k = 0; k < sStackCount; k++) {
+        short ai = sStackArmyIdx[k];
+        if (!sStackSelected[k] || ai < 0 || ai >= n) continue;
+        sArmyVisited[ai] = 1;
+        gs[0x1604 + ai * 0x42 + 0x2d] = 0;
+    }
+}
+
 static void SelectNextArmy(void)
 {
     unsigned char *gs;
@@ -12142,34 +12266,13 @@ static void SelectNextArmy(void)
         vpCenterY = sViewportY + tilesHigh / 2;
     }
 
-    /* Turn 1 special case: select strongest army, ties broken by leftmost (smallest X).
-     * After turn 1: 68k CODE_123 FUN_00000262 two-pass distance-based selection. */
+    /* FUN_100559ac: the current side's records on the map, skipping only
+     * the defending ones (status bit 1 clear: a[0x2d]) and those marked
+     * 0x40 (Leave Group, Move All stopped short) - no MP test; nearest by
+     * Manhattan distance from the last pick (0 -> 9000), the not-yet-visited
+     * first; with only visited ones left, the current side's visited flags
+     * are cleared. */
     {
-      short turnNum = *(short *)(gs + 0x136);
-      if (turnNum == 0) {
-          /* Turn 1: pick strongest, leftmost army */
-          short bestStr = -1, bestX = 30000;
-          for (i = armyCount - 1; i >= 0; i--) {
-              unsigned char *army = gs + 0x1604 + i * 0x42;
-              short owner = (short)(unsigned char)army[0x15];
-              short ax, str;
-              if (owner != currentPlayer) continue;
-              ax = *(short *)(army + 0x00);
-              if (ax < 0) continue;
-              if (army[0x16] == 0xFF) continue;
-              str = (short)(unsigned char)army[0x1e];
-              if (str > bestStr || (str == bestStr && ax < bestX)) {
-                  bestStr = str;
-                  bestX = ax;
-                  bestIdx = i;
-              }
-          }
-      } else {
-          /* Normal: two-pass selection by Manhattan distance from viewport center.
-           * Pass 1: ungrouped armies (army+0x11 == 0) — prefer solo units.
-           * Pass 2: already-grouped armies (army+0x11 != 0).
-           * If falling back to pass 2, clear all group tags for this player
-           * (68k clears 0x200 flag on all player armies — auto-ungroup). */
           short bestNew = -1, bestOld = -1;
           short bestNewDist = 10000, bestOldDist = 10000;
           (void)vpCenterX; (void)vpCenterY;
@@ -12184,9 +12287,8 @@ static void SelectNextArmy(void)
                 ax = *(short *)(army + 0x00);
                 if (ax < 0) continue;  /* not placed */
                 if (army[0x16] == 0xFF) continue;  /* dead */
-                if ((short)(unsigned char)army[0x2e] <= 0) continue;  /* spent */
-                if (army[0x2d] != 0) continue;  /* fortified (0x40) */
-                if (sArmySkip[i]) continue;     /* stopped short in Move All (0x40) */
+                if (army[0x2d] != 0) continue;  /* defending (status bit 1 clear) */
+                if (sArmySkip[i]) continue;     /* 0x40 */
 
                 ay = *(short *)(army + 0x02);
                 dx = ax - sNextRefX; if (dx < 0) dx = -dx;
@@ -12203,14 +12305,17 @@ static void SelectNextArmy(void)
           if (bestNew >= 0) {
               bestIdx = bestNew;
           } else if (bestOld >= 0) {
-              for (i = 0; i < 100; i++) sArmyVisited[i] = 0;   /* everyone seen: start over */
+              for (i = 0; i < armyCount; i++)   /* the current side's 0x200 flags only */
+                  if ((short)(unsigned char)gs[0x1604 + i * 0x42 + 0x15] == currentPlayer) sArmyVisited[i] = 0;
               bestIdx = bestOld;
           }
-      }
     }
 
-    if (bestIdx < 0)
+    if (bestIdx < 0) {                   /* FUN_10055f30: none left - nothing selected */
+        sSelectedArmy = -1; sStackCount = 0; sPreviewPathLen = 0;
+        InvalidateAllGameWindows();
         return;
+    }
     sNextRefX = *(short *)(gs + 0x1604 + bestIdx * 0x42 + 0x00);
     sNextRefY = *(short *)(gs + 0x1604 + bestIdx * 0x42 + 0x02);
 
@@ -12219,6 +12324,7 @@ static void SelectNextArmy(void)
         unsigned char *army = gs + 0x1604 + bestIdx * 0x42;
         sSelectedArmy = bestIdx;
         BuildStackArrays(bestIdx);
+        SelectGroupFlags();
 
         /* Center viewport on selected army */
         CenterViewportOn(*(short *)(army + 0x00), *(short *)(army + 0x02));
@@ -12518,41 +12624,84 @@ static void StackUngroupAll(void)
     for (sj = 1; sj < sStackCount; sj++) sStackSep[sj] = 0;
 }
 
+/* FUN_10021d50: the first group tag (1..254) no on-map record of the
+ * current side carries; 0 when all are taken.  (The original's used-table
+ * is cleared from index 2; index 1 counts as used only when a record
+ * carries it.) */
+static unsigned char NewGroupTag(void)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    unsigned char used[256];
+    short i, n, cur, t;
+    if (gs == NULL) return 0;
+    for (t = 0; t < 256; t++) used[t] = 0;
+    cur = *(short *)(gs + 0x110);
+    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    for (i = 0; i < n; i++) {
+        unsigned char *a = gs + 0x1604 + i * 0x42;
+        if (a[0x16] == 0xFF || (short)(unsigned char)a[0x15] != cur || *(short *)(a + 0) < 0) continue;
+        used[a[0x11]] = 1;
+    }
+    for (t = 1; t < 0xFF; t++) if (!used[t]) return (unsigned char)t;
+    return 0;
+}
+
 /* ===================================================================
- * StackCommitGroups — Write group tags to army records (army+0x11).
- * Updates sSelectedArmy to first selected member.
+ * StackCommitGroups — the stack window's commit (PPC_0002.c:17000-17124):
+ * the selected entries become the selection (status bit 1 set: not
+ * defending); then per group, in the window's order: one record -> tag 0;
+ * several defending (the first member's status bit 1 clear) -> tag 1;
+ * several active -> a tag the stack already used (2..254, popped from the
+ * end of the list, whose first entry is never reused) or a new side-unique
+ * one (FUN_10021d50).
  * =================================================================== */
 static void StackCommitGroups(void)
 {
     unsigned char *gs;
-    short sj;
-    unsigned char nextTag = 1;
-    short tagMap[MAX_STACK];
-    short tj;
+    short sj, nOld = 0, g;
+    unsigned char oldTags[MAX_STACK];
+    short order[MAX_STACK], nGroups = 0;
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
 
-    /* Map groupIds to unique group tags (1-8, 0 = ungrouped) */
-    for (tj = 0; tj < MAX_STACK; tj++) tagMap[tj] = 0;
+    for (sj = 0; sj < sStackCount; sj++)
+        if (sStackSelected[sj] && sStackArmyIdx[sj] >= 0)
+            gs[0x1604 + sStackArmyIdx[sj] * 0x42 + 0x2d] = 0;
     for (sj = 0; sj < sStackCount; sj++) {
-        short grp = sStackGroupId[sj];
-        if (grp >= 0 && grp < MAX_STACK && tagMap[grp] == 0) {
-            short cnt = 0, ck;
-            for (ck = 0; ck < sStackCount; ck++) {
-                if (sStackGroupId[ck] == grp) cnt++;
-            }
-            tagMap[grp] = (cnt > 1) ? nextTag++ : 0;
-        }
+        unsigned char t;
+        short q;
+        Boolean seen = false;
+        if (sStackArmyIdx[sj] < 0) continue;
+        t = gs[0x1604 + sStackArmyIdx[sj] * 0x42 + 0x11];
+        if (t == 0 || t == 1) continue;
+        for (q = 0; q < nOld; q++) if (oldTags[q] == t) seen = true;
+        if (!seen) oldTags[nOld++] = t;
     }
-    for (sj = 0; sj < sStackCount; sj++) {
-        short aidx = sStackArmyIdx[sj];
-        if (aidx >= 0) {
-            unsigned char *army = gs + 0x1604 + aidx * 0x42;
-            short grp = sStackGroupId[sj];
-            army[0x11] = (grp >= 0 && grp < MAX_STACK) ?
-                         (unsigned char)tagMap[grp] : 0;
+    for (sj = 0; sj < sStackCount; sj++) {          /* the groups in window order */
+        short q;
+        Boolean seen = false;
+        for (q = 0; q < nGroups; q++) if (order[q] == sStackGroupId[sj]) seen = true;
+        if (!seen) order[nGroups++] = sStackGroupId[sj];
+    }
+    for (g = 0; g < nGroups; g++) {
+        short cnt = 0, first = -1;
+        unsigned char tag;
+        for (sj = 0; sj < sStackCount; sj++)
+            if (sStackGroupId[sj] == order[g] && sStackArmyIdx[sj] >= 0) {
+                if (first < 0) first = sStackArmyIdx[sj];
+                cnt++;
+            }
+        if (first < 0) continue;
+        if (cnt == 1) tag = 0;
+        else if (gs[0x1604 + first * 0x42 + 0x2d] != 0) tag = 1;
+        else {
+            nOld--;
+            tag = (nOld < 1) ? NewGroupTag() : oldTags[nOld];
         }
+        for (sj = 0; sj < sStackCount; sj++)
+            if (sStackGroupId[sj] == order[g] && sStackArmyIdx[sj] >= 0)
+                gs[0x1604 + sStackArmyIdx[sj] * 0x42 + 0x11] = tag;
     }
     /* Update sSelectedArmy to first selected */
     for (sj = 0; sj < sStackCount; sj++) {
@@ -13244,7 +13393,7 @@ static void TracePreviewPath(short srcX, short srcY, short dstX, short dstY)
     if (!PathSearch(srcX, srcY, dstX, dstY, 0) &&
         !PathSearch(srcX, srcY, dstX, dstY, 1))
         return;
-    n = PathTrace(srcX, srcY, dstX, dstY, sPreviewDirs, PATH_MAX_STEPS - 1, &endX, &endY);
+    n = PathTrace(srcX, srcY, dstX, dstY, sPreviewDirs, PATH_TRACE_MAX, &endX, &endY);
     sPreviewPathX[0] = srcX; sPreviewPathY[0] = srcY; sPreviewCum[0] = 0;
     sPreviewPathLen = 1;
     cx = srcX; cy = srcY;
@@ -13397,7 +13546,7 @@ static short ComputeWavefrontPath(short srcX, short srcY,
     if (!PathSearch(srcX, srcY, dstX, dstY, 0) &&
         !PathSearch(srcX, srcY, dstX, dstY, 1))
         return -1;
-    sPathLength = PathTrace(srcX, srcY, dstX, dstY, sPathDirBuffer, PATH_MAX_STEPS - 1, &endX, &endY);
+    sPathLength = PathTrace(srcX, srcY, dstX, dstY, sPathDirBuffer, PATH_TRACE_MAX, &endX, &endY);
     sPathDirBuffer[sPathLength] = 0xFF;
     PathCacheStore(dist, srcX, srcY, dstX, dstY);   /* FUN_10043c84 */
     return sPathLength > 0 ? sPathLength : -1;
@@ -20004,22 +20153,24 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
     mv = GetUnitTypeStat(type, 3);
     if (hp < 1) hp = 3;
     if (mv < 1) mv = 10;
-    while (added < count) {
+    for (; count > 0; count--) {       /* FUN_10032e2c: one FUN_10053838 per ally */
         unsigned char *dst = NULL;
         short ds = -1, k, x = *(short *)(army + 0), y = *(short *)(army + 2), tries = 10;
+        Boolean placed = false;
         /* PPC FUN_10053838, once per ally from the hero's tile: a tile with
          * under 8 units that is the side's or empty; else a random walk of
          * (Dice(1,3,-2), Dice(1,3,-2)) steps, 10 tries, then no ally */
         for (;;) {
             short own = 0x0F;
             short u = (x >= 0 && x < sMapWidth && y >= 0 && y < sMapHeight) ? AlliesTileUnits(x, y, &own) : 99;
-            if (u < 8 && (u == 0 || own == owner)) break;
+            if (u < 8 && (u == 0 || own == owner)) { placed = true; break; }
             {
                 short ddx = Dice(1, 3, -2), ddy = Dice(1, 3, -2);
                 x = (short)(x + ddx); y = (short)(y + ddy);
             }
-            if (--tries == 0) return added;
+            if (--tries == 0) break;    /* this ally is lost; the next one still tries */
         }
+        if (!placed) continue;
         if (x == *(short *)(army + 0) && y == *(short *)(army + 2))
             for (k = 0; k < 4; k++)
                 if ((unsigned char)army[0x16 + k] == 0xFF) { dst = army; ds = k; break; }
@@ -20033,7 +20184,7 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
         }
         if (dst == NULL) {
             short n = *(short *)(gs + 0x1602);
-            if (n >= 100) break;
+            if (n >= 100) continue;   /* FUN_10021434: no room, this ally lost */
             dst = gs + 0x1604 + n * 0x42;
             for (k = 0; k < 0x42; k++) dst[k] = 0;
             *(short *)(dst + 0) = x;
@@ -21824,6 +21975,7 @@ static void MoveAllArmies(void)
             }
             sSelectedArmy = lead;
             BuildStackArrays(lead);
+            SelectGroupFlags();
             RevealTile(*(short *)(gs + 0x1604 + lead * 0x42 + 0x00), *(short *)(gs + 0x1604 + lead * 0x42 + 0x02));
             MoveAllRunOrders(lead);
             lastLead = lead;
@@ -27127,7 +27279,7 @@ static void AIHeroOffer(short aiPlayer)
     if (armyCount > 100) armyCount = 100;
     if (cityCount > 139) cityCount = 139;
     if (*(short *)(gs + 0x15e) != 0) return;
-    if (AITurn() == 1) return;
+    if (AITurn() == 1) { AIGiveInitialHero(aiPlayer); return; }   /* turn 1: the free hero */
     for (ci = 0; ci < cityCount; ci++)
         if (sCityData[ci * 0x20 + 0x17] < 2 && *(short *)(sCityData + ci * 0x20 + 0x04) == aiPlayer) cnt++;
     cap = (cnt >= 40) ? 6 : 5;
@@ -27274,6 +27426,58 @@ static void AIOrigEnsure(void)
     short ci;
     if (sAIOrigValid) return;
     for (ci = 0; ci < AI_MAX_CITIES; ci++) sAIOrigOwner[ci] = (unsigned char)(AIIsCity(ci) ? AICityOwner(ci) : 0x0F);
+    sAIOrigValid = true;
+}
+/* PPC FUN_1001db60 (Begin Game, from FUN_10025f2c): the zones (city+0x2f).
+ * Every living side's capital is its own; the computer sides (with no
+ * computer side but some human: every living side but the best of one
+ * Dice(1,100,0) each, sides 7..0, ties to the first) then take the
+ * unclaimed cities round-robin from the highest of them: each the unclaimed
+ * city nearest to where it stands (FUN_1001da40: cities LAST to first,
+ * strict '<', FUN_1000a884), then Dice(1,10,-1) < 5 back to the capital,
+ * else at the city taken.  (The 'AI  ' 10000 resource it loads first is in
+ * every shipped scenario, so no music and no roll there.) */
+static void AISetupZones(void)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short fromX[8], fromY[8], flag[8], p, nHuman = 0, nComp = 0, ci, n = AICityCount();
+    for (ci = 0; ci < AI_MAX_CITIES; ci++) sAIOrigOwner[ci] = 0x0F;
+    for (p = 7; p >= 0; p--) {
+        flag[p] = 0;
+        if (*(short *)(gs + 0x138 + p * 2) == 0) continue;
+        if (*(short *)(gs + 0xd0 + p * 2) == 0) nHuman++;
+        else { flag[p] = 1; nComp++; }
+        GetCapitalXY(p, &fromX[p], &fromY[p]);
+        ci = PathCityIndexAt(fromX[p], fromY[p]);
+        if (ci >= 0 && ci < AI_MAX_CITIES) sAIOrigOwner[ci] = (unsigned char)p;
+    }
+    if (nComp == 0 && nHuman != 0) {
+        short bestP = -1, bestR = 0, r;
+        for (p = 7; p >= 0; p--) {
+            if (*(short *)(gs + 0x138 + p * 2) == 0) continue;
+            flag[p] = 1;
+            r = Dice(1, 100, 0);
+            if (bestP == -1 || bestR < r) { bestR = r; bestP = p; }
+        }
+        if (bestP != -1) flag[bestP] = 0;
+    }
+    for (p = 7; p >= 0 && !flag[p]; p--) ;
+    if (p >= 0) {
+        short guard = 0;
+        for (;;) {
+            short best = -1, bestD = 1000, d;
+            for (ci = n - 1; ci >= 0; ci--) {
+                if (!AIIsCity(ci) || sAIOrigOwner[ci] != 0x0F) continue;
+                d = AIDist(fromX[p], fromY[p], AICityX(ci), AICityY(ci));
+                if (d < bestD) { best = ci; bestD = d; }
+            }
+            if (best < 0 || ++guard > 200) break;
+            sAIOrigOwner[best] = (unsigned char)p;
+            if (Dice(1, 10, -1) < 5) GetCapitalXY(p, &fromX[p], &fromY[p]);
+            else { fromX[p] = AICityX(best); fromY[p] = AICityY(best); }
+            do { p = (short)((p + 1) % 8); } while (!flag[p]);
+        }
+    }
     sAIOrigValid = true;
 }
 static Boolean AIPlayerAlive(short p) { return p >= 0 && p < 8 && *(short *)(AI_GS + 0x138 + p * 2) != 0; }
@@ -29180,6 +29384,7 @@ static void AIStepRaids(void)
  * ExecuteAITurn: the original's step dispatcher (FUN_1000c9c8 ..
  * FUN_1000d808, progress values as the original reports them).
  * =================================================================== */
+static void NotorietyOnStanceDrop(short me);
 static void ExecuteAITurn(short aiPlayer)
 {
     if (*gGameState == 0 || aiPlayer < 0 || aiPlayer > 7) return;
@@ -29253,8 +29458,9 @@ static void ExecuteAITurn(short aiPlayer)
     /* step 18 (FUN_1000d7bc): FUN_1000d6a0 vectoring */
     AIStepVectoring();
     AISetProgress(95);
-    /* step 19 (FUN_1000d808): cleanup */
+    /* step 19 (FUN_1000d808): cleanup, FUN_10027448 */
     AIOrdSync();
+    NotorietyOnStanceDrop(aiPlayer);
     sSelectedArmy = -1; sStackCount = 0;
     gAI = NULL;
     sAIMe = -1;
@@ -30510,28 +30716,25 @@ static void ProcessStartOfTurn(short player)
      * 68k FUN_00002108 calls FUN_00000098 UNCONDITIONALLY (CODE_080:1531) for
      * ALL players; the disband keys off the current player (gs+0x110 == `player`
      * here), so it runs on human AND AI turns. (Prior "human-only" was wrong.) */
-    {
-        unsigned char tagCount[9];
+    {   /* PPC FUN_10021e20: tags 2..254 only (1 = a defending group), on-map
+         * records only, counted per UNIT; a tag one unit carries goes */
+        short tagCount[256];
         short t;
-        for (t = 0; t < 9; t++) tagCount[t] = 0;
+        for (t = 0; t < 256; t++) tagCount[t] = 0;
         for (i = 0; i < armyCount; i++) {
             unsigned char *army = gs + 0x1604 + i * 0x42;
+            short k;
             if ((short)(unsigned char)army[0x15] != player) continue;
-            if (army[0x16] == 0xFF) continue;
-            {
-                unsigned char tag = army[0x11];
-                if (tag >= 1 && tag <= 8) tagCount[tag]++;
-            }
+            if (army[0x16] == 0xFF || *(short *)(army + 0x00) < 0) continue;
+            if (army[0x11] < 2 || army[0x11] == 0xFF) continue;
+            for (k = 0; k < 4; k++) if (army[0x16 + k] != 0xFF) tagCount[army[0x11]]++;
         }
         for (i = 0; i < armyCount; i++) {
             unsigned char *army = gs + 0x1604 + i * 0x42;
             if ((short)(unsigned char)army[0x15] != player) continue;
-            if (army[0x16] == 0xFF) continue;
-            {
-                unsigned char tag = army[0x11];
-                if (tag >= 1 && tag <= 8 && tagCount[tag] <= 1)
-                    army[0x11] = 0;
-            }
+            if (army[0x16] == 0xFF || *(short *)(army + 0x00) < 0) continue;
+            if (army[0x11] >= 2 && army[0x11] != 0xFF && tagCount[army[0x11]] == 1)
+                army[0x11] = 0;
         }
     }
 
@@ -30879,6 +31082,36 @@ static Boolean ShowOfferOfPeace(void)
     return choice == 1;
 }
 
+/* PPC FUN_10027448, at the end of a side's turn (FUN_10040fb8 for a human,
+ * FUN_1000d808 for a computer): for every side j where my proposed stance
+ * is below the effective one AND below j's proposal to me, my notoriety
+ * (gs+0x1122) grows: proposed Peace from Hostile +Dice(1,2,0)+1, from War
+ * +Dice(1,10,0)+10; proposed Hostile from War +Dice(1,2,0)+1.  (Remake
+ * byte: bits 2-3 proposed, bits 0-1 effective.) */
+static void NotorietyOnStanceDrop(short me)
+{
+    unsigned char *gs;
+    short j;
+    if (*gGameState == 0 || me < 0 || me > 7) return;
+    gs = (unsigned char *)*gGameState;
+    for (j = 0; j < 8; j++) {
+        unsigned char d, d2;
+        short prop, eff;
+        if (j == me) continue;
+        d = gs[0x1582 + me * 8 + j];
+        d2 = gs[0x1582 + j * 8 + me];
+        prop = DIPLO_GET_STATE(d);
+        eff = d & 3;
+        if (!(prop < eff) || !(prop < DIPLO_GET_STATE(d2))) continue;
+        if (prop == 0 && eff == 1)
+            *(short *)(gs + 0x1122 + me * 2) += Dice(1, 2, 0) + 1;
+        else if (prop == 0 && eff == 2)
+            *(short *)(gs + 0x1122 + me * 2) += Dice(1, 10, 0) + 10;
+        else if (prop == 1 && eff == 2)
+            *(short *)(gs + 0x1122 + me * 2) += Dice(1, 2, 0) + 1;
+    }
+}
+
 static void AdvanceToNextPlayer(void)
 {
     unsigned char *gs;
@@ -30895,6 +31128,9 @@ static void AdvanceToNextPlayer(void)
      * gs+0x158 is set to prevent further turn processing. */
     if (*(short *)(gs + 0x15c) != 0 && *(short *)(gs + 0x158) != 0)
         return;
+
+    /* FUN_10040fb8: the turn that ends (gs+0x15c clear) */
+    if (*(short *)(gs + 0x15c) == 0) NotorietyOnStanceDrop(*(short *)(gs + 0x110));
 
     foundHuman = false;
     loopGuard = 0;
@@ -32538,6 +32774,7 @@ static void HandleMenuChoice(long menuResult)
         case 1: /* New */
             if (!ShowScenarioSelection())
                 TryLoadScenario();
+            BeginNewGame();
             break;
         case 2: /* Open... (Cmd+O) */
             DoOpen();
@@ -32834,255 +33071,43 @@ static void HandleMenuChoice(long menuResult)
         case 8:  /* Next Group (cmd 0x57D) — FUN_10055f30 */
             SelectNextArmy();
             break;
-        case 9:  /* Leave Group (cmd 0x57E) — split units from selected army */
+        case 9:  /* Leave Group (cmd 0x57E) — PPC FUN_1003fd90: with a
+                  * selection, FUN_1005638c -> FUN_100562e0 ORs 0x40 into the
+                  * selected group's units (they keep their MP and orders; Next
+                  * Group passes them over this turn) and Next Group follows
+                  * (FUN_10055f30); with none, just Next Group. */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                short armyCount = *(short *)(gs + 0x1602);
-                unsigned char *army;
-                short unitCount = 0, ui;
-                if (armyCount > 100) armyCount = 100;
-                if (sSelectedArmy >= armyCount) break;
-                army = gs + 0x1604 + sSelectedArmy * 0x42;
-                /* Count units in this stack */
-                for (ui = 0; ui < 4; ui++)
-                    if (army[0x16 + ui] != 0xFF && army[0x1e + ui] > 0) unitCount++;
-                if (unitCount < 2) break;  /* need 2+ units to split */
-                if (armyCount >= 100) break;  /* no room for new army */
-                /* Show split dialog */
-                {
-                    WindowPtr spWin;
-                    Rect spR;
-                    Boolean spDone = false;
-                    Boolean leaving[4] = {false, false, false, false};
-                    Boolean needsRedraw2 = true;
-                    SetRect(&spR, 0, 0, 280, 170);
-                    OffsetRect(&spR, 190, 180);
-                    spWin = NewCWindow(NULL, &spR, "\p", true,
-                                       plainDBox, (WindowPtr)-1L, false, 0);
-                    if (spWin) {
-                        Rect unitRects[4], okR2, cancelR2;
-                        SetRect(&okR2, 40, 138, 120, 158);
-                        SetRect(&cancelR2, 160, 138, 240, 158);
-                        while (!spDone) {
-                            EventRecord spEvt;
-                            if (needsRedraw2) {
-                                RGBColor bg = {0x1800, 0x1000, 0x2800};
-                                RGBColor gold = {0xFFFF, 0xDDDD, 0x3333};
-                                RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-                                RGBColor checkOn = {0x4444, 0xFFFF, 0x4444};
-                                RGBColor checkOff = {0x3333, 0x3333, 0x3333};
-                                SetPort(spWin);
-                                RGBForeColor(&bg); PaintRect(&spWin->portRect);
-                                RGBForeColor(&gold); PenSize(2,2); FrameRect(&spWin->portRect); PenNormal();
-                                TextFont(3); TextSize(11); TextFace(bold);
-                                RGBForeColor(&gold);
-                                MoveTo(15, 18);
-                                DrawString(GetCachedString(STR_STACK_INFO, 12, "\pLeave Group"));
-                                TextFace(0); TextSize(9);
-                                RGBForeColor(&white);
-                                MoveTo(15, 32);
-                                DrawString(GetCachedString(STR_STACK_INFO, 13, "\pSelect units to leave behind:"));
-                                for (ui = 0; ui < 4; ui++) {
-                                    short ut = (short)(unsigned char)army[0x16 + ui];
-                                    short hp = (short)(unsigned char)army[0x1e + ui];
-                                    short yp = 46 + ui * 20;
-                                    Str255 typeName;
-                                    Str255 ns;
-                                    Rect chk;
-                                    SetRect(&unitRects[ui], 15, yp - 2, 265, yp + 14);
-                                    SetRect(&chk, 15, yp, 27, yp + 12);
-                                    if (ut == 0xFF || hp <= 0) {
-                                        RGBForeColor(&checkOff); PaintRect(&chk);
-                                        continue;
-                                    }
-                                    RGBForeColor(leaving[ui] ? &checkOn : &checkOff);
-                                    PaintRect(&chk);
-                                    RGBForeColor(&white); FrameRect(&chk);
-                                    if (leaving[ui]) {
-                                        MoveTo(chk.left + 2, chk.bottom - 2);
-                                        LineTo(chk.left + 5, chk.bottom - 1);
-                                        LineTo(chk.right - 2, chk.top + 1);
-                                    }
-                                    RGBForeColor(&white);
-                                    MoveTo(32, yp + 10);
-                                    if (ut == 0x1C) {
-                                        unsigned char *hn = army + 0x04; short nl = 0;
-                                        while (nl < 15 && hn[nl]) nl++;
-                                        typeName[0] = (unsigned char)nl;
-                                        BlockMoveData(hn, typeName + 1, nl);
-                                    } else {
-                                        GetUnitTypeName(ut, typeName);
-                                    }
-                                    DrawString(typeName);
-                                    DrawString(GetCachedString(STR_STACK_INFO, 14, "\p  HP:"));
-                                    NumToString((long)hp, ns); DrawString(ns);
-                                    {
-                                        short xp = (short)(unsigned char)army[0x26 + ui];
-                                        if (xp > 0) {
-                                            RGBForeColor(&gold);
-                                            DrawString(GetCachedString(STR_STACK_INFO, 15, "\p  XP:"));
-                                            NumToString((long)xp, ns); DrawString(ns);
-                                        }
-                                    }
-                                }
-                                /* Buttons */
-                                {
-                                    RGBColor btnBg = {0, 0, 0};
-                                    RGBForeColor(&btnBg); PaintRoundRect(&okR2, 8, 8);
-                                    PaintRoundRect(&cancelR2, 8, 8);
-                                    RGBForeColor(&white);
-                                    PenSize(2,2); FrameRoundRect(&okR2, 8, 8);
-                                    FrameRoundRect(&cancelR2, 8, 8); PenNormal();
-                                    MoveTo(okR2.left + 22, okR2.bottom - 6);
-                                    DrawString(GetCachedString(STR_STACK_INFO, 16, "\pSplit"));
-                                    MoveTo(cancelR2.left + 14, cancelR2.bottom - 6);
-                                    DrawString(GetCachedString(STR_COMMON_BUTTONS, 0, "\pCancel"));
-                                }
-                                needsRedraw2 = false;
-                            }
-                            if (WaitNextEvent(mDownMask | keyDownMask, &spEvt, 30, NULL)) {
-                                if (spEvt.what == mouseDown) {
-                                    Point mp = spEvt.where;
-                                    SetPort(spWin);
-                                    GlobalToLocal(&mp);
-                                    if (PtInRect(mp, &okR2)) {
-                                        /* Count how many are leaving vs staying */
-                                        short leaveN = 0, stayN = 0;
-                                        for (ui = 0; ui < 4; ui++) {
-                                            if (army[0x16 + ui] == 0xFF || army[0x1e + ui] <= 0) continue;
-                                            if (leaving[ui]) leaveN++; else stayN++;
-                                        }
-                                        if (leaveN > 0 && stayN > 0) {
-                                            /* Create new army with leaving units */
-                                            unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
-                                            short j;
-                                            for (j = 0; j < 0x42; j++) newArmy[j] = 0;
-                                            *(short *)(newArmy + 0x00) = *(short *)(army + 0x00);
-                                            *(short *)(newArmy + 0x02) = *(short *)(army + 0x02);
-                                            newArmy[0x15] = army[0x15]; /* same owner */
-                                            newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
-                                            {
-                                                short newSlot = 0;
-                                                for (ui = 0; ui < 4; ui++) {
-                                                    if (!leaving[ui]) continue;
-                                                    if (army[0x16 + ui] == 0xFF) continue;
-                                                    newArmy[0x16 + newSlot] = army[0x16 + ui];
-                                                    newArmy[0x1e + newSlot] = army[0x1e + ui];
-                                                    newArmy[0x22 + newSlot] = army[0x22 + ui];
-                                                    newArmy[0x26 + newSlot] = army[0x26 + ui];
-                                                    /* Copy sprite + movement from first unit */
-                                                    if (newSlot == 0) {
-                                                        newArmy[0x14] = army[0x14];
-                                                        newArmy[0x1a] = army[0x1a + ui];
-                                                    }
-                                                    /* Hero leaving: transfer name and items (all 4 slots) */
-                                                    if (army[0x16 + ui] == 0x1C) {
-                                                        /* Copy hero name (army+0x04, 16 bytes) */
-                                                        short hni;
-                                                        for (hni = 0; hni < 16; hni++)
-                                                            newArmy[0x04 + hni] = army[0x04 + hni];
-                                                        /* its items and its quest go along */
-                                                        HeroItemsMove(sSelectedArmy, armyCount);
-                                                        QuestRecMoved(sSelectedArmy, armyCount);
-                                                        /* Update hero instance record */
-                                                        { short hO = (short)(unsigned char)army[0x15];
-                                                          if (hO >= 0 && hO < 8) {
-                                                            unsigned char *hr = gs + 0x1422 + hO * 0x2C;
-                                                            if (hr[0x00] != 0)
-                                                                *(short *)(hr + 0x04) = armyCount;
-                                                          }
-                                                        }
-                                                    }
-                                                    /* Clear from original */
-                                                    army[0x16 + ui] = 0xFF;
-                                                    army[0x1e + ui] = 0;
-                                                    army[0x22 + ui] = 0;
-                                                    army[0x26 + ui] = 0;
-                                                    newSlot++;
-                                                }
-                                                /* Fill remaining slots in new army */
-                                                for (j = newSlot; j < 4; j++)
-                                                    newArmy[0x16 + j] = 0xFF;
-                                                RecalcArmyStrength(newArmy);
-                                                newArmy[0x2e] = (unsigned char)(newArmy[0x1a]);
-                                                if ((short)(unsigned char)newArmy[0x2e] <= 0)
-                                                    newArmy[0x2e] = (unsigned char)(10);
-                                            }
-                                            /* Compact original army slots */
-                                            {
-                                                short dst = 0;
-                                                unsigned char tmpType[4], tmpHits[4], tmpBonus[4], tmpXP[4];
-                                                for (ui = 0; ui < 4; ui++) {
-                                                    tmpType[ui] = army[0x16 + ui];
-                                                    tmpHits[ui] = army[0x1e + ui];
-                                                    tmpBonus[ui] = army[0x22 + ui];
-                                                    tmpXP[ui] = army[0x26 + ui];
-                                                }
-                                                for (ui = 0; ui < 4; ui++) {
-                                                    if (tmpType[ui] != 0xFF && tmpHits[ui] > 0) {
-                                                        army[0x16 + dst] = tmpType[ui];
-                                                        army[0x1e + dst] = tmpHits[ui];
-                                                        army[0x22 + dst] = tmpBonus[ui];
-                                                        army[0x26 + dst] = tmpXP[ui];
-                                                        dst++;
-                                                    }
-                                                }
-                                                for (j = dst; j < 4; j++) {
-                                                    army[0x16 + j] = 0xFF;
-                                                    army[0x1e + j] = 0;
-                                                    army[0x22 + j] = 0;
-                                                    army[0x26 + j] = 0;
-                                                }
-                                                /* Recalculate original army strength */
-                                                RecalcArmyStrength(army);
-                                            }
-                                            *(short *)(gs + 0x1602) = armyCount + 1;
-                                            sSelectedArmy = armyCount; /* select new army */
-                                        }
-                                        spDone = true;
-                                    } else if (PtInRect(mp, &cancelR2)) {
-                                        spDone = true;
-                                    } else {
-                                        /* Check unit checkboxes */
-                                        for (ui = 0; ui < 4; ui++) {
-                                            if (army[0x16 + ui] == 0xFF || army[0x1e + ui] <= 0) continue;
-                                            if (PtInRect(mp, &unitRects[ui])) {
-                                                leaving[ui] = !leaving[ui];
-                                                needsRedraw2 = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                } else if (spEvt.what == keyDown) {
-                                    char ch = spEvt.message & charCodeMask;
-                                    if (ch == 27) spDone = true;
-                                }
-                            }
-                        }
-                        DisposeWindow(spWin);
-                    }
-                }
-                if (*gMainGameWindow != 0) {
-                    SetPort((WindowPtr)*gMainGameWindow);
-                    InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
-                }
-                if (gInfoWindow != NULL && *gInfoWindow != 0) {
-                    SetPort((WindowPtr)*gInfoWindow);
-                    InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
+                short n = *(short *)(gs + 0x1602), k;
+                if (n > 100) n = 100;
+                NextGroupTurnSync();
+                if (sSelectedArmy < n) sArmySkip[sSelectedArmy] = 1;
+                for (k = 0; k < sStackCount; k++) {
+                    short ai = sStackArmyIdx[k];
+                    if (sStackSelected[k] && ai >= 0 && ai < n) sArmySkip[ai] = 1;
                 }
             }
+            SelectNextArmy();
             break;
-        case 10: /* Defend (cmd 0x57F) — set army to defend mode */
+        case 10: /* Defend (cmd 0x57F) — PPC FUN_1005641c: the selected group
+                  * (or the one record) stops being active (status bit 1
+                  * clear: a[0x2d]) and takes group tag 1; MP and orders stay;
+                  * then Next Group (FUN_10055f30) */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
-                /* Set fortification counter: army will gain defense bonus */
-                army[0x2d] = (army[0x2d] > 0) ? 0 : 3;  /* toggle defend */
-                *(short *)(army + 0x32) = 0;  /* clear movement orders */
-                if (*gMainGameWindow != 0) {
-                    SetPort((WindowPtr)*gMainGameWindow);
-                    InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+                short n = *(short *)(gs + 0x1602), k;
+                if (n > 100) n = 100;
+                if (sSelectedArmy < n) {
+                    gs[0x1604 + sSelectedArmy * 0x42 + 0x2d] = 3;
+                    gs[0x1604 + sSelectedArmy * 0x42 + 0x11] = 1;
                 }
+                for (k = 0; k < sStackCount; k++) {
+                    short ai = sStackArmyIdx[k];
+                    if (!sStackSelected[k] || ai < 0 || ai >= n) continue;
+                    gs[0x1604 + ai * 0x42 + 0x2d] = 3;
+                    gs[0x1604 + ai * 0x42 + 0x11] = 1;
+                }
+                SelectNextArmy();
             }
             break;
         case 11: /* Deselect Group (cmd 0x580) — FUN_100219a8 */
@@ -34175,10 +34200,11 @@ static void MoveSelectedGroup(void)
         return;
     }
     a = gs + 0x1604 + sSelectedArmy * 0x42;
-    (void)took; (void)ox; (void)oy;                 /* (no path: RunStoredPath beeped) */
+    (void)ox; (void)oy;                             /* (no path: RunStoredPath beeped) */
     BuildStackArrays(sSelectedArmy);
     RevealTile(*(short *)(a + 0x00), *(short *)(a + 0x02));
-    if (*(short *)(a + 0x00) != tx || *(short *)(a + 0x02) != ty || a[0x2e] == 0) {
+    /* a refused move (0 MP: no step) keeps the selection and the orders */
+    if (took > 0 && (*(short *)(a + 0x00) != tx || *(short *)(a + 0x02) != ty || a[0x2e] == 0)) {
         sSelectedArmy = -1; sStackCount = 0;
     }
     sPreviewPathLen = 0;
@@ -35142,12 +35168,16 @@ static void HandleMouseDown(EventRecord *event)
                                 sPreviewPathLen = 0;
                                 InvalRect(&port);
                             } else {
-                                RunStoredPath(sSelectedArmy);
+                                /* a refused move (0 MP: no step) keeps the
+                                 * selection and the orders; a stack that
+                                 * moved and stopped short (or is spent) is
+                                 * deselected, orders kept */
+                                short took = RunStoredPath(sSelectedArmy);
                                 if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gs + 0x1602)) {
                                     unsigned char *ma = gs + 0x1604 + sSelectedArmy * 0x42;
                                     BuildStackArrays(sSelectedArmy);
                                     RevealTile(*(short *)(ma + 0x00), *(short *)(ma + 0x02));
-                                    if (*(short *)(ma + 0x32) != 0 || ma[0x2e] == 0) {
+                                    if (took > 0 && (*(short *)(ma + 0x32) != 0 || ma[0x2e] == 0)) {
                                         sSelectedArmy = -1; sStackCount = 0;
                                     }
                                 } else {
@@ -35179,6 +35209,7 @@ static void HandleMouseDown(EventRecord *event)
                             } else {
                                 sSelectedArmy = clickedArmy;
                                 BuildStackArrays(clickedArmy);
+                                SelectGroupFlags();     /* FUN_10055c64 */
                                 RevealTile(clickTileX, clickTileY);
                                 /* silent, as the original (recorded) */
                                 InvalRect(&port);
@@ -35301,12 +35332,13 @@ static void HandleMouseDown(EventRecord *event)
                              * calls the attack FUN_1002da54 directly, no path search */
                             if (isAdjacent && !sClickWasDrag &&
                                 IsAdjacentAttackTarget(sSelectedArmy, clickTileX, clickTileY)) {
-                                DirectAttackStep(sSelectedArmy, clickTileX, clickTileY);
+                                short tookA = DirectAttackStep(sSelectedArmy, clickTileX, clickTileY);
                                 if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gs + 0x1602)) {
                                     unsigned char *ma = gs + 0x1604 + sSelectedArmy * 0x42;
                                     BuildStackArrays(sSelectedArmy);
                                     RevealTile(*(short *)(ma + 0x00), *(short *)(ma + 0x02));
-                                    if (ma[0x2e] == 0) { sSelectedArmy = -1; sStackCount = 0; }
+                                    /* (refused with 0 MP: selection kept) */
+                                    if (tookA > 0 && ma[0x2e] == 0) { sSelectedArmy = -1; sStackCount = 0; }
                                 } else {
                                     sSelectedArmy = -1; sStackCount = 0;
                                 }
@@ -36771,6 +36803,7 @@ int main(void)
     LoadTerrainSprites();
     LoadArmySprites();
     RefreshInitialArmyStats();
+    BeginNewGame();          /* the original's deal after Begin Game (needs the army set) */
     FinalizeCitySlots();
     LoadCitySprites();
     LoadShieldIcons();
@@ -36809,6 +36842,14 @@ int main(void)
         unsigned char *gs = (unsigned char *)*gGameState;
         short startPlayer = *(short *)(gs + 0x110);
 
+        if (*(short *)(gs + 0xd0 + startPlayer * 2) != 0) {
+            /* FUN_1003d4dc gave the first move to a computer side (the first
+             * living side in the turn order, not the human's): it plays
+             * first, and the turn passes on from it as at any turn end. */
+            if (*(short *)(gs + 0x174) > 0) *(short *)(gs + 0x174) -= 1;
+            *(short *)(gs + 0x118) = 0;
+            AdvanceToNextPlayer();
+        } else {
         /* Process start-of-turn for the first human player:
          * calculates income, applies production, resets movement points.
          * Without this, gold shows as 0 (raw SCN value) on turn 1. */
@@ -36838,14 +36879,8 @@ int main(void)
         /* Hero offer — original game (68k CODE_117) has no army selection
          * dialog; starting armies are determined by scenario data. */
         ShowHeroHire(startPlayer, true);
-        {   /* the computer players' free starting heroes */
-            unsigned char *gsh = (unsigned char *)*gGameState;
-            short hp;
-            for (hp = 0; hp < 8; hp++)
-                if (hp != startPlayer && *(short *)(gsh + 0x138 + hp * 2) != 0 &&
-                    *(short *)(gsh + 0xd0 + hp * 2) != 0)
-                    AIGiveInitialHero(hp);
-        }
+        /* (each computer side gets its free hero at the start of its own
+         * first turn, FUN_100651cc -> FUN_10032a24 -> FUN_10033548) */
 
         /* Turn 1: show city build selection for each owned city.
          * At game start, the player typically owns only their capital.
@@ -36860,6 +36895,7 @@ int main(void)
                 if (*(short *)(t1City + 0x04) != startPlayer) continue;
                 ShowCityBuildSelection(t1CI);
             }
+        }
         }
     }
 
@@ -37441,6 +37477,7 @@ int main(void)
                 } else if (key == 'o' || key == 'O') {
                     if (!ShowScenarioSelection())
                         TryLoadScenario();
+                    BeginNewGame();
                 } else {
                     AdjustGameMenus();   /* a disabled item's key does nothing */
                     HandleMenuChoice(MenuKey(key));
@@ -37484,13 +37521,13 @@ int main(void)
                     }
 
                     if (isSkip) {
-                        /* S / numpad 5 = skip (deduct all movement, advance to next) */
+                        /* S / '5' (FUN_100418d8 -> FUN_1003fe04): only centres
+                         * the view on the selected stack */
                         unsigned char *gs2 = (unsigned char *)*gGameState;
                         short ac = *(short *)(gs2 + 0x1602);
                         if (sSelectedArmy < ac) {
                             unsigned char *a = gs2 + 0x1604 + sSelectedArmy * 0x42;
-                            a[0x2e] = 0;
-                            SelectNextArmy();
+                            CenterViewportOn(*(short *)(a + 0x00), *(short *)(a + 0x02));
                         }
                         scrolled = true;
                     }
@@ -37563,8 +37600,8 @@ int main(void)
                     }
                     scrolled = true;
                 } else if (key == '\t') {
-                    /* Tab = End Turn (original alias) */
-                    HandleMenuChoice((9L << 16) | 1);
+                    /* Tab = Leave Group (command 0x57E, FUN_1003fd90) */
+                    HandleMenuChoice((4L << 16) | 9);
                 } else if (key == 0x0D || key == 0x03) {
                     /* Return/Enter = End Turn */
                     HandleMenuChoice((9L << 16) | 1);
