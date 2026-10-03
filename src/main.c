@@ -96,6 +96,24 @@ static unsigned char sCityData[140 * 0x20];  /* up to 140 cities+sites, 0x20 byt
  * the compacted slots at sCityData+0x0C. Filled by GameInit's city rebuild; read by
  * the starting-army choice (68k FUN_00000db4) after the SCN bytes in gs are reused. */
 static unsigned char sScnSlotStats[99][4][3];
+
+/* The army table.  The original keeps up to 1000 units, one record each
+ * (FUN_10021434 scans a 1000 x 0x16 table; a full table creates nothing).
+ * The remake's records (0x42 bytes, four unit slots, new units use slot 0)
+ * lived at gs+0x1604 (100 records, the end of the game state); they now live
+ * here, MAX_ARMIES of them.  The count stays at gs+0x1602.  Saves carry the
+ * table in the 'ARMY' block (v11); older saves are converted on load. */
+#undef  MAX_ARMIES      /* include/warlords2.h: 200, the stubs' guess */
+#define MAX_ARMIES      1000
+#define OLD_MAX_ARMIES  100      /* the gs+0x1604 table of saves before v11 */
+#define ARMY_REC_SIZE   0x42
+static unsigned char sArmyTab[MAX_ARMIES * ARMY_REC_SIZE];
+#define ARMY_REC(i)     (sArmyTab + (long)(i) * ARMY_REC_SIZE)
+/* the records' temple blessing bits stay at ext+0x3500 (a short per record) */
+typedef char kArmyBlessFitsExt[(0x3500 + MAX_ARMIES * 2 <= 0x4000) ? 1 : -1];
+/* per record: 7 = defending (Sentry / Plant Flag), drawn with the defend
+ * sprite; was ext+0x56+i (100 bytes) */
+static unsigned char sArmyState[MAX_ARMIES];
 static short sCityCount = 0;
 
 /* DEBUG: capital matching diagnostics */
@@ -1316,7 +1334,7 @@ static short     sAITurnPlayer = -1;      /* AI player whose turn is running */
 /* DEV ONLY - REVERT BEFORE TIMING COMPARISONS: 1 skips the per-AI-turn holds
  * (the original's ~1.75 s per computer player) to speed up test iterations. */
 #define DEV_FAST_TURNS 0
-#define DEV_SHIP_PROBE 0   /* DEV: temporary ship-on-land probe */
+#define DEV_SHIP_PROBE 1   /* DEV: temporary ship-on-land probe */
 /* DEV: 1 draws the system-font (2: Chicago 12) glyph capture sheet at launch (warlords2-web
  * tools/glyphcap) and waits for a click; 3 draws the smoothed-text blend table. */
 #define DEV_GLYPH_SHEET 0
@@ -1446,7 +1464,7 @@ static Boolean ArmyIsNaval(short armyIdx)
     short slot, ut;
     if (*gGameState == 0 || !sUnitTypesLoaded) return false;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     for (slot = 0; slot < 4; slot++) {
         ut = (short)(unsigned char)army[0x16 + slot];
         if (ut == 0xFF || ut >= MAX_UNIT_TYPES) continue;
@@ -1533,9 +1551,9 @@ static void FogUpdatePlayer(short player)
      * is only used for incremental reveals during movement. */
     {
         short armyCount = *(short *)(gs + 0x1602);
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             if ((short)(unsigned char)army[0x15] == player && *(short *)(army + 0x00) >= 0) {   /* not in transit */
                 FogReveal(player, *(short *)(army + 0x00), *(short *)(army + 0x02));
             }
@@ -2057,9 +2075,9 @@ static void CenterViewportOnPlayer(void)
     /* Fallback: find first army belonging to this player */
     {
         short armyCount = *(short *)(gs + 0x1602);
-        if (armyCount > 100) armyCount = 100;  /* sanity cap */
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;  /* sanity cap */
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             if ((short)(unsigned char)army[0x15] == currentPlayer) {
                 CenterViewportOn(*(short *)(army + 0x00), *(short *)(army + 0x02));
                 return;
@@ -2161,7 +2179,7 @@ static void SpawnCityUnits(short ci, short owner, short type, short count, Boole
     if (*gGameState == 0 || ci < 0 || ci >= sCityCount) return;
     gs = (unsigned char *)*gGameState;
     n = *(short *)(gs + 0x1602);
-    if (n < 0 || n >= 100) return;
+    if (n < 0 || n >= MAX_ARMIES) return;
     if (count < 1) count = 1;
     if (count > 4) count = 4;
     city = sCityData + ci * 0x20;
@@ -2170,7 +2188,7 @@ static void SpawnCityUnits(short ci, short owner, short type, short count, Boole
         if (m > 0 && m <= 99) mv = m;
         if (h > 0) hp = h;
     }
-    a = gs + 0x1604 + n * 0x42;
+    a = ARMY_REC(n);
     for (k = 0; k < 0x42; k++) a[k] = 0;
     *(short *)(a + 0x00) = *(short *)(city + 0x00);
     *(short *)(a + 0x02) = *(short *)(city + 0x02);
@@ -2272,7 +2290,7 @@ static void GameInit(void)
     *(short *)(gs + 0x178) = 0;  /* scroll_x */
 
     /* Max army slots (68k: starts at 10, grows as armies are created) */
-    *(short *)(gs + 0x182) = 100;
+    *(short *)(gs + 0x182) = MAX_ARMIES;
 
     /* --- Player alive flags --- */
     /* Read from player_type array at 0xD0. If type != 0xFF, player is alive */
@@ -2673,12 +2691,12 @@ static void GameInit(void)
             }
         }
 
-        /* Clear per-army byte arrays */
-        for (i = 0; i < 100; i++) {
-            ext[0x56 + i]  = 0;   /* army_state */
-            ext[0x11e + i] = 0;   /* army_flags */
-            ext[0x182 + i] = 0;   /* army_moves_taken */
-            ext[0x1e6 + i] = 0;   /* army_data_4 */
+        /* Clear the per-record state (was ext+0x56/+0x11e/+0x182/+0x1e6, 100
+         * each) and the records' temple blessing bits (ext+0x3500, a short
+         * per record: MAX_ARMIES of them end at ext+0x3CD0) */
+        for (i = 0; i < MAX_ARMIES; i++) {
+            sArmyState[i] = 0;
+            *(unsigned short *)(ext + 0x3500 + i * 2) = 0;
         }
     }
 
@@ -2751,9 +2769,9 @@ static void GameInit(void)
      * This matches the 68k initialization which also builds armies
      * programmatically (CODE_116 FUN_0000000c, CODE_117 FUN_00001ecc). */
     {
-        /* Zero out all 100 army slots so no garbage data remains */
-        for (i = 0; i < 100; i++) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
+        /* Zero out all army records so no garbage data remains */
+        for (i = 0; i < MAX_ARMIES; i++) {
+            unsigned char *army = ARMY_REC(i);
             for (j = 0; j < 0x42; j++) army[j] = 0;
         }
         /* Reset army count to 0; garrison/player army loops will set it */
@@ -3238,14 +3256,14 @@ static void BeginNewGame(void)
         static const short kWeightSet[4] = {1, 6, 2, 3};
         short cc = sCityCount, ci;
         if (cc > 139) cc = 139;
-        for (ci = cc - 1; ci >= 0 && *(short *)(gs + 0x1602) < 100; ci--) {
+        for (ci = cc - 1; ci >= 0 && *(short *)(gs + 0x1602) < MAX_ARMIES; ci--) {
             unsigned char *city = sCityData + ci * 0x20;
             short o = *(short *)(city + 0x04), k = 3, n, t = -1, a, na;
             Boolean garrison = false, occupied = false;
             if (city[0x17] != 0) continue;
             na = *(short *)(gs + 0x1602);
             for (a = 0; a < na; a++) {      /* (guard: a re-run GameInit) */
-                unsigned char *ar = gs + 0x1604 + a * 0x42;
+                unsigned char *ar = ARMY_REC(a);
                 if (*(short *)(ar + 0) == *(short *)(city + 0) && *(short *)(ar + 2) == *(short *)(city + 2)) {
                     occupied = true; break;
                 }
@@ -3281,10 +3299,10 @@ static void BeginNewGame(void)
     if (*gMapTiles != 0) {
         unsigned char *mapData = (unsigned char *)*gMapTiles;
         short armyCount = *(short *)(gs + 0x1602);
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             short ax = *(short *)(army + 0x00);
             short ay = *(short *)(army + 0x02);
             short aOwner = (short)(unsigned char)army[0x15];
@@ -4135,10 +4153,10 @@ static void StartingUnitsFromSlots(void)
     gs = (unsigned char *)*gGameState;
     tech = *(short *)(gs + 0xf0 + (*(short *)(gs + 0x110) & 7) * 2) != 0;
     n = *(short *)(gs + 0x1602);
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     if (cc > 139) cc = 139;
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         short ax = *(short *)(a + 0), ay = *(short *)(a + 2);
         if (a[0x16] == 0xFF) continue;
         if (a[0x15] == 0x0F && *(short *)(gs + 0x11a) == 0) continue;
@@ -4170,9 +4188,9 @@ static void RefreshInitialArmyStats(void)
     if (*gGameState == 0 || !sUnitTypesLoaded) return;
     gs = (unsigned char *)*gGameState;
     n = *(short *)(gs + 0x1602);
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         short minMv = 255;
         if (a[0x16] == 0xFF) continue;
         for (k = 0; k < 4; k++) {
@@ -5701,9 +5719,9 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
     {
         short armyIdx = 0;
 
-        for (i = 0; i < 8 && i < cityCount && armyIdx < 100; i++) {
+        for (i = 0; i < 8 && i < cityCount && armyIdx < MAX_ARMIES; i++) {
             unsigned char *city = sCityData +i * 0x20;
-            unsigned char *army = gs + 0x1604 + armyIdx * 0x42;
+            unsigned char *army = ARMY_REC(armyIdx);
             short cx = *(short *)(city + 0x00);
             short cy = *(short *)(city + 0x02);
             short j;
@@ -5775,7 +5793,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         }
         /* Create neutral garrison armies at every non-capital city */
         /* Vary composition based on city index to match original Warlords II */
-        for (i = 8; i < cityCount && armyIdx < 100; i++) {
+        for (i = 8; i < cityCount && armyIdx < MAX_ARMIES; i++) {
             unsigned char *city = sCityData +i * 0x20;
             short sType = (short)(unsigned char)city[0x17];
             short cx, cy;
@@ -5788,7 +5806,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             cx = *(short *)(city + 0x00);
             cy = *(short *)(city + 0x02);
 
-            army = gs + 0x1604 + armyIdx * 0x42;
+            army = ARMY_REC(armyIdx);
             for (j2 = 0; j2 < 0x42; j2++) army[j2] = 0;
 
             *(short *)(army + 0x00) = cx;
@@ -5844,6 +5862,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         }
 
         *(short *)(gs + 0x1602) = armyIdx;
+        for (i = 0; i < MAX_ARMIES; i++) sArmyState[i] = 0;
     }
 
     /* Set starting gold for all 8 factions */
@@ -8432,14 +8451,14 @@ static Boolean ShowGameSetup(void)
         /* Set not-playing factions' capitals to neutral army ownership */
         {
             short armyCount = *(short *)(gs + 0x1602);
-            if (armyCount > 100) armyCount = 100;
+            if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
             for (i = 0; i < 8; i++) {
                 if (*(short *)(gs + 0x138 + i * 2) == 0) {
                     short capX = *(short *)(gs + 0x18A + i * 0x14);
                     short capY = *(short *)(gs + 0x18C + i * 0x14);
                     short ai2;
                     for (ai2 = 0; ai2 < armyCount; ai2++) {
-                        unsigned char *army = gs + 0x1604 + ai2 * 0x42;
+                        unsigned char *army = ARMY_REC(ai2);
                         if (*(short *)(army + 0x00) == capX &&
                             *(short *)(army + 0x02) == capY) {
                             army[0x15] = 0x0F;  /* neutral owner */
@@ -8993,10 +9012,10 @@ static void DrawMapInWindow(WindowPtr win)
     /* --- Draw army sprites from game state --- */
     if (hasScn) {
         short armyCount = *(short *)(scnData + 0x1602);
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = scnData + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             short ax = *(short *)(army + 0x00);
             short ay = *(short *)(army + 0x02);
             short owner = (short)(unsigned char)army[0x15];
@@ -9024,14 +9043,14 @@ static void DrawMapInWindow(WindowPtr win)
                 short aj;
                 Boolean hidden = false, selHere = false;
                 if (sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
-                    unsigned char *sel = scnData + 0x1604 + sSelectedArmy * 0x42;
+                    unsigned char *sel = ARMY_REC(sSelectedArmy);
                     if (*(short *)(sel + 0) == ax && *(short *)(sel + 2) == ay) {
                         if (i != sSelectedArmy) continue;    /* the selection is drawn on its tile */
                         selHere = true;
                     }
                 }
                 for (aj = 0; aj < armyCount && !hidden && !selHere; aj++) {
-                    unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
+                    unsigned char *a2 = ARMY_REC(aj);
                     Boolean jHero;
                     if (aj == i || a2[0x16] == 0xFF) continue;
                     if (*(short *)(a2 + 0x00) != ax || *(short *)(a2 + 0x02) != ay) continue;
@@ -9150,9 +9169,9 @@ static void DrawMapInWindow(WindowPtr win)
     if (hasScn) {
         static const short kPennantTop[4] = {29, 38, 47, 56};
         short armyCount = *(short *)(scnData + 0x1602);
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = scnData + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             short ax, ay, aOwn, stackN, aj, sheetIdx;
             short screenX, screenY;
             GWorldPtr gw;
@@ -9171,7 +9190,7 @@ static void DrawMapInWindow(WindowPtr win)
             {
                 Boolean earlierSameTile = false;
                 for (aj = 0; aj < i; aj++) {
-                    unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
+                    unsigned char *a2 = ARMY_REC(aj);
                     if (a2[0x16] == 0xFF) continue;
                     if (*(short *)(a2 + 0x00) == ax && *(short *)(a2 + 0x02) == ay) {
                         earlierSameTile = true; break;
@@ -9182,7 +9201,7 @@ static void DrawMapInWindow(WindowPtr win)
             /* Units on the tile (the original keeps one unit per army) */
             stackN = 0;
             for (aj = 0; aj < armyCount; aj++) {
-                unsigned char *a2 = scnData + 0x1604 + aj * 0x42;
+                unsigned char *a2 = ARMY_REC(aj);
                 if (a2[0x16] == 0xFF) continue;
                 if (*(short *)(a2 + 0x00) == ax && *(short *)(a2 + 0x02) == ay) {
                     short us;
@@ -9243,9 +9262,9 @@ static void DrawMapInWindow(WindowPtr win)
     /* --- Draw defend mode indicators on defending armies --- */
     if (hasScn) {
         short armyCount = *(short *)(scnData + 0x1602);
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = scnData + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             /* Skip invalid/empty army records */
             if (army[0x16] == 0xFF) continue;
             {
@@ -9261,8 +9280,7 @@ static void DrawMapInWindow(WindowPtr win)
                         continue;
                 }
             }
-            if (*gExtState != 0 &&
-                ((unsigned char *)*gExtState)[0x56 + i] == 7 && ArmyShownOnTile(i)) {
+            if (sArmyState[i] == 7 && ArmyShownOnTile(i)) {
                 /* Army is guarding (ext state army_state == 7): draw defend sprite.
                  * 68k CODE_067 FUN_000000ae: uses sprite index 5 as overlay. */
                 short ax = *(short *)(army + 0x00);
@@ -9357,7 +9375,7 @@ static void DrawMapInWindow(WindowPtr win)
     if (!sDragPreview && sSelectedArmy >= 0 && hasScn && sAITurnPlayer < 0 &&   /* no path for AI moves */
         sSelectedArmy < *(short *)(scnData + 0x1602)) {
         static long lastSig = -1;
-        unsigned char *sa = scnData + 0x1604 + sSelectedArmy * 0x42;
+        unsigned char *sa = ARMY_REC(sSelectedArmy);
         long sig = -1;
         if (*(short *)(sa + 0x32) != 0)
             sig = (((long)sSelectedArmy * 160 + *(short *)(sa + 0)) * 160 + *(short *)(sa + 2)) * 160L * 160L +
@@ -9375,7 +9393,7 @@ static void DrawMapInWindow(WindowPtr win)
         }
     }
     if (sAITurnPlayer < 0 && (sDragPreview || (sSelectedArmy >= 0 && hasScn &&
-         *(short *)(scnData + 0x1604 + sSelectedArmy * 0x42 + 0x32) != 0)) &&
+         *(short *)(ARMY_REC(sSelectedArmy) + 0x32) != 0)) &&
         sPreviewPathLen > 1 && sSelectedArmy >= 0 && hasScn) {
         static const char *ringArt[14] = {
             "....######....", "...########...", "..###....###..", ".###......###.",
@@ -9387,7 +9405,7 @@ static void DrawMapInWindow(WindowPtr win)
             "######..######", "##..######..##", "##...####...##", "##...####...##",
             "##..######..##", "######..######", ".####....####.", "..###....###..",
             "...########...", "....######...." };
-        unsigned char *selA = scnData + 0x1604 + sSelectedArmy * 0x42;
+        unsigned char *selA = ARMY_REC(sSelectedArmy);
         short mp = (short)(unsigned char)selA[0x2e], cum = 0, pi;
         RGBColor black = {0, 0, 0};
         RGBForeColor(&black);
@@ -9414,7 +9432,7 @@ static void DrawMapInWindow(WindowPtr win)
     if (sSelectedArmy >= 0 && hasScn) {
         short armyCount = *(short *)(scnData + 0x1602);
         if (sSelectedArmy < armyCount) {
-            unsigned char *selArmy = scnData + 0x1604 + sSelectedArmy * 0x42;
+            unsigned char *selArmy = ARMY_REC(sSelectedArmy);
             short sx = *(short *)(selArmy + 0x00);
             short sy = *(short *)(selArmy + 0x02);
             short screenX = winRect.left + (sx - sViewportX) * TERRAIN_TILE_W;
@@ -9550,9 +9568,9 @@ static void DrawMapInWindow(WindowPtr win)
         short armyCount = *(short *)(scnData + 0x1602);
         short curP = *(short *)(scnData + 0x110);
         short ai4;
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         for (ai4 = 0; ai4 < armyCount; ai4++) {
-            unsigned char *a = scnData + 0x1604 + ai4 * 0x42;
+            unsigned char *a = ARMY_REC(ai4);
             short aOwner = (short)(unsigned char)a[0x15];
             if (aOwner != curP) continue;
             if (a[0x16] == 0xFF) continue;
@@ -9679,8 +9697,8 @@ static void DrawMapInWindow(WindowPtr win)
             while (o[len]) len++;
             for (pl = 0; pl < 8 && len < 140; pl++) {
                 short u = 0, recs = 0, ord = 0, kk;
-                for (q = 0; q < nn && q < 100; q++) {
-                    unsigned char *qa = scnData + 0x1604 + q * 0x42;
+                for (q = 0; q < nn && q < MAX_ARMIES; q++) {
+                    unsigned char *qa = ARMY_REC(q);
                     if (qa[0x15] != pl || qa[0x16] == 0xFF) continue;
                     recs++; if (*(short *)(qa + 0x32)) ord++;
                     for (kk = 0; kk < 4; kk++) if (qa[0x16 + kk] != 0xFF) u++;
@@ -9706,8 +9724,8 @@ static void DrawMapInWindow(WindowPtr win)
         }
         if (hasScn) {   /* every army whose sprite is the ship */
             short q, nn = *(short *)(scnData + 0x1602), yy = 24;
-            for (q = 0; q < nn && q < 100; q++) {
-                unsigned char *qa = scnData + 0x1604 + q * 0x42;
+            for (q = 0; q < nn && q < MAX_ARMIES; q++) {
+                unsigned char *qa = ARMY_REC(q);
                 if (qa[0x14] == 5) {
                     char b2[64]; Str255 p2; short m;
                     sprintf(b2, "#%d o%d (%d,%d) t%d,%d,%d,%d nav%d", q, qa[0x15], *(short *)qa, *(short *)(qa + 2),
@@ -9779,7 +9797,7 @@ static void DrawMapInWindow(WindowPtr win)
     /* --- (remake-only yellow dotted path and red X: the original draws rings
      *      and a ghost instead, see the path preview) --- */
     if (0 && sSelectedArmy >= 0 && hasScn && scnData != NULL) {
-        unsigned char *selA = scnData + 0x1604 + sSelectedArmy * 0x42;
+        unsigned char *selA = ARMY_REC(sSelectedArmy);
         if (*(short *)(selA + 0x32) != 0) {
             /* Army has movement orders — draw dotted path to target */
             short sx = *(short *)(selA + 0x00);
@@ -10092,10 +10110,10 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
             short ai;
             RGBColor black2 = {0, 0, 0};
             if (armyCount < 0) armyCount = 0;
-            if (armyCount > 100) armyCount = 100;
+            if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
             for (ai = 0; ai < armyCount; ai++) {
-                unsigned char *army = gs2 + 0x1604 + ai * 0x42;
+                unsigned char *army = ARMY_REC(ai);
                 short ax = *(short *)(army + 0x00);
                 short ay = *(short *)(army + 0x02);
                 short aOwner = (short)(unsigned char)army[0x15];
@@ -10209,7 +10227,7 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short armyCount = *(short *)(gs2 + 0x1602);
             if (sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
-                unsigned char *selA = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *selA = ARMY_REC(sSelectedArmy);
                 short sx = *(short *)(selA + 0x00);
                 short sy = *(short *)(selA + 0x02);
                 if (sx >= 0 && sx < sMapWidth && sy >= 0 && sy < sMapHeight) {
@@ -11555,7 +11573,7 @@ static void ShowCityInfo(short cityIndex)
                     short armyCount = *(short *)(gs + 0x1602);
                     short ai3, armyY = 84;
                     short armiesHere = 0;
-                    if (armyCount > 100) armyCount = 100;
+                    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
                     /* Column headers */
                     RGBForeColor(&labelColor);
@@ -11579,7 +11597,7 @@ static void ShowCityInfo(short cityIndex)
                     armyY += 16;
 
                     for (ai3 = 0; ai3 < armyCount && armiesHere < 8; ai3++) {
-                        unsigned char *a = gs + 0x1604 + ai3 * 0x42;
+                        unsigned char *a = ARMY_REC(ai3);
                         short aax = *(short *)(a + 0x00);
                         short aay = *(short *)(a + 0x02);
                         if (a[0x16] == 0xFF) continue;
@@ -11812,7 +11830,7 @@ static void ShowArmyInspect(short armyIndex)
     armyCount = *(short *)(gs + 0x1602);
     if (armyIndex < 0 || armyIndex >= armyCount) return;
 
-    army = gs + 0x1604 + armyIndex * 0x42;
+    army = ARMY_REC(armyIndex);
 
     /* Block inspecting enemy armies when View Enemies is off */
     if (!sOptViewEnemies) {
@@ -12201,8 +12219,8 @@ static void MoveSelectedGroup(void);
  * visited ones and then clears every visited flag.  Fortified units
  * (0x40) are skipped.  The remake keeps the flags per army record index.
  * =================================================================== */
-static unsigned char sArmyVisited[100];
-static unsigned char sArmySkip[100];      /* unit flag 0x40 for the turn (FUN_100562e0: Move All stopped short) */
+static unsigned char sArmyVisited[MAX_ARMIES];
+static unsigned char sArmySkip[MAX_ARMIES];      /* unit flag 0x40 for the turn (FUN_100562e0: Move All stopped short) */
 static short sNextRefX = -1, sNextRefY = -1, sNextRefTurn = -1, sNextRefPlayer = -1;
 static short sAILastX = 0, sAILastY = 0;  /* FUN_1005619c's last position (computer order loop and Move All) */
 
@@ -12216,7 +12234,7 @@ static void NextGroupTurnSync(void)
     turnNum = *(short *)(gs + 0x136); cur = *(short *)(gs + 0x110);
     if (sNextRefTurn != turnNum || sNextRefPlayer != cur) {
         sNextRefTurn = turnNum; sNextRefPlayer = cur;
-        for (i = 0; i < 100; i++) { sArmyVisited[i] = 0; sArmySkip[i] = 0; }
+        for (i = 0; i < MAX_ARMIES; i++) { sArmyVisited[i] = 0; sArmySkip[i] = 0; }
         GetCapitalXY(cur, &sNextRefX, &sNextRefY);
     }
 }
@@ -12229,12 +12247,12 @@ static void SelectGroupFlags(void)
     unsigned char *gs = (unsigned char *)*gGameState;
     short k, n;
     if (gs == NULL) return;
-    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    n = *(short *)(gs + 0x1602); if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (k = 0; k < sStackCount; k++) {
         short ai = sStackArmyIdx[k];
         if (!sStackSelected[k] || ai < 0 || ai >= n) continue;
         sArmyVisited[ai] = 1;
-        gs[0x1604 + ai * 0x42 + 0x2d] = 0;
+        ARMY_REC(ai)[0x2d] = 0;
     }
 }
 
@@ -12251,7 +12269,7 @@ static void SelectNextArmy(void)
     gs = (unsigned char *)*gGameState;
     currentPlayer = *(short *)(gs + 0x110);
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount <= 0 || armyCount > 100)
+    if (armyCount <= 0 || armyCount > MAX_ARMIES)
         return;
 
     /* Viewport center for distance calculation */
@@ -12279,7 +12297,7 @@ static void SelectNextArmy(void)
           /* a new turn (or side): forget the visited flags, start from the capital */
           NextGroupTurnSync();
           for (i = armyCount - 1; i >= 0; i--) {
-                unsigned char *army = gs + 0x1604 + i * 0x42;
+                unsigned char *army = ARMY_REC(i);
                 short owner = (short)(unsigned char)army[0x15];
                 short ax, ay, dist, dx, dy;
 
@@ -12306,7 +12324,7 @@ static void SelectNextArmy(void)
               bestIdx = bestNew;
           } else if (bestOld >= 0) {
               for (i = 0; i < armyCount; i++)   /* the current side's 0x200 flags only */
-                  if ((short)(unsigned char)gs[0x1604 + i * 0x42 + 0x15] == currentPlayer) sArmyVisited[i] = 0;
+                  if ((short)(unsigned char)ARMY_REC(i)[0x15] == currentPlayer) sArmyVisited[i] = 0;
               bestIdx = bestOld;
           }
     }
@@ -12316,12 +12334,12 @@ static void SelectNextArmy(void)
         InvalidateAllGameWindows();
         return;
     }
-    sNextRefX = *(short *)(gs + 0x1604 + bestIdx * 0x42 + 0x00);
-    sNextRefY = *(short *)(gs + 0x1604 + bestIdx * 0x42 + 0x02);
+    sNextRefX = *(short *)(ARMY_REC(bestIdx) + 0x00);
+    sNextRefY = *(short *)(ARMY_REC(bestIdx) + 0x02);
 
     /* Select and center viewport on chosen army */
     {
-        unsigned char *army = gs + 0x1604 + bestIdx * 0x42;
+        unsigned char *army = ARMY_REC(bestIdx);
         sSelectedArmy = bestIdx;
         BuildStackArrays(bestIdx);
         SelectGroupFlags();
@@ -12361,15 +12379,15 @@ static Boolean ArmyShownOnTile(short i)
     Boolean iHero;
     if (gs == NULL) return true;
     n = *(short *)(gs + 0x1602);
-    a = gs + 0x1604 + i * 0x42;
+    a = ARMY_REC(i);
     if (sSelectedArmy >= 0 && sSelectedArmy < n) {
-        unsigned char *sel = gs + 0x1604 + sSelectedArmy * 0x42;
+        unsigned char *sel = ARMY_REC(sSelectedArmy);
         if (*(short *)(sel + 0) == *(short *)(a + 0) && *(short *)(sel + 2) == *(short *)(a + 2))
             return i == sSelectedArmy;
     }
     iHero = ((unsigned char)a[0x16] == 0x1C);
     for (j = 0; j < n; j++) {
-        unsigned char *b = gs + 0x1604 + j * 0x42;
+        unsigned char *b = ARMY_REC(j);
         Boolean jHero;
         if (j == i || b[0x16] == 0xFF) continue;
         if (*(short *)(b + 0) != *(short *)(a + 0) || *(short *)(b + 2) != *(short *)(a + 2)) continue;
@@ -12390,10 +12408,10 @@ static short StackLeadAt(short x, short y, short player)
     if (*gGameState == 0) return -1;
     gs = (unsigned char *)*gGameState;
     n = *(short *)(gs + 0x1602);
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     fo = gs + 0x60C + player * 0x1D;
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         long key;
         if (a[0x16] == 0xFF || (short)(unsigned char)a[0x15] != player) continue;
         if (*(short *)(a + 0) != x || *(short *)(a + 2) != y) continue;
@@ -12420,7 +12438,7 @@ static void BuildStackArrays(short leadArmyIdx)
     if (leadArmyIdx >= armyCount)
         return;
 
-    lead = gs + 0x1604 + leadArmyIdx * 0x42;
+    lead = ARMY_REC(leadArmyIdx);
     ax = *(short *)(lead + 0x00);
     ay = *(short *)(lead + 0x02);
     owner = (short)(unsigned char)lead[0x15];
@@ -12440,11 +12458,11 @@ static void BuildStackArrays(short leadArmyIdx)
     sStackSelected[0] = 1;
     sStackSep[0] = 0;
     sStackCount = 1;
-    if (leadArmyIdx < 100) sArmyVisited[leadArmyIdx] = 1;   /* unit flag 0x200 (FUN_10055c64) */
+    if (leadArmyIdx < MAX_ARMIES) sArmyVisited[leadArmyIdx] = 1;   /* unit flag 0x200 (FUN_10055c64) */
 
     /* Find all other armies at the same tile with same owner */
     for (ai = 0; ai < armyCount && sStackCount < MAX_STACK; ai++) {
-        unsigned char *army = gs + 0x1604 + ai * 0x42;
+        unsigned char *army = ARMY_REC(ai);
         if (ai == leadArmyIdx)
             continue;
         if (*(short *)(army + 0x00) == ax &&
@@ -12479,13 +12497,13 @@ static void BuildStackArrays(short leadArmyIdx)
             short tmpSel = sStackSelected[i];
             short tmpSep = sStackSep[i];
             /* Get fight order priority for this unit type */
-            unsigned char *armyI = gs + 0x1604 + tmpIdx * 0x42;
+            unsigned char *armyI = ARMY_REC(tmpIdx);
             short prioI = (short)(unsigned char)fightOrder[(unsigned char)armyI[0x16]] +
                           ((unsigned char)armyI[0x16] == 0x1C ? 50 : 0);
 
             j = i - 1;
             while (j >= 0) {
-                unsigned char *armyJ = gs + 0x1604 + sStackArmyIdx[j] * 0x42;
+                unsigned char *armyJ = ARMY_REC(sStackArmyIdx[j]);
                 short prioJ = (short)(unsigned char)fightOrder[(unsigned char)armyJ[0x16]] +
                               ((unsigned char)armyJ[0x16] == 0x1C ? 50 : 0);
                 /* Sort: groupId ascending, then fight order DESCENDING with the hero
@@ -12636,9 +12654,9 @@ static unsigned char NewGroupTag(void)
     if (gs == NULL) return 0;
     for (t = 0; t < 256; t++) used[t] = 0;
     cur = *(short *)(gs + 0x110);
-    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    n = *(short *)(gs + 0x1602); if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         if (a[0x16] == 0xFF || (short)(unsigned char)a[0x15] != cur || *(short *)(a + 0) < 0) continue;
         used[a[0x11]] = 1;
     }
@@ -12667,13 +12685,13 @@ static void StackCommitGroups(void)
 
     for (sj = 0; sj < sStackCount; sj++)
         if (sStackSelected[sj] && sStackArmyIdx[sj] >= 0)
-            gs[0x1604 + sStackArmyIdx[sj] * 0x42 + 0x2d] = 0;
+            ARMY_REC(sStackArmyIdx[sj])[0x2d] = 0;
     for (sj = 0; sj < sStackCount; sj++) {
         unsigned char t;
         short q;
         Boolean seen = false;
         if (sStackArmyIdx[sj] < 0) continue;
-        t = gs[0x1604 + sStackArmyIdx[sj] * 0x42 + 0x11];
+        t = ARMY_REC(sStackArmyIdx[sj])[0x11];
         if (t == 0 || t == 1) continue;
         for (q = 0; q < nOld; q++) if (oldTags[q] == t) seen = true;
         if (!seen) oldTags[nOld++] = t;
@@ -12694,14 +12712,14 @@ static void StackCommitGroups(void)
             }
         if (first < 0) continue;
         if (cnt == 1) tag = 0;
-        else if (gs[0x1604 + first * 0x42 + 0x2d] != 0) tag = 1;
+        else if (ARMY_REC(first)[0x2d] != 0) tag = 1;
         else {
             nOld--;
             tag = (nOld < 1) ? NewGroupTag() : oldTags[nOld];
         }
         for (sj = 0; sj < sStackCount; sj++)
             if (sStackGroupId[sj] == order[g] && sStackArmyIdx[sj] >= 0)
-                gs[0x1604 + sStackArmyIdx[sj] * 0x42 + 0x11] = tag;
+                ARMY_REC(sStackArmyIdx[sj])[0x11] = tag;
     }
     /* Update sSelectedArmy to first selected */
     for (sj = 0; sj < sStackCount; sj++) {
@@ -12951,7 +12969,7 @@ static void PathBuildStack(short armyIdx, Boolean useSelection)
     if (*gGameState == 0 || armyIdx < 0) return;
     gs = (unsigned char *)*gGameState;
     count = *(short *)(gs + 0x1602);
-    if (count > 100) count = 100;
+    if (count > MAX_ARMIES) count = MAX_ARMIES;
     if (armyIdx >= count) return;
 
     if (useSelection && sStackCount > 0) {
@@ -12969,10 +12987,10 @@ static void PathBuildStack(short armyIdx, Boolean useSelection)
     }
     if (n == 0) sPathMovers[n++] = armyIdx;
     sPathMoverCount = n;
-    sPathOwner = (short)(unsigned char)(gs + 0x1604 + armyIdx * 0x42)[0x15];
+    sPathOwner = (short)(unsigned char)(ARMY_REC(armyIdx))[0x15];
 
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + sPathMovers[i] * 0x42;
+        unsigned char *a = ARMY_REC(sPathMovers[i]);
         if (a[0x2C] & ARMY_EMBARKED_BIT) embarked = true;
         if (ArmyHasFlightItem(sPathMovers[i])) flightItem = true;
         for (s = 0; s < 4; s++) {
@@ -13013,7 +13031,7 @@ static short PathMoversMinMP(void)
     unsigned char *gs = (unsigned char *)*gGameState;
     short i, mp = 999;
     for (i = 0; i < sPathMoverCount; i++) {
-        short m = (short)(unsigned char)(gs + 0x1604 + sPathMovers[i] * 0x42)[0x2e];
+        short m = (short)(unsigned char)(ARMY_REC(sPathMovers[i]))[0x2e];
         if (m < mp) mp = m;
     }
     return mp == 999 ? 0 : mp;
@@ -13557,10 +13575,10 @@ static short PathUnitsAt(short x, short y, short *foreignOwner)
 {
     unsigned char *gs = (unsigned char *)*gGameState;
     short count = *(short *)(gs + 0x1602), i, s, units = 0;
-    if (count > 100) count = 100;
+    if (count > MAX_ARMIES) count = MAX_ARMIES;
     *foreignOwner = -1;
     for (i = 0; i < count; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         short k;
         Boolean mover = false;
         if (*(short *)(a + 0x00) != x || *(short *)(a + 0x02) != y) continue;
@@ -13626,9 +13644,9 @@ static Boolean PathOneMPUseful(short mp, short x, short y)
             short i, cnt;
             if (ix < 0 || iy < 0 || ix >= 112 || iy >= 156) continue;
             if (GetTerrainType(ix, iy) == 10) return true;
-            cnt = *(short *)(gs + 0x1602); if (cnt > 100) cnt = 100;
+            cnt = *(short *)(gs + 0x1602); if (cnt > MAX_ARMIES) cnt = MAX_ARMIES;
             for (i = 0; i < cnt; i++) {
-                unsigned char *a = gs + 0x1604 + i * 0x42;
+                unsigned char *a = ARMY_REC(i);
                 if (a[0x16] == 0xFF || *(short *)(a + 0) != ix || *(short *)(a + 2) != iy) continue;
                 if ((short)(unsigned char)a[0x15] != sPathOwner) return true;
                 break;
@@ -13646,23 +13664,23 @@ static void PathMoveStackTo(short nx, short ny)
     short k;
     short oldXs[8], oldYs[8], nOld = 0, q, n = *(short *)(gs + 0x1602), i;
     for (k = 0; k < sPathMoverCount; k++) {
-        unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+        unsigned char *a = ARMY_REC(sPathMovers[k]);
         short oldX = *(short *)(a + 0x00), oldY = *(short *)(a + 0x02);
         for (q = 0; q < nOld && (oldXs[q] != oldX || oldYs[q] != oldY); q++) ;
         if (q == nOld && nOld < 8) { oldXs[nOld] = oldX; oldYs[nOld] = oldY; nOld++; }
         *(short *)(a + 0x00) = nx;
         *(short *)(a + 0x02) = ny;
         a[0x2d] = 0;
-        if (*gExtState != 0) ((unsigned char *)*gExtState)[0x56 + sPathMovers[k]] = 0;
+        sArmyState[sPathMovers[k]] = 0;
     }
     /* PPC FUN_10021364: a tile left EMPTY loses its occupied (0x10) and
      * tower (0x20) bits; a tile where units stay keeps them */
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (q = 0; q < nOld; q++) {
         if (*gMapTiles == 0 || oldXs[q] < 0 || oldXs[q] >= sMapWidth || oldYs[q] < 0 || oldYs[q] >= sMapHeight)
             continue;
         for (i = 0; i < n; i++) {
-            unsigned char *o = gs + 0x1604 + i * 0x42;
+            unsigned char *o = ARMY_REC(i);
             if (*(short *)(o + 0) == oldXs[q] && *(short *)(o + 2) == oldYs[q] && o[0x16] != 0xFF) break;
         }
         if (i == n) ((unsigned char *)*gMapTiles)[oldYs[q] * 0xE0 + oldXs[q] * 2 + 1] &= (unsigned char)~0x30;
@@ -13689,7 +13707,7 @@ static short PathBoardOrLand(short x, short y)
     if (!board && !land) return 0;
     if (land) {                     /* every unit lands, every unit's MP is 0 */
         for (k = 0; k < sPathMoverCount; k++) {
-            unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+            unsigned char *a = ARMY_REC(sPathMovers[k]);
             a[0x2C] &= ~ARMY_EMBARKED_BIT;
             a[0x2e] = 0;
         }
@@ -13702,7 +13720,7 @@ static short PathBoardOrLand(short x, short y)
         Boolean anyFlier = false, groundNonHero = false, heroStays, any = false;
         short u;
         for (k = 0; k < sPathMoverCount; k++) {
-            unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+            unsigned char *a = ARMY_REC(sPathMovers[k]);
             for (u = 0; u < 4; u++) {
                 short t = (short)(unsigned char)a[0x16 + u];
                 if (t == 0xFF) continue;
@@ -13712,7 +13730,7 @@ static short PathBoardOrLand(short x, short y)
         }
         heroStays = anyFlier && !groundNonHero;
         for (k = 0; k < sPathMoverCount; k++) {
-            unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+            unsigned char *a = ARMY_REC(sPathMovers[k]);
             Boolean boards = false, hasHero = false;
             for (u = 0; u < 4; u++) {
                 short t = (short)(unsigned char)a[0x16 + u];
@@ -13743,7 +13761,7 @@ static void PathBoardAfterBattle(short x, short y)
     if (sPathMode == PMODE_FLYING || (sPathFlags & PABIL_EMBARKED)) return;
     if (t != 2 && t != 3) return;
     for (k = 0; k < sPathMoverCount; k++) {
-        unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+        unsigned char *a = ARMY_REC(sPathMovers[k]);
         short u;
         Boolean boards = false;
         if (ArmyIsNaval(sPathMovers[k])) continue;      /* a ship's record rides on */
@@ -13824,19 +13842,19 @@ static short ExecutePathSteps(short armyIdx)
     if (*gGameState == 0 || *gMapTiles == 0) return 0;
     gs = (unsigned char *)*gGameState;
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     if (armyIdx < 0 || armyIdx >= armyCount) return 0;
     if (sPathLength <= 0 || sPathDirBuffer[0] == 0xFF) return 0;
 
     PathBuildStack(armyIdx, true);
     if (sPathMoverCount == 0) return 0;
     BuildPathFlagGrid();
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     x = *(short *)(army + 0x00);
     y = *(short *)(army + 0x02);
     mp = PathMoversMinMP();
     for (k = 0; k < sPathMoverCount; k++) {
-        unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+        unsigned char *a = ARMY_REC(sPathMovers[k]);
         for (s = 0; s < 4; s++) if (a[0x16 + s] != 0xFF) stackUnits++;
     }
 
@@ -13889,7 +13907,7 @@ static short ExecutePathSteps(short armyIdx)
         }
         stepsTaken = committed;
         for (k = 0; k < sPathMoverCount; k++) {
-            unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+            unsigned char *a = ARMY_REC(sPathMovers[k]);
             short left = (short)(unsigned char)a[0x2e] - (short)cumBuf[committed - 1];
             a[0x2e] = (unsigned char)(left < 0 ? 0 : left);
         }
@@ -13914,14 +13932,14 @@ static short ExecutePathSteps(short armyIdx)
     /* Reached the stored target: the orders are done (FUN_100419b0 /
      * FUN_10018180 clear the target when the lead stands on it). */
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     if (armyIdx < armyCount) {
-        army = gs + 0x1604 + armyIdx * 0x42;
+        army = ARMY_REC(armyIdx);
         if (*(short *)(army + 0x00) == *(short *)(army + 0x34) &&
             *(short *)(army + 0x02) == *(short *)(army + 0x36))
             for (k = 0; k < sPathMoverCount; k++)
                 if (sPathMovers[k] < armyCount)
-                    *(short *)(gs + 0x1604 + sPathMovers[k] * 0x42 + 0x32) = 0;
+                    *(short *)(ARMY_REC(sPathMovers[k]) + 0x32) = 0;
         /* The original never merges unit records: a record arriving on a
          * friendly tile keeps its own MP, orders and embarked state. */
     }
@@ -13940,21 +13958,21 @@ static Boolean PathAttack(short armyIdx, short bx, short by)
     short armyCount, k;
     Boolean wasSelected = (armyIdx == sSelectedArmy);
     if (gs == NULL || sPathMoverCount == 0) return false;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     PathMoveStackTo(bx, by);
     for (k = 0; k < sPathMoverCount; k++) {
-        unsigned char *a = gs + 0x1604 + sPathMovers[k] * 0x42;
+        unsigned char *a = ARMY_REC(sPathMovers[k]);
         short left = (short)(unsigned char)a[0x2e] - sAttackCost;
         a[0x2e] = (unsigned char)(left < 0 ? 0 : left);
     }
     if (CheckAndResolveCombat(armyIdx)) {
         sUndoArmyIdx = -1;
         armyCount = *(short *)(gs + 0x1602);
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         /* the attacker died: its record is gone (or replaced) */
         if (wasSelected && sSelectedArmy < 0) return false;
         if (armyIdx >= armyCount) return false;
-        army = gs + 0x1604 + armyIdx * 0x42;
+        army = ARMY_REC(armyIdx);
         if ((short)(unsigned char)army[0x15] != sPathOwner ||
             *(short *)(army + 0x00) != bx || *(short *)(army + 0x02) != by)
             return false;
@@ -13974,9 +13992,9 @@ static Boolean IsAdjacentAttackTarget(short armyIdx, short tx, short ty)
     short count, owner, ax, ay, dx, dy, i, co;
     if (gs == NULL || armyIdx < 0) return false;
     count = *(short *)(gs + 0x1602);
-    if (count > 100) count = 100;
+    if (count > MAX_ARMIES) count = MAX_ARMIES;
     if (armyIdx >= count) return false;
-    a = gs + 0x1604 + armyIdx * 0x42;
+    a = ARMY_REC(armyIdx);
     owner = (short)(unsigned char)a[0x15];
     ax = *(short *)(a + 0x00); ay = *(short *)(a + 0x02);
     dx = tx - ax; dy = ty - ay;
@@ -13984,7 +14002,7 @@ static Boolean IsAdjacentAttackTarget(short armyIdx, short tx, short ty)
     co = PathCityOwnerAt(tx, ty);
     if (co != -2 && co != owner) return true;
     for (i = 0; i < count; i++) {
-        unsigned char *o = gs + 0x1604 + i * 0x42;
+        unsigned char *o = ARMY_REC(i);
         if (o[0x16] == 0xFF || (short)(unsigned char)o[0x15] == owner) continue;
         if (*(short *)(o + 0x00) == tx && *(short *)(o + 0x02) == ty) return true;
     }
@@ -14029,9 +14047,9 @@ static short DirectAttackStep(short armyIdx, short tx, short ty)
     short me, owner = 15, type, ci, n, i, c;
     Boolean armyThere = false;
     if (gs == NULL || armyIdx < 0) return 0;
-    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    n = *(short *)(gs + 0x1602); if (n > MAX_ARMIES) n = MAX_ARMIES;
     if (armyIdx >= n) return 0;
-    a = gs + 0x1604 + armyIdx * 0x42;
+    a = ARMY_REC(armyIdx);
     if (PathDirFromDelta(tx - *(short *)(a + 0x00), ty - *(short *)(a + 0x02)) < 0) return 0;
     me = (short)(unsigned char)a[0x15];
     PathBuildStack(armyIdx, true);
@@ -14044,7 +14062,7 @@ static short DirectAttackStep(short armyIdx, short tx, short ty)
     }
     /* the tile's owner nibble: the army there, else the city */
     for (i = 0; i < n; i++) {
-        unsigned char *o = gs + 0x1604 + i * 0x42;
+        unsigned char *o = ARMY_REC(i);
         if (o[0x16] == 0xFF || *(short *)(o + 0) != tx || *(short *)(o + 2) != ty) continue;
         armyThere = true; owner = (short)(unsigned char)o[0x15]; break;
     }
@@ -14107,9 +14125,9 @@ static short MapCursorType(short tx, short ty)
     if (tx < 0 || tx >= sMapWidth || ty < 0 || ty >= sMapHeight) return 0;
     terr = gs[md[ty * 0xE0 + tx * 2] + TERRAIN_TYPE_OFS];
     isCity = (terr == 10);
-    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    n = *(short *)(gs + 0x1602); if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         if (a[0x16] == 0xFF) continue;
         if (*(short *)(a + 0) == tx && *(short *)(a + 2) == ty) { armyBit = true; owner = (short)(unsigned char)a[0x15]; break; }
     }
@@ -14119,7 +14137,7 @@ static short MapCursorType(short tx, short ty)
     }
     if (owner > 15) owner = 15;
     if (sSelectedArmy >= 0 && sSelectedArmy < n) {
-        sel = gs + 0x1604 + sSelectedArmy * 0x42;
+        sel = ARMY_REC(sSelectedArmy);
         if ((short)(unsigned char)sel[0x15] != cur) sel = NULL;
     }
     if (sel != NULL) {
@@ -14202,9 +14220,9 @@ static short RunStoredPath(short armyIdx)
     if (*gGameState == 0 || armyIdx < 0) return 0;
     gs = (unsigned char *)*gGameState;
     count = *(short *)(gs + 0x1602);
-    if (count > 100) count = 100;
+    if (count > MAX_ARMIES) count = MAX_ARMIES;
     if (armyIdx >= count) return 0;
-    a = gs + 0x1604 + armyIdx * 0x42;
+    a = ARMY_REC(armyIdx);
     if (*(short *)(a + 0x32) == 0) return 0;
     tx = *(short *)(a + 0x34); ty = *(short *)(a + 0x36);
     if (*(short *)(a + 0x00) == tx && *(short *)(a + 0x02) == ty) { *(short *)(a + 0x32) = 0; return 0; }
@@ -14260,7 +14278,7 @@ static void DropHeroItems(short armyIndex)
 {
     unsigned char *army;
     if (*gGameState == 0 || armyIndex < 0) return;
-    army = (unsigned char *)*gGameState + 0x1604 + armyIndex * 0x42;
+    army = ARMY_REC(armyIndex);
     DropHeroItemsAt(armyIndex, *(short *)(army + 0x00), *(short *)(army + 0x02));
 }
 
@@ -14293,7 +14311,7 @@ static void RemoveArmy(short armyIndex)
 
     /* If this army contains a hero, drop items and clear hero record */
     {
-        unsigned char *army = gs + 0x1604 + armyIndex * 0x42;
+        unsigned char *army = ARMY_REC(armyIndex);
         short owner = (short)(unsigned char)army[0x15];
         short u;
         for (u = 0; u < 4; u++) {
@@ -14338,18 +14356,22 @@ static void RemoveArmy(short armyIndex)
     BattleOnRemove(armyIndex);
 
     /* Shift all armies after this one down by one slot */
-    for (j = armyIndex; j < 99; j++) sArmyVisited[j] = sArmyVisited[j + 1];   /* Next Group flags follow */
-    sArmyVisited[99] = 0;
+    for (j = armyIndex; j < MAX_ARMIES - 1; j++) {   /* Next Group / Move All flags and the defend state follow */
+        sArmyVisited[j] = sArmyVisited[j + 1];
+        sArmySkip[j] = sArmySkip[j + 1];
+        sArmyState[j] = sArmyState[j + 1];
+    }
+    sArmyVisited[MAX_ARMIES - 1] = 0; sArmySkip[MAX_ARMIES - 1] = 0; sArmyState[MAX_ARMIES - 1] = 0;
     for (j = armyIndex; j < armyCount - 1; j++) {
-        unsigned char *dst = gs + 0x1604 + j * 0x42;
-        unsigned char *src = gs + 0x1604 + (j + 1) * 0x42;
+        unsigned char *dst = ARMY_REC(j);
+        unsigned char *src = ARMY_REC((j + 1));
         short k;
         for (k = 0; k < 0x42; k++)
             dst[k] = src[k];
     }
     *(short *)(gs + 0x1602) = armyCount - 1;
     /* the temple blessing bits (ext+0x3500, a short per record) follow */
-    if (*gExtState != 0 && armyCount <= 100) {
+    if (*gExtState != 0 && armyCount <= MAX_ARMIES) {
         unsigned char *ext = (unsigned char *)*gExtState;
         for (j = armyIndex; j < armyCount - 1; j++)
             *(unsigned short *)(ext + 0x3500 + j * 2) = *(unsigned short *)(ext + 0x3500 + (j + 1) * 2);
@@ -14504,7 +14526,7 @@ static Boolean UnitTypeNaval(short t)
 /* add the live units of record rec to a side (the moving record first) */
 static void BattleAddRecord(BattleUnit *side, short *n, short max, short rec, Boolean onWater)
 {
-    unsigned char *a = (unsigned char *)*gGameState + 0x1604 + rec * 0x42;
+    unsigned char *a = ARMY_REC(rec);
     Boolean naval = ArmyIsNaval(rec);
     short k;
     for (k = 0; k < 4 && *n < max; k++) {
@@ -14534,7 +14556,7 @@ static void BattleGather(Battle *b, short movingIdx, short mOwner, short mx, sho
     unsigned char *gs = (unsigned char *)*gGameState;
     short n = *(short *)(gs + 0x1602), i;
     Boolean onWater;
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     b->mOwner = mOwner; b->defOwner = defOwner;
     b->mx = mx; b->my = my;
     b->cityIdx = cityIdx; b->cx = cx; b->cy = cy;
@@ -14548,18 +14570,18 @@ static void BattleGather(Battle *b, short movingIdx, short mOwner, short mx, sho
      * non-zero group tag (a[0x11]) - never every own army on the tile (a
      * lone hero fought beside a Wizard that merely shared its city). */
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         if (i == movingIdx || (short)(unsigned char)a[0x15] != mOwner) continue;
         if (*(short *)(a + 0x00) != mx || *(short *)(a + 0x02) != my) continue;
         if (movingIdx >= 0 && movingIdx < n) {
-            unsigned char *mv = gs + 0x1604 + movingIdx * 0x42;
+            unsigned char *mv = ARMY_REC(movingIdx);
             if (mv[0x11] == 0 || a[0x11] != mv[0x11]) continue;
         }
         BattleAddRecord(b->att, &b->nAtt, BATTLE_ATT_MAX, i, onWater);
     }
     /* the original walks the unit table from the end */
     for (i = n - 1; i >= 0; i--) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         short ox = *(short *)(a + 0x00), oy = *(short *)(a + 0x02);
         if ((short)(unsigned char)a[0x15] == mOwner) continue;
         if (!((ox == mx && oy == my) ||
@@ -14779,7 +14801,7 @@ static Boolean BattleRounds(Battle *b, Boolean record)
 static void BattleHeroFell(short rec, short x, short y, Boolean inBattle)
 {
     unsigned char *gs = (unsigned char *)*gGameState;
-    unsigned char *army = gs + 0x1604 + rec * 0x42;
+    unsigned char *army = ARMY_REC(rec);
     short owner = (short)(unsigned char)army[0x15];
     short turn = *(short *)(gs + 0x136), hn, hs;
     char heroName[40];
@@ -14820,7 +14842,7 @@ static void BattleApply(Battle *b, short *movingIdx)
     for (i = 0; i < b->nAtt + b->nDef; i++) {
         Boolean attacker = i < b->nAtt;
         BattleUnit *u = attacker ? b->att + i : b->def + (i - b->nAtt);
-        unsigned char *a = gs + 0x1604 + u->rec * 0x42;
+        unsigned char *a = ARMY_REC(u->rec);
         for (j = 0; j < nTouched && touched[j] != u->rec; j++) ;
         if (j == nTouched) touched[nTouched++] = u->rec;
         if (u->hp < 0) {
@@ -14838,7 +14860,7 @@ static void BattleApply(Battle *b, short *movingIdx)
     }
     /* compact the touched records */
     for (i = 0; i < nTouched; i++) {
-        unsigned char *a = gs + 0x1604 + touched[i] * 0x42;
+        unsigned char *a = ARMY_REC(touched[i]);
         short put = 0, live = 0;
         for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) live++;
         if (live == 0) continue;
@@ -14866,7 +14888,7 @@ static void BattleApply(Battle *b, short *movingIdx)
     for (i = 1; i < nTouched; i++)
         for (j = i; j > 0 && touched[j] > touched[j - 1]; j--) { short t = touched[j]; touched[j] = touched[j - 1]; touched[j - 1] = t; }
     for (i = 0; i < nTouched; i++) {
-        unsigned char *a = gs + 0x1604 + touched[i] * 0x42;
+        unsigned char *a = ARMY_REC(touched[i]);
         for (k = 0; k < 4 && a[0x16 + k] == 0xFF; k++) ;
         if (k < 4) continue;
         RemoveArmy(touched[i]);
@@ -15089,7 +15111,7 @@ static void CaptureCityAt(short mOwner, short mx, short my)
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     turnNum = *(short *)(gs + 0x136);
                 {
                     short cityCount = sCityCount;
@@ -15180,8 +15202,8 @@ static void CaptureCityAt(short mOwner, short mx, short my)
                                 short ri;
                                 for (ri = *(short *)(gs + 0x1602) - 1; ri >= 0; ri--) {
                                     unsigned char *ra;
-                                    if (ri >= 100) continue;
-                                    ra = gs + 0x1604 + ri * 0x42;
+                                    if (ri >= MAX_ARMIES) continue;
+                                    ra = ARMY_REC(ri);
                                     if ((short)(unsigned char)ra[0x15] != prevOwner || *(short *)(ra + 0) != -1) continue;
                                     if (ra[0x30] != 'e' && ra[0x30] != 'f') continue;
                                     if ((short)(unsigned char)ra[0x31] != ci || AIOrdType(ri) != 1) continue;
@@ -15219,7 +15241,7 @@ static void CaptureCityAt(short mOwner, short mx, short my)
                                 short armyCount2 = *(short *)(gs + 0x1602);
                                 short ai2;
                                 for (ai2 = 0; ai2 < armyCount2; ai2++) {
-                                    unsigned char *ar2 = gs + 0x1604 + ai2 * 0x42;
+                                    unsigned char *ar2 = ARMY_REC(ai2);
                                     if (*(short *)(ar2 + 0x00) == mx &&
                                         *(short *)(ar2 + 0x02) == my) {
                                         ar2[0x2d] = 0;  /* clear defend/fortify */
@@ -15721,7 +15743,7 @@ static void AwardMedal(const Battle *b, Boolean human)
     short armyCount = *(short *)(gs + 0x1602), i, k, withMedal = 0, thr;
     short candA[BATTLE_ATT_MAX], candS[BATTLE_ATT_MAX], nc = 0, pick, medals, newStr, oldStr;
     Boolean hero = false, embarked = false, worthy;
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     for (i = 0; i < b->nAtt; i++) {
         const BattleUnit *u = b->att + i;
         if (u->type == 0x1C) hero = true;
@@ -15732,7 +15754,7 @@ static void AwardMedal(const Battle *b, Boolean human)
         }
     }
     for (i = 0; i < armyCount; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         if ((short)(unsigned char)a[0x15] != owner) continue;
         for (k = 0; k < 4; k++) {
             short t = a[0x16 + k];
@@ -15749,7 +15771,7 @@ static void AwardMedal(const Battle *b, Boolean human)
     if (Dice(1, 100, 0) >= thr || !hero) return;
     pick = Dice(1, nc, -1);
     {
-        unsigned char *a = gs + 0x1604 + candA[pick] * 0x42;
+        unsigned char *a = ARMY_REC(candA[pick]);
         short sl = candS[pick], t = a[0x16 + sl];
         medals = GetMedals(a, sl);
         if (medals >= 4) return;
@@ -15808,7 +15830,7 @@ static void CaptureCityFinish(void)
     sCapPend = false;
     gs = (unsigned char *)*gGameState;
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     turnNum = *(short *)(gs + 0x136);
     cityCount = sCityCount;
     if (cityCount > 139) cityCount = 139;
@@ -16110,7 +16132,7 @@ static void ShowBattle(short tx, short ty, Boolean humanAttacker,
 /* Sprite of each unit of an army record, in slot order. */
 static short ArmyUnitSprites(short armyIdx, short *out, short max)
 {
-    unsigned char *a = (unsigned char *)*gGameState + 0x1604 + armyIdx * 0x42;
+    unsigned char *a = ARMY_REC(armyIdx);
     short i, n = 0;
     for (i = 0; i < 4 && n < max; i++) {
         short t = (short)(unsigned char)a[0x16 + i];
@@ -16135,7 +16157,7 @@ static short ArmyUnitSprites(short armyIdx, short *out, short max)
 static void ShowMilitaryAdvisor(short armyIdx, short tx, short ty)
 {
     unsigned char *gs = (unsigned char *)*gGameState;
-    unsigned char *lead = gs + 0x1604 + armyIdx * 0x42;
+    unsigned char *lead = ARMY_REC(armyIdx);
     short n = *(short *)(gs + 0x1602), i, mOwner, defOwner = 0x0F;
     short cityIdx = -1, cx = 0, cy = 0, ax, ay, advIdx;
     Boolean onWater, done = false;
@@ -16145,7 +16167,7 @@ static void ShowMilitaryAdvisor(short armyIdx, short tx, short ty)
     EventRecord e;
     PicHandle pic;
 
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     mOwner = (short)(unsigned char)lead[0x15];
     ax = *(short *)(lead + 0x00); ay = *(short *)(lead + 0x02);
     {
@@ -16165,7 +16187,7 @@ static void ShowMilitaryAdvisor(short armyIdx, short tx, short ty)
         }
     }
     for (i = 0; i < n; i++) {
-        unsigned char *o = gs + 0x1604 + i * 0x42;
+        unsigned char *o = ARMY_REC(i);
         short ox = *(short *)(o + 0x00), oy = *(short *)(o + 0x02);
         if (o[0x16] == 0xFF || (short)(unsigned char)o[0x15] == mOwner) continue;
         if ((ox == tx && oy == ty) ||
@@ -16179,7 +16201,7 @@ static void ShowMilitaryAdvisor(short armyIdx, short tx, short ty)
     onWater = (sBattle.terr == 2 || sBattle.terr == 3);
     BattleAddRecord(sBattle.att, &sBattle.nAtt, BATTLE_ATT_MAX, armyIdx, onWater);
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         if (i == armyIdx || (short)(unsigned char)a[0x15] != mOwner) continue;
         if (*(short *)(a + 0x00) != ax || *(short *)(a + 0x02) != ay) continue;
         if (lead[0x11] == 0 || a[0x11] != lead[0x11]) continue;
@@ -16249,9 +16271,9 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
     if (*gGameState == 0) return false;
     gs = (unsigned char *)*gGameState;
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
-    movArmy = gs + 0x1604 + movingArmyIdx * 0x42;
+    movArmy = ARMY_REC(movingArmyIdx);
     mx = *(short *)(movArmy + 0x00);
     my = *(short *)(movArmy + 0x02);
     mOwner = (short)(unsigned char)movArmy[0x15];
@@ -16276,7 +16298,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         (cityIdx >= 0 && (ox) >= cx && (ox) <= cx + 1 && (oy) >= cy && (oy) <= cy + 1))
 
     for (i = 0; i < armyCount; i++) {
-        other = gs + 0x1604 + i * 0x42;
+        other = ARMY_REC(i);
         if (i == movingArmyIdx) continue;
         if ((short)(unsigned char)other[0x15] == mOwner) continue;
         if (IN_BATTLE_ZONE(*(short *)(other + 0x00), *(short *)(other + 0x02))) { firstDef = i; break; }
@@ -16284,7 +16306,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
     if (firstDef < 0 && cityIdx < 0) return false;
 
     if (firstDef >= 0) {
-        other = gs + 0x1604 + firstDef * 0x42;
+        other = ARMY_REC(firstDef);
         oOwner = (short)(unsigned char)other[0x15];
     } else {
         other = NULL;
@@ -16351,7 +16373,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             short q, n = 0;
             for (q = 0; q < sBattle.nAtt && sBattle.att[q].type != 0x1C; q++) ;
             if (q < sBattle.nAtt) {
-                unsigned char *hn = gs + 0x1604 + sBattle.att[q].rec * 0x42 + 0x04;
+                unsigned char *hn = ARMY_REC(sBattle.att[q].rec) + 0x04;
                 while (n < 15 && hn[n]) { who[n] = (char)hn[n]; n++; }
             } else if (mOwner >= 0 && mOwner < 8) {
                 unsigned char *fn = gs + mOwner * FACTION_NAME_LEN;
@@ -16379,12 +16401,12 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
 
     /* survivors */
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     {
         short nDefLive = 0, nAttLive = 0;
         short liveDef[BATTLE_MAXU], liveAtt[BATTLE_MAXU];
         for (i = 0; i < armyCount; i++) {
-            other = gs + 0x1604 + i * 0x42;
+            other = ARMY_REC(i);
             if ((short)(unsigned char)other[0x15] == mOwner) {
                 if (*(short *)(other + 0x00) == mx && *(short *)(other + 0x02) == my) {
                     short j, nn = ArmyUnitSprites(i, liveAtt + nAttLive, BATTLE_MAXU - nAttLive);
@@ -16433,7 +16455,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
          * PathAttack) */
         if (won) {
             for (i = 0; i < armyCount; i++) {
-                unsigned char *w = gs + 0x1604 + i * 0x42;
+                unsigned char *w = ARMY_REC(i);
                 if ((short)(unsigned char)w[0x15] != mOwner ||
                     *(short *)(w + 0x00) != mx || *(short *)(w + 0x02) != my) continue;
                 *(short *)(w + 0x34) = -1;
@@ -16451,7 +16473,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             l1[0] = l2[0] = 0;
             hname[0] = 0;
             if (heroArmy >= 0) {
-                unsigned char *hn = gs + 0x1604 + heroArmy * 0x42 + 0x04;
+                unsigned char *hn = ARMY_REC(heroArmy) + 0x04;
                 short len = 0;
                 while (len < 15 && hn[len] != 0) len++;
                 hname[0] = (unsigned char)len;
@@ -16493,7 +16515,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         {
             sCapWho[0] = 0;
             if (heroArmy >= 0) {
-                unsigned char *hn = gs + 0x1604 + heroArmy * 0x42 + 0x04;
+                unsigned char *hn = ARMY_REC(heroArmy) + 0x04;
                 short len = 0;
                 while (len < 15 && hn[len] != 0) len++;
                 sCapWho[0] = (unsigned char)len;
@@ -16587,9 +16609,9 @@ static void ShowReportDialog(short tab)
                 short units = 0, cities = 0, inc = 0, ci, ai, n = *(short *)(gs + 0x1602);
                 long citySum = 0, str = 0, gold = *(short *)(gs + 0x186 + p * 0x14);
                 alive[p] = *(short *)(gs + 0x138 + p * 2) != 0;
-                if (n > 100) n = 100;
+                if (n > MAX_ARMIES) n = MAX_ARMIES;
                 for (ai = 0; ai < n; ai++) {
-                    unsigned char *a = gs + 0x1604 + ai * 0x42;
+                    unsigned char *a = ARMY_REC(ai);
                     if ((short)(unsigned char)a[0x15] != p) continue;
                     for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) { units++; str += a[0x1e + k]; }
                 }
@@ -17307,7 +17329,7 @@ static void ShowHistoryDialog(short tab)
                         pGold = *(short *)(gs + 0x186 + pi * 0x14);
                         armyCount = *(short *)(gs + 0x1602);
                         cityCount = sCityCount;
-                        if (armyCount > 100) armyCount = 100;
+                        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
                         if (cityCount > 139) cityCount = 139;
 
                         for (ci = 0; ci < cityCount; ci++) {
@@ -17318,7 +17340,7 @@ static void ShowHistoryDialog(short tab)
                             }
                         }
                         for (ai = 0; ai < armyCount; ai++) {
-                            unsigned char *a2 = gs + 0x1604 + ai * 0x42;
+                            unsigned char *a2 = ARMY_REC(ai);
                             if ((short)(unsigned char)a2[0x15] == pi) {
                                 pArmies++;
                                 armyVal += (short)(unsigned char)a2[0x14] * *(short *)(a2 + 0x2a);
@@ -17455,7 +17477,7 @@ static void ShowChangeSignpost(void)
 
     if (*gGameState == 0 || sSelectedArmy < 0) return;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + sSelectedArmy * 0x42;
+    army = ARMY_REC(sSelectedArmy);
     armyX = *(short *)(army + 0x00);
     armyY = *(short *)(army + 0x02);
 
@@ -18628,11 +18650,11 @@ static short QuestDist(short x1, short y1, short x2, short y2)
 static short QuestRecCount(void)
 {
     short n = *(short *)((unsigned char *)*gGameState + 0x1602);
-    return n > 100 ? 100 : n;
+    return n > MAX_ARMIES ? MAX_ARMIES : n;
 }
 static unsigned char *QuestRecPtr(short r)
 {
-    return (unsigned char *)*gGameState + 0x1604 + r * 0x42;
+    return ARMY_REC(r);
 }
 static short QuestRecHeroSlot(short r)
 {
@@ -19794,11 +19816,11 @@ static void ShowTriumphsDialog(void)
         /* Show player's achievements */
         armyCount = *(short *)(gs + 0x1602);
         cityCount = sCityCount;
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         if (cityCount > 139) cityCount = 139;
 
         for (ai = 0; ai < armyCount; ai++) {
-            if ((short)(unsigned char)*(gs + 0x1604 + ai * 0x42 + 0x15) == curPlayer)
+            if ((short)(unsigned char)*(ARMY_REC(ai) + 0x15) == curPlayer)
                 pArmies++;
         }
         for (ci = 0; ci < cityCount; ci++) {
@@ -19860,7 +19882,7 @@ static void ShowTriumphsDialog(void)
                     pIncome2 += *(short *)(sCityData + ci * 0x20 + 0x08);
             }
             for (sa2 = 0; sa2 < armyCount; sa2++) {
-                unsigned char *a2 = gs + 0x1604 + sa2 * 0x42;
+                unsigned char *a2 = ARMY_REC(sa2);
                 if ((short)(unsigned char)a2[0x15] == curPlayer)
                     av2 += (short)(unsigned char)a2[0x14] * *(short *)(a2 + 0x2a);
             }
@@ -19998,7 +20020,7 @@ static short GetEffectiveUnitClass(short armyIdx)
     short unitClass;
     if (*gGameState == 0) return 0;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     unitClass = (short)(unsigned char)army[0x16];
     if (ArmyHasFlightItem(armyIdx)) unitClass = UNIT_CLASS_FLIGHT;
     return unitClass;
@@ -20048,7 +20070,7 @@ static void CheckGroundItemPickup(short armyIdx)
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     ax = *(short *)(army + 0x00);
     ay = *(short *)(army + 0x02);
 
@@ -20129,9 +20151,9 @@ static short AlliesTileUnits(short x, short y, short *own)
     unsigned char *gs = (unsigned char *)*gGameState;
     short n = *(short *)(gs + 0x1602), i, k, u = 0;
     *own = 0x0F;
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         short c = 0;
         if (*(short *)(a + 0) != x || *(short *)(a + 2) != y) continue;
         for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) c++;
@@ -20147,7 +20169,7 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
     short added = 0, hp, mv, owner;
     if (*gGameState == 0 || armyIdx < 0) return 0;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     owner = (short)(unsigned char)army[0x15];
     hp = GetUnitTypeStat(type, 0);
     mv = GetUnitTypeStat(type, 3);
@@ -20172,11 +20194,12 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
         }
         if (!placed) continue;
         /* each ally is a unit record of its own (FUN_10021434), never a
-         * slot of the hero's record; packing into a free slot is only the
-         * remake's fallback when the 100-record table is full */
-        if (*(short *)(gs + 0x1602) < 100) {
+         * slot of the hero's record; with the table full (MAX_ARMIES, the
+         * original's 1000) FUN_10021434 returns no record and the ally is lost */
+        {
             short n = *(short *)(gs + 0x1602);
-            dst = gs + 0x1604 + n * 0x42;
+            if (n < 0 || n >= MAX_ARMIES) continue;
+            dst = ARMY_REC(n);
             for (k = 0; k < 0x42; k++) dst[k] = 0;
             *(short *)(dst + 0) = x;
             *(short *)(dst + 2) = y;
@@ -20184,30 +20207,6 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
             *(short *)(dst + 0x34) = -1; *(short *)(dst + 0x36) = -1;
             for (k = 0; k < 4; k++) dst[0x16 + k] = 0xFF;
             dst[0x2e] = (unsigned char)mv;   /* FUN_10053838: current MP = the moves */
-            *(short *)(gs + 0x1602) = n + 1;
-            ds = 0;
-        }
-        if (dst == NULL && x == *(short *)(army + 0) && y == *(short *)(army + 2))
-            for (k = 0; k < 4; k++)
-                if ((unsigned char)army[0x16 + k] == 0xFF) { dst = army; ds = k; break; }
-        if (dst == NULL) {
-            short n = *(short *)(gs + 0x1602), r;
-            for (r = 0; r < n && r < 100 && dst == NULL; r++) {   /* a record of ours there with room */
-                unsigned char *a = gs + 0x1604 + r * 0x42;
-                if (*(short *)(a + 0) != x || *(short *)(a + 2) != y || (short)(unsigned char)a[0x15] != owner) continue;
-                for (k = 0; k < 4; k++) if (a[0x16 + k] == 0xFF) { dst = a; ds = k; break; }
-            }
-        }
-        if (dst == NULL) {
-            short n = *(short *)(gs + 0x1602);
-            if (n >= 100) continue;   /* FUN_10021434: no room, this ally lost */
-            dst = gs + 0x1604 + n * 0x42;
-            for (k = 0; k < 0x42; k++) dst[k] = 0;
-            *(short *)(dst + 0) = x;
-            *(short *)(dst + 2) = y;
-            dst[0x15] = army[0x15]; dst[0x2f] = army[0x2f];
-            *(short *)(dst + 0x34) = -1; *(short *)(dst + 0x36) = -1;
-            for (k = 0; k < 4; k++) dst[0x16 + k] = 0xFF;
             *(short *)(gs + 0x1602) = n + 1;
             ds = 0;
         }
@@ -20257,7 +20256,7 @@ static Boolean SiteGuardianFight(short armyIdx, unsigned char *site)
     if (guardType == 0) return true;
     if (*gGameState == 0 || armyIdx < 0) return true;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     ax = *(short *)(army + 0x00);
     ay = *(short *)(army + 0x02);
     for (u = 0; u < 4; u++)
@@ -20274,9 +20273,9 @@ static Boolean SiteGuardianFight(short armyIdx, unsigned char *site)
     }
     guardianStr = (guardType <= 9) ? sGuardStr[guardType] : 0;
     ac = *(short *)(gs + 0x1602);
-    if (ac > 100) ac = 100;
+    if (ac > MAX_ARMIES) ac = MAX_ARMIES;
     for (u = 0; u < ac; u++) {
-        unsigned char *a = gs + 0x1604 + u * 0x42;
+        unsigned char *a = ARMY_REC(u);
         if (*(short *)(a + 0x00) != ax || *(short *)(a + 0x02) != ay) continue;
         for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) units++;
     }
@@ -20451,7 +20450,7 @@ static short SearchSiteReward(short armyIdx, short siteIdx,
     *outGold = 0; *outItemId = 0; *outAllyType = 0; *outAllies = 0;
     if (*gGameState == 0 || armyIdx < 0 || siteIdx < 0) return SITE_EMPTY;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     site = sCityData + siteIdx * 0x20;
     owner = (short)(unsigned char)army[0x15];
     kind = SITE_KIND(site);
@@ -20511,7 +20510,7 @@ static void ShowItemsDialog(short armyIdx)
 
     if (*gGameState == 0) return;
     gs = (unsigned char *)*gGameState;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
 
     SetRect(&winR, 0, 0, 320, 240);
     OffsetRect(&winR, (qd.screenBits.bounds.right - 320) / 2,
@@ -20551,8 +20550,8 @@ static void ShowItemsDialog(short armyIdx)
         TextFont(2); TextSize(14); TextFace(bold);
 
         /* Get hero name */
-        if (armyIdx < 100) {
-            heroName = gs + 0x1604 + armyIdx * 0x42 + 0x04;
+        if (armyIdx < MAX_ARMIES) {
+            heroName = ARMY_REC(armyIdx) + 0x04;
             len = 0;
             while (len < 15 && heroName[len] != 0) len++;
             hname[0] = (unsigned char)len;
@@ -20770,9 +20769,9 @@ static void ShowHeroInspect(void)
     gs = (unsigned char *)*gGameState;
     cur = *(short *)(gs + 0x110);
     ac = *(short *)(gs + 0x1602);
-    if (ac > 100) ac = 100;
+    if (ac > MAX_ARMIES) ac = MAX_ARMIES;
     for (i = 0; i < ac && nh < 40; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         if ((short)(unsigned char)a[0x15] != cur) continue;
         for (k = 0; k < 4; k++)
             if (a[0x16 + k] == 0x1C) {
@@ -20792,7 +20791,7 @@ static void ShowHeroInspect(void)
     if (win == NULL) return;
     while (!done) {
         if (redraw) {
-            unsigned char *a = gs + 0x1604 + heroArmy[idx] * 0x42;
+            unsigned char *a = ARMY_REC(heroArmy[idx]);
             short u = heroSlot[idx], hx = *(short *)(a + 0), hy = *(short *)(a + 2);
             short bB, cB, gB, n = 0, ci, near = -1, inCity = 0;
             Boolean fB, mB;
@@ -20815,7 +20814,7 @@ static void ShowHeroInspect(void)
             {
                 short slots[8], owners[8], q;
                 for (q = 0; q < ac && n < 8; q++) {
-                    unsigned char *b = gs + 0x1604 + q * 0x42;
+                    unsigned char *b = ARMY_REC(q);
                     if ((short)(unsigned char)b[0x15] != cur || *(short *)(b + 0) != hx || *(short *)(b + 2) != hy) continue;
                     for (k = 0; k < 4 && n < 8; k++) if (b[0x16 + k] != 0xFF) { slots[n] = b[0x16 + k]; owners[n++] = cur; }
                 }
@@ -20968,7 +20967,7 @@ static short GetXPForNextLevel(short xp)
 /* Female hero name indices (Brynhild, Thundra, Silvara, Ravenna, Elandra) */
 static Boolean IsHeroFemale(short armyIdx)
 {
-    if (*gGameState == 0 || armyIdx < 0 || armyIdx >= 100) return false;
+    if (*gGameState == 0 || armyIdx < 0 || armyIdx >= MAX_ARMIES) return false;
     {
         unsigned char *gs = (unsigned char *)*gGameState;
         /* 68k CODE_063/CODE_044: gender flag table at gs+0x594 + slot*2.
@@ -21055,7 +21054,7 @@ static void ShowHeroLevels(void)
             RGBColor bg = {0xDDDD, 0xDDDD, 0xEEEE};
             Str255 numStr;
 
-            if (armyCount > 100) armyCount = 100;
+            if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
             GetGWorld(&sp, &sd);
             SetGWorld(offGW, NULL);
@@ -21092,7 +21091,7 @@ static void ShowHeroLevels(void)
 
             /* Hero rows */
             for (ai = 0; ai < armyCount && heroCount < 8; ai++) {
-                unsigned char *army = gs + 0x1604 + ai * 0x42;
+                unsigned char *army = ARMY_REC(ai);
                 short owner = (short)(unsigned char)army[0x15];
                 short u;
                 if (owner != curPlayer) continue;
@@ -21119,7 +21118,7 @@ static void ShowHeroLevels(void)
 
                         /* Hero name */
                         {
-                            unsigned char *heroName = gs + 0x1604 + ai * 0x42 + 0x04;
+                            unsigned char *heroName = ARMY_REC(ai) + 0x04;
                             short len = 0;
                             while (len < 15 && heroName[len] != 0) len++;
                             hname[0] = (unsigned char)len;
@@ -21632,7 +21631,7 @@ static void ShowStackDialog(void)
 
                 if (si < sStackCount) {
                     short aidx = sStackArmyIdx[si];
-                    unsigned char *army = gs + 0x1604 + aidx * 0x42;
+                    unsigned char *army = ARMY_REC(aidx);
                     short uType = (short)(unsigned char)army[0x16];
                     short owner = (short)(unsigned char)army[0x15];
                     short strength = *(short *)(army + 0x2a);
@@ -21919,9 +21918,9 @@ static void MoveAllRunOrders(short lead)
 {
     unsigned char *gs = (unsigned char *)*gGameState, *a;
     short n = *(short *)(gs + 0x1602), len, k;
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     if (lead < 0 || lead >= n) return;
-    a = gs + 0x1604 + lead * 0x42;
+    a = ARMY_REC(lead);
     if (*(short *)(a + 0x32) == 0) return;
     len = ComputeWavefrontPath(*(short *)(a + 0x00), *(short *)(a + 0x02),
                                *(short *)(a + 0x34), *(short *)(a + 0x36), lead);
@@ -21933,7 +21932,7 @@ static void MoveAllRunOrders(short lead)
     ExecutePathSteps(lead);
     if (sPathResult == 2)                                /* FUN_100562e0 */
         for (k = 0; k < sPathMoverCount; k++)
-            if (sPathMovers[k] >= 0 && sPathMovers[k] < 100) sArmySkip[sPathMovers[k]] = 1;
+            if (sPathMovers[k] >= 0 && sPathMovers[k] < MAX_ARMIES) sArmySkip[sPathMovers[k]] = 1;
 }
 
 static void MoveAllArmies(void)
@@ -21946,10 +21945,10 @@ static void MoveAllArmies(void)
     currentPlayer = *(short *)(gs + 0x110);
     NextGroupTurnSync();
 
-    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    n = *(short *)(gs + 0x1602); if (n > MAX_ARMIES) n = MAX_ARMIES;
     if (sSelectedArmy >= 0 && sSelectedArmy < n &&
-        (short)(unsigned char)(gs + 0x1604 + sSelectedArmy * 0x42)[0x15] == currentPlayer &&
-        *(short *)(gs + 0x1604 + sSelectedArmy * 0x42 + 0x32) != 0) {
+        (short)(unsigned char)(ARMY_REC(sSelectedArmy))[0x15] == currentPlayer &&
+        *(short *)(ARMY_REC(sSelectedArmy) + 0x32) != 0) {
         BuildStackArrays(sSelectedArmy);
         MoveAllRunOrders(sSelectedArmy);
         lastLead = sSelectedArmy;
@@ -21957,11 +21956,11 @@ static void MoveAllArmies(void)
 
     for (;;) {
         unsigned char *a;
-        n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+        n = *(short *)(gs + 0x1602); if (n > MAX_ARMIES) n = MAX_ARMIES;
         best = -1; bestD = 10000;
         for (i = n - 1; i >= 0; i--) {
             short d, ax, ay;
-            a = gs + 0x1604 + i * 0x42;
+            a = ARMY_REC(i);
             if ((short)(unsigned char)a[0x15] != currentPlayer || a[0x16] == 0xFF) continue;
             ax = *(short *)(a + 0x00); ay = *(short *)(a + 0x02);
             if (ax < 0) continue;
@@ -21972,7 +21971,7 @@ static void MoveAllArmies(void)
             if (d < bestD) { bestD = d; best = i; }
         }
         if (best < 0) break;
-        a = gs + 0x1604 + best * 0x42;
+        a = ARMY_REC(best);
         sAILastX = *(short *)(a + 0x00); sAILastY = *(short *)(a + 0x02);
         sArmyVisited[best] = 1;
         if (*(short *)(a + 0x32) == 0) continue;
@@ -21980,7 +21979,7 @@ static void MoveAllArmies(void)
             unsigned char *fo = gs + 0x60C + currentPlayer * 0x1D;
             short lead = best, bestKey = -1, tag = a[0x11];
             for (i = 0; i < n; i++) {
-                unsigned char *b = gs + 0x1604 + i * 0x42;
+                unsigned char *b = ARMY_REC(i);
                 short key;
                 if (b[0x16] == 0xFF || (short)(unsigned char)b[0x15] != currentPlayer) continue;
                 if (*(short *)(b + 0) != *(short *)(a + 0) || *(short *)(b + 2) != *(short *)(a + 2)) continue;
@@ -21992,16 +21991,16 @@ static void MoveAllArmies(void)
             sSelectedArmy = lead;
             BuildStackArrays(lead);
             SelectGroupFlags();
-            RevealTile(*(short *)(gs + 0x1604 + lead * 0x42 + 0x00), *(short *)(gs + 0x1604 + lead * 0x42 + 0x02));
+            RevealTile(*(short *)(ARMY_REC(lead) + 0x00), *(short *)(ARMY_REC(lead) + 0x02));
             MoveAllRunOrders(lead);
             lastLead = lead;
         }
     }
 
     /* the last stack picked stays selected (when it is still there) */
-    n = *(short *)(gs + 0x1602); if (n > 100) n = 100;
+    n = *(short *)(gs + 0x1602); if (n > MAX_ARMIES) n = MAX_ARMIES;
     if (lastLead >= 0 && sSelectedArmy >= 0 && sSelectedArmy < n &&
-        (short)(unsigned char)(gs + 0x1604 + sSelectedArmy * 0x42)[0x15] == currentPlayer)
+        (short)(unsigned char)(ARMY_REC(sSelectedArmy))[0x15] == currentPlayer)
         BuildStackArrays(sSelectedArmy);
     else if (lastLead >= 0) { sSelectedArmy = -1; sStackCount = 0; }
     sPreviewPathLen = 0; sPreviewGridValid = false;
@@ -22425,9 +22424,9 @@ static void ShowArmySelection_REMOVED(short playerIdx)
     {
         short armyCount = *(short *)(gs + 0x1602);
         short ai;
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         for (ai = 0; ai < armyCount; ai++) {
-            unsigned char *army = gs + 0x1604 + ai * 0x42;
+            unsigned char *army = ARMY_REC(ai);
             short owner = (short)(unsigned char)army[0x15];
             if (owner == playerIdx) {
                 /* Set 2 units of the selected type */
@@ -22630,9 +22629,9 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
         short armyCount = *(short *)(gs + 0x1602);
         short totalHeroes = 0, myHeroes = 0;
         short ai;
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         for (ai = 0; ai < armyCount; ai++) {
-            unsigned char *a = gs + 0x1604 + ai * 0x42;
+            unsigned char *a = ARMY_REC(ai);
             short k;
             for (k = 0; k < 4; k++)                 /* every hero unit (FUN_10032a24) */
                 if ((unsigned char)a[0x16 + k] == 0x1C) {
@@ -23029,7 +23028,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 
         {
             short armyCount = *(short *)(gs + 0x1602);
-            unsigned char *armyBase = gs + 0x1604 + armyCount * 0x42;
+            unsigned char *armyBase = ARMY_REC(armyCount);
             short b;
 
             for (b = 0; b < 0x42; b++)
@@ -23786,9 +23785,9 @@ cityLoop:
                     short outT[2] = {-1, -1}, inT[2][4], nOut = 0, nIn[2] = {0, 0}, q, an;
                     unsigned char *g2 = (unsigned char *)*gGameState;
                     an = *(short *)(g2 + 0x1602);
-                    if (an > 100) an = 100;
+                    if (an > MAX_ARMIES) an = MAX_ARMIES;
                     for (q = 0; q < an; q++) {
-                        unsigned char *ta = g2 + 0x1604 + q * 0x42;
+                        unsigned char *ta = ARMY_REC(q);
                         short row;
                         if ((short)(unsigned char)ta[0x15] != curPlayer || *(short *)(ta + 0) != -1) continue;
                         if (ta[0x30] != 'e' && ta[0x30] != 'f') continue;
@@ -24528,7 +24527,7 @@ static void AIShowStack(short armyIdx)
     unsigned long t;
     EventRecord ev;
     if (!AIMovesShown() || *gGameState == 0) return;
-    a = (unsigned char *)*gGameState + 0x1604 + armyIdx * 0x42;
+    a = ARMY_REC(armyIdx);
     t = TickCount();
     sSelectedArmy = armyIdx; sStackCount = 0;
     sHaloFrame = 0;
@@ -24564,11 +24563,11 @@ static short SplitUnitsOff(short idx, short nLeave)
     unsigned char *gs = (unsigned char *)*gGameState;
     short n = *(short *)(gs + 0x1602), have = 0, k, put = 0;
     unsigned char *a, *b;
-    if (n >= 100 || nLeave <= 0) return -1;
-    a = gs + 0x1604 + idx * 0x42;
+    if (n >= MAX_ARMIES || nLeave <= 0) return -1;
+    a = ARMY_REC(idx);
     for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) have++;
     if (nLeave >= have) return -1;
-    b = gs + 0x1604 + n * 0x42;
+    b = ARMY_REC(n);
     for (k = 0; k < 0x42; k++) b[k] = 0;
     *(short *)(b + 0) = *(short *)(a + 0);
     *(short *)(b + 2) = *(short *)(a + 2);
@@ -24601,10 +24600,10 @@ static void AIGiveInitialHero(short p)
     short n = *(short *)(gs + 0x1602), cx, cy, j, nameIdx, nlen;
     unsigned char *h;
     const unsigned char *name;
-    if (n >= 100) return;
+    if (n >= MAX_ARMIES) return;
     GetCapitalXY(p, &cx, &cy);
     if (cx <= 0 && cy <= 0) return;
-    h = gs + 0x1604 + n * 0x42;
+    h = ARMY_REC(n);
     for (j = 0; j < 0x42; j++) h[j] = 0;
     *(short *)(h + 0) = cx; *(short *)(h + 2) = cy;
     h[0x15] = (unsigned char)p; h[0x2f] = (unsigned char)p;
@@ -24676,7 +24675,7 @@ static short UnitStatLE(short t, short k)
  * =================================================================== */
 #define AI_MAX_CITIES 140
 #define AI_NB         6
-#define AI_MAX_RECS   100
+#define AI_MAX_RECS   MAX_ARMIES
 
 typedef struct { short rec, slot; } AIUnit;           /* one unit = a record slot */
 typedef struct { short rec[8]; short n; } AIStack;     /* the current stack (records) */
@@ -24776,7 +24775,7 @@ static const short kAIRingDirs[13] = {0, 2, 2, 4, 4, 4, 6, 6, 6, 0, 0, 0, -1};  
 /* small accessors                                                     */
 /* ------------------------------------------------------------------ */
 #define AI_GS   ((unsigned char *)*gGameState)
-#define AI_REC(i) (AI_GS + 0x1604 + (i) * 0x42)
+#define AI_REC(i) ARMY_REC(i)
 #define AI_CITY(ci) (sCityData + (ci) * 0x20)
 #define AI_EXT(ci) ((unsigned char *)*gExtState + 0x24c + (ci) * 0x5c)
 
@@ -24879,11 +24878,11 @@ static short PlayerIncome(short p)
         cities++;
     }
     n = *(short *)(gs + 0x1602);
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (i = 0; i < n; i++) {
         short battle, command, goldB;
         Boolean flying, dblMove;
-        if ((short)(unsigned char)(gs + 0x1604 + i * 0x42)[0x15] != p) continue;
+        if ((short)(unsigned char)(ARMY_REC(i))[0x15] != p) continue;
         GetHeroItemBonus(i, &battle, &command, &goldB, &flying, &dblMove);
         if (goldB > 0) goldItems += goldB;
     }
@@ -24898,9 +24897,9 @@ static short PlayerUpkeep(short p)
 {
     unsigned char *gs = (unsigned char *)*gGameState;
     short n = *(short *)(gs + 0x1602), i, k, sum = 0;
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (i = 0; i < n; i++) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         if ((short)(unsigned char)a[0x15] != p) continue;
         if (*(short *)(a + 0) < 0 || *(short *)(a + 2) < 0) continue;
         for (k = 0; k < 4; k++) {
@@ -25824,7 +25823,7 @@ static void AIBattleGather(Battle *b, const AIStack *s, short tx, short ty)
     b->nAtt = b->nDef = 0;
     for (i = 0; i < s->n; i++) BattleAddRecord(b->att, &b->nAtt, BATTLE_ATT_MAX, s->rec[i], onWater);
     for (i = n - 1; i >= 0; i--) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         short ox = *(short *)(a + 0x00), oy = *(short *)(a + 0x02);
         if ((short)(unsigned char)a[0x15] == sAIMe || a[0x16] == 0xFF) continue;
         if (!((ox == tx && oy == ty) ||
@@ -27292,7 +27291,7 @@ static void AIHeroOffer(short aiPlayer)
     unsigned char *gs = (unsigned char *)*gGameState;
     short armyCount = *(short *)(gs + 0x1602), cityCount = sCityCount, ci;
     short cnt = 0, totalH = 0, myH = 0, cap, heroCost, kth, n = 1, pickCity = -1, r, k;
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     if (cityCount > 139) cityCount = 139;
     if (*(short *)(gs + 0x15e) != 0) return;
     if (AITurn() == 1) { AIGiveInitialHero(aiPlayer); return; }   /* turn 1: the free hero */
@@ -27300,7 +27299,7 @@ static void AIHeroOffer(short aiPlayer)
         if (sCityData[ci * 0x20 + 0x17] < 2 && *(short *)(sCityData + ci * 0x20 + 0x04) == aiPlayer) cnt++;
     cap = (cnt >= 40) ? 6 : 5;
     for (r = armyCount - 1; r >= 0; r--) {
-        unsigned char *a2 = gs + 0x1604 + r * 0x42;
+        unsigned char *a2 = ARMY_REC(r);
         for (k = 0; k < 4; k++)
             if (a2[0x16 + k] == 0x1C) { totalH++; if ((short)(unsigned char)a2[0x15] == aiPlayer) myH++; }
     }
@@ -27336,8 +27335,8 @@ static void AIHeroOffer(short aiPlayer)
                 short cx = *(short *)(city + 0x00);
                 short cy = *(short *)(city + 0x02);
                 armyCount = *(short *)(gs + 0x1602);
-                if (armyCount < 100) {
-                    unsigned char *newHero = gs + 0x1604 + armyCount * 0x42;
+                if (armyCount < MAX_ARMIES) {
+                    unsigned char *newHero = ARMY_REC(armyCount);
                     short j;
                     for (j = 0; j < 0x42; j++) newHero[j] = 0;
                     *(short *)(newHero + 0x00) = cx;
@@ -29763,9 +29762,9 @@ static void ShowVoiceAdvisor(short p)
     } else {
         short gold = *(short *)(gs + 0x186 + p * 0x14), heroes = 0, n = *(short *)(gs + 0x1602), ai;
         if (turn % 7 != 0) return;
-        if (n > 100) n = 100;
+        if (n > MAX_ARMIES) n = MAX_ARMIES;
         for (ai = 0; ai < n; ai++) {
-            unsigned char *a = gs + 0x1604 + ai * 0x42;
+            unsigned char *a = ARMY_REC(ai);
             if ((short)(unsigned char)a[0x15] != p) continue;
             for (k = 0; k < 4; k++) if (a[0x16 + k] == 0x1C) heroes++;
         }
@@ -29976,9 +29975,9 @@ static void ProcessNeutralCities(void)
             short mv = CitySlotStat(ci, prod, 3), hp = CitySlotStat(ci, prod, 0), merged = -1;
             if (*(short *)(gs + 0xf0 + (sAIMe & 7) * 2) != 0) { hp += 2; if (hp > 9) hp = 9; }
             armyCount = *(short *)(gs + 0x1602);
-            if (armyCount > 100) armyCount = 100;
+            if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
             for (ai = 0; ai < armyCount && merged < 0; ai++) {
-                unsigned char *a = gs + 0x1604 + ai * 0x42;
+                unsigned char *a = ARMY_REC(ai);
                 short k;
                 if (*(short *)(a + 0x00) != cx || *(short *)(a + 0x02) != cy) continue;
                 if ((unsigned char)a[0x15] != 0x0F) continue;
@@ -29994,8 +29993,8 @@ static void ProcessNeutralCities(void)
                         break;
                     }
             }
-            if (merged < 0 && armyCount < 100) {
-                unsigned char *a = gs + 0x1604 + armyCount * 0x42;
+            if (merged < 0 && armyCount < MAX_ARMIES) {
+                unsigned char *a = ARMY_REC(armyCount);
                 SpawnCityUnits(ci, 0x0F, prod, 1, false);
                 a[0x1a] = (unsigned char)mv;
                 a[0x1e] = (unsigned char)hp;
@@ -30010,9 +30009,9 @@ static void ProcessNeutralCities(void)
         /* idle (FUN_1001e4b0) and fewer than four units on the anchor tile */
         if (AICityProducing(ci)) continue;
         armyCount = *(short *)(gs + 0x1602);
-        if (armyCount > 100) armyCount = 100;
+        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
         for (ai = 0; ai < armyCount; ai++) {
-            unsigned char *a = gs + 0x1604 + ai * 0x42;
+            unsigned char *a = ARMY_REC(ai);
             short k;
             if (*(short *)(a + 0x00) != cx || *(short *)(a + 0x02) != cy) continue;
             for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) units++;
@@ -30028,13 +30027,13 @@ static void HeroLevelUps(short player)
     unsigned char *gs = (unsigned char *)*gGameState;
     short armyCount = *(short *)(gs + 0x1602), i;
     short isHuman = (*(short *)(gs + 0xd0 + player * 2) == 0);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     /* --- 0d. Hero level-up check (68k CODE_080 FUN_000008b8) ---
      * 68k checks hero XP at turn start (not during combat). If XP crosses
      * threshold (15/30/60), award +2 base movement and show ceremony.
      * army[0x31] tracks the "applied level" to detect pending level-ups. */
     for (i = 0; i < armyCount; i++) {
-        unsigned char *army = gs + 0x1604 + i * 0x42;
+        unsigned char *army = ARMY_REC(i);
         short hs;
         if ((short)(unsigned char)army[0x15] != player) continue;
         for (hs = 0; hs < 4; hs++) if ((unsigned char)army[0x16 + hs] == 0x1C) break;
@@ -30127,7 +30126,7 @@ static Boolean TransitArrivalTile(short player, short dst, short type, short *ou
     unsigned char *c;
     short n = *(short *)(gs + 0x1602), t, i, k, x = 0, y = 0, units, ci, cc = sCityCount;
     if (dst < 0 || dst >= sCityCount || dst >= 139) return false;
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     if (cc > 139) cc = 139;
     c = sCityData + dst * 0x20;
     /* FUN_1004a350(city, 0): the first of the city's four tiles with < 8 units */
@@ -30135,7 +30134,7 @@ static Boolean TransitArrivalTile(short player, short dst, short type, short *ou
         x = *(short *)(c + 0) + dx[t]; y = *(short *)(c + 2) + dy[t];
         units = 0;
         for (i = 0; i < n; i++) {
-            unsigned char *a = gs + 0x1604 + i * 0x42;
+            unsigned char *a = ARMY_REC(i);
             if (*(short *)(a + 0) != x || *(short *)(a + 2) != y) continue;
             for (k = 0; k < 4; k++) if (a[0x16 + k] != 0xFF) units++;
         }
@@ -30166,9 +30165,9 @@ static void ProcessVectorTransit(short player)
 {
     unsigned char *gs = (unsigned char *)*gGameState;
     short n = *(short *)(gs + 0x1602), i;
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     for (i = n - 1; i >= 0; i--) {
-        unsigned char *a = gs + 0x1604 + i * 0x42;
+        unsigned char *a = ARMY_REC(i);
         short tx, ty, dst, org;
         if ((short)(unsigned char)a[0x15] != player) continue;
         if (*(short *)(a + 0) != -1 || *(short *)(a + 2) != -1) continue;
@@ -30220,7 +30219,7 @@ static void ProcessStartOfTurn(short player)
     cityCount = sCityCount;
     armyCount = *(short *)(gs + 0x1602);
     if (cityCount > 139) cityCount = 139;
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
     /* --- 0. Capital recalculation (68k CODE_080 FUN_00000714) ---
      * If a player's home city was captured, reassign capital to nearest friendly city. */
@@ -30363,9 +30362,9 @@ static void ProcessStartOfTurn(short player)
      * its boats therefore starts the next turn landed with land MP. --- */
     {
         short n = *(short *)(gs + 0x1602);
-        if (n > 100) n = 100;
+        if (n > MAX_ARMIES) n = MAX_ARMIES;
         for (i = 0; i < n; i++) {
-            unsigned char *a = gs + 0x1604 + i * 0x42;
+            unsigned char *a = ARMY_REC(i);
             if ((short)(unsigned char)a[0x15] != player) continue;
             if (*(short *)(a + 0) < 0 || *(short *)(a + 2) < 0) continue;
             if (!(a[0x2C] & ARMY_EMBARKED_BIT)) continue;
@@ -30392,7 +30391,7 @@ static void ProcessStartOfTurn(short player)
     /* --- 2a. Vectoring transit (FUN_1004a854's first pass) --- */
     ProcessVectorTransit(player);
     armyCount = *(short *)(gs + 0x1602);
-    if (armyCount > 100) armyCount = 100;
+    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
     /* The human path runs production after the MP reset (FUN_10065b2c ->
      * state machine): a new unit keeps its moves.  The computer's runs it
@@ -30458,13 +30457,11 @@ static void ProcessStartOfTurn(short player)
                      * 2x2 tiles holding fewer than 8 units (FUN_1002122c); a
                      * full city produces nothing and its timer stays 0
                      * (FUN_1004a854 skips it, FUN_1004af7c re-arms only the
-                     * cities that produced).  Merging into a record's free
-                     * slot is only the remake's fallback when the 100-record
-                     * table is full. */
-                    short mergeIdx = -1;
+                     * cities that produced).  With the unit table full
+                     * (MAX_ARMIES, FUN_10021434's 1000) no record is made:
+                     * nothing is produced and the city stalls the same way. */
                     short newIdx = -1;
                     short spawnX = cx, spawnY = cy;
-                    short ai;
                     if (!vectored)
                     { static const short adjDX[4] = {0, 1, 0, 1};
                       static const short adjDY[4] = {0, 0, 1, 1};
@@ -30481,16 +30478,6 @@ static void ProcessStartOfTurn(short player)
                           *(short *)(extCity + 0x58) = 0;
                           continue;
                       }
-                      if (armyCount >= 100) {
-                          for (ai = 0; ai < armyCount && mergeIdx < 0; ai++) {
-                              unsigned char *a = gs + 0x1604 + ai * 0x42;
-                              short slot;
-                              if (*(short *)(a + 0x00) != spawnX || *(short *)(a + 0x02) != spawnY ||
-                                  (short)(unsigned char)a[0x15] != player) continue;
-                              for (slot = 0; slot < 4; slot++)
-                                  if (a[0x16 + slot] == 0xFF) { mergeIdx = ai; break; }
-                          }
-                      }
                     }
 
                     if (vectored) {
@@ -30498,8 +30485,8 @@ static void ProcessStartOfTurn(short player)
                          * 'e' in a[0x30], the destination city in a[0x31], the
                          * origin city in a[0x27] (an empty slot's XP byte);
                          * PPC FUN_1004a5f0's stats and upkeep */
-                        if (armyCount < 100) {
-                            unsigned char *a = gs + 0x1604 + armyCount * 0x42;
+                        if (armyCount < MAX_ARMIES) {
+                            unsigned char *a = ARMY_REC(armyCount);
                             short j2;
                             for (j2 = 0; j2 < 0x42; j2++) a[j2] = 0;
                             *(short *)(a + 0x00) = -1;
@@ -30535,46 +30522,9 @@ static void ProcessStartOfTurn(short player)
                             *(short *)(gs + 0x1602) = armyCount;
                             newIdx = armyCount - 1;
                         }
-                    } else if (mergeIdx >= 0) {
-                        /* Merge into existing army's empty slot */
-                        unsigned char *a = gs + 0x1604 + mergeIdx * 0x42;
-                        short slot;
-                        for (slot = 0; slot < 4; slot++) {
-                            if (a[0x16 + slot] == 0xFF) {
-                                a[0x16 + slot] = (unsigned char)prodType;
-                                /* Set movement and HP from unit type table */
-                                if (sUnitTypesLoaded && prodType < sUnitTypeCount) {
-                                    /* 68k CODE_080 FUN_00001858: produced units get FULL movement */
-                                    /* PPC FUN_1004a5f0: moves and strength from the CITY SLOT */
-                                    short fullMov = CitySlotStat(i, prodType, 3);
-                                    a[0x1a + slot] = (unsigned char)fullMov;
-                                    a[0x1e + slot] = (unsigned char)CitySlotStat(i, prodType, 0); /* HP */
-                                } else {
-                                    a[0x1a + slot] = 8;
-                                    a[0x1e + slot] = 3;
-                                }
-                                /* PPC FUN_1004a5f0: the slot's cost/2 is the unit's
-                                 * UPKEEP (+0xB), never a combat value */
-                                a[A_UPKEEP + slot] = SlotUpkeep(i, prodType);
-                                a[0x26 + slot] = 0;  /* experience: fresh unit */
-                                /* Tech upgrade bonus (68k CODE_080 FUN_00001858):
-                                 * If player's tech flag at gs+0xf0+player*2 is nonzero,
-                                 * newly produced units get +2 HP, capped at 9. */
-                                if (*(short *)(gs + 0xf0 + player * 2) != 0) {
-                                    short hp = (short)a[0x1e + slot] + 2;
-                                    if (hp > 9) hp = 9;
-                                    a[0x1e + slot] = (unsigned char)hp;
-                                }
-                                /* a new unit has full MP (FUN_1004a5f0); the stack's
-                                 * MP is not reduced by it */
-                                /* Recalculate stack strength */
-                                RecalcArmyStrength(a);
-                                break;
-                            }
-                        }
-                    } else if (armyCount < 100) {
+                    } else if (armyCount < MAX_ARMIES) {
                         /* Create new army at the tile FUN_1004a350 chose above */
-                        unsigned char *a = gs + 0x1604 + armyCount * 0x42;
+                        unsigned char *a = ARMY_REC(armyCount);
                         short j2;
 
                         /* Clear the record */
@@ -30646,13 +30596,13 @@ static void ProcessStartOfTurn(short player)
 
 
                     if (*(short *)(gs + 0xd0 + player * 2) == 0 &&
-                        (mergeIdx >= 0 || newIdx >= 0) && sProdThisTurn < 30) {
+                        newIdx >= 0 && sProdThisTurn < 30) {
                         sProdTypes[sProdThisTurn] = prodType;
                         sProdCity[sProdThisTurn++] = i;
                     }
                     /* Notify human player of completed production */
                     if (*(short *)(gs + 0xd0 + player * 2) == 0 &&
-                        (mergeIdx >= 0 || newIdx >= 0)) {
+                        newIdx >= 0) {
                         Str255 prodMsg;
                         Str255 unitName;
                         short ml = 0;
@@ -30689,7 +30639,7 @@ static void ProcessStartOfTurn(short player)
                      * path restarts it (FUN_1004af7c).  A computer's city
                      * waits for the AI to set production again (FUN_1001e674,
                      * refused below cost + 30 gold after turn 5). */
-                    if ((mergeIdx >= 0 || newIdx >= 0) && isHuman) {
+                    if (newIdx >= 0 && isHuman) {
                         timer = CitySlotStat(i, prodType, 1);
                     } else {
                         timer = 0;  /* computer: idle; no spawn: stalled */
@@ -30703,7 +30653,7 @@ static void ProcessStartOfTurn(short player)
     /* --- 2b. Cleanup empty army records (68k CODE_080 FUN_00000098) ---
      * Remove armies with no living units (all slots 0xFF). */
     for (i = 0; i < armyCount; i++) {
-        unsigned char *army = gs + 0x1604 + i * 0x42;
+        unsigned char *army = ARMY_REC(i);
         if ((short)(unsigned char)army[0x15] != player) continue;
         if (army[0x16] == 0xFF) continue;
         {
@@ -30733,7 +30683,7 @@ static void ProcessStartOfTurn(short player)
         short t;
         for (t = 0; t < 256; t++) tagCount[t] = 0;
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             short k;
             if ((short)(unsigned char)army[0x15] != player) continue;
             if (army[0x16] == 0xFF || *(short *)(army + 0x00) < 0) continue;
@@ -30741,7 +30691,7 @@ static void ProcessStartOfTurn(short player)
             for (k = 0; k < 4; k++) if (army[0x16 + k] != 0xFF) tagCount[army[0x11]]++;
         }
         for (i = 0; i < armyCount; i++) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             if ((short)(unsigned char)army[0x15] != player) continue;
             if (army[0x16] == 0xFF || *(short *)(army + 0x00) < 0) continue;
             if (army[0x11] >= 2 && army[0x11] != 0xFF && tagCount[army[0x11]] == 1)
@@ -30760,7 +30710,7 @@ static void ProcessStartOfTurn(short player)
      * before its reset); the human's are not.  A unit merged into an
      * existing record is not covered: the remake's MP is per record. */
     for (i = 0; i < (isHuman ? preProductionArmyCount : armyCount); i++) {
-        unsigned char *army = gs + 0x1604 + i * 0x42;
+        unsigned char *army = ARMY_REC(i);
         short baseMov, curMov;
         if ((short)(unsigned char)army[0x15] != player) continue;
         if (army[0x16] == 0xFF) continue;
@@ -30810,7 +30760,7 @@ static void ProcessStartOfTurn(short player)
      * items, builds group at position, curMov += baseMov for each.
      * Part of the MP reset (FUN_10064f24): the same records as above. */
     for (i = 0; i < (isHuman ? preProductionArmyCount : armyCount); i++) {
-        unsigned char *army = gs + 0x1604 + i * 0x42;
+        unsigned char *army = ARMY_REC(i);
         short ax, ay;
         if ((short)(unsigned char)army[0x15] != player) continue;
         if (army[0x16] == 0xFF) continue;
@@ -30828,7 +30778,7 @@ static void ProcessStartOfTurn(short player)
         /* Apply bonus to ALL armies at this tile (68k group mechanism) */
         { short j;
           for (j = 0; j < (isHuman ? preProductionArmyCount : armyCount); j++) {
-              unsigned char *ga = gs + 0x1604 + j * 0x42;
+              unsigned char *ga = ARMY_REC(j);
               if ((short)(unsigned char)ga[0x15] != player) continue;
               if (ga[0x16] == 0xFF) continue;
               if (*(short *)(ga + 0x00) == ax && *(short *)(ga + 0x02) == ay) {
@@ -30860,7 +30810,7 @@ static void ProcessStartOfTurn(short player)
         /* the human's production and transit arrivals come after its
          * fortify, the computer's before */
         for (i = (isHuman ? preProductionArmyCount : armyCount) - 1; i >= 0; i--) {
-            unsigned char *army = gs + 0x1604 + i * 0x42;
+            unsigned char *army = ARMY_REC(i);
             short ax2 = *(short *)(army + 0x00), ay2 = *(short *)(army + 0x02);
             unsigned char ttype;
             Boolean shouldFortify;
@@ -30881,7 +30831,7 @@ static void ProcessStartOfTurn(short player)
 
     /* --- 3d. FUN_100558f8: unit status 0x40 / 0x200 cleared, both paths --- */
     for (i = 0; i < armyCount; i++) {
-        unsigned char *army = gs + 0x1604 + i * 0x42;
+        unsigned char *army = ARMY_REC(i);
         if ((short)(unsigned char)army[0x15] != player || army[0x16] == 0xFF) continue;
         *(short *)(army + 0x2c) &= ~0x0240;
     }
@@ -30920,8 +30870,8 @@ static void EliminateDeadPlayers(void)
         }
         if (cities > 0) continue;
         for (ri = *(short *)(gs + 0x1602) - 1; ri >= 0; ri--) {
-            if (ri >= 100) continue;
-            if ((short)(unsigned char)*(gs + 0x1604 + ri * 0x42 + 0x15) == p)
+            if (ri >= MAX_ARMIES) continue;
+            if ((short)(unsigned char)*(ARMY_REC(ri) + 0x15) == p)
                 RemoveArmy(ri);
         }
         *(short *)(gs + 0x186 + p * 0x14) = 0;
@@ -31193,7 +31143,7 @@ static void AdvanceToNextPlayer(void)
                 Str255 ns;
 
                 if (cityCount > 139) cityCount = 139;
-                if (armyCount > 100) armyCount = 100;
+                if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
                 SetRect(&sumR, 0, 0, 360, 200);
                 OffsetRect(&sumR, (qd.screenBits.bounds.right - 360) / 2,
@@ -31257,7 +31207,7 @@ static void AdvanceToNextPlayer(void)
                             if (*(short *)(c + 0x04) == pi) yCities++;
                         }
                         for (ai2 = 0; ai2 < armyCount; ai2++) {
-                            unsigned char *a = gs + 0x1604 + ai2 * 0x42;
+                            unsigned char *a = ARMY_REC(ai2);
                             if ((short)(unsigned char)a[0x15] == pi) yArmies++;
                         }
                         gold = *(short *)(gs + 0x186 + pi * 0x14);
@@ -31423,9 +31373,9 @@ static void AdvanceToNextPlayer(void)
                     if (!centered) {
                         short aai;
                         short aac = *(short *)(gs + 0x1602);
-                        if (aac > 100) aac = 100;
+                        if (aac > MAX_ARMIES) aac = MAX_ARMIES;
                         for (aai = 0; aai < aac; aai++) {
-                            unsigned char *a = gs + 0x1604 + aai * 0x42;
+                            unsigned char *a = ARMY_REC(aai);
                             if ((short)(unsigned char)a[0x15] == nextPlayer &&
                                 a[0x16] != 0xFF) {
                                 sViewportX = *(short *)(a + 0x00) - 7;
@@ -31534,20 +31484,9 @@ static void AdvanceToNextPlayer(void)
         /* NOTE: Movement reset already handled by ProcessStartOfTurn() called above
          * (including hero stronghold bonus). Do NOT re-reset here. */
 
-        /* Reset extended state army flags for this player's armies */
-        if (*gExtState != 0) {
-            unsigned char *ext = (unsigned char *)*gExtState;
-            short ac2 = *(short *)(gs + 0x1602);
-            short ai2;
-            if (ac2 > 100) ac2 = 100;
-            for (ai2 = 0; ai2 < ac2; ai2++) {
-                unsigned char *a2 = gs + 0x1604 + ai2 * 0x42;
-                if ((short)(unsigned char)a2[0x15] == curPlayer) {
-                    ext[0x11e + ai2] &= ~0x01;  /* clear 'moved this turn' flag */
-                    ext[0x182 + ai2] = 0;        /* reset move counter */
-                }
-            }
-        }
+        /* (the per-record 'moved' flags / move counters the remake kept at
+         * ext+0x11e / ext+0x182 were never read; removed with the move of
+         * the army table, docs/2026-10-03-army-capacity.md) */
 
         /* Auto-move armies with movement orders toward their targets.
          * Off: the original leaves a human's pending orders pending at turn
@@ -31556,9 +31495,9 @@ static void AdvanceToNextPlayer(void)
             /* Human player only: execute queued movement orders */
             short armyCount = *(short *)(gs + 0x1602);
             short ai;
-            if (armyCount > 100) armyCount = 100;
+            if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
             for (ai = 0; ai < armyCount; ai++) {
-                unsigned char *army = gs + 0x1604 + ai * 0x42;
+                unsigned char *army = ARMY_REC(ai);
                 if ((short)(unsigned char)army[0x15] != curPlayer) continue;
                 if (*(short *)(army + 0x32) == 0) continue;  /* no orders */
 
@@ -31576,9 +31515,9 @@ static void AdvanceToNextPlayer(void)
                         short ddx, ddy, stX = 0, stY = 0, nX, nY, cost;
 
                         armyCount = *(short *)(gs + 0x1602);
-                        if (armyCount > 100) armyCount = 100;
+                        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
                         if (ai >= armyCount) break;
-                        army = gs + 0x1604 + ai * 0x42;
+                        army = ARMY_REC(ai);
                         if ((short)(unsigned char)army[0x15] != curPlayer) break;
 
                         movePts = (short)(unsigned char)army[0x2e];
@@ -31645,7 +31584,7 @@ static void AdvanceToNextPlayer(void)
 
                         if (CheckAndResolveCombat(ai)) {
                             armyCount = *(short *)(gs + 0x1602);
-                            if (armyCount > 100) armyCount = 100;
+                            if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
                             break;
                         }
 
@@ -31681,7 +31620,7 @@ static void AdvanceToNextPlayer(void)
                 short armyCount2 = *(short *)(gs + 0x1602);
                 short ai2;
                 short ownedCities = 0;
-                if (armyCount2 > 100) armyCount2 = 100;
+                if (armyCount2 > MAX_ARMIES) armyCount2 = MAX_ARMIES;
                 for (ci = 0; ci < cityCount; ci++) {
                     unsigned char *ct = sCityData +ci * 0x20;
                     short ost = (short)(unsigned char)ct[0x17];
@@ -31689,7 +31628,7 @@ static void AdvanceToNextPlayer(void)
                     if (*(short *)(ct + 0x04) == curPlayer) ownedCities++;
                 }
                 for (ai2 = 0; ai2 < armyCount2; ai2++) {
-                    unsigned char *a = gs + 0x1604 + ai2 * 0x42;
+                    unsigned char *a = ARMY_REC(ai2);
                     if ((short)(unsigned char)a[0x15] == curPlayer) {
                         short slot;
                         for (slot = 0; slot < 4; slot++) {
@@ -31860,7 +31799,7 @@ static void AdvanceToNextPlayer(void)
  *         viewport/selection state (20B)
  * =================================================================== */
 #define SAVE_MAGIC  0x574C3253   /* 'WL2S' */
-#define SAVE_VERSION 10  /* v8: per-city slot stats in the ext city record (+0x40..+0x4F)
+#define SAVE_VERSION 11  /* v8: per-city slot stats in the ext city record (+0x40..+0x4F)
                           * v9: the city/ruin table (sCityData/sCityCount), the
                           *     terrain and army set names (the original's 0x54-byte
                           *     header, FUN_100283f8; reopened on load as at
@@ -31869,7 +31808,11 @@ static void AdvanceToNextPlayer(void)
                           *     display bonus), gs+0x112 the native max side bonus
                           *     (was the raw SCN bytes), ext city +0x50 the
                           *     attacked-by mask, a[0x30]/a[0x31]/a[0x27] the
-                          *     vectoring transit of an x = -1 record */
+                          *     vectoring transit of an x = -1 record
+                          * v11: the army table moved out of the game state
+                          *     (gs+0x1604, 100 records) to sArmyTab (MAX_ARMIES):
+                          *     an 'ARMY' block after the v9 block; sAIOrd has
+                          *     MAX_ARMIES entries (100 before) */
 
 static FSSpec sSaveFileSpec;
 static Boolean sSaveFileValid = false;
@@ -32074,6 +32017,23 @@ static Boolean SaveGameToFile(FSSpec *spec)
         count = sizeof(sSiteDescs); FSWrite(refNum, &count, sSiteDescs);
     }
 
+    /* v11: the army table (docs/2026-10-03-army-capacity.md): the count,
+     * the record size, the records and their defend state */
+    {
+        long tag = 'ARMY';
+        short hdr[2];
+        hdr[0] = (*gGameState != 0) ? *(short *)((unsigned char *)*gGameState + 0x1602) : 0;
+        if (hdr[0] < 0) hdr[0] = 0;
+        if (hdr[0] > MAX_ARMIES) hdr[0] = MAX_ARMIES;
+        hdr[1] = ARMY_REC_SIZE;
+        count = 4; FSWrite(refNum, &count, &tag);
+        count = sizeof(hdr); FSWrite(refNum, &count, hdr);
+        if (hdr[0] > 0) {
+            count = (long)hdr[0] * ARMY_REC_SIZE; FSWrite(refNum, &count, sArmyTab);
+            count = hdr[0]; FSWrite(refNum, &count, sArmyState);
+        }
+    }
+
     /* the scenario's guardians (the original keeps them in its game file,
      * the stream after the item records): a tagged block, always last, so
      * a save without it still loads */
@@ -32130,6 +32090,28 @@ static Boolean LoadGameFromFile(FSSpec *spec)
     /* Read map tiles */
     count = 0x8880;
     FSRead(refNum, &count, (void *)*gMapTiles);
+
+    /* The army table: before v11 it was the game state's gs+0x1604 (100
+     * records) with the defend state at ext+0x56; v11 reads it from its own
+     * block below */
+    BlockZero(sArmyTab, sizeof(sArmyTab));
+    BlockZero(sArmyState, sizeof(sArmyState));
+    if (version < 11) {
+        unsigned char *g11 = (unsigned char *)*gGameState;
+        short n11 = *(short *)(g11 + 0x1602);
+        if (n11 < 0) n11 = 0;
+        if (n11 > OLD_MAX_ARMIES) n11 = OLD_MAX_ARMIES;
+        *(short *)(g11 + 0x1602) = n11;
+        BlockMoveData(g11 + 0x1604, sArmyTab, (long)OLD_MAX_ARMIES * ARMY_REC_SIZE);
+        BlockMoveData((unsigned char *)*gExtState + 0x56, sArmyState, OLD_MAX_ARMIES);
+    }
+    /* the old ext+0x3500 bless area beyond the old table's 100 records was
+     * never written: clear it for the records that may now live there */
+    if (version < 11) {
+        short b11;
+        for (b11 = OLD_MAX_ARMIES; b11 < MAX_ARMIES; b11++)
+            *(unsigned short *)((unsigned char *)*gExtState + 0x3500 + b11 * 2) = 0;
+    }
 
     /* Read UI state */
     count = 20;
@@ -32280,7 +32262,10 @@ static Boolean LoadGameFromFile(FSSpec *spec)
         count = sizeof(aiHdr);
         if (FSRead(refNum, &count, aiHdr) == noErr && aiHdr[7] == (short)sizeof(AIBlock)) {
             count = sizeof(sAIBlocks); FSRead(refNum, &count, sAIBlocks);
-            count = sizeof(sAIOrd); FSRead(refNum, &count, sAIOrd);
+            /* v11: MAX_ARMIES orders; older saves hold the 100 of the old table
+             * (the rest stay cleared by AIResetAll) */
+            count = (version >= 11) ? (long)sizeof(sAIOrd) : (long)OLD_MAX_ARMIES * (long)sizeof(AIOrder);
+            FSRead(refNum, &count, sAIOrd);
             count = sizeof(sAINbIdx); FSRead(refNum, &count, sAINbIdx);
             count = sizeof(sAINbDist); FSRead(refNum, &count, sAINbDist);
             count = sizeof(sAIOrigOwner); FSRead(refNum, &count, sAIOrigOwner);
@@ -32331,6 +32316,22 @@ static Boolean LoadGameFromFile(FSSpec *spec)
         count = sizeof(sSiteDescs); FSRead(refNum, &count, sSiteDescs);
     }
 
+    /* v11: the army table's own block */
+    if (version >= 11) {
+        long tag = 0;
+        short hdr[2] = {0, 0};
+        count = 4;
+        if (FSRead(refNum, &count, &tag) != noErr || count != 4 || tag != 'ARMY') { FSClose(refNum); return false; }
+        count = sizeof(hdr);
+        FSRead(refNum, &count, hdr);
+        if (hdr[0] < 0 || hdr[0] > MAX_ARMIES || hdr[1] != ARMY_REC_SIZE) { FSClose(refNum); return false; }
+        if (hdr[0] > 0) {
+            count = (long)hdr[0] * ARMY_REC_SIZE; FSRead(refNum, &count, sArmyTab);
+            count = hdr[0]; FSRead(refNum, &count, sArmyState);
+        }
+        *(short *)((unsigned char *)*gGameState + 0x1602) = hdr[0];
+    }
+
     /* v10: older saves held a display bonus in a[0x22+k]; their upkeep
      * becomes the type cost / 2 those games paid (no way to tell allies from
      * produced units), heroes and neutrals 0.  Their gs+0x112 is the raw SCN
@@ -32338,8 +32339,8 @@ static Boolean LoadGameFromFile(FSSpec *spec)
     if (version < 10) {
         unsigned char *g10 = (unsigned char *)*gGameState;
         short n10 = *(short *)(g10 + 0x1602), i10, k10;
-        for (i10 = 0; i10 < n10 && i10 < 100; i10++) {
-            unsigned char *a = g10 + 0x1604 + i10 * 0x42;
+        for (i10 = 0; i10 < n10 && i10 < OLD_MAX_ARMIES; i10++) {
+            unsigned char *a = ARMY_REC(i10);
             for (k10 = 0; k10 < 4; k10++) {
                 short t = a[0x16 + k10];
                 a[A_UPKEEP + k10] = (t == 0xFF || t == 0x1C || a[0x15] > 7) ? 0
@@ -32888,7 +32889,7 @@ static void HandleMenuChoice(long menuResult)
             unsigned char *gs = (unsigned char *)*gGameState;
             short armyCount = *(short *)(gs + 0x1602);
             if (sUndoArmyIdx < armyCount) {
-                unsigned char *army = gs + 0x1604 + sUndoArmyIdx * 0x42;
+                unsigned char *army = ARMY_REC(sUndoArmyIdx);
                 *(short *)(army + 0x00) = sUndoFromX;
                 *(short *)(army + 0x02) = sUndoFromY;
                 army[0x2e] = (unsigned char)(sUndoMovePts);
@@ -32930,21 +32931,21 @@ static void HandleMenuChoice(long menuResult)
         case 1:  /* Group Stack (cmd 0x578) — merge units from other armies at same tile */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *army = ARMY_REC(sSelectedArmy);
                 short sx = *(short *)(army + 0x00);
                 short sy = *(short *)(army + 0x02);
                 short curPlayer = *(short *)(gs + 0x110);
                 short armyCount = *(short *)(gs + 0x1602);
                 short ai;
                 Boolean merged = false;
-                if (armyCount > 100) armyCount = 100;
+                if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
                 /* Try to merge units from other friendly armies at same tile */
                 for (ai = 0; ai < armyCount; ai++) {
                     unsigned char *other;
                     short slot;
                     if (ai == sSelectedArmy) continue;
-                    other = gs + 0x1604 + ai * 0x42;
+                    other = ARMY_REC(ai);
                     if (*(short *)(other + 0x00) != sx ||
                         *(short *)(other + 0x02) != sy ||
                         (short)(unsigned char)other[0x15] != curPlayer)
@@ -32984,7 +32985,7 @@ static void HandleMenuChoice(long menuResult)
                         RemoveArmy(ai);
                         /* Note: RemoveArmy already adjusts sSelectedArmy */
                         armyCount = *(short *)(gs + 0x1602);
-                        if (armyCount > 100) armyCount = 100;
+                        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
                         ai--;  /* re-check this index */
                     }
                 }
@@ -33007,7 +33008,7 @@ static void HandleMenuChoice(long menuResult)
         case 2:  /* Ungroup (cmd 0x579) — split last unit into new army */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *army = ARMY_REC(sSelectedArmy);
                 short armyCount = *(short *)(gs + 0x1602);
                 short unitCount = 0, lastSlot = -1, slot;
 
@@ -33020,8 +33021,8 @@ static void HandleMenuChoice(long menuResult)
                 }
 
                 /* Need at least 2 units to split, and room for a new army */
-                if (unitCount >= 2 && armyCount < 100 && lastSlot >= 0) {
-                    unsigned char *newArmy = gs + 0x1604 + armyCount * 0x42;
+                if (unitCount >= 2 && armyCount < MAX_ARMIES && lastSlot >= 0) {
+                    unsigned char *newArmy = ARMY_REC(armyCount);
                     short j;
 
                     /* Zero out new army */
@@ -33112,7 +33113,7 @@ static void HandleMenuChoice(long menuResult)
         case 6:  /* Cancel Path (cmd 0x57C) */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *army = ARMY_REC(sSelectedArmy);
                 *(short *)(army + 0x32) = 0;
                 *(short *)(army + 0x34) = -1;
                 *(short *)(army + 0x36) = -1;
@@ -33133,7 +33134,7 @@ static void HandleMenuChoice(long menuResult)
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
                 short n = *(short *)(gs + 0x1602), k;
-                if (n > 100) n = 100;
+                if (n > MAX_ARMIES) n = MAX_ARMIES;
                 NextGroupTurnSync();
                 if (sSelectedArmy < n) sArmySkip[sSelectedArmy] = 1;
                 for (k = 0; k < sStackCount; k++) {
@@ -33150,16 +33151,16 @@ static void HandleMenuChoice(long menuResult)
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
                 short n = *(short *)(gs + 0x1602), k;
-                if (n > 100) n = 100;
+                if (n > MAX_ARMIES) n = MAX_ARMIES;
                 if (sSelectedArmy < n) {
-                    gs[0x1604 + sSelectedArmy * 0x42 + 0x2d] = 3;
-                    gs[0x1604 + sSelectedArmy * 0x42 + 0x11] = 1;
+                    ARMY_REC(sSelectedArmy)[0x2d] = 3;
+                    ARMY_REC(sSelectedArmy)[0x11] = 1;
                 }
                 for (k = 0; k < sStackCount; k++) {
                     short ai = sStackArmyIdx[k];
                     if (!sStackSelected[k] || ai < 0 || ai >= n) continue;
-                    gs[0x1604 + ai * 0x42 + 0x2d] = 3;
-                    gs[0x1604 + ai * 0x42 + 0x11] = 1;
+                    ARMY_REC(ai)[0x2d] = 3;
+                    ARMY_REC(ai)[0x11] = 1;
                 }
                 SelectNextArmy();
             }
@@ -33178,7 +33179,7 @@ static void HandleMenuChoice(long menuResult)
         case 14: /* Show army's shadow (cmd 0x582) — center viewport on target */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *army = ARMY_REC(sSelectedArmy);
                 short tgtX = *(short *)(army + 0x34);
                 short tgtY = *(short *)(army + 0x36);
                 if (tgtX >= 0 && tgtY >= 0) {
@@ -33212,7 +33213,7 @@ static void HandleMenuChoice(long menuResult)
                  * Use Leave Group to separate the hero first. */
                 {
                     unsigned char *gs2 = (unsigned char *)*gGameState;
-                    unsigned char *a2 = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                    unsigned char *a2 = ARMY_REC(sSelectedArmy);
                     short hasHero2 = 0, nonHero2 = 0, ui2;
                     for (ui2 = 0; ui2 < 4; ui2++) {
                         if (a2[0x16 + ui2] == 0xFF || a2[0x1e + ui2] <= 0) continue;
@@ -33377,7 +33378,7 @@ static void HandleMenuChoice(long menuResult)
                     short curPlayer = *(short *)(gs + 0x110);
                     short rArmyCnt = *(short *)(gs + 0x1602);
                     short ri, rci, rcc = sCityCount, myCities = 0;
-                    if (rArmyCnt > 100) rArmyCnt = 100;
+                    if (rArmyCnt > MAX_ARMIES) rArmyCnt = MAX_ARMIES;
                     if (rcc > 139) rcc = 139;
 
                     /* PPC FUN_1002b230: only a side with a city can resign;
@@ -33394,7 +33395,7 @@ static void HandleMenuChoice(long menuResult)
                             AssignCityOwner(rci, 0x0F);
                     }
                     for (ri = rArmyCnt - 1; ri >= 0; ri--) {
-                        unsigned char *ra = gs + 0x1604 + ri * 0x42;
+                        unsigned char *ra = ARMY_REC(ri);
                         if ((short)(unsigned char)ra[0x15] != curPlayer) continue;
                         RemoveArmy(ri);
                     }
@@ -33452,11 +33453,11 @@ static void HandleMenuChoice(long menuResult)
         case 2: /* Plant Flag (cmd 0x641) — set defend mode on hero's army */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *army = ARMY_REC(sSelectedArmy);
                 army[0x2d] = 3;  /* fortify */
                 army[0x2e] = 0;  /* zero MP */
                 *(short *)(army + 0x32) = 0;
-                if (*gExtState != 0) ((unsigned char *)*gExtState)[0x56 + sSelectedArmy] = 7;
+                sArmyState[sSelectedArmy] = 7;
                 SelectNextArmy();
                 if (*gMainGameWindow != 0) {
                     SetPort((WindowPtr)*gMainGameWindow);
@@ -33472,7 +33473,7 @@ static void HandleMenuChoice(long menuResult)
         case 4: /* Search... (cmd 0x643) — search ruins at hero location */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *army = ARMY_REC(sSelectedArmy);
                 short ax = *(short *)(army + 0x00);
                 short ay = *(short *)(army + 0x02);
                 short siteCount = sCityCount;
@@ -33502,7 +33503,7 @@ static void HandleMenuChoice(long menuResult)
                             PathBuildStack(sSelectedArmy, true);
                             for (k = 0; k < sPathMoverCount; k++)
                                 for (u = 0; u < 4; u++)
-                                    if ((gs + 0x1604 + sPathMovers[k] * 0x42)[0x16 + u] == 0x1C) hero = true;
+                                    if ((ARMY_REC(sPathMovers[k]))[0x16 + u] == 0x1C) hero = true;
                             if (hero) {
                                 Str255 tn; short tl = 0, ri, ord = 0;
                                 unsigned char *nm;
@@ -33681,7 +33682,7 @@ static void HandleMenuChoice(long menuResult)
             break;
         case 2: /* Items... (cmd 0x6A5) — show items for selected hero */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
-                unsigned char *sa = (unsigned char *)*gGameState + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *sa = ARMY_REC(sSelectedArmy);
                 short uu;
                 Boolean isHero = false;
                 for (uu = 0; uu < 4; uu++)
@@ -33701,7 +33702,7 @@ static void HandleMenuChoice(long menuResult)
                 unsigned char *gs = (unsigned char *)*gGameState;
                 short ac = *(short *)(gs + 0x1602);
                 if (sSelectedArmy < ac) {
-                    unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                    unsigned char *army = ARMY_REC(sSelectedArmy);
                     short ax = *(short *)(army + 0x00);
                     short ay = *(short *)(army + 0x02);
                     short curP = *(short *)(gs + 0x110);
@@ -33734,7 +33735,7 @@ static void HandleMenuChoice(long menuResult)
             if (*gGameState != 0 && sSelectedArmy >= 0) {
                 /* Find the city at the selected army's location */
                 unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *army = ARMY_REC(sSelectedArmy);
                 short ax = *(short *)(army + 0x00);
                 short ay = *(short *)(army + 0x02);
                 short cityCount = sCityCount;
@@ -33806,9 +33807,9 @@ static void HandleMenuChoice(long menuResult)
                 short curP = *(short *)(gs + 0x110);
                 short ac = *(short *)(gs + 0x1602);
                 short unmovedCount = 0, ua;
-                if (ac > 100) ac = 100;
+                if (ac > MAX_ARMIES) ac = MAX_ARMIES;
                 for (ua = 0; ua < ac; ua++) {
-                    unsigned char *arm = gs + 0x1604 + ua * 0x42;
+                    unsigned char *arm = ARMY_REC(ua);
                     if ((short)(unsigned char)arm[0x15] == curP &&
                         (short)(unsigned char)arm[0x2e] > 0 &&
                         *(short *)(arm + 0x32) == 0 &&
@@ -34078,9 +34079,9 @@ static void TryTempleBlessing(short armyIdx)
     gs = (unsigned char *)*gGameState;
     ext = (unsigned char *)*gExtState;
     n = *(short *)(gs + 0x1602);
-    if (n > 100) n = 100;
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
     if (armyIdx >= n) return;
-    army = gs + 0x1604 + armyIdx * 0x42;
+    army = ARMY_REC(armyIdx);
     ax = *(short *)(army + 0x00);
     ay = *(short *)(army + 0x02);
     owner = (short)(unsigned char)army[0x15];
@@ -34098,7 +34099,7 @@ static void TryTempleBlessing(short armyIdx)
     human = (owner >= 0 && owner < 8 && *(short *)(gs + 0xd0 + owner * 2) == 0);
     if (human) PathBuildStack(armyIdx, true);
     for (a = 0; a < n; a++) {
-        unsigned char *r = gs + 0x1604 + a * 0x42;
+        unsigned char *r = ARMY_REC(a);
         short k;
         if ((short)(unsigned char)r[0x15] != owner) continue;
         if (*(short *)(r + 0x00) != ax || *(short *)(r + 0x02) != ay) continue;
@@ -34147,7 +34148,7 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
     if (sSelectedArmy >= armyCount)
         return false;
 
-    selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
+    selArmy = ARMY_REC(sSelectedArmy);
     if ((short)(unsigned char)selArmy[0x15] != currentPlayer)
         return false;
 
@@ -34160,7 +34161,7 @@ static Boolean MoveSelectedArmyBy(short dx, short dy)
             SelectNextArmy();
             return true;
         }
-        selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
+        selArmy = ARMY_REC(sSelectedArmy);
         BuildStackArrays(sSelectedArmy);
         if (*(short *)(selArmy + 0x32) != 0 || selArmy[0x2e] == 0)
             return true;                    /* path still pending or spent */
@@ -34237,9 +34238,9 @@ static void MoveSelectedGroup(void)
     if (!sMapLoaded || *gGameState == 0 || sSelectedArmy < 0) return;
     gs = (unsigned char *)*gGameState;
     count = *(short *)(gs + 0x1602);
-    if (count > 100) count = 100;
+    if (count > MAX_ARMIES) count = MAX_ARMIES;
     if (sSelectedArmy >= count) return;
-    a = gs + 0x1604 + sSelectedArmy * 0x42;
+    a = ARMY_REC(sSelectedArmy);
     if ((short)(unsigned char)a[0x15] != *(short *)(gs + 0x110)) return;
     if (*(short *)(a + 0x32) == 0) return;             /* no orders */
     tx = *(short *)(a + 0x34); ty = *(short *)(a + 0x36);
@@ -34247,13 +34248,13 @@ static void MoveSelectedGroup(void)
 
     took = RunStoredPath(sSelectedArmy);
     count = *(short *)(gs + 0x1602);
-    if (count > 100) count = 100;
+    if (count > MAX_ARMIES) count = MAX_ARMIES;
     if (sSelectedArmy < 0 || sSelectedArmy >= count) {
         sSelectedArmy = -1; sStackCount = 0;
         InvalidateAllGameWindows();
         return;
     }
-    a = gs + 0x1604 + sSelectedArmy * 0x42;
+    a = ARMY_REC(sSelectedArmy);
     (void)ox; (void)oy;                             /* (no path: RunStoredPath beeped) */
     BuildStackArrays(sSelectedArmy);
     RevealTile(*(short *)(a + 0x00), *(short *)(a + 0x02));
@@ -34463,11 +34464,11 @@ static Boolean PanelButtonEnabled(short which)
     {
         Boolean hasPath = false, heroOnSite = false;
         if (hasSel && sSelectedArmy < *(short *)(gs + 0x1602)) {
-            unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+            unsigned char *sa = ARMY_REC(sSelectedArmy);
             short k, sx = *(short *)(sa + 0), sy = *(short *)(sa + 2);
             hasPath = *(short *)(sa + 0x32) != 0;
             for (k = 0; k < sStackCount; k++) {
-                unsigned char *a = (sStackArmyIdx[k] >= 0) ? gs + 0x1604 + sStackArmyIdx[k] * 0x42 : NULL;
+                unsigned char *a = (sStackArmyIdx[k] >= 0) ? ARMY_REC(sStackArmyIdx[k]) : NULL;
                 if (a && sStackSelected[k] && (unsigned char)a[0x16] == 0x1C) {
                     short ci;
                     for (ci = 0; ci < sCityCount && ci < 139; ci++) {
@@ -34684,7 +34685,7 @@ static void DrawStackPanel(WindowPtr win, Rect r)
     for (i = 0; i < MAX_STACK; i++) {
         short L = r.left + 8 + 47 * (i % 4), T = r.top + (i < 4 ? 2 : 66);
         if (i < sStackCount && sStackArmyIdx[i] >= 0) {
-            unsigned char *a = gs + 0x1604 + sStackArmyIdx[i] * 0x42;
+            unsigned char *a = ARMY_REC(sStackArmyIdx[i]);
             short spr = (short)(unsigned char)a[0x14];
             if ((unsigned char)a[0x16] == 0x1C && IsHeroFemale(sStackArmyIdx[i])) spr = 0x1D;
             BlitAbits((((player + sStackGroupId[i]) & 7) + 1) * 32, 0, 31, 30, L, T);
@@ -34722,7 +34723,7 @@ static void DrawStackPanel(WindowPtr win, Rect r)
         Boolean allEmb = (sStackCount > 0);
         for (i = 0; i < sStackCount; i++) {
             if (sStackArmyIdx[i] < 0) continue;
-            if (!((gs + 0x1604 + sStackArmyIdx[i] * 0x42)[0x2C] & ARMY_EMBARKED_BIT)) allEmb = false;
+            if (!((ARMY_REC(sStackArmyIdx[i]))[0x2C] & ARMY_EMBARKED_BIT)) allEmb = false;
         }
         if (allEmb) BlitAbits(424, 30, 32, 10, r.left + 185, r.top + 37);
     }
@@ -35047,7 +35048,7 @@ static void HandleMouseDown(EventRecord *event)
                             if (sSelectedArmy >= 0) {
                                 short ac2 = *(short *)(gs + 0x1602);
                                 if (sSelectedArmy < ac2) {
-                                    unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+                                    unsigned char *sa = ARMY_REC(sSelectedArmy);
                                     short uCls = GetEffectiveUnitClass(sSelectedArmy);
                                     short mvCost = GetMovementCost(clickTileX, clickTileY, uCls);
                                     RGBColor costCol = {0x0000, 0x0000, 0x8888};
@@ -35100,9 +35101,9 @@ static void HandleMouseDown(EventRecord *event)
                                 short aCount = *(short *)(gs + 0x1602);
                                 short ai2, yy = 54;
                                 short enemyCount = 0;
-                                if (aCount > 100) aCount = 100;
+                                if (aCount > MAX_ARMIES) aCount = MAX_ARMIES;
                                 for (ai2 = 0; ai2 < aCount && yy < 90; ai2++) {
-                                    unsigned char *a = gs + 0x1604 + ai2 * 0x42;
+                                    unsigned char *a = ARMY_REC(ai2);
                                     if (*(short *)(a + 0x00) == clickTileX &&
                                         *(short *)(a + 0x02) == clickTileY) {
                                         short aOwn = (short)(unsigned char)a[0x15];
@@ -35159,7 +35160,7 @@ static void HandleMouseDown(EventRecord *event)
                         goto doneMapClick;
                     }
 
-                    if (armyCount > 100) armyCount = 100;
+                    if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
 
                     /* 68k: army detection runs BEFORE city detection.
                      * Click own army → select. Re-click selected army on city → city dialog.
@@ -35169,7 +35170,7 @@ static void HandleMouseDown(EventRecord *event)
                      * moves there on release (measured, turn 2). */
                     sClickWasDrag = false;
                     if (sSelectedArmy >= 0 && sSelectedArmy < armyCount && StillDown()) {
-                        unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *sa = ARMY_REC(sSelectedArmy);
                         if ((short)(unsigned char)sa[0x15] == currentPlayer) {
                             short ax0 = *(short *)(sa + 0), ay0 = *(short *)(sa + 2);
                             short lastX = clickTileX, lastY = clickTileY;
@@ -35211,14 +35212,14 @@ static void HandleMouseDown(EventRecord *event)
                      * keeps those orders) */
                     if (!sClickWasDrag && sSelectedArmy >= 0 && sSelectedArmy < armyCount &&
                         !IsAdjacentAttackTarget(sSelectedArmy, clickTileX, clickTileY)) {
-                        unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *sa = ARMY_REC(sSelectedArmy);
                         if ((short)(unsigned char)sa[0x15] == currentPlayer && *(short *)(sa + 0x32) != 0) {
                             if (*(short *)(sa + 0) == clickTileX && *(short *)(sa + 2) == clickTileY) {
                                 short gi;
                                 *(short *)(sa + 0x32) = 0;
                                 for (gi = 0; gi < sStackCount; gi++)
                                     if (sStackSelected[gi] && sStackArmyIdx[gi] >= 0 && sStackArmyIdx[gi] < armyCount)
-                                        *(short *)(gs + 0x1604 + sStackArmyIdx[gi] * 0x42 + 0x32) = 0;
+                                        *(short *)(ARMY_REC(sStackArmyIdx[gi]) + 0x32) = 0;
                                 sPreviewPathLen = 0;
                                 InvalRect(&port);
                             } else {
@@ -35228,7 +35229,7 @@ static void HandleMouseDown(EventRecord *event)
                                  * deselected, orders kept */
                                 short took = RunStoredPath(sSelectedArmy);
                                 if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gs + 0x1602)) {
-                                    unsigned char *ma = gs + 0x1604 + sSelectedArmy * 0x42;
+                                    unsigned char *ma = ARMY_REC(sSelectedArmy);
                                     BuildStackArrays(sSelectedArmy);
                                     RevealTile(*(short *)(ma + 0x00), *(short *)(ma + 0x02));
                                     if (took > 0 && (*(short *)(ma + 0x32) != 0 || ma[0x2e] == 0)) {
@@ -35244,7 +35245,7 @@ static void HandleMouseDown(EventRecord *event)
                     }
                     clickedArmy = StackLeadAt(clickTileX, clickTileY, currentPlayer);
                     if (clickedArmy >= 0 && sSelectedArmy >= 0 && sSelectedArmy < armyCount) {
-                        unsigned char *sa = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *sa = ARMY_REC(sSelectedArmy);
                         if (*(short *)(sa + 0) == clickTileX && *(short *)(sa + 2) == clickTileY)
                             clickedArmy = sSelectedArmy;           /* re-click on the selection */
                     }
@@ -35342,7 +35343,7 @@ static void HandleMouseDown(EventRecord *event)
                          * ExecutePathSteps (foreign city/army in front, 8-unit tiles,
                          * boarding/landing), and the stack is deselected when it stops
                          * short of its destination or is spent. */
-                        unsigned char *selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *selArmy = ARMY_REC(sSelectedArmy);
                         short owner = (short)(unsigned char)selArmy[0x15];
 
                         if (owner == currentPlayer) {
@@ -35364,8 +35365,8 @@ static void HandleMouseDown(EventRecord *event)
                                 Boolean foe = false;
                                 short q, nq = *(short *)(gs + 0x1602);
                                 short ci, cc = sCityCount > 139 ? 139 : sCityCount;
-                                for (q = 0; q < nq && q < 100 && !foe; q++) {
-                                    unsigned char *qa = gs + 0x1604 + q * 0x42;
+                                for (q = 0; q < nq && q < MAX_ARMIES && !foe; q++) {
+                                    unsigned char *qa = ARMY_REC(q);
                                     if (qa[0x16] == 0xFF || (short)(unsigned char)qa[0x15] == currentPlayer) continue;
                                     if (*(short *)(qa + 0) == clickTileX && *(short *)(qa + 2) == clickTileY) foe = true;
                                 }
@@ -35388,7 +35389,7 @@ static void HandleMouseDown(EventRecord *event)
                                 IsAdjacentAttackTarget(sSelectedArmy, clickTileX, clickTileY)) {
                                 short tookA = DirectAttackStep(sSelectedArmy, clickTileX, clickTileY);
                                 if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gs + 0x1602)) {
-                                    unsigned char *ma = gs + 0x1604 + sSelectedArmy * 0x42;
+                                    unsigned char *ma = ARMY_REC(sSelectedArmy);
                                     BuildStackArrays(sSelectedArmy);
                                     RevealTile(*(short *)(ma + 0x00), *(short *)(ma + 0x02));
                                     /* (refused with 0 MP: selection kept) */
@@ -35432,7 +35433,7 @@ static void HandleMouseDown(EventRecord *event)
                                 for (gi2 = 0; gi2 < sStackCount; gi2++) {
                                     if (sStackSelected[gi2] && sStackArmyIdx[gi2] >= 0 &&
                                         sStackArmyIdx[gi2] != sSelectedArmy) {
-                                        unsigned char *ga2 = gs + 0x1604 + sStackArmyIdx[gi2] * 0x42;
+                                        unsigned char *ga2 = ARMY_REC(sStackArmyIdx[gi2]);
                                         *(short *)(ga2 + 0x32) = 1;
                                         *(short *)(ga2 + 0x34) = clickTileX;
                                         *(short *)(ga2 + 0x36) = clickTileY;
@@ -35463,7 +35464,7 @@ static void HandleMouseDown(EventRecord *event)
                                      * destination is deselected, keeping its orders
                                      * (turn 2 drag past the city). */
                                     if (sSelectedArmy >= 0) {
-                                        unsigned char *ma = gs + 0x1604 + sSelectedArmy * 0x42;
+                                        unsigned char *ma = ARMY_REC(sSelectedArmy);
                                         RevealTile(*(short *)(ma + 0x00), *(short *)(ma + 0x02));
                                         InvalidateAllGameWindows();
                                         if (*(short *)(ma + 0x00) != clickTileX ||
@@ -35479,7 +35480,7 @@ static void HandleMouseDown(EventRecord *event)
                                         for (gi3 = 0; gi3 < sStackCount; gi3++) {
                                             if (sStackSelected[gi3] && sStackArmyIdx[gi3] >= 0 &&
                                                 sStackArmyIdx[gi3] != sSelectedArmy) {
-                                                unsigned char *ga3 = gs + 0x1604 + sStackArmyIdx[gi3] * 0x42;
+                                                unsigned char *ga3 = ARMY_REC(sStackArmyIdx[gi3]);
                                                 *(short *)(ga3 + 0x32) = 0;
                                             }
                                         }
@@ -35493,7 +35494,7 @@ static void HandleMouseDown(EventRecord *event)
                             if (sSelectedArmy >= 0) {
                                 armyCount = *(short *)(gs + 0x1602);
                                 if (sSelectedArmy < armyCount) {
-                                    selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
+                                    selArmy = ARMY_REC(sSelectedArmy);
                                     if (*(short *)(selArmy + 0x00) == clickTileX &&
                                         *(short *)(selArmy + 0x02) == clickTileY) {
                                         *(short *)(selArmy + 0x32) = 0;
@@ -35577,7 +35578,7 @@ static void HandleMouseDown(EventRecord *event)
                 if (!sControlsLive) {
                 } else if (cell == 4) {
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
-                        unsigned char *sa = (unsigned char *)*gGameState + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *sa = ARMY_REC(sSelectedArmy);
                         CenterViewportOn(*(short *)(sa + 0), *(short *)(sa + 2));
                     }
                 } else {
@@ -35687,7 +35688,7 @@ static void DrawInfoStackUI(WindowPtr win, Rect *r)
 
         if (si < sStackCount) {
             short aidx = sStackArmyIdx[si];
-            unsigned char *army = gs + 0x1604 + aidx * 0x42;
+            unsigned char *army = ARMY_REC(aidx);
             short uType = (short)(unsigned char)army[0x16];
             short owner = (short)(unsigned char)army[0x15];
             short movePts = (short)(unsigned char)army[0x2e];
@@ -36261,7 +36262,7 @@ static void TutorialWatch(void)
         lastSel = -1;
         return;
     }
-    army = gs + 0x1604 + sSelectedArmy * 0x42;
+    army = ARMY_REC(sSelectedArmy);
     if (army[0x15] != me) { lastSel = -1; return; }
 
     if (sSelectedArmy != lastSel) {
@@ -36995,14 +36996,14 @@ int main(void)
             unsigned char *gsx = (unsigned char *)*gGameState;
             long sig = sSelectedArmy * 7919L + sStackCount * 131L + (sControlsLive ? 1 : 0);
             if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gsx + 0x1602)) {
-                unsigned char *sa0 = gsx + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *sa0 = ARMY_REC(sSelectedArmy);
                 sig += *(short *)(sa0 + 0x32) * 31L + *(short *)(sa0 + 0) * 977L + *(short *)(sa0 + 2) * 53L;
             }
             short k;
             for (k = 0; k < sStackCount; k++)
                 if (sStackArmyIdx[k] >= 0)
                     sig += (k + 1) * (sStackSelected[k] * 17L + sStackGroupId[k] * 3L +
-                           gsx[0x1604 + sStackArmyIdx[k] * 0x42 + 0x2e]);
+                           ARMY_REC(sStackArmyIdx[k])[0x2e]);
             if (sig != lastSig && gStatusWindow != NULL && *gStatusWindow != 0) {
                 GrafPtr sp;
                 lastSig = sig;
@@ -37018,7 +37019,7 @@ int main(void)
             MusicIdle();
             if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)(gsx + 0x1602) &&
                 TickCount() - lastHalo >= 6) {
-                unsigned char *sa = gsx + 0x1604 + sSelectedArmy * 0x42;
+                unsigned char *sa = ARMY_REC(sSelectedArmy);
                 WindowPtr mw = (WindowPtr)*gMainGameWindow;
                 Rect tr;
                 GrafPtr sp;
@@ -37071,7 +37072,7 @@ int main(void)
                     CCrsrHandle armyCsr = sMoveCursor ? sMoveCursor : sDefaultCursor;
                     if (*gGameState != 0) {
                         unsigned char *gsC = (unsigned char *)*gGameState;
-                        unsigned char *selArmy = gsC + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *selArmy = ARMY_REC(sSelectedArmy);
                         short ut = (short)(unsigned char)selArmy[0x16];
                         short tX = sViewportX + (lp.h - port.left + sViewPixX) / TERRAIN_TILE_W;
                         short tY = sViewportY + (lp.v - port.top + sViewPixY) / TERRAIN_TILE_H;
@@ -37087,7 +37088,7 @@ int main(void)
                             short ac2 = *(short *)(gsC + 0x1602);
                             Boolean foundEnemy = false, foundRuin2 = false, foundCity2 = false;
                             if (cc2 > 139) cc2 = 139;
-                            if (ac2 > 100) ac2 = 100;
+                            if (ac2 > MAX_ARMIES) ac2 = MAX_ARMIES;
                             /* Check for city/ruin at tile.
                              * Cities (sType<2) are 2x2 tiles; ruins are 1x1. */
                             for (ci3 = 0; ci3 < cc2; ci3++) {
@@ -37115,7 +37116,7 @@ int main(void)
                             if (!foundEnemy) {
                                 short ai4;
                                 for (ai4 = 0; ai4 < ac2; ai4++) {
-                                    unsigned char *a2 = gsC + 0x1604 + ai4 * 0x42;
+                                    unsigned char *a2 = ARMY_REC(ai4);
                                     if (a2[0x16] == 0xFF) continue;
                                     if (*(short *)(a2 + 0x00) == tX &&
                                         *(short *)(a2 + 0x02) == tY &&
@@ -37130,7 +37131,7 @@ int main(void)
                                  * over the city one (original, Mirea turn 1) */
                                 short ai5;
                                 for (ai5 = 0; ai5 < ac2; ai5++) {
-                                    unsigned char *a5 = gsC + 0x1604 + ai5 * 0x42;
+                                    unsigned char *a5 = ARMY_REC(ai5);
                                     if (a5[0x16] == 0xFF) continue;
                                     if (*(short *)(a5 + 0) == tX && *(short *)(a5 + 2) == tY &&
                                         (short)(unsigned char)a5[0x15] == curP2) { ownArmyHere = true; break; }
@@ -37186,10 +37187,10 @@ int main(void)
                         short ac = *(short *)(gsC + 0x1602);
                         short ai2;
                         Boolean foundArmy = false, foundRuin = false;
-                        if (ac > 100) ac = 100;
+                        if (ac > MAX_ARMIES) ac = MAX_ARMIES;
                         /* Check for own army */
                         for (ai2 = 0; ai2 < ac; ai2++) {
-                            unsigned char *a = gsC + 0x1604 + ai2 * 0x42;
+                            unsigned char *a = ARMY_REC(ai2);
                             if (a[0x16] == 0xFF) continue;
                             if (*(short *)(a + 0x00) == tileX &&
                                 *(short *)(a + 0x02) == tileY &&
@@ -37365,7 +37366,7 @@ int main(void)
 
                         /* Calculate movement cost for selected army */
                         if (sSelectedArmy >= 0) {
-                            unsigned char *selArmy = gs + 0x1604 + sSelectedArmy * 0x42;
+                            unsigned char *selArmy = ARMY_REC(sSelectedArmy);
                             short uc = (short)(unsigned char)selArmy[0x16];
                             moveCost = GetMovementCost(tileX, tileY, uc);
                         }
@@ -37438,7 +37439,7 @@ int main(void)
                     unsigned char *gs2 = (unsigned char *)*gGameState;
                     short ac2 = *(short *)(gs2 + 0x1602);
                     if (sSelectedArmy < ac2) {
-                        unsigned char *sa2 = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *sa2 = ARMY_REC(sSelectedArmy);
                         short sax = *(short *)(sa2 + 0x00);
                         short say = *(short *)(sa2 + 0x02);
                         WindowPtr mw2 = (WindowPtr)*gMainGameWindow;
@@ -37559,7 +37560,7 @@ int main(void)
                         unsigned char *gs2 = (unsigned char *)*gGameState;
                         short ac = *(short *)(gs2 + 0x1602);
                         if (sSelectedArmy < ac) {
-                            unsigned char *a = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                            unsigned char *a = ARMY_REC(sSelectedArmy);
                             CenterViewportOn(*(short *)(a + 0x00), *(short *)(a + 0x02));
                         }
                         scrolled = true;
@@ -37570,7 +37571,7 @@ int main(void)
                             unsigned char *gs2 = (unsigned char *)*gGameState;
                             short ac = *(short *)(gs2 + 0x1602);
                             if (sSelectedArmy < ac) {
-                                unsigned char *a = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                                unsigned char *a = ARMY_REC(sSelectedArmy);
                                 short ax = *(short *)(a + 0x00);
                                 short ay = *(short *)(a + 0x02);
                                 short tw = 10, th = 10;
@@ -37604,7 +37605,7 @@ int main(void)
                     if (sSelectedArmy >= 0 && sSelectedArmy < *(short *)((unsigned char *)*gGameState + 0x1602) &&
                         *gGameState != 0) {
                         unsigned char *gs2 = (unsigned char *)*gGameState;
-                        unsigned char *sa = gs2 + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *sa = ARMY_REC(sSelectedArmy);
                         short ax = *(short *)(sa + 0x00), ay = *(short *)(sa + 0x02);
                         short tgtX = *(short *)(sa + 0x34), tgtY = *(short *)(sa + 0x36);
                         if (*(short *)(sa + 0x32) == 0 || tgtX < 0 || tgtY < 0) {
@@ -37642,7 +37643,7 @@ int main(void)
                     /* Backspace/Delete = Cancel Path (original) */
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
                         unsigned char *gs = (unsigned char *)*gGameState;
-                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *army = ARMY_REC(sSelectedArmy);
                         *(short *)(army + 0x32) = 0;
                         *(short *)(army + 0x34) = -1;
                         *(short *)(army + 0x36) = -1;
@@ -37652,7 +37653,7 @@ int main(void)
                     /* Escape = Cancel Path / Deselect */
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
                         unsigned char *gs = (unsigned char *)*gGameState;
-                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *army = ARMY_REC(sSelectedArmy);
                         if (*(short *)(army + 0x32) != 0) {
                             *(short *)(army + 0x32) = 0;
                             *(short *)(army + 0x34) = -1;
@@ -37670,26 +37671,26 @@ int main(void)
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
                         unsigned char *gs = (unsigned char *)*gGameState;
                         unsigned char *ext = (*gExtState != 0) ? (unsigned char *)*gExtState : NULL;
-                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *army = ARMY_REC(sSelectedArmy);
                         unsigned char newState = (army[0x2d] > 0) ? 0 : 3;
                         short gi;
                         /* Apply to lead army */
                         if (newState == 0 || (unsigned char)army[0x16] != 0x1C) {
                             army[0x2d] = newState;
                             if (newState > 0) army[0x2e] = 0;  /* zero MP on sentry set */
-                            if (ext) ext[0x56 + sSelectedArmy] = (newState > 0) ? 7 : 0;
+                            sArmyState[sSelectedArmy] = (newState > 0) ? 7 : 0;
                         }
                         *(short *)(army + 0x32) = 0;
                         /* Apply to selected group members */
                         for (gi = 0; gi < sStackCount; gi++) {
                             if (sStackSelected[gi] && sStackArmyIdx[gi] >= 0 &&
                                 sStackArmyIdx[gi] != sSelectedArmy) {
-                                unsigned char *ga = gs + 0x1604 + sStackArmyIdx[gi] * 0x42;
+                                unsigned char *ga = ARMY_REC(sStackArmyIdx[gi]);
                                 /* Heroes excluded from sentry (68k: bVar5=false) */
                                 if (newState > 0 && (unsigned char)ga[0x16] == 0x1C) continue;
                                 ga[0x2d] = newState;
                                 if (newState > 0) ga[0x2e] = 0;
-                                if (ext) ext[0x56 + sStackArmyIdx[gi]] = (newState > 0) ? 7 : 0;
+                                sArmyState[sStackArmyIdx[gi]] = (newState > 0) ? 7 : 0;
                                 *(short *)(ga + 0x32) = 0;
                             }
                         }
@@ -37704,7 +37705,7 @@ int main(void)
                     /* P = Production / City Info for selected army's city */
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
                         unsigned char *gs = (unsigned char *)*gGameState;
-                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *army = ARMY_REC(sSelectedArmy);
                         short ax = *(short *)(army + 0x00);
                         short ay = *(short *)(army + 0x02);
                         short cc = sCityCount;
@@ -37734,7 +37735,7 @@ int main(void)
                      * the city at selected army's position, if owned */
                     if (sSelectedArmy >= 0 && *gGameState != 0) {
                         unsigned char *gs = (unsigned char *)*gGameState;
-                        unsigned char *army = gs + 0x1604 + sSelectedArmy * 0x42;
+                        unsigned char *army = ARMY_REC(sSelectedArmy);
                         short ax = *(short *)(army + 0x00);
                         short ay = *(short *)(army + 0x02);
                         short curPl = *(short *)(gs + 0x110);
@@ -37763,9 +37764,9 @@ int main(void)
                         short curP2 = *(short *)(gs2 + 0x110);
                         short ac2 = *(short *)(gs2 + 0x1602);
                         short ai2;
-                        if (ac2 > 100) ac2 = 100;
+                        if (ac2 > MAX_ARMIES) ac2 = MAX_ARMIES;
                         for (ai2 = 0; ai2 < ac2; ai2++) {
-                            unsigned char *a2 = gs2 + 0x1604 + ai2 * 0x42;
+                            unsigned char *a2 = ARMY_REC(ai2);
                             if ((short)(unsigned char)a2[0x15] != curP2) continue;
                             if (a2[0x16] == 0xFF) continue;
                             if (*(short *)(a2 + 0x32) == 0) continue;
