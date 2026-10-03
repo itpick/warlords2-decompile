@@ -12,13 +12,13 @@ prep() {  # port, folder path to type-select, app name
   local port=$1; shift
   export WL_PORT=$port
   "$HERE/quit_game.sh" || exit 1
-  "$HERE/wl.sh" key Alt+Meta+w >/dev/null; sleep 2
-  "$HERE/wl.sh" click 600 680 >/dev/null; sleep 1
+  "$HERE/wl.sh" key Alt+Meta+w >/dev/null; sleep 1.2
+  "$HERE/wl.sh" click 600 680 >/dev/null; sleep 0.6
   local n=$#; local i=0
   for name in "$@"; do
     i=$((i+1))
-    "$HERE/wl.sh" type "$name" >/dev/null; sleep 1
-    [ $i -lt $n ] && { "$HERE/wl.sh" key Meta+o >/dev/null; sleep 4; }
+    "$HERE/wl.sh" type "$name" >/dev/null; sleep 0.7
+    [ $i -lt $n ] && { "$HERE/wl.sh" key Meta+o >/dev/null; sleep 2.5; }
   done
 }
 prep 3200 "Warlords II" "Warlords II.app" &
