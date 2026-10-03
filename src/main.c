@@ -5142,6 +5142,7 @@ static void ScanForScenarios(void)
 
 #define TT_WATER  0
 #define TT_GRASS  1
+#define TT_SWAMP  5
 
 /* FUN_100a271c land-mass stage. Classification bytes, not Grasslands
  * tile indices: 7 is still open, 4 is painted land, 5 and 6 count toward
@@ -5322,6 +5323,97 @@ static void RandomMapFill(unsigned char *g, short *painted)
 /* FUN_100a271c: FUN_100a1d8c, then while FUN_100a1e28 is 0, paint one arm
  * and fill. The bound is (cells that are 7, 5, or 6) / 100 * the DAT
  * factor, compared as signed shorts. */
+/* FUN_1009ffa4. Returns 1 if a step from (x,y) along any of the eight
+ * pairs lands on code, 0 if none do, -1 if a pair cannot be loaded.
+ * Out of 0..111 by 0..155 is a miss for that direction, not a hit. */
+static short RandomMapHasStepNeighbor(const unsigned char *g, short x, short y,
+                                      short code)
+{
+    short dir;
+    for (dir = 0; dir < 8; dir++) {
+        short dx, dy, nx, ny;
+        if (!RandomMapDirDelta(dir, &dx, &dy)) return -1;
+        nx = (short)(x + dx);
+        ny = (short)(y + dy);
+        if (nx < 0 || ny < 0 || nx > 0x6F || ny > 0x9B) continue;
+        if (g[(long)ny * 112 + nx] == (unsigned char)code) return 1;
+    }
+    return 0;
+}
+
+/* FUN_100a6364. Dice(1,5,3) puffs. x moves by Dice(1,3,0) times one
+ * direction's dx; y moves by Dice(1,3,0) times a second direction's dy.
+ * A puff paints 8 only where the cell is still 7. */
+static void RandomMapSwampSpread(unsigned char *g, short x, short y)
+{
+    short n = Dice(1, 5, 3);
+    short i;
+    if (n <= 0) return;
+    for (i = 0; i < n; i++) {
+        short dir, scale, dx, dy, nx, ny;
+        dir = Dice(1, 8, -1);
+        scale = Dice(1, 3, 0);
+        if (!RandomMapDirDelta(dir, &dx, &dy)) return;
+        nx = (short)(x + (short)(scale * dx));
+        dir = Dice(1, 8, -1);
+        scale = Dice(1, 3, 0);
+        if (!RandomMapDirDelta(dir, &dx, &dy)) return;
+        ny = (short)(y + (short)(scale * dy));
+        RmClamp(&nx, &ny);
+        if (g[(long)ny * 112 + nx] == 7)
+            g[(long)ny * 112 + nx] = 8;
+    }
+}
+
+/* FUN_100a64c0. Keep rolling Dice(1,102,5) and Dice(1,146,5) until the
+ * cell is accepted. Not-7 is ignored. A 7 is accepted when FUN_1009ffa4
+ * finds a 3 beside it or beside one of the three southeast corners, and
+ * the fifth such 7 is accepted even if none of those tests hit. */
+static void RandomMapSwampCluster(unsigned char *g)
+{
+    short tries = 0;
+    short accept = 0;
+    short x = 0, y = 0;
+    static const short ox[4] = {0, 1, 0, 1};
+    static const short oy[4] = {0, 0, 1, 1};
+    for (;;) {
+        short k;
+        x = Dice(1, 0x66, 5);
+        y = Dice(1, 0x92, 5);
+        if (g[(long)y * 112 + x] == 7) {
+            if (tries >= 4) {
+                accept = 1;
+            } else {
+                for (k = 0; k < 4; k++) {
+                    short hit = RandomMapHasStepNeighbor(
+                        g, (short)(x + ox[k]), (short)(y + oy[k]), 3);
+                    if (hit < 0) return;
+                    if (hit) accept = 1;
+                }
+                tries = (short)(tries + 1);
+            }
+        }
+        if (accept) break;
+    }
+    g[(long)y * 112 + x] = 8;
+    RandomMapSwampSpread(g, x, y);
+    RandomMapSwampSpread(g, (short)(x + 1), (short)(y + 1));
+    RandomMapSwampSpread(g, (short)(x - 1), (short)(y - 1));
+    RandomMapSwampSpread(g, (short)(x - 1), (short)(y + 1));
+    RandomMapSwampSpread(g, (short)(x + 1), (short)(y - 1));
+}
+
+/* FUN_100a66a8. Dice(1,3,0) clusters. Not rolled while the step pairs
+ * are missing: the site test and the spread both load them, and a miss
+ * is not the same as "no neighbor is 3" (that would force-accept). */
+static void RandomMapSwampStage(unsigned char *g)
+{
+    short dx, dy, n, i;
+    if (!RandomMapDirDelta(0, &dx, &dy)) return;
+    n = Dice(1, 3, 0);
+    for (i = 0; i < n; i++) RandomMapSwampCluster(g);
+}
+
 static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
 {
     short eligible = 0;
@@ -5344,11 +5436,16 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
         RandomMapPaintArm(classGrid, &painted);
         RandomMapFill(classGrid, &painted);
     }
+    /* Next stage, FUN_100a66a8. It does not run until the step pairs exist. */
+    RandomMapSwampStage(classGrid);
 
-    /* Byte 4 is the only land this stage writes. It is not a Grasslands
-     * tile id; the remake's later stages still read TT_GRASS. */
-    for (i = 0; i < 112L * 156L; i++)
-        terrain[i] = (classGrid[i] == 4) ? TT_GRASS : TT_WATER;
+    /* 4 is this stage's land and 8 is a swamp. Neither byte is a
+     * Grasslands tile id. 7 stays water: it was only the paintable field. */
+    for (i = 0; i < 112L * 156L; i++) {
+        if (classGrid[i] == 4) terrain[i] = TT_GRASS;
+        else if (classGrid[i] == 8) terrain[i] = TT_SWAMP;
+        else terrain[i] = TT_WATER;
+    }
 }
 
 /* ===================================================================
@@ -5368,7 +5465,6 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
 #define TT_FOREST 2
 #define TT_MTN    3
 #define TT_HILL   4
-#define TT_SWAMP  5
 
 /* Tile indices for Grasslands terrain set (from MAPCOLOR analysis) */
 #define RTILE_WATER  20   /* deep ocean (color 6) */
