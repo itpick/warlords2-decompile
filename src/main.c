@@ -5851,6 +5851,461 @@ static void RandomMapSwampStage(unsigned char *g)
     for (i = 0; i < n; i++) RandomMapSwampCluster(g);
 }
 
+
+/* FUN_100515f4 fills the class grid with 2. FUN_100a01e8 then draws one
+ * coast and floods the outside back to 2, so the interior is 7. That is
+ * the continent. The eight compass pairs are not these corners. */
+
+static int RmOnBorder(short x, short y)
+{
+    return x == 0 || y == 0 || x == 0x6F || y == 0x9B;
+}
+
+/* FUN_1009f244. x == 0 wins over y == 0, so a corner is the vertical edge. */
+static int RmEdgeId(short x, short y)
+{
+    if (x == 0) return 3;
+    if (y == 0) return 0;
+    if (x == 0x6F) return 1;
+    if (y == 0x9B) return 2;
+    return -1;
+}
+
+static void RmPaintClass(unsigned char *g, short x, short y, unsigned char byte)
+{
+    RmClamp(&x, &y);
+    g[(long)y * 112 + x] = byte;
+}
+
+/* FUN_10051e1c. range 0 rolls no distance die (Dice returns add) but the
+ * sign die still runs. Snap uses the pre-snap distances, and more than
+ * one edge can win, which is how a corner is chosen. */
+static void RmJitter(short *x, short *y, short range, short snap)
+{
+    short s, sgn, ox, oy, east, south;
+    s = Dice(1, range, 0);
+    sgn = Dice(1, 3, -2);
+    *x = (short)(*x + (short)(sgn * s));
+    s = Dice(1, range, 0);
+    sgn = Dice(1, 3, -2);
+    *y = (short)(*y + (short)(sgn * s));
+    if (snap && Dice(1, 100, 0) < 0x1E) {
+        ox = *x;
+        oy = *y;
+        east = (short)(0x6F - ox);
+        south = (short)(0x9B - oy);
+        if (ox <= oy && ox <= east && ox <= south) *x = 0;
+        if (oy <= ox && oy <= east && oy <= south) *y = 0;
+        if (east <= oy && east <= ox && east <= south) *x = 0x6F;
+        if (south <= oy && south <= ox && south <= east) *y = 0x9B;
+    }
+    RmClamp(x, y);
+}
+
+/* (56-x)/(78-y), the compare FUN_1009ea20 makes after the float cast.
+ * y == 78 is a zero divisor; the sign of the numerator is the sign of
+ * the PPC infinity, which is all the compare uses. */
+static int RmCoastBefore(short x1, short y1, short x2, short y2)
+{
+    double d1 = (double)(0x4E - y1);
+    double d2 = (double)(0x4E - y2);
+    double a = (d1 == 0.0) ? ((0x38 - x1) < 0 ? -1.0e300 : 1.0e300)
+                           : (double)(0x38 - x1) / d1;
+    double b = (d2 == 0.0) ? ((0x38 - x2) < 0 ? -1.0e300 : 1.0e300)
+                           : (double)(0x38 - x2) / d2;
+    return a < b;
+}
+
+/* FUN_1009f524 same-edge and corner legs: one compass step, stamp 7
+ * after the move. The start cell was already stamped. */
+static void RmWalkStamp7(unsigned char *g, short x, short y, short x2, short y2)
+{
+    short guard = 0;
+    while (x != x2 || y != y2) {
+        short dx, dy;
+        RmStepToward(x, y, x2, y2, &dx, &dy);
+        if (dx == 0 && dy == 0) return;
+        x = (short)(x + dx);
+        y = (short)(y + dy);
+        RmClamp(&x, &y);
+        g[(long)y * 112 + x] = 7;
+        if (++guard > 400) return;
+    }
+}
+
+/* FUN_1009f350. Same dice as the city corridor, but only the center
+ * cell is painted, and it is painted even when it was not 7. Inside
+ * Chebyshev 3 the step is always toward the target, so it arrives. */
+static void RmWanderStamp7(unsigned char *g, short x, short y, short x2, short y2)
+{
+    short firstDx, firstDy, dx, dy, guard;
+    if (x == x2 && y == y2) return;
+    RmStepToward(x, y, x2, y2, &firstDx, &firstDy);
+    guard = 0;
+    for (;;) {
+        short dist, roll;
+        RmStepToward(x, y, x2, y2, &dx, &dy);
+        dist = RmChebyshev(x, y, x2, y2);
+        if (dist < 3) {
+            x = (short)(x + dx);
+            y = (short)(y + dy);
+        } else {
+            roll = Dice(1, 3, 0);
+            if (roll == 1) {
+                x = (short)(x + dx);
+                y = (short)(y + dy);
+            } else if (roll == 2) {
+                dx = firstDx;
+                dy = firstDy;
+                x = (short)(x + dx);
+                y = (short)(y + dy);
+            } else if (roll == 3) {
+                RmTurnDir(&dx, &dy);
+                x = (short)(x + dx);
+                y = (short)(y + dy);
+                firstDx = dx;
+                firstDy = dy;
+            }
+        }
+        RmClamp(&x, &y);
+        g[(long)y * 112 + x] = 7;
+        if (x == x2 && y == y2) return;
+        if (++guard > 20000) return;
+    }
+}
+
+/* Both ends on the border: FUN_1009f524. Same edge is a straight run.
+ * Opposite edges wander. Adjacent edges meet at a map corner.
+ * The via-point table is a TOC load Ghidra left unresolved, not a DAT
+ * 1010 field. The index rules pick 0 for the north/west pair and
+ * otherwise the higher adjacent edge, and those four corners are the
+ * only points that seal the border the straight legs walk. */
+static void RmConnectCoast(unsigned char *g, short x1, short y1, short x2, short y2)
+{
+    static const short cx[4] = {0, 111, 111, 0};
+    static const short cy[4] = {0, 0, 155, 155};
+    int e1, e2, diff, via;
+    if (!RmOnBorder(x1, y1) || !RmOnBorder(x2, y2)) {
+        RmWanderStamp7(g, x1, y1, x2, y2);
+        return;
+    }
+    e1 = RmEdgeId(x1, y1);
+    e2 = RmEdgeId(x2, y2);
+    if (e1 < 0 || e2 < 0) {
+        RmWanderStamp7(g, x1, y1, x2, y2);
+        return;
+    }
+    if (e1 == e2) {
+        RmWalkStamp7(g, x1, y1, x2, y2);
+        return;
+    }
+    diff = e1 - e2;
+    if (diff < 0) diff = -diff;
+    if (diff == 2) {
+        RmWanderStamp7(g, x1, y1, x2, y2);
+        return;
+    }
+    via = e2;
+    if (diff == 3) via = 0;
+    else if (diff == 1 && e2 < e1) via = e1;
+    RmWalkStamp7(g, x1, y1, cx[via], cy[via]);
+    RmWalkStamp7(g, x2, y2, cx[via], cy[via]);
+}
+
+/* FUN_1009fad4. A 3 or a 1 is the barrier. A 0 on the border, or a 0
+ * whose orthogonal neighbor is already 2, joins the ocean. */
+static int RmFloodOcean(const unsigned char *g, short x, short y)
+{
+    unsigned char c = g[(long)y * 112 + x];
+    if (c == 3 || c == 1) return 0;
+    if (RmOnBorder(x, y) && c == 0) return 1;
+    if (x < 111 && g[(long)y * 112 + x + 1] == 2) return 1;
+    if (x > 0 && g[(long)y * 112 + x - 1] == 2) return 1;
+    if (y < 155 && g[(long)(y + 1) * 112 + x] == 2) return 1;
+    if (y > 0 && g[(long)(y - 1) * 112 + x] == 2) return 1;
+    return 0;
+}
+
+/* FUN_1009fc58. 7 becomes the barrier, everything else is cleared,
+ * then two passes of four sweeps let the border eat the outside.
+ * Whatever is still not 2 becomes 7: the inside, and the barrier. */
+static void RmFloodCoast(unsigned char *g)
+{
+    short pass, x, y;
+    long i;
+    for (i = 0; i < 112L * 156L; i++)
+        g[i] = (g[i] == 7) ? 3 : 0;
+    for (pass = 0; pass < 2; pass++) {
+        for (x = 0; x < 112; x++)
+            for (y = 0; y < 156; y++)
+                if (RmFloodOcean(g, x, y)) g[(long)y * 112 + x] = 2;
+        for (y = 0; y < 156; y++)
+            for (x = 0; x < 112; x++)
+                if (RmFloodOcean(g, x, y)) g[(long)y * 112 + x] = 2;
+        for (x = 111; x >= 0; x--)
+            for (y = 155; y >= 0; y--)
+                if (RmFloodOcean(g, x, y)) g[(long)y * 112 + x] = 2;
+        for (y = 155; y >= 0; y--)
+            for (x = 111; x >= 0; x--)
+                if (RmFloodOcean(g, x, y)) g[(long)y * 112 + x] = 2;
+    }
+    for (i = 0; i < 112L * 156L; i++)
+        if (g[i] != 2) g[i] = 7;
+}
+
+/* FUN_100a0038. A 2 with a 7, a 5, or a 6 one step away becomes 3. */
+static void RandomMapMakeShore(unsigned char *g)
+{
+    short x, y;
+    for (x = 0; x < 112; x++) {
+        for (y = 0; y < 156; y++) {
+            if (g[(long)y * 112 + x] != 2) continue;
+            if (RandomMapHasStepNeighbor(g, x, y, 7) == 1 ||
+                RandomMapHasStepNeighbor(g, x, y, 5) == 1 ||
+                RandomMapHasStepNeighbor(g, x, y, 6) == 1)
+                g[(long)y * 112 + x] = 3;
+        }
+    }
+}
+
+static int RmIs23(unsigned char c) { return c == 2 || c == 3; }
+static int RmIs457(unsigned char c) { return c == 5 || c == 4 || c == 7; }
+
+/* FUN_100a9628. Land with three orthogonal water neighbors is eaten.
+ * A 3 with no 7/5/6 step neighbor falls back to 2. The diagonal test
+ * writes 3 into one land gap. */
+static void RandomMapErodeCoast(unsigned char *g)
+{
+    short x, y;
+    for (x = 0; x < 112; x++) {
+        for (y = 0; y < 156; y++) {
+            long idx = (long)y * 112 + x;
+            unsigned char c = g[idx];
+            short n = 0;
+            if (c != 7 && c != 5 && c != 6) continue;
+            if (y < 155 && RmIs23(g[idx + 112])) n++;
+            if (y > 0 && RmIs23(g[idx - 112])) n++;
+            if (x < 111 && RmIs23(g[idx + 1])) n++;
+            if (x > 0 && RmIs23(g[idx - 1])) n++;
+            if (n > 2) g[idx] = 2;
+        }
+    }
+    for (x = 0; x < 112; x++) {
+        for (y = 0; y < 156; y++) {
+            if (g[(long)y * 112 + x] != 3) continue;
+            if (RandomMapHasStepNeighbor(g, x, y, 7) == 0 &&
+                RandomMapHasStepNeighbor(g, x, y, 5) == 0 &&
+                RandomMapHasStepNeighbor(g, x, y, 6) == 0)
+                g[(long)y * 112 + x] = 2;
+        }
+    }
+    for (x = 1; x < 0x6F; x++) {
+        for (y = 1; y < 0x9B; y++) {
+            long idx = (long)y * 112 + x;
+            unsigned char se, nw, ne, sw;
+            if (!RmIs23(g[idx])) continue;
+            se = g[idx + 113];
+            nw = g[idx - 113];
+            ne = g[idx - 111];
+            sw = g[idx + 111];
+            if (RmIs23(se) && RmIs23(nw) && RmIs457(ne) && RmIs457(sw)) {
+                if (Dice(1, 10, 0) < 5) g[idx - 111] = 3;
+                else g[idx + 111] = 3;
+            } else if (RmIs23(sw) && RmIs23(ne) && RmIs457(nw) && RmIs457(se)) {
+                if (Dice(1, 10, 0) < 5) g[idx - 113] = 3;
+                else g[idx + 113] = 3;
+            }
+        }
+    }
+}
+
+/* FUN_100a8d88. wide 0 paints the cell and the dir+1/dir+7 neighbors.
+ * wide 1 also paints those neighbors at *2, and extra also at *3.
+ * stopAtWater is param_2: the second time the next cell is 2, this
+ * step still paints and advances, then the walk returns. The continue
+ * die is Dice(1,4,0); only a 4 keeps going. edgeSpan is param_3's
+ * other job: the ends are (0, dice) and (111, dice) instead of a
+ * 5/6 cell and a 2/3 cell. */
+static void RmRiverWalk(unsigned char *g, short wide, short stopAtWater, short extra)
+{
+    short x, y, x2, y2, seen, guard, stop;
+    short t;
+    if (extra) {
+        x = 0;
+        y = Dice(1, 0x9C, -1);
+        x2 = 0x6F;
+        y2 = Dice(1, 0x9C, -1);
+    } else {
+        for (t = 0; t < 200; t++) {
+            x = Dice(1, 0x70, -1);
+            y = Dice(1, 0x9C, -1);
+            if (g[(long)y * 112 + x] == 5 || g[(long)y * 112 + x] == 6) break;
+        }
+        for (t = 0; t < 200; t++) {
+            x2 = Dice(1, 0x70, -1);
+            y2 = Dice(1, 0x9C, -1);
+            if (g[(long)y2 * 112 + x2] == 2 || g[(long)y2 * 112 + x2] == 3) break;
+        }
+    }
+    if (x == x2 && y == y2) return;
+    seen = 0;
+    guard = 0;
+    for (;;) {
+        short dx, dy, dir, i, sx, sy, roll, ahead;
+        if (++guard > 20000) return;
+        RmStepToward(x, y, x2, y2, &dx, &dy);
+        dir = -1;
+        for (i = 0; i < 8; i++) {
+            RandomMapDirDelta(i, &sx, &sy);
+            if (sx == dx && sy == dy) dir = i;
+        }
+        ahead = 0;
+        if (stopAtWater && dir >= 0) {
+            short nx = (short)(x + dx);
+            short ny = (short)(y + dy);
+            if (nx >= 0 && ny >= 0 && nx <= 0x6F && ny <= 0x9B &&
+                g[(long)ny * 112 + nx] == 2) {
+                if (seen) ahead = 1;
+                else seen = 1;
+            }
+        }
+        RmPaintClass(g, x, y, 2);
+        if (dir >= 0) {
+            short d1 = RmWrap8((short)(dir + 1));
+            short d2 = RmWrap8((short)(dir + 7));
+            short mul;
+            RmIndexedDelta(d1, &sx, &sy);
+            RmPaintClass(g, (short)(x + sx), (short)(y + sy), 2);
+            RmIndexedDelta(d2, &sx, &sy);
+            RmPaintClass(g, (short)(x + sx), (short)(y + sy), 2);
+            if (wide) {
+                for (mul = 2; mul <= (short)(extra ? 3 : 2); mul++) {
+                    RmIndexedDelta(d1, &sx, &sy);
+                    RmPaintClass(g, (short)(x + sx * mul), (short)(y + sy * mul), 2);
+                    RmIndexedDelta(d2, &sx, &sy);
+                    RmPaintClass(g, (short)(x + sx * mul), (short)(y + sy * mul), 2);
+                }
+            }
+        }
+        x = (short)(x + dx);
+        y = (short)(y + dy);
+        stop = (x == x2 && y == y2) || ahead;
+        roll = Dice(1, 4, 0);
+        if (stop || roll <= 3) return;
+    }
+}
+
+/* FUN_100a01e8. Four edges. Counts at +0x2c are 5,6,5,6, all >= 3, so
+ * each end is the DAT corner plus the +0xac delta times -10, then
+ * jittered by 16 with the edge snap. FUN_1009ea20 may swap a shared
+ * corner. Subdivision (FUN_1009eef8) and the connect (FUN_1009f864)
+ * stamp the outline. A 50% roll then runs FUN_100a018c: Dice(1,3,-1)
+ * wide edge walks, which the PPC passes in r3, then the erode. */
+static void RandomMapCoast(unsigned char *g)
+{
+    static const short kBase[8][2] = {
+        {0, 0}, {111, 0}, {111, 0}, {111, 155},
+        {111, 155}, {0, 156}, {0, 156}, {0, 0}
+    };
+    static const short kPush[4][2] = {
+        {-1, -1}, {1, -1}, {1, 1}, {-1, 1}
+    };
+    static const short kEdgeN[4] = {5, 6, 5, 6};
+    short ax[4], ay[4], bx[4], by[4];
+    short pts[4][16][2];
+    short npts[4];
+    short e, i;
+    long ci;
+    for (ci = 0; ci < 112L * 156L; ci++) g[ci] = 2;
+    for (e = 0; e < 4; e++) {
+        short d = (short)((e + 1) & 3);
+        ax[e] = (short)(kBase[e * 2][0] + kPush[e][0] * -10);
+        ay[e] = (short)(kBase[e * 2][1] + kPush[e][1] * -10);
+        RmJitter(&ax[e], &ay[e], 16, 1);
+        RmPaintClass(g, ax[e], ay[e], 7);
+        bx[e] = (short)(kBase[e * 2 + 1][0] + kPush[d][0] * -10);
+        by[e] = (short)(kBase[e * 2 + 1][1] + kPush[d][1] * -10);
+        RmJitter(&bx[e], &by[e], 16, 1);
+        RmPaintClass(g, bx[e], by[e], 7);
+    }
+    for (e = 0; e < 4; e++) {
+        short j = (short)((e + 1) & 3);
+        if (RmCoastBefore(bx[e], by[e], ax[j], ay[j])) {
+            short tx = bx[e], ty = by[e];
+            bx[e] = ax[j];
+            by[e] = ay[j];
+            ax[j] = tx;
+            ay[j] = ty;
+        }
+    }
+    for (e = 0; e < 4; e++) {
+        short n = 1;
+        short count = kEdgeN[e];
+        pts[e][0][0] = ax[e];
+        pts[e][0][1] = ay[e];
+        if (RmOnBorder(ax[e], ay[e]) && RmOnBorder(bx[e], by[e])) {
+            pts[e][1][0] = bx[e];
+            pts[e][1][1] = by[e];
+            n = 2;
+        } else {
+            short step = (short)(RmChebyshev(ax[e], ay[e], bx[e], by[e]) / (count - 1));
+            short guard = 0;
+            while (n < 15) {
+                short cx, cy, dx, dy, dist;
+                cx = pts[e][n - 1][0];
+                cy = pts[e][n - 1][1];
+                RmStepToward(cx, cy, bx[e], by[e], &dx, &dy);
+                cx = (short)(cx + (short)(dx * step));
+                cy = (short)(cy + (short)(dy * step));
+                RmJitter(&cx, &cy, (short)(step / 2), 0);
+                RmPaintClass(g, cx, cy, 7);
+                pts[e][n][0] = cx;
+                pts[e][n][1] = cy;
+                n++;
+                dist = RmChebyshev(cx, cy, bx[e], by[e]);
+                if (dist < step || n >= (short)(count - 1) || ++guard > 20) break;
+            }
+            pts[e][n][0] = bx[e];
+            pts[e][n][1] = by[e];
+            n++;
+        }
+        npts[e] = n;
+    }
+    for (e = 0; e < 4; e++) {
+        short j = (short)((e + 1) & 3);
+        for (i = 0; i < (short)(npts[e] - 1); i++)
+            RmConnectCoast(g, pts[e][i][0], pts[e][i][1],
+                           pts[e][i + 1][0], pts[e][i + 1][1]);
+        RmConnectCoast(g, pts[e][npts[e] - 1][0], pts[e][npts[e] - 1][1],
+                       pts[j][0][0], pts[j][0][1]);
+    }
+    RmFloodCoast(g);
+    RandomMapMakeShore(g);
+    if (Dice(1, 100, 0) < 0x32) {
+        short n = Dice(1, 3, -1);
+        short k;
+        for (k = 0; k < n; k++) RmRiverWalk(g, 1, 0, 1);
+        RandomMapErodeCoast(g);
+    }
+    RandomMapMakeShore(g);
+}
+
+/* FUN_100a9c08. +0x3a is 5 walks of width 1, +0x38 is 5 walks of width 2,
+ * both stopping at ocean. The 'wate' thumb adds the same short to both
+ * counts; that thumb is not applied (see RandomMapCoast's caller).
+ * FUN_100a39ac stays out: its DAT name is still unrecovered. */
+static void RandomMapRivers(unsigned char *g)
+{
+    short i;
+    for (i = 0; i < 5; i++) RmRiverWalk(g, 0, 1, 0);
+    for (i = 0; i < 5; i++) RmRiverWalk(g, 1, 1, 0);
+    RandomMapErodeCoast(g);
+    RandomMapMakeShore(g);
+    RmCitySmooth(g);
+    RandomMapErodeCoast(g);
+    RandomMapMakeShore(g);
+}
+
 static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
 {
     short eligible = 0;
@@ -5876,13 +6331,16 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
     /* Next stage, FUN_100a66a8. It does not run until the step pairs exist. */
     RandomMapSwampStage(classGrid);
 
-    /* 4 is this stage's land, 8 is a swamp, 6 is a mountain marker,
-     * 5 is a forest marker. 7 stays water: it was only the paintable field. */
+    /* 4 is painted land, 7 is the coast's interior that this stage did
+     * not repaint. Both are grass: 7 is not a lake. 2 is ocean and 3 is
+     * the shore byte; the tile pass below turns water beside land into
+     * the shore sprite. 8 swamp, 6 mountain, 5 forest. */
     for (i = 0; i < 112L * 156L; i++) {
-        if (classGrid[i] == 4) terrain[i] = TT_GRASS;
-        else if (classGrid[i] == 8) terrain[i] = TT_SWAMP;
-        else if (classGrid[i] == 6) terrain[i] = TT_MTN;
-        else if (classGrid[i] == 5) terrain[i] = TT_FOREST;
+        unsigned char c = classGrid[i];
+        if (c == 4 || c == 7) terrain[i] = TT_GRASS;
+        else if (c == 8) terrain[i] = TT_SWAMP;
+        else if (c == 6) terrain[i] = TT_MTN;
+        else if (c == 5) terrain[i] = TT_FOREST;
         else terrain[i] = TT_WATER;
     }
 }
@@ -5894,9 +6352,10 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
  * properties and unit definitions), then generates terrain, places
  * cities, and initializes the game state.
  *
- * Land shape is FUN_100a271c (count 7/5/6, paint 4 only on 7, fill).
- * Cities, the two chain walks, and the swamp stage use the DAT 1010
- * shorts. Hills and the later road overlay are still the remake's.
+ * The coast is FUN_100a01e8 (one outline, outside flooded to 2).
+ * Rivers are FUN_100a9c08. Land shape inside that is FUN_100a271c.
+ * The four dialog thumbs are not added. The road overlay is still
+ * the remake's Manhattan pass, not FUN_100aafb8.
  * =================================================================== */
 
 /* Terrain type codes for working buffer */
@@ -5961,20 +6420,25 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     /* --- Phase 2: Generate terrain --- */
 
-    /* Class grid starts as 7. Cities stamp 6 and 5, roads and the
-     * mountain/forest walks edit those, then FUN_100a271c paints 4s.
-     * Coast stages that would punch 2s and 3s are not this function. */
+    /* Ocean 2, then the coast outline. Cities stamp 6 and 5 on the
+     * interior 7s. Rivers punch 2s before the land stage paints 4s. */
     {
         unsigned char *classGrid = (unsigned char *)NewPtrClear(112 * 156);
         RmCity rmCities[32];
         short rmCityCount = 0;
         long ci;
         if (classGrid == NULL) { DisposePtr((Ptr)terrain); return false; }
-        for (ci = 0; ci < 112L * 156L; ci++) classGrid[ci] = 7;
+        /* FUN_100515f4 / FUN_100a01e8, then the city passes, then
+         * FUN_100abcec, then FUN_100a9c08, then the land stage.
+         * Dialog thumbs (wate/hill/citi/fore) are not added: the view's
+         * initial value is not in DAT 1010. FUN_100aafb8's road walk
+         * is still the later Manhattan overlay. */
+        RandomMapCoast(classGrid);
         RmStampCities(classGrid, rmCities, &rmCityCount);
         RmCityRoads(classGrid, rmCities, rmCityCount);
         RmCitySmooth(classGrid);
         RandomMapMountainForest(classGrid);
+        RandomMapRivers(classGrid);
         RandomMapGrowLand(classGrid, terrain);
         /* Keep the stamped sites. The first eight player cities are the
          * faction starts the army loop indexes. The class byte has
