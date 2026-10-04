@@ -6413,7 +6413,21 @@ static void RmPaintBaseTiles(unsigned char *g, unsigned char *map,
             unsigned char c = g[(long)y * 112 + x];
             short par = RmPairIndex(x, y);
             short id;
-            if (c == 10) continue;
+            /* FUN_100a3acc class 10: only the corner with no class-10
+             * neighbor to the north or the west. The four tiles are the
+             * short at +0x6e4, then +1, +0x10, +0x11. */
+            if (c == 10) {
+                if (x > 0 && y > 0 &&
+                    g[(long)(y - 1) * 112 + x] != 10 &&
+                    g[(long)y * 112 + (x - 1)] != 10) {
+                    short base = RmDatShort(0x6e4);
+                    RmPutTile(map, x, y, base);
+                    RmPutTile(map, (short)(x + 1), y, (short)(base + 1));
+                    RmPutTile(map, x, (short)(y + 1), (short)(base + 0x10));
+                    RmPutTile(map, (short)(x + 1), (short)(y + 1), (short)(base + 0x11));
+                }
+                continue;
+            }
             if (c == 11) id = RmDatShort(0x724 + par * 2);
             else id = RmDatShort(0x464 + (int)c * 0x40 + par * 2);
             RmPutTile(map, x, y, id);
@@ -6717,6 +6731,56 @@ static void RmStampCoastRoads(unsigned char *g, unsigned char *map, unsigned cha
     }
 }
 
+/* FUN_100a6ae8 / FUN_100a67e0. +0xa84 in DAT 1010 is 0, and no
+ * class 10 exists yet, so FUN_100a6708's scan adds nothing. The loop
+ * runs while that count is below +0x2a (80). Deltas are the four shorts
+ * at data 0x2c480 and 0x2c488, loaded by lwz r26,-0x1084(r2) and
+ * lwz r27,-0x1080(r2), then lhax with i*2. */
+static void RmPlaceExtraSites(unsigned char *g)
+{
+    static const short dxs[4] = {0, 1, 0, 1};
+    static const short dys[4] = {0, 0, 1, 1};
+    short placed = 0;
+    while (placed < 80) {
+        short x, y, tries, i, ok, shore;
+        tries = 0;
+        for (;;) {
+            ok = 1;
+            x = Dice(1, 0x66, 5);
+            y = Dice(1, 0x92, 5);
+            for (i = 0; i < 4; i++) {
+                short cx = (short)(x + dxs[i]);
+                short cy = (short)(y + dys[i]);
+                unsigned char cell = g[(long)cy * 112 + cx];
+                if (cell == 3 || cell == 2 || cell == 10 || cell == 6 || cell == 5)
+                    ok = 0;
+                if (RandomMapHasStepNeighbor(g, cx, cy, 10) != 0) ok = 0;
+                if (RandomMapHasStepNeighbor(g, (short)(cx + 1), (short)(cy + 1), 10) != 0)
+                    ok = 0;
+                if (RandomMapHasStepNeighbor(g, (short)(cx - 1), (short)(cy - 1), 10) != 0)
+                    ok = 0;
+            }
+            if (ok) {
+                if (tries < 4) {
+                    shore = 0;
+                    for (i = 0; i < 4; i++) {
+                        if (RandomMapHasStepNeighbor(g, (short)(x + dxs[i]),
+                                                     (short)(y + dys[i]), 3) != 0)
+                            shore = 1;
+                    }
+                    tries++;
+                    if (shore) break;
+                } else {
+                    break;
+                }
+            }
+        }
+        for (i = 0; i < 4; i++)
+            g[(long)(y + dys[i]) * 112 + (x + dxs[i])] = 10;
+        placed++;
+    }
+}
+
 /* FUN_100a6b68(7). Forty calls, from the 0x28 written at gs+0x810.
  * Quadrants rotate through 0..15. A cell must be class 7, with no
  * class 10 or 11 next to it, and the first 50 tries also reject a
@@ -6784,6 +6848,9 @@ static void RandomMapTilesRoadsRuins(unsigned char *g, unsigned char *terrain,
     short rx[40], ry[40], nRuin = 0, i;
     unsigned char *rd;
     long z;
+    /* FUN_100a6ae8 before ruins. Roads that join these sites are not
+     * run: FUN_10043248's step costs are a separate search. */
+    RmPlaceExtraSites(g);
     RmPlaceRuins(g, rx, ry, &nRuin);
     for (z = 0; z < 112L * 156L; z++) map[z * 2 + 1] = 0;
     RmPaintBaseTiles(g, map, rx, ry, nRuin);
@@ -10077,6 +10144,10 @@ static void DrawMapInWindow(WindowPtr win)
             /* Pass 0: ruins only (sType >= 2). Pass 1: cities only (sType < 2). */
             if (drawPass == 0 && siteType < 2) continue;
             if (drawPass == 1 && siteType >= 2) continue;
+            /* Random starts are class 6 and 5. The castle tiles are the
+             * class-10 2x2, already in the map. This 80x80 blit is not
+             * that stamp. */
+            if (sRandomMap && siteType < 2) continue;
 
             screenX = winRect.left + (cx - sViewportX) * TERRAIN_TILE_W;
             screenY = winRect.top  + (cy - sViewportY) * TERRAIN_TILE_H;
