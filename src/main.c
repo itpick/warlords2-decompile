@@ -6736,8 +6736,12 @@ static void RmStampCoastRoads(unsigned char *g, unsigned char *map, unsigned cha
  * runs while that count is below +0x2a (80). Deltas are the four shorts
  * at data 0x2c480 and 0x2c488, loaded by lwz r26,-0x1084(r2) and
  * lwz r27,-0x1080(r2), then lhax with i*2. */
+static short sRmSiteX[80], sRmSiteY[80], sRmSiteN;
+
 static void RmPlaceExtraSites(unsigned char *g)
 {
+    sRmSiteN = 0;
+
     static const short dxs[4] = {0, 1, 0, 1};
     static const short dys[4] = {0, 0, 1, 1};
     short placed = 0;
@@ -6777,8 +6781,13 @@ static void RmPlaceExtraSites(unsigned char *g)
         }
         for (i = 0; i < 4; i++)
             g[(long)(y + dys[i]) * 112 + (x + dxs[i])] = 10;
+        if (placed < 80) {
+            sRmSiteX[placed] = x;
+            sRmSiteY[placed] = y;
+        }
         placed++;
     }
+    sRmSiteN = placed < 80 ? placed : 80;
 }
 
 /* FUN_100a6b68(7). Forty calls, from the 0x28 written at gs+0x810.
@@ -6839,9 +6848,330 @@ static void RmPlaceRuins(unsigned char *g, short *rx, short *ry, short *nOut)
     *nOut = n;
 }
 
-/* FUN_100a49cc then the coast half of FUN_100aafb8. The city-to-city
- * walk (FUN_100aa9f4 / FUN_10043e60) is not here: its step costs are
- * not in DAT 1010. */
+static short PathDirToward(short x1, short y1, short x2, short y2);
+static short PathRelaxCost(unsigned char fc, unsigned char fn, Boolean nbrIsSrc);
+
+/* Neighbor lists for FUN_10043248. Data 0xb4e8 / 0xb478, indexed through
+ * the shorts at 0xb558. Group 9 is the interior list while TOC-0x19ec
+ * is 1, which FUN_10044110 sets for mode 0xe. A -1 ends the list. */
+static const short kRmRoadNbr[10][8] = {
+    {7, 0, 1, 2, 3, 4, 5, 6},
+    {2, 3, 4, -1, -1, -1, -1, -1},
+    {2, 3, 4, 5, 6, -1, -1, -1},
+    {4, 5, 6, -1, -1, -1, -1, -1},
+    {0, 1, 2, 3, 4, -1, -1, -1},
+    {7, 0, 4, 5, 6, -1, -1, -1},
+    {0, 1, 2, -1, -1, -1, -1, -1},
+    {7, 0, 1, 2, 6, -1, -1, -1},
+    {7, 0, 6, -1, -1, -1, -1, -1},
+    {0, 2, 4, 6, -1, -1, -1, -1}
+};
+
+static short RmRoadGroup(short x, short y)
+{
+    if (y == 0) {
+        if (x == 0) return 1;
+        if (x == 0x6F) return 3;
+        return 2;
+    }
+    if (y == 0x9B) {
+        if (x == 0) return 6;
+        if (x == 0x6F) return 8;
+        return 7;
+    }
+    if (x == 0) return 4;
+    if (x == 0x6F) return 5;
+    return 9;
+}
+
+/* FUN_10044110 mode 0xe. A classed cell costs 1. Class 0 uses the
+ * shorts at data 0xb5a0. The jump table at 0x1004457c ORs the flag
+ * bits. Property 10 with a low nibble other than 0xe stores 0, then
+ * 0x80. The call at 10044314 (FUN_10042a24) is not taken: this
+ * generator never writes nibble 0x0e. */
+static void RmBuildRoadFlags(const unsigned char *g, const unsigned char *map,
+                             const unsigned char *gs)
+{
+    static const unsigned char kPlain[16] = {
+        1, 1, 3, 3, 4, 5, 7, 2, 5, 2, 1, 7, 0, 0, 0, 0
+    };
+    short x, y;
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            unsigned char tile = map[(long)y * 0xE0 + (long)x * 2];
+            unsigned char flagb = map[(long)y * 0xE0 + (long)x * 2 + 1];
+            signed char prop = (signed char)gs[TERRAIN_TYPE_OFS + tile];
+            unsigned char byte;
+            if ((g[(long)y * 112 + x] & 0x1F) != 0) byte = 1;
+            else if ((unsigned char)prop < 16) byte = kPlain[(unsigned char)prop];
+            else byte = 0;
+            if (prop == 1) byte |= 0x18;
+            else if (prop == 2 || prop == 3) byte |= 0x08;
+            else if (prop == 4) byte |= 0x40;
+            else if (prop == 5) byte |= 0x20;
+            else if (prop == 10) {
+                if ((flagb & 0x0F) != 0x0E) byte = 0;
+                byte |= 0x80;
+            }
+            if (flagb & 0x80) byte |= 0x10;
+            sPathFlagGrid[(long)y * PATH_GRID_W + x] = byte;
+        }
+    }
+}
+
+/* FUN_10042ee4 mode 1, then one pass of FUN_10043248. The second call
+ * returns at 100432b0 because TOC-0x19ec is 1. Margin is the 6 stored
+ * at 10043334. Hidden-map blocking is the r29 test: data short at
+ * 0xac98 is 0, so a human (stat != 1) with gs+0x124 set blocks every
+ * cell but the destination. */
+static Boolean RmRoadSearch(short srcX, short srcY, short dstX, short dstY)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short bx0, by0, bx1, by1, x, y, R = 6, left = 3, radius = 0;
+    Boolean changed, reached = false, ok = true, fogBlock = false;
+    short me, st;
+
+    if (*(short *)(gs + 0x124) != 0) {
+        me = *(short *)(gs + 0x110);
+        st = (me >= 0 && me < 8) ? *(short *)(gs + 0xd0 + me * 2) : 0;
+        if (st != 1) fogBlock = true;
+    }
+    for (y = 0; y < PATH_GRID_H; y++)
+        for (x = 0; x < PATH_GRID_W; x++)
+            sPathCostGrid[(long)y * PATH_GRID_W + x] = PATH_COST_MAX;
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            unsigned char f = sPathFlagGrid[(long)y * PATH_GRID_W + x];
+            Boolean blocked = (f & 7) == 0;
+            if (fogBlock && !(x == dstX && y == dstY)) blocked = true;
+            if (blocked)
+                sPathCostGrid[(long)y * PATH_GRID_W + x] = PATH_COST_BLOCK;
+        }
+    }
+    if (sPathCostGrid[(long)dstY * PATH_GRID_W + dstX] == PATH_COST_BLOCK &&
+        (sPathFlagGrid[(long)dstY * PATH_GRID_W + dstX] & 0x80))
+        sPathCostGrid[(long)dstY * PATH_GRID_W + dstX] = PATH_COST_MAX;
+    if (sPathCostGrid[(long)dstY * PATH_GRID_W + dstX] == PATH_COST_BLOCK)
+        return false;
+    sPathCostGrid[(long)dstY * PATH_GRID_W + dstX] = -1;
+
+    bx0 = (srcX < dstX ? srcX : dstX) - R; if (bx0 < 0) bx0 = 0;
+    by0 = (srcY < dstY ? srcY : dstY) - R; if (by0 < 0) by0 = 0;
+    bx1 = (srcX > dstX ? srcX : dstX) + R; if (bx1 > 0x6F) bx1 = 0x6F;
+    by1 = (srcY > dstY ? srcY : dstY) + R; if (by1 > 0x9B) by1 = 0x9B;
+    do {
+        short xlo = dstX - radius, xhi = dstX + radius;
+        short ylo = dstY - radius, yhi = dstY + radius;
+        short passes;
+        if (xlo < bx0) xlo = bx0;
+        if (xhi > bx1) xhi = bx1;
+        if (ylo < by0) ylo = by0;
+        if (yhi > by1) yhi = by1;
+        changed = false;
+        for (x = xlo; x <= xhi; x++) {
+            for (y = ylo; y <= yhi; y++) {
+                short v = sPathCostGrid[(long)y * PATH_GRID_W + x];
+                short grp, k;
+                unsigned char fc;
+                if (v >= 1) continue;
+                sPathCostGrid[(long)y * PATH_GRID_W + x] = (short)-v;
+                changed = true;
+                fc = sPathFlagGrid[(long)y * PATH_GRID_W + x];
+                grp = RmRoadGroup(x, y);
+                for (k = 0; k < 8 && kRmRoadNbr[grp][k] >= 0; k++) {
+                    short d = kRmRoadNbr[grp][k];
+                    short nx = (short)(x + sPathDX[d]);
+                    short ny = (short)(y + sPathDY[d]);
+                    short g, c, nv;
+                    if (nx < 0 || ny < 0 || nx >= 112 || ny >= 156) continue;
+                    g = sPathCostGrid[(long)ny * PATH_GRID_W + nx];
+                    if (g == PATH_COST_BLOCK) continue;
+                    c = PathRelaxCost(fc, sPathFlagGrid[(long)ny * PATH_GRID_W + nx],
+                                      nx == srcX && ny == srcY);
+                    if (c < 0) continue;
+                    nv = (short)(-v + c);
+                    if (g < 0) g = (short)-g;
+                    if (nv < g)
+                        sPathCostGrid[(long)ny * PATH_GRID_W + nx] = (short)-nv;
+                }
+                if (x == srcX && y == srcY) reached = true;
+            }
+        }
+        if (reached && left != 0) left--;
+        radius++;
+        if (!changed) { left = 0; if (!reached) ok = false; }
+        passes = radius;
+        if (passes > 400) break;
+    } while (left != 0);
+    return ok && reached;
+}
+
+/* FUN_100439a4 with TOC-0x19ec set. Odd directions are refused unless
+ * the neighbour is water and its property is not 1 (10043ac8). An
+ * equal cost is kept only when nothing lower has been seen. */
+static short RmRoadTrace(const unsigned char *map, const unsigned char *gs,
+                         short srcX, short srcY, short dstX, short dstY,
+                         unsigned char *buf)
+{
+    static const short kOff[8] = {0, 7, 1, 6, 2, 5, 3, 4};
+    short cx = srcX, cy = srcY, n = 0;
+    while (n < PATH_TRACE_MAX && !(cx == dstX && cy == dstY)) {
+        short base = PathDirToward(cx, cy, dstX, dstY);
+        short k, bestDir = -1, bestX = cx, bestY = cy;
+        short bestV = sPathCostGrid[(long)cy * PATH_GRID_W + cx];
+        unsigned char fc = sPathFlagGrid[(long)cy * PATH_GRID_W + cx];
+        Boolean any = false;
+        if (bestV < 0) bestV = (short)-bestV;
+        if (base == 0xFF) base = 0;
+        for (k = 0; k < 8; k++) {
+            short d = (short)((base + kOff[k]) & 7);
+            short nx = (short)(cx + sPathDX[d]);
+            short ny = (short)(cy + sPathDY[d]);
+            short v;
+            unsigned char fn, tile;
+            signed char prop;
+            if (nx < 0 || ny < 0 || nx >= 112 || ny >= 156) continue;
+            v = sPathCostGrid[(long)ny * PATH_GRID_W + nx];
+            if (v == PATH_COST_MAX || v == PATH_COST_BLOCK) continue;
+            if (v < 0) v = (short)-v;
+            fn = sPathFlagGrid[(long)ny * PATH_GRID_W + nx];
+            if (d & 1) {
+                if (!(fn & PFLAG_WATER)) continue;
+                tile = map[(long)ny * 0xE0 + (long)nx * 2];
+                prop = (signed char)gs[TERRAIN_TYPE_OFS + tile];
+                if (prop == 1) continue;
+            }
+            if (!(fc & PFLAG_PORT) && !(fn & PFLAG_PORT) &&
+                ((fc & PFLAG_WATER) != (fn & PFLAG_WATER))) continue;
+            if (v < bestV || (!any && v == bestV)) {
+                bestV = v; bestDir = d; bestX = nx; bestY = ny; any = true;
+            }
+        }
+        if (bestDir < 0) break;
+        buf[n++] = (unsigned char)bestDir;
+        cx = bestX; cy = bestY;
+    }
+    return n;
+}
+
+/* FUN_100aa9f4, FUN_100aab7c, FUN_100aaed8, FUN_100aad1c. The path
+ * cache (FUN_100426b4) is empty here, so it is not consulted. A
+ * distance of 1 takes FUN_100428dc before the search. */
+static void RmConnectSiteRoads(unsigned char *g, unsigned char *map,
+                               unsigned char *rd, const unsigned char *gs)
+{
+    static const short kRing[12][2] = {
+        {-1, -1}, {0, -1}, {1, -1}, {2, -1}, {2, 0}, {2, 1},
+        {2, 2}, {1, 2}, {0, 2}, {-1, 2}, {-1, 1}, {-1, 0}
+    };
+    static const short kAdjCost[12] = {1, 1, 1, 2, 4, 6, 0, 2, 5, 2, 1, 2};
+    unsigned char used[100];
+    unsigned char dirs[PATH_MAX_STEPS];
+    short gate = 4;
+    short savedMode, savedPen;
+    unsigned short savedFlags;
+    short i;
+
+    if (sRmSiteN <= 0) return;
+    savedMode = sPathMode; savedFlags = sPathFlags; savedPen = sPathPenalty;
+    sPathMode = PMODE_GROUND; sPathFlags = 0;
+    for (i = 0; i < 100; i++) used[i] = 0;
+    RmBuildRoadFlags(g, map, gs);
+    for (;;) {
+        short src = -1, dst = -1, best = -1, guard, t;
+        short sx, sy, dx, dy, lx, ly, rx, ry;
+        short dist, n, step, stamped;
+        unsigned char propS, propD;
+        for (guard = 0; guard < 80 && src < 0; guard++) {
+            short pick = Dice(1, sRmSiteN, -1);
+            if (pick >= 0 && pick < sRmSiteN && used[pick] == 0) src = pick;
+        }
+        if (src < 0) break;
+        used[src] = 1;
+        sx = sRmSiteX[src]; sy = sRmSiteY[src];
+        for (t = (short)(sRmSiteN - 1); t >= 0; t--) {
+            short dd, roll;
+            if (used[t] != 0) continue;
+            dd = RmDist(sx, sy, sRmSiteX[t], sRmSiteY[t]);
+            if (dd < 0x1E || dd > 0x46) continue;
+            roll = Dice(1, 1000, 0);
+            if (roll > best) { best = roll; dst = t; }
+        }
+        if (dst < 0) continue;
+        used[dst] = 1;
+        if (gate < 10 && Dice(1, 3, -1) == 0) gate++;
+        dx = sRmSiteX[dst]; dy = sRmSiteY[dst];
+        lx = ly = rx = ry = -1;
+        for (t = 0; t < 7; t++) {
+            short k = Dice(1, 12, -1);
+            short x = (short)(sx + kRing[k][0]);
+            short y = (short)(sy + kRing[k][1]);
+            unsigned char c;
+            if (x < 0 || y < 0 || x >= 112 || y >= 156) continue;
+            c = g[(long)y * 112 + x];
+            if (c == 7 || c == 4 || c == 5) { lx = x; ly = y; break; }
+        }
+        for (t = 0; t < 7; t++) {
+            short k = Dice(1, 12, -1);
+            short x = (short)(dx + kRing[k][0]);
+            short y = (short)(dy + kRing[k][1]);
+            unsigned char c;
+            if (x < 0 || y < 0 || x >= 112 || y >= 156) continue;
+            c = g[(long)y * 112 + x];
+            if (c == 7 || c == 4 || c == 5) { rx = x; ry = y; break; }
+        }
+        if (lx < 0 || rx < 0 || (lx == rx && ly == ry)) continue;
+        for (i = 0; i < PATH_MAX_STEPS; i++) dirs[i] = 0xFF;
+        dist = RmDist(lx, ly, rx, ry);
+        propS = gs[TERRAIN_TYPE_OFS + map[(long)ly * 0xE0 + (long)lx * 2]];
+        propD = gs[TERRAIN_TYPE_OFS + map[(long)ry * 0xE0 + (long)rx * 2]];
+        n = 0;
+        if (dist == 1) {
+            Boolean wS = (propS == 2 || propS == 3);
+            Boolean wD = (propD == 2 || propD == 3);
+            short dir;
+            if (wS == wD && propD < 12 && kAdjCost[propD] != 0) {
+                dir = PathDirToward(lx, ly, rx, ry);
+                if (dir >= 0 && dir < 8) { dirs[0] = (unsigned char)dir; n = 1; }
+            }
+        }
+        if (n == 0) {
+            sPathPenalty = (dist < 10) ? 30 : 10;
+            if (propD == 2 || propD == 3) sPathPenalty = 20;
+            if (!RmRoadSearch(lx, ly, rx, ry)) continue;
+            n = RmRoadTrace(map, gs, lx, ly, rx, ry, dirs);
+        }
+        sx = lx; sy = ly; step = 0; stamped = 0;
+        for (i = 0; i < n && i < 200; i++) {
+            short nx, ny;
+            unsigned char c;
+            step++;
+            if (sx == rx && sy == ry) break;
+            if (dirs[i] > 7) break;
+            nx = (short)(sx + sPathDX[dirs[i]]);
+            ny = (short)(sy + sPathDY[dirs[i]]);
+            if (nx < 0 || ny < 0 || nx == 112 || ny == 156) break;
+            sx = nx; sy = ny;
+            c = g[(long)sy * 112 + sx];
+            if (c != 3 && c != 2 && c != 1)
+                RmSetRoad(rd, sx, sy, 1);
+            if (step > 5) {
+                short s;
+                for (s = 0; s < sRmSiteN; s++) {
+                    if (RmDist(sx, sy, sRmSiteX[s], sRmSiteY[s]) < 10)
+                        used[s] = 1;
+                }
+                step = 0;
+            }
+            stamped++;
+        }
+        (void)stamped;
+    }
+    sPathMode = savedMode; sPathFlags = savedFlags; sPathPenalty = savedPen;
+}
+
+/* FUN_100a49cc then FUN_100aafb8. Coast corners, then the site
+ * walk (FUN_100aa9f4 / FUN_10043248), then the class 10/11 clear. */
 static void RandomMapTilesRoadsRuins(unsigned char *g, unsigned char *terrain,
                                      unsigned char *map, const unsigned char *gs)
 {
@@ -6861,7 +7191,8 @@ static void RandomMapTilesRoadsRuins(unsigned char *g, unsigned char *terrain,
     if (rd != NULL) {
         for (z = 0; z < 0x4440; z++) rd[z] = 0;
         RmStampCoastRoads(g, map, rd);
-        /* FUN_100aafb8 drops the road byte on class 10 and 11 first. */
+        /* FUN_100aafb8 walks the 80 sites, then clears class 10 and 11. */
+        RmConnectSiteRoads(g, map, rd, gs);
         for (z = 0; z < 112L * 156L; z++) {
             if (g[z] == 10 || g[z] == 11) rd[z] = (unsigned char)(rd[z] & 0xE0);
         }
@@ -6887,7 +7218,7 @@ static void RandomMapTilesRoadsRuins(unsigned char *g, unsigned char *terrain,
  * The coast is FUN_100a01e8 (one outline, outside flooded to 2).
  * Rivers are FUN_100a9c08. Land shape inside that is FUN_100a271c.
  * The four dialog thumbs are not added. Roads are the coast corners
- * from FUN_100a9f78. City-to-city paths are not run.
+ * from FUN_100a9f78 plus the site walk in FUN_100aafb8.
  * =================================================================== */
 
 /* Terrain type codes for working buffer */
