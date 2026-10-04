@@ -6345,6 +6345,471 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
     }
 }
 
+#include "random_dat_tables.inc"
+
+/* File shorts from 0x464, still little-endian in kRmDat464. */
+static short RmDatShort(int fileOff)
+{
+    int i = fileOff - 0x464;
+    if (i < 0 || i + 1 >= (int)sizeof kRmDat464) return 0;
+    return (short)(kRmDat464[i] | (kRmDat464[i + 1] << 8));
+}
+
+/* (x + y) odd → the first short of a pair. Same test as FUN_100a3acc. */
+static short RmPairIndex(short x, short y)
+{
+    int s = (int)x + (int)y;
+    int half, prev;
+    if (s == 0) return 1;
+    half = s >> 1;
+    prev = (s - 1) >> 1;
+    return (half == prev) ? 0 : 1;
+}
+
+/* FUN_100a3d64 / 3e44 / 3f14 / 3fe4. kind 0: class 1, 2 or 3.
+ * kind 4: class 4. kind 6: class 6. kind 5: class 5 or 6.
+ * Out of the map counts as a hit and is not read. */
+static int RmClassMask(const unsigned char *g, short x, short y, int kind)
+{
+    int mask = 0, i;
+    for (i = 0; i < 8; i++) {
+        short nx = (short)(x + kRandomMapDirDelta[i][0]);
+        short ny = (short)(y + kRandomMapDirDelta[i][1]);
+        int hit = 0;
+        unsigned char c;
+        if (nx < 0 || ny < 0 || nx >= 112 || ny >= 156) hit = 1;
+        else {
+            c = g[(long)ny * 112 + nx];
+            if (kind == 0) hit = (c == 1 || c == 2 || c == 3);
+            else if (kind == 4) hit = (c == 4);
+            else if (kind == 6) hit = (c == 6);
+            else hit = (c == 5 || c == 6);
+        }
+        if (hit) mask |= 1 << i;
+    }
+    return mask;
+}
+
+static void RmPutTile(unsigned char *map, short x, short y, short id)
+{
+    if (x < 0 || y < 0 || x >= 112 || y >= 156) return;
+    map[(long)y * 0xE0 + (long)x * 2] = (unsigned char)id;
+}
+
+static unsigned char RmGetTile(const unsigned char *map, short x, short y)
+{
+    return map[(long)y * 0xE0 + (long)x * 2];
+}
+
+/* FUN_100a3acc. Class 10's 2x2 stamp never fires: this port has no
+ * class 10 sites (the 2x2 deltas are not in DAT 1010). Class 11 uses
+ * the ruin pair at +0x724. Every other class uses +0x464. */
+static void RmPaintBaseTiles(unsigned char *g, unsigned char *map,
+                             const short *rx, const short *ry, short nRuin)
+{
+    short x, y, i;
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            unsigned char c = g[(long)y * 112 + x];
+            short par = RmPairIndex(x, y);
+            short id;
+            if (c == 10) continue;
+            if (c == 11) id = RmDatShort(0x724 + par * 2);
+            else id = RmDatShort(0x464 + (int)c * 0x40 + par * 2);
+            RmPutTile(map, x, y, id);
+        }
+    }
+    /* The first eight ruin records are repainted from +0x728. */
+    for (i = 0; i < 8 && i < nRuin; i++)
+        RmPutTile(map, rx[i], ry[i], RmDatShort(0x728));
+}
+
+/* FUN_100a40bc, one call. FUN_1002b83c is the missing-name gate: a
+ * resource that does not open returns 1, and that is the branch taken
+ * here (negative mountain masks become class 5, not grass). */
+static void RmPaintVariants(unsigned char *g, unsigned char *map)
+{
+    short x, y;
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            unsigned char c = g[(long)y * 112 + x];
+            int mask, m;
+            short par;
+            if (c != 2 && c != 3) continue;
+            mask = RmClassMask(g, x, y, 0);
+            m = (signed char)kRmDat264[mask];
+            par = RmPairIndex(x, y);
+            if (m < 0) {
+                g[(long)y * 112 + x] = 8;
+                RmPutTile(map, x, y, RmDatShort(0x664 + par * 2));
+                RandomMapSwampSpread(g, x, y);
+                map[(long)y * 0xE0 + (long)x * 2 + 1] &= (unsigned char)~0x80;
+            } else {
+                g[(long)y * 112 + x] = 2;
+                RmPutTile(map, x, y, RmDatShort(0x4e4 + m * 4 + par * 2));
+            }
+        }
+    }
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            int mask, m;
+            short par;
+            if (g[(long)y * 112 + x] != 4) continue;
+            mask = RmClassMask(g, x, y, 4);
+            m = (signed char)kRmDat264[mask];
+            par = RmPairIndex(x, y);
+            if (m < 0) {
+                if (Dice(1, 10, 0) < 6) {
+                    RmPutTile(map, x, y, RmDatShort(0x624 + par * 2));
+                    g[(long)y * 112 + x] = 7;
+                } else {
+                    RmPutTile(map, x, y, RmDatShort(0x598 + par * 2));
+                }
+            } else {
+                RmPutTile(map, x, y, RmDatShort(0x564 + m * 4 + par * 2));
+                g[(long)y * 112 + x] = 4;
+            }
+        }
+    }
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            int mask, m;
+            short par;
+            if (g[(long)y * 112 + x] != 6) continue;
+            mask = RmClassMask(g, x, y, 6);
+            m = (signed char)kRmDat264[mask];
+            par = RmPairIndex(x, y);
+            if (m < 0) {
+                RmPutTile(map, x, y, RmDatShort(0x5a4 + par * 2));
+                g[(long)y * 112 + x] = 5;
+            } else {
+                RmPutTile(map, x, y, RmDatShort(0x5e4 + m * 4 + par * 2));
+                g[(long)y * 112 + x] = 6;
+            }
+        }
+    }
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            int mask, m;
+            short par;
+            if (g[(long)y * 112 + x] != 5) continue;
+            mask = RmClassMask(g, x, y, 5);
+            m = (signed char)kRmDat264[mask];
+            par = RmPairIndex(x, y);
+            if (m < 0) {
+                if (Dice(1, 10, 0) < 6) {
+                    RmPutTile(map, x, y, RmDatShort(0x624 + par * 2));
+                    g[(long)y * 112 + x] = 7;
+                } else {
+                    g[(long)y * 112 + x] = 5;
+                    RmPutTile(map, x, y, RmDatShort(0x498 + 5 * 0x40 + par * 2));
+                }
+            } else {
+                RmPutTile(map, x, y, RmDatShort(0x5a4 + m * 4 + par * 2));
+                g[(long)y * 112 + x] = 5;
+            }
+        }
+    }
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            short par, roll;
+            if (g[(long)y * 112 + x] != 8) continue;
+            par = RmPairIndex(x, y);
+            roll = Dice(1, 10, 0);
+            if (roll < 7) {
+                RmPutTile(map, x, y, RmDatShort(0x664 + par * 2));
+            } else {
+                roll = Dice(1, 4, 0);
+                RmPutTile(map, x, y, RmDatShort(0x664 + roll * 4));
+            }
+            g[(long)y * 112 + x] = 8;
+        }
+    }
+}
+
+/* Eight steps at file +0xdc. Road autotile looks these ways, not +0xbc. */
+static const short kRoadDelta[8][2] = {
+    {0, -1}, {1, -1}, {1, 0}, {1, 1},
+    {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}
+};
+
+static unsigned char RmRoadBits(const unsigned char *rd, short x, short y)
+{
+    return (unsigned char)(rd[(long)y * 112 + x] & 0x1F);
+}
+
+static void RmSetRoad(unsigned char *rd, short x, short y, unsigned char v)
+{
+    unsigned char *p;
+    if (x < 0 || y < 0 || x >= 112 || y >= 156) return;
+    p = rd + (long)y * 112 + x;
+    *p = (unsigned char)((*p & 0xE0) | (v & 0x1F));
+}
+
+/* FUN_100a4a00. A neighbor counts when its road byte is set, or when
+ * the template byte at gs+0x711+tile is 1. */
+static int RmRoadMask(const unsigned char *rd, const unsigned char *map,
+                      const unsigned char *gs, short x, short y)
+{
+    int mask = 0, i;
+    for (i = 0; i < 8; i++) {
+        short nx = (short)(x + kRoadDelta[i][0]);
+        short ny = (short)(y + kRoadDelta[i][1]);
+        unsigned char tile;
+        if (nx < 0 || ny < 0 || nx >= 112 || ny >= 156) continue;
+        tile = RmGetTile(map, nx, ny);
+        if (RmRoadBits(rd, nx, ny) != 0 || gs[0x711 + tile] == 1)
+            mask |= 1 << i;
+    }
+    return mask;
+}
+
+/* FUN_100a4ae8. Road byte 1 becomes the DAT +0x364 sprite. A negative
+ * mask byte replaces the terrain tile instead. Then Dice(1,10,10)
+ * cells of sprite 2 become 0x11, and the same count of sprite 1 become 0x10. */
+static void RmAutotileRoads(unsigned char *g, unsigned char *map,
+                            unsigned char *rd, const unsigned char *gs)
+{
+    short x, y, n, i;
+    for (y = 0; y < 156; y++) {
+        for (x = 0; x < 112; x++) {
+            int mask, m;
+            short par;
+            if (RmRoadBits(rd, x, y) == 0) continue;
+            mask = RmRoadMask(rd, map, gs, x, y);
+            m = (signed char)kRmDat264[0x100 + mask];
+            par = RmPairIndex(x, y);
+            if (m < 0) {
+                if (Dice(1, 10, 0) < 6) {
+                    RmPutTile(map, x, y, RmDatShort(0x624 + par * 2));
+                    g[(long)y * 112 + x] = 7;
+                } else {
+                    RmPutTile(map, x, y, RmDatShort(0x5d8 + par * 2));
+                }
+            } else {
+                RmSetRoad(rd, x, y, (unsigned char)(m + 1));
+            }
+        }
+    }
+    n = Dice(1, 10, 10);
+    for (i = 0; i < n; i++) {
+        short t;
+        for (t = 0; t < 10000; t++) {
+            x = Dice(1, 0x70, -1);
+            y = Dice(1, 0x9C, -1);
+            if (RmRoadBits(rd, x, y) == 2) { RmSetRoad(rd, x, y, 0x11); break; }
+        }
+    }
+    n = Dice(1, 10, 10);
+    for (i = 0; i < n; i++) {
+        short t;
+        for (t = 0; t < 10000; t++) {
+            x = Dice(1, 0x70, -1);
+            y = Dice(1, 0x9C, -1);
+            if (RmRoadBits(rd, x, y) == 1) { RmSetRoad(rd, x, y, 0x10); break; }
+        }
+    }
+}
+
+/* Chebyshev, the distance FUN_1000a884 returns for these map sizes
+ * (the far-pair sqrt path is not taken inside one map). */
+static short RmDist(short x1, short y1, short x2, short y2)
+{
+    /* FUN_1000a884 returns trunc(sqrt(dx*dx+dy*dy)) for a pair inside
+     * this map. The 10000 branch is the other side of a data-segment
+     * compare next to the int-to-double bias, not a second map metric. */
+    long dx = (long)x1 - (long)x2; if (dx < 0) dx = -dx;
+    long dy = (long)y1 - (long)y2; if (dy < 0) dy = -dy;
+    long s = dx * dx + dy * dy, r = 0;
+    while ((r + 1) * (r + 1) <= s) r++;
+    return (short)r;
+}
+
+/* FUN_100a9d34. Picks one unselected coast corner whose distance to an
+ * already chosen corner is greater than 9. No class-10 site list is
+ * passed in: those stamps were not ported, so the city distance stays
+ * 10000 and the score is only Dice(1,15,1). */
+static short RmPickCoast(const short *sx, const short *sy, const short *sel,
+                         short *distCity, short *distSel, short n)
+{
+    short i, best = -1, bestScore = -1;
+    if (n <= 0) return -1;
+    if (distCity[0] == -1) {
+        for (i = (short)(n - 1); i >= 0; i--) distCity[i] = 10000;
+    }
+    for (i = (short)(n - 1); i >= 0; i--) {
+        short j, d = 10000;
+        if (sel[i] != 0) continue;
+        for (j = (short)(n - 1); j >= 0; j--) {
+            short dd;
+            if (sel[j] == 0) continue;
+            dd = RmDist(sx[i], sy[i], sx[j], sy[j]);
+            if (dd < d) d = dd;
+        }
+        distSel[i] = d;
+    }
+    for (i = (short)(n - 1); i >= 0; i--) {
+        short score, add;
+        if (sel[i] != 0 || distSel[i] <= 9) continue;
+        add = (short)(0x1E - distCity[i]);
+        if (add < 0) add = 0;
+        score = (short)(add + Dice(1, 0x0F, 1));
+        if (bestScore < score) { bestScore = score; best = i; }
+    }
+    return best;
+}
+
+/* FUN_100a9f78. A tile 0x26 whose east neighbor is 0x28 or 0x18, and
+ * whose side cells are class 7, 4 or 5, is a coast corner. The stamp
+ * is the horizontal pair 0x85/0x86 plus a road byte on either side.
+ * The vertical pair in the same function is not recorded: the land
+ * test is guarded by tile == 0x26, and the stored flag is that test. */
+static void RmStampCoastRoads(unsigned char *g, unsigned char *map, unsigned char *rd)
+{
+    short sx[50], sy[50], sel[50], distCity[50], distSel[50];
+    short n = 0, y, x, pick;
+    for (y = 1; y < 0x9A; y++) {
+        for (x = 1; x < 0x6E && n < 0x32; x++) {
+            unsigned char t = RmGetTile(map, x, y);
+            unsigned char e = RmGetTile(map, (short)(x + 1), y);
+            int land;
+            if (t != 0x26) continue;
+            if (e != 0x28 && e != 0x18) continue;
+            land = (g[(long)y * 112 + (x - 1)] == 7 || g[(long)y * 112 + (x - 1)] == 4 ||
+                    g[(long)y * 112 + (x - 1)] == 5) &&
+                   (g[(long)y * 112 + (x + 2)] == 7 || g[(long)y * 112 + (x + 2)] == 4 ||
+                    g[(long)y * 112 + (x + 2)] == 5);
+            if (!land) {
+                land = (g[(long)(y - 1) * 112 + x] == 7 || g[(long)(y - 1) * 112 + x] == 4 ||
+                        g[(long)(y - 1) * 112 + x] == 5) &&
+                       (g[(long)(y + 2) * 112 + x] == 7 || g[(long)(y + 2) * 112 + x] == 4 ||
+                        g[(long)(y + 2) * 112 + x] == 5);
+            }
+            if (!land) continue;
+            sx[n] = x; sy[n] = y; sel[n] = 0;
+            distCity[n] = -1; distSel[n] = 0;
+            n++;
+        }
+    }
+    for (;;) {
+        pick = RmPickCoast(sx, sy, sel, distCity, distSel, n);
+        if (pick < 0) break;
+        sel[pick] = 1;
+        x = sx[pick]; y = sy[pick];
+        RmPutTile(map, x, y, 0x85);
+        RmPutTile(map, (short)(x + 1), y, 0x86);
+        g[(long)y * 112 + (x + 1)] = 1;
+        g[(long)y * 112 + x] = 1;
+        RmSetRoad(rd, (short)(x + 2), y, 1);
+        RmSetRoad(rd, (short)(x - 1), y, 1);
+    }
+    /* FUN_100aa60c. Half the time a shore tile 0x20..0x25 aborts the
+     * scan. The port-bit loop behind it has nothing left to mark:
+     * unselected corners were not kept, and selected ones are already
+     * taken, matching the clear pass in FUN_100aa938. */
+    for (y = 1; y < 0x9A; y++) {
+        for (x = 1; x < 0x6E; x++) {
+            unsigned char t;
+            if (Dice(1, 2, -1) != 0) continue;
+            t = RmGetTile(map, x, y);
+            if ((unsigned char)(t - 0x20) < 6) return;
+        }
+    }
+}
+
+/* FUN_100a6b68(7). Forty calls, from the 0x28 written at gs+0x810.
+ * Quadrants rotate through 0..15. A cell must be class 7, with no
+ * class 10 or 11 next to it, and the first 50 tries also reject a
+ * class 11 beside the cell three steps away. */
+static void RmPlaceRuins(unsigned char *g, short *rx, short *ry, short *nOut)
+{
+    short n = 0;
+    short quad = Dice(1, 0x10, -1);
+    while (n < 0x28) {
+        short x = 0, y = 0, tries, found = 0;
+        tries = 1;
+        do {
+            short col = (short)(quad & 3);
+            short row = (short)(quad >> 2);
+            short xa = (short)(((col * 0x70) >> 2) + 3);
+            short ya = (short)(((row * 0x9C) >> 2) + 3);
+            x = Dice(1, 0x14, xa);
+            y = Dice(1, 0x1F, ya);
+            if (g[(long)y * 112 + x] == 7 &&
+                RandomMapHasStepNeighbor(g, x, y, 10) == 0 &&
+                RandomMapHasStepNeighbor(g, x, y, 11) == 0 &&
+                RandomMapHasStepNeighbor(g, (short)(x - 3), y, 11) == 0 &&
+                RandomMapHasStepNeighbor(g, (short)(x + 3), y, 11) == 0 &&
+                RandomMapHasStepNeighbor(g, x, (short)(y - 3), 11) == 0 &&
+                RandomMapHasStepNeighbor(g, x, (short)(y + 3), 11) == 0)
+                found = 1;
+            if (found) break;
+        } while (tries++ < 0x32);
+        if (!found) {
+            tries = 1;
+            do {
+                x = Dice(1, 0x66, 5);
+                y = Dice(1, 0x92, 5);
+                if (g[(long)y * 112 + x] == 7 &&
+                    RandomMapHasStepNeighbor(g, x, y, 10) == 0 &&
+                    RandomMapHasStepNeighbor(g, x, y, 11) == 0)
+                    found = 1;
+                if (found) break;
+            } while (tries++ < 0x32);
+        }
+        if (!found) {
+            Dice(1, 0x66, 5);
+            Dice(1, 0x92, 5);
+            tries = 1;
+            do {
+                x = Dice(1, 0x66, 5);
+                y = Dice(1, 0x92, 5);
+                if (g[(long)y * 112 + x] != 10 && g[(long)y * 112 + x] != 11)
+                    found = 1;
+            } while (!found && tries++ < 0x32);
+        }
+        quad = (short)((quad + 1) & 0x0F);
+        g[(long)y * 112 + x] = 11;
+        rx[n] = x; ry[n] = y; n++;
+    }
+    *nOut = n;
+}
+
+/* FUN_100a49cc then the coast half of FUN_100aafb8. The city-to-city
+ * walk (FUN_100aa9f4 / FUN_10043e60) is not here: its step costs are
+ * not in DAT 1010. */
+static void RandomMapTilesRoadsRuins(unsigned char *g, unsigned char *terrain,
+                                     unsigned char *map, const unsigned char *gs)
+{
+    short rx[40], ry[40], nRuin = 0, i;
+    unsigned char *rd;
+    long z;
+    RmPlaceRuins(g, rx, ry, &nRuin);
+    for (z = 0; z < 112L * 156L; z++) map[z * 2 + 1] = 0;
+    RmPaintBaseTiles(g, map, rx, ry, nRuin);
+    RmPaintVariants(g, map);
+    RmPaintVariants(g, map);
+    if (*gRoadData == 0) *gRoadData = (pint)NewPtrClear(0x4440);
+    rd = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
+    if (rd != NULL) {
+        for (z = 0; z < 0x4440; z++) rd[z] = 0;
+        RmStampCoastRoads(g, map, rd);
+        /* FUN_100aafb8 drops the road byte on class 10 and 11 first. */
+        for (z = 0; z < 112L * 156L; z++) {
+            if (g[z] == 10 || g[z] == 11) rd[z] = (unsigned char)(rd[z] & 0xE0);
+        }
+        RmAutotileRoads(g, map, rd, gs);
+    }
+    for (i = 0; i < 112 * 156; i++) {
+        unsigned char c = g[i];
+        if (c == 2 || c == 3) terrain[i] = TT_WATER;
+        else if (c == 8) terrain[i] = TT_SWAMP;
+        else if (c == 6) terrain[i] = TT_MTN;
+        else if (c == 5) terrain[i] = TT_FOREST;
+        else terrain[i] = TT_GRASS;
+    }
+}
+
 /* ===================================================================
  * GenerateRandomMap — Procedurally generate a playable random map
  *
@@ -6354,8 +6819,8 @@ static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
  *
  * The coast is FUN_100a01e8 (one outline, outside flooded to 2).
  * Rivers are FUN_100a9c08. Land shape inside that is FUN_100a271c.
- * The four dialog thumbs are not added. The road overlay is still
- * the remake's Manhattan pass, not FUN_100aafb8.
+ * The four dialog thumbs are not added. Roads are the coast corners
+ * from FUN_100a9f78. City-to-city paths are not run.
  * =================================================================== */
 
 /* Terrain type codes for working buffer */
@@ -6376,7 +6841,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 {
     unsigned char *gs, *map;
     unsigned char *terrain;  /* working buffer: terrain types per tile */
-    short x, y, i;
+    short i;
     short cityCount = 0;
 
     if (*gGameState == 0 || *gMapTiles == 0) return false;
@@ -6430,9 +6895,9 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         if (classGrid == NULL) { DisposePtr((Ptr)terrain); return false; }
         /* FUN_100515f4 / FUN_100a01e8, then the city passes, then
          * FUN_100abcec, then FUN_100a9c08, then the land stage.
-         * Dialog thumbs (wate/hill/citi/fore) are not added: the view's
-         * initial value is not in DAT 1010. FUN_100aafb8's road walk
-         * is still the later Manhattan overlay. */
+         * Dialog thumbs are not added: their initial value is not in
+         * DAT 1010. City-to-city roads are not run: FUN_10043e60 step
+         * costs are not in DAT 1010. */
         RandomMapCoast(classGrid);
         RmStampCities(classGrid, rmCities, &rmCityCount);
         RmCityRoads(classGrid, rmCities, rmCityCount);
@@ -6440,6 +6905,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         RandomMapMountainForest(classGrid);
         RandomMapRivers(classGrid);
         RandomMapGrowLand(classGrid, terrain);
+        RandomMapTilesRoadsRuins(classGrid, terrain, map, gs);
         /* Keep the stamped sites. The first eight player cities are the
          * faction starts the army loop indexes. The class byte has
          * already been consumed by the walks. */
@@ -6464,35 +6930,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         PaintRect(&fillR);
     }
 
-    /* Convert terrain types to tile indices and write to map buffer */
-    {
-        static const short typeToTile[] = {
-            RTILE_WATER, RTILE_GRASS, RTILE_FOREST,
-            RTILE_MTN, RTILE_HILL, RTILE_SWAMP
-        };
-        for (y = 0; y < 156; y++) {
-            for (x = 0; x < 112; x++) {
-                unsigned char *tile = map + y * 0xE0 + x * 2;
-                short tt = terrain[y * 112 + x];
-
-                if (tt == TT_WATER) {
-                    /* Shore: water tile adjacent to any land */
-                    Boolean nearLand = false;
-                    if (x > 0 && terrain[y*112+x-1] != TT_WATER) nearLand = true;
-                    if (x < 111 && terrain[y*112+x+1] != TT_WATER) nearLand = true;
-                    if (y > 0 && terrain[(y-1)*112+x] != TT_WATER) nearLand = true;
-                    if (y < 155 && terrain[(y+1)*112+x] != TT_WATER) nearLand = true;
-                    tile[0] = nearLand ? RTILE_SHORE : RTILE_WATER;
-                } else {
-                    /* Add slight variety with adjacent tile indices */
-                    short base = typeToTile[tt];
-                    short var = Dice(1, 3, -1);
-                    tile[0] = base + var;
-                }
-                tile[1] = 0;
-            }
-        }
-    }
+    /* Tiles were written by FUN_100a3acc / FUN_100a40bc. */
 
     /* Progress: 60% */
     {
@@ -6508,14 +6946,6 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     /* --- Phase 3: Place cities --- */
     {
-        short factionCount = 8;
-        /* 68k CODE_020: neutral count from config, typical 10-15 */
-        short neutralCount = 10 + Dice(1, 6, -1);
-        short totalCities;
-
-        totalCities = factionCount + neutralCount;
-        if (totalCities > 139) totalCities = 139;
-
         /* Sites stamped by FUN_100a2760 / FUN_100a28dc. Record fields
          * other than x/y are the city record this game already stores;
          * owner of the first eight player cities is the faction index
@@ -6540,60 +6970,11 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             *(short *)(city + 0x0A) = cityCount;
             city[0x17] = 0;
             terrain[cy * 112 + cx] = TT_GRASS;
-            {
-                unsigned char *t = map + cy * 0xE0 + cx * 2;
-                t[0] = RTILE_GRASS;
-                t[1] = 0;
-            }
+            /* Castle overlay. The DAT sprite under it stays. */
             cityCount++;
         }
 
-        /* Place ruins on land (site_type at offset 0x17, active at 0x1D) */
-        {
-            /* 68k CODE_020: fill remaining slots with ruins (up to 40 total sites) */
-            short ruinCount = 40 - cityCount;
-            short ri;
-            for (ri = 0; ri < ruinCount && cityCount < 40; ri++) {
-                short attempts = 0;
-                while (attempts < 300) {
-                    short rx = 5 + Dice(1, 102, -1);
-                    short ry = 5 + Dice(1, 146, -1);
-                    short j;
-                    Boolean tooClose = false;
-
-                    if (terrain[ry * 112 + rx] == TT_WATER ||
-                        terrain[ry * 112 + rx] == TT_MTN) {
-                        attempts++;
-                        continue;
-                    }
-
-                    /* Check minimum distance from all existing sites */
-                    for (j = 0; j < cityCount; j++) {
-                        short ox = *(short *)(sCityData +j * 0x20);
-                        short oy = *(short *)(sCityData +j * 0x20 + 0x02);
-                        short dx = rx - ox, dy = ry - oy;
-                        if (dx < 0) dx = -dx;
-                        if (dy < 0) dy = -dy;
-                        if (dx < 3 && dy < 3) { tooClose = true; break; }
-                    }
-
-                    if (!tooClose) {
-                        unsigned char *ruin = sCityData +cityCount * 0x20;
-                        /* 68k CODE_020: site types 2-5 (item, defended, gold, ally) */
-                        static const unsigned char siteTypes[] = {2, 3, 4, 5};
-                        *(short *)(ruin + 0x00) = rx;
-                        *(short *)(ruin + 0x02) = ry;
-                        *(short *)(ruin + 0x04) = (short)0xFF;  /* no owner */
-                        ruin[0x17] = siteTypes[Dice(1, 4, -1)];
-                        ruin[0x1C] = (unsigned char)Dice(1, 2, -1);  /* richness */
-                        ruin[0x1D] = 1;  /* active/searchable */
-                        cityCount++;
-                        break;
-                    }
-                    attempts++;
-                }
-            }
-        }
+        /* Ruins are the 40 class-11 tiles from FUN_100a6f38. */
 
         sCityCount = cityCount;
     }
@@ -6610,122 +6991,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         PaintRect(&fillR);
     }
 
-    /* --- Phase 3b: Generate road network between cities --- */
-    {
-        short siteCount = sCityCount;
-        unsigned char *roadBuf;
-
-        /* Allocate road data buffer (clear if reusing from previous game) */
-        if (*gRoadData == 0)
-            *gRoadData = (pint)NewPtrClear(0x4440);
-        else {
-            short z;
-            unsigned char *rd = (unsigned char *)*gRoadData;
-            for (z = 0; z < 0x4440; z++) rd[z] = 0;
-        }
-
-        roadBuf = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
-
-        if (roadBuf != NULL && siteCount > 1) {
-            short ci, cj;
-
-            /* Connect each city to its 2 nearest neighbors via road */
-            for (ci = 0; ci < siteCount; ci++) {
-                unsigned char *siteA = sCityData +ci * 0x20;
-                short ax = *(short *)(siteA + 0x00);
-                short ay = *(short *)(siteA + 0x02);
-                short bestDist[2] = {30000, 30000};
-                short bestIdx[2]  = {-1, -1};
-
-                /* Only connect cities (site_type=0), not ruins */
-                if (siteA[0x17] != 0) continue;
-
-                /* Find 2 nearest other cities */
-                for (cj = 0; cj < siteCount; cj++) {
-                    unsigned char *siteB = sCityData +cj * 0x20;
-                    short dx, dy, dist;
-                    if (cj == ci || siteB[0x17] != 0) continue;
-                    dx = *(short *)(siteB + 0x00) - ax;
-                    dy = *(short *)(siteB + 0x02) - ay;
-                    if (dx < 0) dx = -dx;
-                    if (dy < 0) dy = -dy;
-                    dist = dx + dy;  /* Manhattan distance */
-                    if (dist < bestDist[0]) {
-                        bestDist[1] = bestDist[0]; bestIdx[1] = bestIdx[0];
-                        bestDist[0] = dist; bestIdx[0] = cj;
-                    } else if (dist < bestDist[1]) {
-                        bestDist[1] = dist; bestIdx[1] = cj;
-                    }
-                }
-
-                /* Draw road from cityA to each nearest neighbor */
-                for (cj = 0; cj < 2; cj++) {
-                    short bx, by, rx, ry;
-                    if (bestIdx[cj] < 0) continue;
-                    bx = *(short *)(sCityData +bestIdx[cj] * 0x20 + 0x00);
-                    by = *(short *)(sCityData +bestIdx[cj] * 0x20 + 0x02);
-
-                    /* Walk from A to B using Manhattan path (horizontal then vertical)
-                     * so every road tile has at least one cardinal neighbor for autotile. */
-                    rx = ax; ry = ay;
-                    /* Horizontal leg first */
-                    while (rx != bx) {
-                        if (rx >= 0 && rx < 112 && ry >= 0 && ry < 156) {
-                            if (terrain[ry * 112 + rx] != TT_WATER)
-                                roadBuf[ry * 112 + rx] = 1;
-                        }
-                        if (rx < bx) rx++; else rx--;
-                    }
-                    /* Vertical leg */
-                    while (ry != by) {
-                        if (rx >= 0 && rx < 112 && ry >= 0 && ry < 156) {
-                            if (terrain[ry * 112 + rx] != TT_WATER)
-                                roadBuf[ry * 112 + rx] = 1;
-                        }
-                        if (ry < by) ry++; else ry--;
-                    }
-                    /* Mark destination */
-                    if (bx >= 0 && bx < 112 && by >= 0 && by < 156)
-                        roadBuf[by * 112 + bx] = 1;
-                }
-            }
-        }
-
-        /* --- Autotile pass: convert boolean road flags to proper tile indices ---
-         * For each road tile, check 4 cardinal neighbors to build a 4-bit mask:
-         *   bit0=N, bit1=E, bit2=S, bit3=W
-         * Then look up the correct RD value (1-17) from the autotile table.
-         * Confirmed from original SCN resource dumps (Erythea et al.):
-         *   1=E+W horiz, 2=N+S vert, 3=crossroad, 4-7=T-junctions,
-         *   8-11=corners, 12-15=dead-ends, 16-17=variants */
-        if (roadBuf != NULL) {
-            /* Autotile lookup: index by 4-bit neighbor mask (N=1,E=2,S=4,W=8) */
-            static const unsigned char kAutoTile[16] = {
-                /*  0=none  */ 1,   /*  1=N     */ 15,
-                /*  2=E     */ 14,  /*  3=N+E   */ 10,
-                /*  4=S     */ 13,  /*  5=N+S   */ 2,
-                /*  6=E+S   */ 11,  /*  7=N+E+S */ 7,
-                /*  8=W     */ 12,  /*  9=N+W   */ 9,
-                /* 10=E+W   */ 1,   /* 11=N+E+W */ 6,
-                /* 12=S+W   */ 8,   /* 13=N+S+W */ 5,
-                /* 14=E+S+W */ 4,   /* 15=all   */ 3
-            };
-            short rx, ry;
-            for (ry = 0; ry < 156; ry++) {
-                for (rx = 0; rx < 112; rx++) {
-                    short idx = ry * 112 + rx;
-                    unsigned char mask;
-                    if (roadBuf[idx] == 0) continue;
-                    mask = 0;
-                    if (ry > 0   && roadBuf[(ry-1) * 112 + rx] != 0) mask |= 1; /* N */
-                    if (rx < 111 && roadBuf[ry * 112 + rx + 1]  != 0) mask |= 2; /* E */
-                    if (ry < 155 && roadBuf[(ry+1) * 112 + rx] != 0) mask |= 4; /* S */
-                    if (rx > 0   && roadBuf[ry * 112 + rx - 1]  != 0) mask |= 8; /* W */
-                    roadBuf[idx] = kAutoTile[mask];
-                }
-            }
-        }
-    }
+    /* Coast roads were written by FUN_100a9f78, not a city grid. */
 
     /* --- Phase 4: Initialize game state --- */
     /* Faction name pool from DAT 1010 "RANDOM": 8 slots x 5 variants each.
