@@ -135,6 +135,10 @@ static short sRazingCities     = 0;  /* 0=Always, 1=On Capture, 2=Never */
 static Boolean sOptQuests         = false;
 static Boolean sOptViewEnemies    = true;
 static Boolean sOptHiddenMap      = false;
+/* FUN_1003d5d4: map window +0xBE and the 'over' view, set by FUN_10040fb8
+ * when more than one living human remains and hidden map is on. Cleared
+ * when that next human's turn is shown. */
+static Boolean sMapConcealed = false;
 static Boolean sOptDiplomacy      = false;
 static Boolean sOptViewProd       = true;
 static Boolean sOptIntenseCombat  = false;
@@ -1567,7 +1571,7 @@ static struct {
 static short sSignpostCount = 0;
 
 /* SGN signposts: scenario-defined map labels loaded from SGN resource */
-#define MAX_SGN_SIGNPOSTS 60
+#define MAX_SGN_SIGNPOSTS 60 /* FUN_100a4e0c rolls 40..69; the save writes this array */
 static struct {
     short x, y;
     char text[32];
@@ -5599,9 +5603,28 @@ static void RmPromoteForests(unsigned char *g)
     }
 }
 
-/* FUN_100abcec. FUN_100a39ac is not called: it runs only when
- * FUN_1002b83c reads a DAT byte other than '0', and that name is not
- * recovered, so the fringe is not guessed. */
+/* FUN_100a39ac. FUN_1002b83c sprintf's "terrain%d\\terrinfo.dat"
+ * (%d is gs+0x162) and opens it as 'DAT ' id 1. A failed open returns 1,
+ * so the fringe runs. A resource whose first byte is '0' (0x30) returns 0
+ * and the fringe is skipped. This port never loads that file (the disk has
+ * no terrain0\\terrinfo.dat; Grasslands' TERRINFO is 'DAT ' 30030 and
+ * starts with '1'), and gs+0x162 stays 0, so the pass runs.
+ * A cell that is neither class 5 nor 6, with a class-6 step neighbor,
+ * becomes 5. FUN_10051d60 is a blr. */
+static void RandomMapCityFringe(unsigned char *g)
+{
+    short x, y;
+    for (x = 0; x < 0x70; x++) {
+        for (y = 0; y < 0x9C; y++) {
+            signed char c = (signed char)g[(long)y * 112 + x];
+            if (c == 6 || c == 5) continue;
+            if (RandomMapHasStepNeighbor(g, x, y, 6) != 0)
+                g[(long)y * 112 + x] = 5;
+        }
+    }
+}
+
+/* FUN_100abcec, then the fringe. */
 static void RandomMapMountainForest(unsigned char *g)
 {
     short i, n;
@@ -5611,6 +5634,7 @@ static void RandomMapMountainForest(unsigned char *g)
     for (i = 0; i < n; i++) RandomMapChain(g, 1);
     RmPromoteMountains(g);
     RmPromoteForests(g);
+    RandomMapCityFringe(g);
 }
 
 
@@ -6293,7 +6317,7 @@ static void RandomMapCoast(unsigned char *g)
 /* FUN_100a9c08. +0x3a is 5 walks of width 1, +0x38 is 5 walks of width 2,
  * both stopping at ocean. The 'wate' thumb adds the same short to both
  * counts; that thumb is not applied (see RandomMapCoast's caller).
- * FUN_100a39ac stays out: its DAT name is still unrecovered. */
+ * The fringe runs again: later walks can make new class-6 neighbors. */
 static void RandomMapRivers(unsigned char *g)
 {
     short i;
@@ -6304,6 +6328,7 @@ static void RandomMapRivers(unsigned char *g)
     RmCitySmooth(g);
     RandomMapErodeCoast(g);
     RandomMapMakeShore(g);
+    RandomMapCityFringe(g);
 }
 
 static void RandomMapGrowLand(unsigned char *classGrid, unsigned char *terrain)
@@ -7172,6 +7197,157 @@ static void RmConnectSiteRoads(unsigned char *g, unsigned char *map,
 
 /* FUN_100a49cc then FUN_100aafb8. Coast corners, then the site
  * walk (FUN_100aa9f4 / FUN_10043248), then the class 10/11 clear. */
+
+/* FUN_100a4e0c. Count is Dice(1, 30, 40). A cell is kept when the tile's
+ * property (gs+0x710, the original's gs+0x711) is 7, no step neighbor is
+ * class 10 or 9, and the road byte's low 5 bits are 0. The accepted cell's
+ * sprite high byte is cleared. Dice(1, 10, 0) <= 3 and fewer than 9 canned
+ * lines already used: the two DAT 1010 strings at +0x18b2 and +0x18d0,
+ * stride 60. Otherwise the nearest site (FUN_1002bf64 type 0xe, every
+ * site) names the post with "%s" and "%d leagues %s". Site records have
+ * no name bytes in this port, so the first string is empty and the line
+ * is the leagues one. Direction is FUN_1002c970. The 'SGN ' file write is
+ * the same records this draw already reads. */
+static void RmPlaceSignposts(unsigned char *g, unsigned char *map,
+                             unsigned char *rd, const unsigned char *gs)
+{
+    static const char *kLine1[9] = {
+        "Keep Out!", "Last Chance...", "Beware!", "Here lies Athelia",
+        "The site of the", "Gold Prospecting", "Plague Area", "I was here!",
+        "This is the top of the"
+    };
+    static const char *kLine2[9] = {
+        "Trespassers Tortured!", "Turn back now!", "Mad wizards about!",
+        "1423 - 1496", "Battle of G'Thor", "Keep Out!",
+        "Enter at your own risk!", "Zog the Graffiti-Troll",
+        "World's Flattest Mountain!"
+    };
+    static const char *kDir[8] = {
+        "north", "northeast", "east", "southeast",
+        "south", "southwest", "west", "northwest"
+    };
+    short sx[160], sy[160], nSite = 0;
+    short count, n, canned = 0;
+    short x, y;
+
+    sSgnSignpostCount = 0;
+    for (y = 0; y < 0x9C && nSite < 160; y++) {
+        for (x = 0; x < 0x70 && nSite < 160; x++) {
+            if (map[(long)y * 0xE0 + (long)x * 2] != 0x60) continue;
+            /* FUN_100a7248: Dice(1, 3, 2) at site+0x14 and 0x0F at +0x15.
+             * Signposts pass type 0xe, which accepts every site, and this
+             * port's armies are built later, so the two bytes have no reader.
+             * The roll still happens: it is before the signpost dice. */
+            (void)Dice(1, 3, 2);
+            sx[nSite] = x;
+            sy[nSite] = y;
+            nSite++;
+        }
+    }
+
+    count = Dice(1, 0x1E, 0x28);
+    for (n = 0; n < count; n++) {
+        short tile, prop, guard;
+        char line1[32], line2[40], text[32];
+        short di, t2;
+        char last;
+        for (guard = 0; guard < 20000; guard++) {
+            x = Dice(1, 0x70, -1);
+            y = Dice(1, 0x9C, -1);
+            tile = (short)(unsigned char)map[(long)y * 0xE0 + (long)x * 2];
+            prop = (signed char)gs[TERRAIN_TYPE_OFS + tile];
+            if (prop != 7) continue;
+            if (RandomMapHasStepNeighbor(g, x, y, 10) != 0) continue;
+            if (RandomMapHasStepNeighbor(g, x, y, 9) != 0) continue;
+            if (rd != NULL && (rd[(long)y * 112 + x] & 0x1F) != 0) continue;
+            map[(long)y * 0xE0 + (long)x * 2] = 0;
+            break;
+        }
+        if (guard >= 20000) break;
+        line1[0] = 0;
+        line2[0] = 0;
+        if (Dice(1, 10, 0) <= 3 && canned < 9) {
+            const char *a = kLine1[canned];
+            const char *b = kLine2[canned];
+            short k;
+            for (k = 0; a[k] && k < 31; k++) line1[k] = a[k];
+            line1[k] = 0;
+            for (k = 0; b[k] && k < 39; k++) line2[k] = b[k];
+            line2[k] = 0;
+            canned++;
+        } else if (nSite > 0) {
+            short best = -1, bestD = 1000, i, d, leagues, dir;
+            const char *dw;
+            for (i = 0; i < nSite; i++) {
+                d = RmDist(x, y, sx[i], sy[i]);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            if (best >= 0) {
+                short px = x, py = y, qx = sx[best], qy = sy[best];
+                leagues = (short)(bestD * 2);
+                if (px == qx) dir = (py >= qy) ? 0 : 4;
+                else if (py == qy) dir = (px >= qx) ? 6 : 2;
+                else if (px > qx) dir = (py > qy) ? 7 : 5;
+                else dir = (py > qy) ? 1 : 3;
+                dw = kDir[dir];
+                /* "%d leagues %s". The "%s" name at site+4 was not written. */
+                {
+                    char tmp[40];
+                    short k, p = 0;
+                    const char *num;
+                    short v = leagues, digits = 0;
+                    char rev[8];
+                    if (v < 0) v = 0;
+                    if (v == 0) rev[digits++] = '0';
+                    while (v > 0 && digits < 8) { rev[digits++] = (char)('0' + (v % 10)); v = (short)(v / 10); }
+                    while (digits > 0) tmp[p++] = rev[--digits];
+                    num = " leagues ";
+                    for (k = 0; num[k] && p < 38; k++) tmp[p++] = num[k];
+                    for (k = 0; dw[k] && p < 39; k++) tmp[p++] = dw[k];
+                    tmp[p] = 0;
+                    for (k = 0; tmp[k] && k < 39; k++) line2[k] = tmp[k];
+                    line2[k] = 0;
+                }
+            }
+        }
+        /* Same join as the SGN loader: a second line is appended unless
+         * the first already ends with ! . or ? */
+        di = 0;
+        while (line1[di] && di < 31) { text[di] = line1[di]; di++; }
+        text[di] = 0;
+        t2 = 0;
+        while (line2[t2]) t2++;
+        if (di == 0 && t2 > 0) {
+            short k;
+            di = 0;
+            for (k = 0; k < t2 && di < 31; k++) text[di++] = line2[k];
+            text[di] = 0;
+        } else if (di > 0 && t2 > 0 && di < 31) {
+            last = text[di - 1];
+            if (last != '!' && last != '.' && last != '?') {
+                text[di++] = ' ';
+                if (di < 31) {
+                    short k, copy = t2;
+                    if (copy > (short)(31 - di)) copy = (short)(31 - di);
+                    for (k = 0; k < copy; k++) text[di++] = line2[k];
+                    text[di] = 0;
+                }
+            }
+        }
+        if (text[0] == 0 || sSgnSignpostCount >= MAX_SGN_SIGNPOSTS) continue;
+        sSgnSignposts[sSgnSignpostCount].x = x;
+        sSgnSignposts[sSgnSignpostCount].y = y;
+        {
+            short k;
+            for (k = 0; k < 32; k++) sSgnSignposts[sSgnSignpostCount].text[k] = 0;
+            for (k = 0; text[k] && k < 31; k++)
+                sSgnSignposts[sSgnSignpostCount].text[k] = text[k];
+        }
+        sSgnSignposts[sSgnSignpostCount].active = true;
+        sSgnSignpostCount++;
+    }
+}
+
 static void RandomMapTilesRoadsRuins(unsigned char *g, unsigned char *terrain,
                                      unsigned char *map, const unsigned char *gs)
 {
@@ -7197,6 +7373,7 @@ static void RandomMapTilesRoadsRuins(unsigned char *g, unsigned char *terrain,
             if (g[z] == 10 || g[z] == 11) rd[z] = (unsigned char)(rd[z] & 0xE0);
         }
         RmAutotileRoads(g, map, rd, gs);
+        RmPlaceSignposts(g, map, rd, gs);
     }
     for (i = 0; i < 112 * 156; i++) {
         unsigned char c = g[i];
@@ -7300,6 +7477,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         RmStampCities(classGrid, rmCities, &rmCityCount);
         RmCityRoads(classGrid, rmCities, rmCityCount);
         RmCitySmooth(classGrid);
+        RandomMapCityFringe(classGrid); /* end of FUN_100a3a80 */
         RandomMapMountainForest(classGrid);
         RandomMapRivers(classGrid);
         RandomMapGrowLand(classGrid, terrain);
@@ -7405,9 +7583,10 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
             {"Wild Men",     "Frost Tribe",  "Barbarians",   "Oinland",        "Horse Kings"},
             {"Zhoragh",      "Black Hand",   "Deathmaster",  "Lich-King",      "Dark Knights"}
         };
-        short nameVariant = Dice(1, 5, -1);
+        /* FUN_100ab22c: each of the eight slots rolls its own Dice(1, 5, -1). */
         for (i = 0; i < 8; i++) {
             short j;
+            short nameVariant = Dice(1, 5, -1);
             unsigned char *name = gs + i * 20;
             const char *src = factionNamePool[i][nameVariant];
             for (j = 0; src[j] != 0 && j < 19; j++)
@@ -7570,9 +7749,9 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
         *(short *)(gs + 0x1602) = armyIdx;
     }
 
-    /* Set starting gold for all 8 factions */
+    /* FUN_100ab2c4: Dice(3, 50, 20) into the gold short at gs+0x186. */
     for (i = 0; i < 8; i++)
-        *(short *)(gs + 0x186 + i * 0x14) = 100;
+        *(short *)(gs + 0x186 + i * 0x14) = Dice(3, 0x32, 0x14);
 
     /* gs+0x12E is the tutorial flag (68k: gates the tutorial screens and the
      * CODE_104 hero-vs-neutral protection), not hero generation. */
@@ -10251,6 +10430,14 @@ static void DrawMapInWindow(WindowPtr win)
     if (!sMapLoaded || *gMapTiles == 0)
         return;
 
+    /* FUN_1003d5d4 set the map view's +0xBE. The redraw paints nothing. */
+    if (sMapConcealed) {
+        RGBColor black = {0, 0, 0};
+        RGBForeColor(&black);
+        PaintRect(&win->portRect);
+        return;
+    }
+
     mapData = (unsigned char *)*gMapTiles;
     hasScn  = (*gGameState != 0);
     scnData = hasScn ? (unsigned char *)*gGameState : NULL;
@@ -11793,6 +11980,14 @@ static void OverviewRedrawTile(short x, short y)
 
 static void DrawOverviewInWindow(WindowPtr win)
 {
+    /* The 'over' control's +0x94, set with the map in FUN_1003d5d4. */
+    if (sMapConcealed) {
+        RGBColor black = {0, 0, 0};
+        SetPort(win);
+        RGBForeColor(&black);
+        PaintRect(&win->portRect);
+        return;
+    }
     DrawOverviewTo((GrafPtr)win, win->portRect, kOvFrame | kOvOverlays);
 }
 
@@ -33187,8 +33382,20 @@ static void AdvanceToNextPlayer(void)
     if (*(short *)(gs + 0x15c) != 0 && *(short *)(gs + 0x158) != 0)
         return;
 
-    /* FUN_10040fb8: the turn that ends (gs+0x15c clear) */
-    if (*(short *)(gs + 0x15c) == 0) NotorietyOnStanceDrop(*(short *)(gs + 0x110));
+    /* FUN_10040fb8: the turn that ends (gs+0x15c clear).
+     * Living humans are gs+0x138 set and gs+0xd0 clear. More than one,
+     * and hidden map (gs+0x124), hides the map and the overview. */
+    if (*(short *)(gs + 0x15c) == 0) {
+        short hi, humans = 0;
+        NotorietyOnStanceDrop(*(short *)(gs + 0x110));
+        for (hi = 0; hi < 8; hi++) {
+            if (*(short *)(gs + 0x138 + hi * 2) != 0 &&
+                *(short *)(gs + 0xd0 + hi * 2) == 0)
+                humans++;
+        }
+        if (humans > 1 && *(short *)(gs + 0x124) != 0)
+            sMapConcealed = true;
+    }
 
     foundHuman = false;
     loopGuard = 0;
@@ -33523,6 +33730,14 @@ static void AdvanceToNextPlayer(void)
         /* Show turn start banner (PICT 3100 castle gate) */
         LoadAndPlayMusic(MUSIC_STATE_TURN);
         ShowTurnSplash(curPlayer);  /* plays SND_TURN internally */
+        /* The view methods that store 0 at +0xBE run as this turn is shown. */
+        if (sMapConcealed) {
+            sMapConcealed = false;
+            if (*gMainGameWindow != 0)
+                InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+            if (*gOverviewWindow != 0)
+                InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
+        }
         ShowVoiceAdvisor(curPlayer);  /* the helmet's comment on how it goes */
         /* Tutorial: TTURN2 at the start of turn 2 (68k CODE_080) */
         if (*(short *)(gs + 0x136) == 2)
