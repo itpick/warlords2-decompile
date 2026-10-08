@@ -62,13 +62,14 @@ static char AITRoundPath[80];
 static short AITRoundOpen = -1;
 static void AITEmit(const char *text, long n)
 {
-    /* append to the round's file; the per-record close lets the shared fs
-     * publish the growing file (run 1's complete r1 proved the pattern), and
-     * each round has a fresh name so no frozen snapshot from a previous run
-     * can shadow it */
+    /* one fresh file per record: the shared fs locks a path while the host
+     * downloads its snapshot (appends after the first pull silently fail),
+     * so nothing is ever appended twice */
+    static long seq = 0;
+    char path[80];
     FILE *f;
-    if (AITRoundOpen < 0) return;
-    f = fopen(AITRoundPath, "a");
+    sprintf(path, "The Outside World:Uploads:aitrace2_%04ld.txt", ++seq);
+    f = fopen(path, "a");
     if (!f) return;
     fwrite(text, 1, (size_t)n, f);
     fclose(f);
@@ -90,6 +91,9 @@ static void AITRoundBegin(short turn)
 /* ------------------------------------------------------------------ */
 /* round marker                                                        */
 /* ------------------------------------------------------------------ */
+static void AITEmit(const char *text, long n);
+static void AITEmitF(const char *fmt, ...);
+
 void WL2TraceRound(void)
 {
     char line[64];
@@ -98,9 +102,8 @@ void WL2TraceRound(void)
     if (*gGameState == 0) return;
     turn = *(short *)(AIT_GS + 0x136);
     if (turn < 0) turn = 0;
-    AITRoundBegin(turn);
-    n = sprintf(line, "R%d BEGIN\n", turn);
-    AITEmit(line, n);
+    (void)line; (void)n;
+    AITEmitF("R%d BEGIN\n", turn);
 }
 
 void WL2TraceFlush(void)
