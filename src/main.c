@@ -17411,6 +17411,46 @@ static short SackValue(short ci)
     return g;
 }
 
+/* FUN_1004f438 (PPC_0002.c:10847): one raze routine for both paths (the
+ * human's FUN_10047190 and the computer's FUN_1001bbf0 call it).  The city
+ * record's owner and zone bytes go 0xF, the 2x2 tiles keep the razing
+ * side's sprite with a neutral low nibble, the city's own vectoring stops,
+ * and every city vectoring at these coordinates loses its aim, its
+ * production turns and its production type.  No notoriety or quest hooks:
+ * the callers keep their own. */
+static void ClearCityToRuin(short ci, short owner)
+{
+    unsigned char *city = sCityData + ci * 0x20;
+    short cx, cy, dx, dy, cj, cc;
+    if (ci < 0 || ci >= sCityCount || ci >= 139) return;
+    cx = *(short *)(city + 0x00);
+    cy = *(short *)(city + 0x02);
+    *(short *)(city + 0x04) = 0x0F;
+    if (*gMapTiles != 0) {
+        unsigned char *m = (unsigned char *)*gMapTiles;
+        for (dy = 0; dy < 2; dy++)
+            for (dx = 0; dx < 2; dx++)
+                if (cx + dx < sMapWidth && cy + dy < sMapHeight) {
+                    unsigned short o = (unsigned short)((cy + dy) * 0xE0 + (cx + dx) * 2);
+                    m[o] = (unsigned char)(0xA0 + 2 * owner + dx + dy * 0x10);
+                    m[o + 1] = (unsigned char)((m[o + 1] & 0xF0) | 0x0F);
+                }
+    }
+    if (*gExtState == 0) return;
+    cc = sCityCount;
+    if (cc > 139) cc = 139;
+    *(short *)((unsigned char *)*gExtState + 0x24c + ci * 0x5c + 0x3e) = -1;
+    for (cj = 0; cj < cc; cj++) {
+        unsigned char *ec = (unsigned char *)*gExtState + 0x24c + cj * 0x5c;
+        if (*(short *)(ec + 0x3e) == -1) continue;
+        if (*(short *)(ec + 0x3e) == ci) {
+            *(short *)(ec + 0x58) = 0;             /* the aimed city stops producing */
+            *(short *)(ec + 0x02) = -1;
+            *(short *)(ec + 0x3e) = -1;
+        }
+    }
+}
+
 static void DrawT3DButtonDim(const Rect *r, ConstStr255Param label)
 {
     RGBColor grey = {0x8888, 0x8888, 0x8888};
@@ -17774,18 +17814,7 @@ static void ApplyVictoryChoice(short choice, short ci, short owner)
         Str255 cname;
         CityNameP(ci, cname);
         ShowRuinsNotice(cname);
-        *(short *)(city + 0x04) = 0x0F;
-        if (*gMapTiles != 0) {
-            unsigned char *m = (unsigned char *)*gMapTiles;
-            short cx = *(short *)(city + 0x00), cy = *(short *)(city + 0x02), dx, dy;
-            for (dy = 0; dy < 2; dy++)
-                for (dx = 0; dx < 2; dx++)
-                    if (cx + dx < sMapWidth && cy + dy < sMapHeight) {
-                        unsigned short o = (cy + dy) * 0xE0 + (cx + dx) * 2;
-                        m[o] = (unsigned char)(0xA0 + 2 * owner + dx + dy * 0x10);
-                        m[o + 1] = (m[o + 1] & 0xF0) | 0x0F;
-                    }
-        }
+        ClearCityToRuin(ci, owner);             /* FUN_1004f438, one raze routine */
         *infamy += (short)(Dice(1, 15, 0) + 10);      /* FUN_10047190 */
         InvalidateAllGameWindows();
         if (QREC(owner)[0] != 0) (void)QuestCheck(2, 0);   /* FUN_10047190 */
@@ -31286,19 +31315,7 @@ static short AIRaze(short ci, const AIStack *s)
     for (k = 5; k >= 0; k--) if (nb[k] != 0xFF && AICityOwner(nb[k]) == sAIMe && nd[k] < 45) near++;
     if (near > 2 && !sAIRazeForced) return -1;        /* FUN_1001bbf0(c, 1) skips it */
     if (v < 900 && sRazingCities != 2) {
-        unsigned char *city = AI_CITY(ci);
-        *(short *)(city + 0x04) = 0x0F;
-        if (*gMapTiles != 0) {
-            unsigned char *m = (unsigned char *)*gMapTiles;
-            short cx = AICityX(ci), cy = AICityY(ci), dx, dy;
-            for (dy = 0; dy < 2; dy++)
-                for (dx = 0; dx < 2; dx++)
-                    if (cx + dx < sMapWidth && cy + dy < sMapHeight) {
-                        unsigned short o = (unsigned short)((cy + dy) * 0xE0 + (cx + dx) * 2);
-                        m[o] = (unsigned char)(0xA0 + 2 * sAIMe + dx + dy * 0x10);
-                        m[o + 1] = (unsigned char)((m[o + 1] & 0xF0) | 0x0F);
-                    }
-        }
+        ClearCityToRuin(ci, sAIMe);            /* FUN_1004f438, one raze routine */
         *(short *)(AI_GS + 0x1122 + sAIMe * 2) += (short)(AIRnd(15, 0) + 10);
         RecordEvent(AITurn(), HIST_EVT_CAPTURE, sAIMe, "Razed");
         gAI->role[ci] = 0;
