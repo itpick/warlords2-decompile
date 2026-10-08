@@ -50,28 +50,14 @@
 
 static FILE *AITOpen(void)
 {
-    /* the shared-fs sync never publishes a file that stays open for write, and
-     * it stops publishing one after a few reopen cycles; so the trace lives in
-     * the app's own directory and WL2TraceRound copies it to Uploads once per
-     * round (a plain byte loop through fopen), which the sync does publish */
+    /* run 1 proved append-into-Uploads publishes (its first records synced out);
+     * the sync then froze on that file, we believe because run 1 REOPENED the
+     * path per record and a later append raced the sync. One append handle for
+     * the whole run never rewrites or reopens, which the sync should tolerate. */
     static FILE *f;
+    if (!f) f = fopen(AIT_TRACE_UPLOADS, "a");
     if (!f) f = fopen(AIT_TRACE_PATH, "a");
     return f;
-}
-
-/* copy the trace to Uploads so the emulator's shared-fs sync publishes it */
-static void AITPublish(void)
-{
-    FILE *in, *out;
-    char buf[1024];
-    long n;
-    in = fopen(AIT_TRACE_PATH, "r");
-    if (!in) return;
-    out = fopen(AIT_TRACE_UPLOADS, "w");
-    if (!out) { fclose(in); return; }
-    while ((n = (long)fread(buf, 1, sizeof buf, in)) > 0) fwrite(buf, 1, (size_t)n, out);
-    fclose(out);
-    fclose(in);
 }
 
 /* ------------------------------------------------------------------ */
@@ -87,7 +73,6 @@ void WL2TraceRound(void)
     if (!f) return;
     fprintf(f, "R%d BEGIN\n", turn < 0 ? 0 : turn);
     fflush(f);
-    AITPublish();
 }
 
 /* ------------------------------------------------------------------ */
