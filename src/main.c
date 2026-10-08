@@ -1913,8 +1913,21 @@ static void CenterViewportOn(short tx, short ty)
     if (py > maxY) py = maxY;
     if (px < 0) px = 0;
     if (py < 0) py = 0;
-    sViewportX = (short)(px / TERRAIN_TILE_W);  sViewPixX = (short)(px % TERRAIN_TILE_W);
-    sViewportY = (short)(py / TERRAIN_TILE_H);  sViewPixY = (short)(py % TERRAIN_TILE_H);
+    if (sViewportX != (short)(px / TERRAIN_TILE_W) || sViewportY != (short)(py / TERRAIN_TILE_H)) {
+        sViewportX = (short)(px / TERRAIN_TILE_W);  sViewPixX = (short)(px % TERRAIN_TILE_W);
+        sViewportY = (short)(py / TERRAIN_TILE_H);  sViewPixY = (short)(py % TERRAIN_TILE_H);
+        /* a full repaint of the moved view: the ghost of an old screen
+         * position (DrawArmyGhostAt) would survive at the edge otherwise */
+        if (*gMainGameWindow != 0) {
+            GrafPtr sv;
+            GetPort(&sv);
+            SetPort((WindowPtr)*gMainGameWindow);
+            InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+            SetPort(sv);
+        }
+    } else {
+        sViewPixX = (short)(px % TERRAIN_TILE_W);  sViewPixY = (short)(py % TERRAIN_TILE_H);
+    }
 }
 
 /* RevealTile — PPC FUN_100836dc / 68k CODE_067 FUN_00000340 (TMapView), run
@@ -1958,8 +1971,23 @@ static void RevealTile(short tx, short ty)
     if (vt > maxY) vt = maxY;
     if (vl < 0) vl = 0;
     if (vt < 0) vt = 0;
-    sViewportX = (short)(vl / TERRAIN_TILE_W);  sViewPixX = (short)(vl % TERRAIN_TILE_W);
-    sViewportY = (short)(vt / TERRAIN_TILE_H);  sViewPixY = (short)(vt % TERRAIN_TILE_H);
+    if (sViewportX != (short)(vl / TERRAIN_TILE_W) || sViewPixX != (short)(vl % TERRAIN_TILE_W) ||
+        sViewportY != (short)(vt / TERRAIN_TILE_H) || sViewPixY != (short)(vt % TERRAIN_TILE_H)) {
+        Boolean moved =
+            sViewportX != (short)(vl / TERRAIN_TILE_W) || sViewportY != (short)(vt / TERRAIN_TILE_H);
+        sViewportX = (short)(vl / TERRAIN_TILE_W);  sViewPixX = (short)(vl % TERRAIN_TILE_W);
+        sViewportY = (short)(vt / TERRAIN_TILE_H);  sViewPixY = (short)(vt % TERRAIN_TILE_H);
+        /* the view moved under a partial update (Next Group's InvalRect was
+         * queued before this): the whole port is stale now, the ghost of an
+         * old screen position (DrawArmyGhostAt) would survive at the edge */
+        if (moved && *gMainGameWindow != 0) {
+            GrafPtr sv;
+            GetPort(&sv);
+            SetPort((WindowPtr)*gMainGameWindow);
+            InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+            SetPort(sv);
+        }
+    }
 }
 
 /* A player's capital: pstat+0x0E/0x10 (written by GameInit), else the SCN
@@ -11645,12 +11673,16 @@ static void DrawMapInWindow(WindowPtr win)
 #endif
     if (bufGW != NULL) {                    /* copy the finished map to the window */
         RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
-        Rect mr = winRect;
+        Rect mr = bufGW->portRect;
         SetGWorld(bufSavePort, bufSaveDev);
         win = realWin;
         SetOrigin(0, 0);
         ClipRect(&win->portRect);
         RGBForeColor(&black); RGBBackColor(&white);
+        /* the buffer's whole surface: the ghosts and rings (DrawArmyGhostAt)
+         * were painted into it, and a source rect from the old winRect would
+         * leave the exposed edge of a grown/sub-tile-scrolled view unpainted,
+         * which kept the previous frame's boat sprite alive on the map */
         CopyBits((BitMap *)*GetGWorldPixMap(bufGW), &((GrafPtr)win)->portBits, &mr, &mr, srcCopy, NULL);
         UnlockPixels(GetGWorldPixMap(bufGW));
     }
@@ -18460,21 +18492,39 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
             BreakTreaty(mOwner, co);
     }
 
-    /* survivors */
+    /* survivors: the attacking side is the group FUN_100ac0cc gathered
+     * (the moving record plus the same-tag records on its tile), so the
+     * sprites of FUN_10031748's attacker row follow sBattle.att - not every
+     * own record on the tile (a co-located ship record or a second group
+     * sharing the boat tile never joins the row; FUN_10055c64's join) */
     armyCount = *(short *)(gs + 0x1602);
     if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
     {
         short nDefLive = 0, nAttLive = 0;
         short liveDef[BATTLE_MAXU], liveAtt[BATTLE_MAXU];
+        short attRec[BATTLE_ATT_MAX], nAttRec = 0, aq;
+        for (aq = 0; aq < sBattle.nAtt && aq < BATTLE_ATT_MAX; aq++) {
+            short r = sBattle.att[aq].rec;
+            short aj2;
+            if (r < 0) continue;                       /* record removed: BattleOnRemove */
+            for (aj2 = 0; aj2 < nAttRec && attRec[aj2] != r; aj2++) ;
+            if (aj2 < nAttRec) continue;
+            attRec[nAttRec++] = r;
+        }
         for (i = 0; i < armyCount; i++) {
             other = ARMY_REC(i);
             if ((short)(unsigned char)other[0x15] == mOwner) {
                 if (*(short *)(other + 0x00) == mx && *(short *)(other + 0x02) == my) {
-                    short j, nn = ArmyUnitSprites(i, liveAtt + nAttLive, BATTLE_MAXU - nAttLive);
-                    for (j = 0; j < nn; j++)
-                        if (liveAtt[nAttLive + j] == 0x1C || liveAtt[nAttLive + j] == 0x1D)
-                            if (heroArmy < 0) heroArmy = i;
-                    nAttLive += nn;
+                    short j, inGroup = false, aj2;
+                    for (aj2 = 0; aj2 < nAttRec; aj2++)
+                        if (attRec[aj2] == i) { inGroup = true; break; }
+                    if (!inGroup) continue;
+                    {   short nn = ArmyUnitSprites(i, liveAtt + nAttLive, BATTLE_MAXU - nAttLive);
+                        for (j = 0; j < nn; j++)
+                            if (liveAtt[nAttLive + j] == 0x1C || liveAtt[nAttLive + j] == 0x1D)
+                                if (heroArmy < 0) heroArmy = i;
+                        nAttLive += nn;
+                    }
                 }
             } else if (IN_BATTLE_ZONE(*(short *)(other + 0x00), *(short *)(other + 0x02))) {
                 nDefLive += ArmyUnitSprites(i, liveDef + nDefLive, BATTLE_MAXU - nDefLive);
