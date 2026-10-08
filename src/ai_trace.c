@@ -95,7 +95,8 @@ void WL2TraceFlush(void)
     if (!AITBuf || AITLen == 0) return;
     sprintf(path, "The Outside World:Uploads:aitrace2_run%ld.txt", ++seq);
     f = fopen(path, "w");
-    if (!f) f = fopen(AIT_TRACE_PATH, "w");
+    if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
+    f = fopen(AIT_TRACE_PATH, "w");       /* the local copy always lands */
     if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
     AITLen = 0;
     if (AITBuf) AITBuf[0] = 0;
