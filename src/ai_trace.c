@@ -54,60 +54,51 @@
  * mid-append) is frozen at that size on the host. So each round's records
  * build up in memory and land as ONE complete file at the next round marker
  * (and at quit, via WL2TraceFlush). */
+static void AITEmitF(const char *fmt, ...);
+
 static char *AITBuf = NULL;
 static long AITLen = 0, AITCap = 0;
-static short AITBufTurn = 0;
 
-static char AITRoundPath[80];
-static short AITRoundOpen = -1;
 static void AITEmit(const char *text, long n)
 {
-    /* one fresh file per record: the shared fs locks a path while the host
-     * downloads its snapshot (appends after the first pull silently fail),
-     * so nothing is ever appended twice */
-    static long seq = 0;
-    char path[80];
-    FILE *f;
-    sprintf(path, "The Outside World:Uploads:aitrace2_%04ld.txt", ++seq);
-    f = fopen(path, "a");
-    if (!f) return;
-    fwrite(text, 1, (size_t)n, f);
-    fclose(f);
+    /* the whole run buffers in memory: the shared fs publishes each path once,
+     * at its size when the Finder/poller first sees it, so the only safe moment
+     * to create the file is at quit, complete (WL2TraceFlush) */
+    if (AITLen + n + 1 > AITCap) {
+        long cap = AITCap ? AITCap * 2 : 262144;
+        char *b;
+        if (cap < AITLen + n + 1) cap = AITLen + n + 1;
+        b = (char *)malloc(cap);
+        if (!b) return;
+        if (AITBuf) { memcpy(b, AITBuf, AITLen); free(AITBuf); }
+        AITBuf = b; AITCap = cap;
+    }
+    memcpy(AITBuf + AITLen, text, n);
+    AITLen += n;
+    AITBuf[AITLen] = 0;
 }
-
-/* the round's file: appended by the turn dump, named for the round; the
- * poller publishes a growing file and its LAST snapshot (at quit) is complete */
-
-static void AITRoundBegin(short turn)
-{
-    static long seq = 0;
-    sprintf(AITRoundPath, "The Outside World:Uploads:aitrace2_%02ld_r%d.txt", ++seq, turn);
-    AITRoundOpen = turn;
-    /* create empty; appends follow */
-    FILE *f = fopen(AITRoundPath, "a");
-    if (f) fclose(f);
-}
-
-/* ------------------------------------------------------------------ */
-/* round marker                                                        */
-/* ------------------------------------------------------------------ */
-static void AITEmit(const char *text, long n);
-static void AITEmitF(const char *fmt, ...);
 
 void WL2TraceRound(void)
 {
-    char line[64];
-    int n;
     short turn;
     if (*gGameState == 0) return;
     turn = *(short *)(AIT_GS + 0x136);
     if (turn < 0) turn = 0;
-    (void)line; (void)n;
     AITEmitF("R%d BEGIN\n", turn);
 }
 
 void WL2TraceFlush(void)
 {
+    char path[80];
+    static long seq = 0;
+    FILE *f;
+    if (!AITBuf || AITLen == 0) return;
+    sprintf(path, "The Outside World:Uploads:aitrace2_run%ld.txt", ++seq);
+    f = fopen(path, "w");
+    if (!f) f = fopen(AIT_TRACE_PATH, "w");
+    if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
+    AITLen = 0;
+    if (AITBuf) AITBuf[0] = 0;
 }
 
 /* printf into the round buffer (vsprintf with a generous cap; every record
