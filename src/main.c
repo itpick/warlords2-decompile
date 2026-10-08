@@ -28207,16 +28207,17 @@ static Boolean AIAttackGate(short armyIdx, short bx, short by)
 
 /* FUN_10012324(city, oldOwner): a computer player that took a human's
  * city, with warlordRaze, before turn 10 and not the quest city, razes it
- * (sack value under 200) or pillages it */
+ * when the sack value is under 200, else sacks it (FUN_1001ba60: all but
+ * the first slot, a pillage when nothing is left) */
 static short AIRaze(short ci, const AIStack *s);
-static void AIPillage(short ci);
+static void AISack(short ci);
 static void AICaptureFollowUp(short ci, short oldOwner, const AIStack *s)
 {
     if (*(short *)(AI_GS + 0xd0 + sAIMe * 2) == 0) return;          /* we are computer */
     if (oldOwner < 0 || oldOwner > 7 || *(short *)(AI_GS + 0xd0 + oldOwner * 2) != 0) return;
     if (gAI->warlordRaze == 0 || AITurn() >= 10 || ci == gAI->questCity) return;
     if (SackValue(ci) < 200) (void)AIRaze(ci, s);        /* FUN_1001bbf0(ci, 0) */
-    else AIPillage(ci);                                  /* FUN_1001ba60 */
+    else AISack(ci);                                     /* FUN_1001ba60 */
 }
 
 /* FUN_10012a8c(x, y): after each of a computer's battles, with the quest
