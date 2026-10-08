@@ -80,7 +80,8 @@ static void AITPublish(void)
     char path[80];
     FILE *f;
     if (!AITBuf || AITLen == 0) return;
-    sprintf(path, "The Outside World:Uploads:aitrace2_r%d.txt", AITBufTurn);
+    static long seq = 0;
+    sprintf(path, "The Outside World:Uploads:aitrace2_%02ld_r%d.txt", ++seq, AITBufTurn);
     f = fopen(path, "w");
     if (!f) f = fopen(AIT_TRACE_PATH, "w");
     if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
