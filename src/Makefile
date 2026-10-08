@@ -33,7 +33,7 @@ STUB_SRCS    = stubs/stubs.c stubs/globals_extra.c \
                stubs/wave2_tvect.c stubs/wave2_game1.c \
                stubs/wave2_game2.c stubs/wave2_macapp1.c \
                stubs/wave2_macapp2.c stubs/wave2_macapp3.c \
-               stubs/wave2_macapp4.c main.c
+               stubs/wave2_macapp4.c ai_trace.c main.c
 # NOTE: stubs/blr_verified.c is byte-VERIFICATION data (verified function bodies that
 # duplicate the runnable stubs). It must NOT be linked into the runnable app — it causes
 # 4398 duplicate-symbol errors. Excluded here; the file stays committed for verification.
@@ -70,6 +70,14 @@ else
     CFLAGS = -O2 -Wall $(WARN_SUPPRESS_COMMON) $(WARN_SUPPRESS_CLANG) $(INCLUDES) -DMODERN_BUILD=1
     LDFLAGS = -lm
     TARGET = warlords2
+endif
+
+# Phase 2 AI verification harness: `make PLATFORM=powerpc AI_TRACE=1` builds
+# the app with the per-turn AI dump enabled (writes aitrace.txt in the app's
+# working directory).  Default builds leave it compiled out.
+AI_TRACE ?= 0
+ifeq ($(AI_TRACE),1)
+    CFLAGS += -DAI_TRACE
 endif
 
 OBJS = $(ALL_SRCS:.c=.o)

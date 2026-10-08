@@ -10,6 +10,7 @@
  */
 
 #include "warlords2.h"
+#include "ai_trace.h"           /* the Phase 2 per-turn AI dump (all code in ai_trace.c) */
 
 #ifndef MODERN_BUILD
 
@@ -33631,6 +33632,10 @@ static void AdvanceToNextPlayer(void)
              * limit: 201 turns — the game itself has no turn limit) */
             if (turn <= 201)
                 RecordTurnSnapshot();
+#ifdef AI_TRACE
+            /* Phase 2 harness: round boundary marker (the human turn follows) */
+            WL2TraceRound();
+#endif
         }
 
         /* With no human left the war goes on between the AIs until one
@@ -33741,6 +33746,19 @@ static void AdvanceToNextPlayer(void)
                     AISetProgress(5);
                     DrainUpdates();
                     ExecuteAITurn(nextPlayer);
+#ifdef AI_TRACE
+                    /* Phase 2 harness: one text record per AI side per turn
+                     * to aitrace.txt (docs/2026-10-08-ai-trace.md). */
+                    (void)sizeof(char[1 - 2 * (sizeof(AIOrder) != sizeof(WL2AIOrdMirror))]);
+                    WL2TraceAITurn(nextPlayer, qd.randSeed,
+                                   sAIIncomeAt[nextPlayer], sAIUpkeepAt[nextPlayer],
+                                   sCityData, sCityCount, sArmyTab,
+                                   sAIBlocks[nextPlayer].role,
+                                   sAIBlocks[nextPlayer].cflags,
+                                   sAIBlocks[nextPlayer].unitCount,
+                                   sAIBlocks[nextPlayer].poolCount,
+                                   sAIOrd, sizeof(AIOrder));
+#endif
                     AISetProgress(100);
                     DrainUpdates();
                     /* PPC FUN_1000d808: the next player follows 60 ticks after */
