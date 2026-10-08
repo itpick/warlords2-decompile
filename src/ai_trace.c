@@ -50,14 +50,10 @@
 
 static FILE *AITOpen(void)
 {
-    /* run 1 proved append-into-Uploads publishes (its first records synced out);
-     * the sync then froze on that file, we believe because run 1 REOPENED the
-     * path per record and a later append raced the sync. One append handle for
-     * the whole run never rewrites or reopens, which the sync should tolerate. */
-    static FILE *f;
-    if (!f) f = fopen(AIT_TRACE_UPLOADS, "a");
-    if (!f) f = fopen(AIT_TRACE_PATH, "a");
-    return f;
+    /* the shared-fs publishes an appended file when its handle CLOSES; the
+     * per-round close costs one reopen per round and keeps every record
+     * visible (run 1's per-record reopen froze the sync mid-run) */
+    return fopen(AIT_TRACE_UPLOADS, "a");
 }
 
 /* ------------------------------------------------------------------ */
@@ -73,6 +69,7 @@ void WL2TraceRound(void)
     if (!f) return;
     fprintf(f, "R%d BEGIN\n", turn < 0 ? 0 : turn);
     fflush(f);
+    fclose(f);
 }
 
 /* ------------------------------------------------------------------ */
@@ -160,7 +157,8 @@ void WL2TraceAITurn(short side, long randSeed,
     }
 
     fprintf(f, "T%d END\n", side);
-    fflush(f);   /* flushes; the handle stays open (see AITOpen) */
+    fflush(f);
+    fclose(f);   /* close publishes the append to the shared fs */
 }
 
 #endif /* AI_TRACE */
