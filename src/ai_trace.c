@@ -48,17 +48,44 @@
 #define AIT_CITY(ci)   ((const unsigned char *)cityData + (long)(ci) * 0x20)
 #define AIT_EXT(ci)    ((const unsigned char *)*gExtState + 0x24c + (long)(ci) * 0x5c)
 
-static FILE *AITOpen(void)
+/* ---- the per-round buffer ------------------------------------------ */
+/* The shared fs publishes each path once, at whatever size it has when the
+ * poller first snapshots it: an fopen-created file that is still empty (or
+ * mid-append) is frozen at that size on the host. So each round's records
+ * build up in memory and land as ONE complete file at the next round marker
+ * (and at quit, via WL2TraceFlush). */
+static char *AITBuf = NULL;
+static long AITLen = 0, AITCap = 0;
+static short AITBufTurn = 0;
+
+static void AITEmit(const char *text, long n)
 {
-    /* the shared fs publishes each path exactly once (worker ns(): rt marks a
-     * path done after its first snapshot), so every round gets a FRESH file:
-     * aitrace2_<turn>.txt holds that round's records. The per-round close is
-     * what makes the poller see it. */
+    if (AITLen + n + 1 > AITCap) {
+        long cap = AITCap ? AITCap * 2 : 65536;
+        char *b;
+        if (cap < AITLen + n + 1) cap = AITLen + n + 1;
+        b = (char *)malloc(cap);
+        if (!b) return;
+        if (AITBuf) { memcpy(b, AITBuf, AITLen); free(AITBuf); }
+        AITBuf = b; AITCap = cap;
+    }
+    memcpy(AITBuf + AITLen, text, n);
+    AITLen += n;
+    AITBuf[AITLen] = 0;
+}
+
+/* write the buffered round out as one complete file */
+static void AITPublish(void)
+{
     char path[80];
-    short turn = *(short *)(AIT_GS + 0x136);
-    if (turn < 0) turn = 0;
-    sprintf(path, "The Outside World:Uploads:aitrace2_r%d.txt", turn);
-    return fopen(path, "a");
+    FILE *f;
+    if (!AITBuf || AITLen == 0) return;
+    sprintf(path, "The Outside World:Uploads:aitrace2_r%d.txt", AITBufTurn);
+    f = fopen(path, "w");
+    if (!f) f = fopen(AIT_TRACE_PATH, "w");
+    if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
+    AITLen = 0;
+    if (AITBuf) AITBuf[0] = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -66,20 +93,39 @@ static FILE *AITOpen(void)
 /* ------------------------------------------------------------------ */
 void WL2TraceRound(void)
 {
-    FILE *f;
+    char line[64];
+    int n;
     short turn;
     if (*gGameState == 0) return;
     turn = *(short *)(AIT_GS + 0x136);
-    f = AITOpen();
-    if (!f) return;
-    fprintf(f, "R%d BEGIN\n", turn < 0 ? 0 : turn);
-    fflush(f);
-    fclose(f);
+    if (turn < 0) turn = 0;
+    /* the buffer holds the round that just finished: publish it, then start
+     * the next round's buffer */
+    AITPublish();
+    AITBufTurn = turn;
+    n = sprintf(line, "R%d BEGIN\n", turn);
+    AITEmit(line, n);
 }
 
-/* ------------------------------------------------------------------ */
-/* per-side per-turn dump                                              */
-/* ------------------------------------------------------------------ */
+void WL2TraceFlush(void)
+{
+    AITPublish();
+}
+
+/* printf into the round buffer (vsprintf with a generous cap; every record
+ * is a few hundred bytes at most) */
+#include <stdarg.h>
+static void AITEmitF(const char *fmt, ...)
+{
+    char tmp[1024];
+    int n;
+    va_list ap;
+    va_start(ap, fmt);
+    n = vsprintf(tmp, fmt, ap);
+    va_end(ap);
+    if (n > 0) AITEmit(tmp, n);
+}
+
 void WL2TraceAITurn(short side, long randSeed,
                     short incomeAtTurnStart, short upkeepAtTurnStart,
                     const unsigned char *cityData, short cityCount,
@@ -99,11 +145,9 @@ void WL2TraceAITurn(short side, long randSeed,
     turn = *(short *)(gs + 0x136);
     gold = *(short *)(gs + 0x186 + side * 0x14);
 
-    f = AITOpen();
-    if (!f) return;
 
     /* header: the economy numbers the original's info panel shows */
-    fprintf(f, "T%d TURN %d GOLD %d INC %d UPK %d SEED %ld\n",
+    AITEmitF("T%d TURN %d GOLD %d INC %d UPK %d SEED %ld\n",
             side, turn < 0 ? 0 : turn, gold, incomeAtTurnStart, upkeepAtTurnStart, randSeed);
 
     /* diplomacy: the full 8x8 byte matrix as effective + proposed per pair
@@ -112,7 +156,7 @@ void WL2TraceAITurn(short side, long randSeed,
         short a, b;
         for (a = 0; a < 8; a++)
             for (b = a + 1; b < 8; b++)
-                fprintf(f, "T%d DIP %d %d E%d%d P%d%d\n",
+                AITEmitF("T%d DIP %d %d E%d%d P%d%d\n",
                         side, a, b,
                         gs[0x1582 + a * 8 + b] & 3, gs[0x1582 + b * 8 + a] & 3,
                         (gs[0x1582 + a * 8 + b] >> 2) & 3, (gs[0x1582 + b * 8 + a] >> 2) & 3);
@@ -122,7 +166,7 @@ void WL2TraceAITurn(short side, long randSeed,
     if (cityCount > AIT_MAX_CITIES) cityCount = AIT_MAX_CITIES;
     for (ci = 0; ci < cityCount; ci++) {
         const unsigned char *ec = AIT_EXT(ci);
-        fprintf(f, "T%d CITY %d OWN %d ROLE %d CF %d U %d P %d PROD %d PRG %d S %d %d %d %d\n",
+        AITEmitF("T%d CITY %d OWN %d ROLE %d CF %d U %d P %d PROD %d PRG %d S %d %d %d %d\n",
                 side, ci,
                 *(short *)(AIT_CITY(ci) + 4),
                 role ? role[ci] : 0,
@@ -140,7 +184,7 @@ void WL2TraceAITurn(short side, long randSeed,
     /* army records: the whole table (owners differ; the label is the
      * dumping side), x/y, unit types, moves, and the orders word */
     if (!ordWarned && ordBase != NULL && ordSize != AIT_ORD_SIZE) {
-        fprintf(f, "T%d WARN ordSize %ld != %ld\n", side, ordSize, AIT_ORD_SIZE);
+        AITEmitF("T%d WARN ordSize %ld != %ld\n", side, ordSize, AIT_ORD_SIZE);
         ordWarned = true;
     }
     n = *(short *)(gs + 0x1602);
@@ -148,22 +192,20 @@ void WL2TraceAITurn(short side, long randSeed,
     for (rec = 0; rec < n; rec++) {
         const unsigned char *a = AIT_ARMY(rec);
         const WL2AIOrdMirror *o = (ordBase != NULL && ordSize == AIT_ORD_SIZE) ? AIT_ORD(ordBase, rec) : NULL;
-        fprintf(f, "T%d ARMY %d XY %d %d OWN %d T %d %d %d %d MP %d",
+        AITEmitF("T%d ARMY %d XY %d %d OWN %d T %d %d %d %d MP %d",
                 side, rec,
                 *(short *)(a + 0), *(short *)(a + 2),
                 (short)(unsigned char)a[0x15],
                 a[0x16], a[0x17], a[0x18], a[0x19],
                 (short)(unsigned char)a[0x2e]);
         if (o)
-            fprintf(f, " ORD %d %d %d %d %04x %d %d\n",
+            AITEmitF(" ORD %d %d %d %d %04x %d %d\n",
                     o->type, o->target, o->front, o->group, o->flags, o->destX, o->destY);
         else
-            fprintf(f, " ORD - - - - ---- - -\n");
+            AITEmitF(" ORD - - - - ---- - -\n");
     }
 
-    fprintf(f, "T%d END\n", side);
-    fflush(f);
-    fclose(f);   /* close publishes the append to the shared fs */
+    AITEmitF("T%d END\n", side);
 }
 
 #endif /* AI_TRACE */

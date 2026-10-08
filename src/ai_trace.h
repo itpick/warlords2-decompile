@@ -46,12 +46,14 @@ void WL2TraceAITurn(short side, long randSeed,
  * counter, elimination, neutral production, history snapshot) so the human
  * turn boundary is visible in the trace. */
 void WL2TraceRound(void);
+void WL2TraceFlush(void);   /* publish the buffered round (call at quit) */
 
 #else /* !AI_TRACE */
 
 /* Compiled out: no code, no data. */
 #define WL2TraceAITurn(side, seed, inc, upk, cd, cc, at, ro, cf, uc, pc, ob, os) ((void)0)
 #define WL2TraceRound() ((void)0)
+#define WL2TraceFlush() ((void)0)
 
 #endif /* AI_TRACE */
 

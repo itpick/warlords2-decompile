@@ -8480,6 +8480,9 @@ static Boolean ShowScenarioSelection(void)
                         /* File > Quit */
                         DisposeWindow(scenWin);
                         if (offscreen != NULL) DisposeGWorld(offscreen);
+                        #ifdef AI_TRACE
+                            WL2TraceFlush();
+                        #endif
                         ExitToShell();
                     }
                     HiliteMenu(0);
@@ -8532,6 +8535,9 @@ static Boolean ShowScenarioSelection(void)
                 if ((evt.modifiers & cmdKey) && (key == 'q' || key == 'Q')) {
                     DisposeWindow(scenWin);
                     if (offscreen != NULL) DisposeGWorld(offscreen);
+                    #ifdef AI_TRACE
+                        WL2TraceFlush();
+                    #endif
                     ExitToShell();
                 }
 
