@@ -59,16 +59,24 @@ static void AITEmitF(const char *fmt, ...);
 static char *AITBuf = NULL;
 static long AITLen = 0, AITCap = 0;
 
+static short AITCurRound = -1;
+
 static void AITEmit(const char *text, long n)
 {
-    /* one file, one append + close per record: writes during the run reach the
-     * disk (run 1's complete round file proved it); the host reads whatever is
-     * there when the Finder first opens the folder after the game quits */
-    FILE *f = fopen(AIT_TRACE_UPLOADS, "a");
-    if (!f) f = fopen(AIT_TRACE_PATH, "a");
-    if (!f) return;
+    /* one file per round, created lazily at its first record: the shared fs
+     * downloads each path once, so a file may not exist before it has content */
+    static FILE *f = NULL;
+    char path[80];
+    if (AITCurRound < 0) return;
+    if (!f) {
+        sprintf(path, "The Outside World:Uploads:aitrace3_r%d.txt", AITCurRound);
+        f = fopen(path, "a");
+        if (!f) f = fopen(AIT_TRACE_PATH, "a");
+        if (!f) return;
+    }
     fwrite(text, 1, (size_t)n, f);
     fclose(f);
+    f = NULL;
 }
 
 void WL2TraceRound(void)
