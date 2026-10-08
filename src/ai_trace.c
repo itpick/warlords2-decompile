@@ -105,7 +105,6 @@ void WL2TraceRound(void)
 
 void WL2TraceFlush(void)
 {
-    AITPublish();
 }
 
 /* printf into the round buffer (vsprintf with a generous cap; every record
