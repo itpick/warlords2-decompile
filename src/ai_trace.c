@@ -61,21 +61,14 @@ static long AITLen = 0, AITCap = 0;
 
 static void AITEmit(const char *text, long n)
 {
-    /* the whole run buffers in memory: the shared fs publishes each path once,
-     * at its size when the Finder/poller first sees it, so the only safe moment
-     * to create the file is at quit, complete (WL2TraceFlush) */
-    if (AITLen + n + 1 > AITCap) {
-        long cap = AITCap ? AITCap * 2 : 262144;
-        char *b;
-        if (cap < AITLen + n + 1) cap = AITLen + n + 1;
-        b = (char *)malloc(cap);
-        if (!b) return;
-        if (AITBuf) { memcpy(b, AITBuf, AITLen); free(AITBuf); }
-        AITBuf = b; AITCap = cap;
-    }
-    memcpy(AITBuf + AITLen, text, n);
-    AITLen += n;
-    AITBuf[AITLen] = 0;
+    /* one file, one append + close per record: writes during the run reach the
+     * disk (run 1's complete round file proved it); the host reads whatever is
+     * there when the Finder first opens the folder after the game quits */
+    FILE *f = fopen(AIT_TRACE_UPLOADS, "a");
+    if (!f) f = fopen(AIT_TRACE_PATH, "a");
+    if (!f) return;
+    fwrite(text, 1, (size_t)n, f);
+    fclose(f);
 }
 
 void WL2TraceRound(void)
@@ -89,17 +82,7 @@ void WL2TraceRound(void)
 
 void WL2TraceFlush(void)
 {
-    char path[80];
-    static long seq = 0;
-    FILE *f;
-    if (!AITBuf || AITLen == 0) return;
-    sprintf(path, "The Outside World:Uploads:aitrace2_run%ld.txt", ++seq);
-    f = fopen(path, "w");
-    if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
-    f = fopen(AIT_TRACE_PATH, "w");       /* the local copy always lands */
-    if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
-    AITLen = 0;
-    if (AITBuf) AITBuf[0] = 0;
+    /* records are written as they are emitted; nothing buffered */
 }
 
 /* printf into the round buffer (vsprintf with a generous cap; every record
