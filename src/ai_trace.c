@@ -77,12 +77,12 @@ void WL2TraceRound(void)
     if (*gGameState == 0) return;
     turn = *(short *)(AIT_GS + 0x136);
     if (turn < 0) turn = 0;
-    AITEmitF("R%d BEGIN\n", turn);
+    AITCurRound = turn;      /* records after this marker land in r<turn> */
 }
 
 void WL2TraceFlush(void)
 {
-    /* records are written as they are emitted; nothing buffered */
+    /* per-record closes; nothing buffered */
 }
 
 /* printf into the round buffer (vsprintf with a generous cap; every record
