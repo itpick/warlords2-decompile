@@ -58,35 +58,33 @@ static char *AITBuf = NULL;
 static long AITLen = 0, AITCap = 0;
 static short AITBufTurn = 0;
 
+static char AITRoundPath[80];
+static short AITRoundOpen = -1;
 static void AITEmit(const char *text, long n)
 {
-    if (AITLen + n + 1 > AITCap) {
-        long cap = AITCap ? AITCap * 2 : 65536;
-        char *b;
-        if (cap < AITLen + n + 1) cap = AITLen + n + 1;
-        b = (char *)malloc(cap);
-        if (!b) return;
-        if (AITBuf) { memcpy(b, AITBuf, AITLen); free(AITBuf); }
-        AITBuf = b; AITCap = cap;
-    }
-    memcpy(AITBuf + AITLen, text, n);
-    AITLen += n;
-    AITBuf[AITLen] = 0;
+    /* append to the round's file; the per-record close lets the shared fs
+     * publish the growing file (run 1's complete r1 proved the pattern), and
+     * each round has a fresh name so no frozen snapshot from a previous run
+     * can shadow it */
+    FILE *f;
+    if (AITRoundOpen < 0) return;
+    f = fopen(AITRoundPath, "a");
+    if (!f) return;
+    fwrite(text, 1, (size_t)n, f);
+    fclose(f);
 }
 
-/* write the buffered round out as one complete file */
-static void AITPublish(void)
+/* the round's file: appended by the turn dump, named for the round; the
+ * poller publishes a growing file and its LAST snapshot (at quit) is complete */
+
+static void AITRoundBegin(short turn)
 {
-    char path[80];
-    FILE *f;
-    if (!AITBuf || AITLen == 0) return;
     static long seq = 0;
-    sprintf(path, "The Outside World:Uploads:aitrace2_%02ld_r%d.txt", ++seq, AITBufTurn);
-    f = fopen(path, "w");
-    if (!f) f = fopen(AIT_TRACE_PATH, "w");
-    if (f) { fwrite(AITBuf, 1, (size_t)AITLen, f); fclose(f); }
-    AITLen = 0;
-    if (AITBuf) AITBuf[0] = 0;
+    sprintf(AITRoundPath, "The Outside World:Uploads:aitrace2_%02ld_r%d.txt", ++seq, turn);
+    AITRoundOpen = turn;
+    /* create empty; appends follow */
+    FILE *f = fopen(AITRoundPath, "a");
+    if (f) fclose(f);
 }
 
 /* ------------------------------------------------------------------ */
@@ -100,10 +98,7 @@ void WL2TraceRound(void)
     if (*gGameState == 0) return;
     turn = *(short *)(AIT_GS + 0x136);
     if (turn < 0) turn = 0;
-    /* the buffer holds the round that just finished: publish it, then start
-     * the next round's buffer */
-    AITPublish();
-    AITBufTurn = turn;
+    AITRoundBegin(turn);
     n = sprintf(line, "R%d BEGIN\n", turn);
     AITEmit(line, n);
 }
