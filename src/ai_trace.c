@@ -50,10 +50,15 @@
 
 static FILE *AITOpen(void)
 {
-    /* the shared-fs publishes an appended file when its handle CLOSES; the
-     * per-round close costs one reopen per round and keeps every record
-     * visible (run 1's per-record reopen froze the sync mid-run) */
-    return fopen(AIT_TRACE_UPLOADS, "a");
+    /* the shared fs publishes each path exactly once (worker ns(): rt marks a
+     * path done after its first snapshot), so every round gets a FRESH file:
+     * aitrace2_<turn>.txt holds that round's records. The per-round close is
+     * what makes the poller see it. */
+    char path[80];
+    short turn = *(short *)(AIT_GS + 0x136);
+    if (turn < 0) turn = 0;
+    sprintf(path, "The Outside World:Uploads:aitrace2_r%d.txt", turn);
+    return fopen(path, "a");
 }
 
 /* ------------------------------------------------------------------ */
