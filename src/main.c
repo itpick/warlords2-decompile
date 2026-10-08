@@ -37,10 +37,20 @@ static pascal Boolean DevWaitNextEvent(INTEGER mask, EventRecord *evp, LONGINT s
     EventRecord k;
     Boolean got;
     /* queued before the wait (also catches loops whose mask excludes keys) */
-    if (EventAvail(keyDownMask, &k) && DevIsQuitChord(&k)) ExitToShell();
+    if (EventAvail(keyDownMask, &k) && DevIsQuitChord(&k)) {
+#ifdef AI_TRACE
+        WL2TraceFlush();
+#endif
+        ExitToShell();
+    }
     got = WaitNextEvent(mask, evp, sleep, mousergn);
     /* or delivered by this wait */
-    if (got && DevIsQuitChord(evp)) ExitToShell();
+    if (got && DevIsQuitChord(evp)) {
+#ifdef AI_TRACE
+        WL2TraceFlush();
+#endif
+        ExitToShell();
+    }
     return got;
 }
 #define WaitNextEvent DevWaitNextEvent
