@@ -5,8 +5,9 @@
  * two hook calls (see ai_trace.h).  Without AI_TRACE defined the whole file
  * compiles to an empty translation unit, so normal builds are untouched.
  *
- * Output: "aitrace.txt" in the app's working directory, append mode, one
- * fopen/fclose cycle per record (the flush survives a crash and keeps the
+ * Output: The Outside World:Uploads:aitrace.txt (fallback "aitrace.txt" in the
+ * app's working directory), one open handle kept for the whole run and flushed
+ * per record (the flush survives a crash and keeps the
  * emulator's file writable).  One line per item, stable field order,
  * greppable tags:
  *
@@ -49,8 +50,14 @@
 
 static FILE *AITOpen(void)
 {
-    FILE *f = fopen(AIT_TRACE_UPLOADS, "a");
-    return f ? f : fopen(AIT_TRACE_PATH, "a");
+    /* one handle for the whole run: the emulator's shared-fs sync loses the
+     * tail when every record reopens the path (the sync snapshots the file
+     * while a later append goes to a fresh handle it never sees) */
+    static FILE *f;
+    if (f) return f;
+    f = fopen(AIT_TRACE_UPLOADS, "a");
+    if (!f) f = fopen(AIT_TRACE_PATH, "a");
+    return f;
 }
 
 /* ------------------------------------------------------------------ */
@@ -65,7 +72,7 @@ void WL2TraceRound(void)
     f = AITOpen();
     if (!f) return;
     fprintf(f, "R%d BEGIN\n", turn < 0 ? 0 : turn);
-    fclose(f);
+    fflush(f);
 }
 
 /* ------------------------------------------------------------------ */
@@ -153,7 +160,7 @@ void WL2TraceAITurn(short side, long randSeed,
     }
 
     fprintf(f, "T%d END\n", side);
-    fclose(f);   /* flushes; one open/close cycle per turn */
+    fflush(f);   /* flushes; the handle stays open (see AITOpen) */
 }
 
 #endif /* AI_TRACE */
