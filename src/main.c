@@ -35340,179 +35340,30 @@ static void HandleMenuChoice(long menuResult)
      *       (-;Fight Order...;Disband Group;Change Signpost...;(-;Resign... */
     case 4:
         switch (menuItem) {
-        case 1:  /* Group Stack (cmd 0x578) — merge units from other armies at same tile */
+        case 1:  /* Group Stack (cmd 0x578) - PPC FUN_100a1604 -> FUN_1005d240:
+                  * with a unit selected, every entry of the stack window joins
+                  * group 0 and is selected; then the sort (FUN_1005c2d4(1)),
+                  * the tag commit (FUN_1005c7d0(0)), the group MP
+                  * (FUN_1005cc8c) and the redraw (FUN_1003dc28).  Records are
+                  * never packed into one another: one unit per record, as the
+                  * info panel, the battle and the temple count them. */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
-                unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = ARMY_REC(sSelectedArmy);
-                short sx = *(short *)(army + 0x00);
-                short sy = *(short *)(army + 0x02);
-                short curPlayer = *(short *)(gs + 0x110);
-                short armyCount = *(short *)(gs + 0x1602);
-                short ai;
-                Boolean merged = false;
-                if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
-
-                /* Try to merge units from other friendly armies at same tile */
-                for (ai = 0; ai < armyCount; ai++) {
-                    unsigned char *other;
-                    short slot;
-                    if (ai == sSelectedArmy) continue;
-                    other = ARMY_REC(ai);
-                    if (*(short *)(other + 0x00) != sx ||
-                        *(short *)(other + 0x02) != sy ||
-                        (short)(unsigned char)other[0x15] != curPlayer)
-                        continue;
-
-                    /* Try to move units from other army into selected army's empty slots */
-                    for (slot = 0; slot < 4; slot++) {
-                        if (army[0x16 + slot] == 0xFF) {
-                            /* Find a unit in other army to transfer */
-                            short oSlot;
-                            for (oSlot = 0; oSlot < 4; oSlot++) {
-                                if (other[0x16 + oSlot] != 0xFF) {
-                                    if (other[0x16 + oSlot] == 0x1C) {   /* a hero brings its items and quest */
-                                        HeroItemsMove(ai, sSelectedArmy);
-                                        QuestRecMoved(ai, sSelectedArmy);
-                                    }
-                                    army[0x16 + slot] = other[0x16 + oSlot];
-                                    army[0x1a + slot] = other[0x1a + oSlot];
-                                    army[0x1e + slot] = other[0x1e + oSlot];
-                                    army[0x22 + slot] = other[0x22 + oSlot];
-                                    army[0x26 + slot] = other[0x26 + oSlot];
-                                    other[0x16 + oSlot] = 0xFF;
-                                    other[0x1a + oSlot] = 0;
-                                    other[0x1e + oSlot] = 0;
-                                    other[0x22 + oSlot] = 0;
-                                    other[0x26 + oSlot] = 0;
-                                    merged = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    /* If other army is now empty, remove it */
-                    if (other[0x16] == 0xFF && other[0x17] == 0xFF &&
-                        other[0x18] == 0xFF && other[0x19] == 0xFF) {
-                        RemoveArmy(ai);
-                        /* Note: RemoveArmy already adjusts sSelectedArmy */
-                        armyCount = *(short *)(gs + 0x1602);
-                        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
-                        ai--;  /* re-check this index */
-                    }
-                }
-
-                /* Recalculate strength display */
-                if (merged) {
-                    RecalcArmyStrength(army);
-                }
-
-                if (*gMainGameWindow != 0) {
-                    SetPort((WindowPtr)*gMainGameWindow);
-                    InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
-                }
-                if (gInfoWindow != NULL && *gInfoWindow != 0) {
-                    SetPort((WindowPtr)*gInfoWindow);
-                    InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
-                }
+                BuildStackArrays(sSelectedArmy);
+                StackGroupAll();
+                StackCommitGroups();
+                if (sSelectedArmy >= 0) BuildStackArrays(sSelectedArmy);
+                InvalidateAllGameWindows();
             }
             break;
-        case 2:  /* Ungroup (cmd 0x579) — split last unit into new army */
+        case 2:  /* Ungroup (cmd 0x579) - PPC FUN_100a1604 -> FUN_1005d2dc:
+                  * every entry its own group, only the first selected; the
+                  * rest stay on the tile (their tags go to 0 in the commit) */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
-                unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = ARMY_REC(sSelectedArmy);
-                short armyCount = *(short *)(gs + 0x1602);
-                short unitCount = 0, lastSlot = -1, slot;
-
-                /* Count active units and find last occupied slot */
-                for (slot = 0; slot < 4; slot++) {
-                    if (army[0x16 + slot] != 0xFF) {
-                        unitCount++;
-                        lastSlot = slot;
-                    }
-                }
-
-                /* Need at least 2 units to split, and room for a new army */
-                if (unitCount >= 2 && armyCount < MAX_ARMIES && lastSlot >= 0) {
-                    unsigned char *newArmy = ARMY_REC(armyCount);
-                    short j;
-
-                    /* Zero out new army */
-                    for (j = 0; j < 0x42; j++) newArmy[j] = 0;
-
-                    /* Place at same location */
-                    *(short *)(newArmy + 0x00) = *(short *)(army + 0x00);
-                    *(short *)(newArmy + 0x02) = *(short *)(army + 0x02);
-                    newArmy[0x15] = army[0x15]; /* same owner */
-                    newArmy[0x14] = army[0x14]; /* sprite */
-
-                    /* Transfer last unit to new army slot 0 */
-                    newArmy[0x16] = army[0x16 + lastSlot];
-                    newArmy[0x1a] = army[0x1a + lastSlot];
-                    newArmy[0x1e] = army[0x1e + lastSlot];
-                    newArmy[0x22] = army[0x22 + lastSlot];
-                    newArmy[0x26] = army[0x26 + lastSlot];
-                    newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
-
-                    /* Hero leaving: its name, its items and its quest go along */
-                    if (newArmy[0x16] == 0x1C) {
-                        short hni;
-                        for (hni = 0; hni < 16; hni++)
-                            newArmy[0x04 + hni] = army[0x04 + hni];
-                        HeroItemsMove(sSelectedArmy, armyCount);
-                        QuestRecMoved(sSelectedArmy, armyCount);
-                        /* Update hero instance record */
-                        { short hOwner = (short)(unsigned char)army[0x15];
-                          if (hOwner >= 0 && hOwner < 8) {
-                            unsigned char *hr = gs + 0x1422 + hOwner * 0x2C;
-                            if (hr[0x00] != 0)
-                                *(short *)(hr + 0x04) = armyCount;
-                          }
-                        }
-                    }
-
-                    /* Set new army sprite from unit type table (offset 0x24) */
-                    {
-                        short ut = (short)(unsigned char)newArmy[0x16];
-                        if (sUnitTypesLoaded && ut >= 0 && ut < sUnitTypeCount) {
-                            unsigned char *ute = sUnitTypeTable + ut * UNIT_TYPE_ENTRY;
-                            newArmy[0x14] = (unsigned char)ute[0x00];
-                        } else {
-                            newArmy[0x14] = army[0x14]; /* copy from source */
-                        }
-                    }
-
-                    /* Set new army strength and movement */
-                    RecalcArmyStrength(newArmy);
-                    newArmy[0x2e] = (unsigned char)(newArmy[0x1a]);
-
-                    /* Remove unit from original army */
-                    army[0x16 + lastSlot] = 0xFF;
-                    army[0x1a + lastSlot] = 0;
-                    army[0x1e + lastSlot] = 0;
-                    army[0x22 + lastSlot] = 0;
-                    army[0x26 + lastSlot] = 0;
-
-                    /* Recalculate original army strength */
-                    RecalcArmyStrength(army);
-
-                    *(short *)(gs + 0x1602) = armyCount + 1;
-
-                    /* Select the new army */
-                    sSelectedArmy = armyCount;
-                } else {
-                    /* Can't split: cycle to next */
-                    SelectNextArmy();
-                }
-
-                if (*gMainGameWindow != 0) {
-                    SetPort((WindowPtr)*gMainGameWindow);
-                    InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
-                }
-                if (gInfoWindow != NULL && *gInfoWindow != 0) {
-                    SetPort((WindowPtr)*gInfoWindow);
-                    InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
-                }
+                BuildStackArrays(sSelectedArmy);
+                StackUngroupAll();
+                StackCommitGroups();
+                if (sSelectedArmy >= 0) BuildStackArrays(sSelectedArmy);
+                InvalidateAllGameWindows();
             }
             break;
         case 4:  /* Move Group (cmd 0x57A) — FUN_1007c618: the selected stack
