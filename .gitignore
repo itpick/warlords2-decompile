@@ -48,3 +48,6 @@ src/stubs/blr_verified.o
 
 # AI trace harness output (written by an AI_TRACE build in the app's working dir)
 aitrace.txt
+
+# host unit-test build output
+tests/host/build/

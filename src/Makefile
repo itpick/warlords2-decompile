@@ -131,4 +131,8 @@ stats:
 todos:
 	@grep -rn "TODO" $(ALL_SRCS) include/ || echo "No TODOs found"
 
-.PHONY: all clean stats todos pef app
+# The automated tests (host C rules + Python tools); see docs/testing.md
+test:
+	../tools/run_tests.sh
+
+.PHONY: all clean stats todos pef app test
