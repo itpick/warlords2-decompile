@@ -33669,6 +33669,19 @@ static void AdvanceToNextPlayer(void)
 #ifdef AI_TRACE
             /* Phase 2 harness: round boundary marker (the human turn follows) */
             WL2TraceRound();
+            /* The human side has no ExecuteAITurn, so its record is emitted
+             * here: same fields the original's report window shows for the
+             * human player (gold / income / upkeep / cities). */
+            {
+                short hp;
+                for (hp = 0; hp < 8; hp++)
+                    if (*(short *)(gs + 0x138 + hp * 2) != 0 &&
+                        *(short *)(gs + 0xd0 + hp * 2) != 0)
+                        WL2TraceAITurn(hp, qd.randSeed,
+                                       PlayerIncome(hp), PlayerUpkeep(hp),
+                                       sCityData, sCityCount, sArmyTab,
+                                       NULL, NULL, NULL, NULL, NULL, 0);
+            }
 #endif
         }
 
