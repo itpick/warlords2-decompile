@@ -1294,8 +1294,41 @@ static short sViewportY = 0;   /* topmost visible tile row */
 static short sViewPixX = 0;
 static short sViewPixY = 0;
 
-/* Minimap zoom: 0 = small (default), 1 = large */
-static short sMinimapZoom = 0;  /* 0=small(124x160), 1=medium(180x220), 2=large(240x300) */
+/* Kept only for the save's UI state block (stateBlock[3]); the overview's
+ * size is sOverviewSmall below, which the original never saves either. */
+static short sMinimapZoom = 0;
+
+/* The floats' zoom boxes, measured on the original (Erythea, bridge :3200,
+ * 9 Oct 2026; content sizes, frame and title bar excluded):
+ *  - the overview (View 1002, TBetterFloatWindow: FUN_10078074 zooms out to
+ *    the resize maximum, FUN_1007833c in to the minimum) toggles between
+ *    224x312 (2 px a tile) and 112x156 (1 px a tile), top-left corner fixed;
+ *  - the info area (View 1003, TTripleSizeFloatWindow: FUN_10078884 ->
+ *    FUN_100788bc cycles three remembered frames) goes 224x129 (the start-up
+ *    2x2 layout) -> 112x120 (one column) -> 360x66 (one row, the View
+ *    resource's own 360x66) -> 224x129, bottom-right corner fixed. */
+static Boolean sOverviewSmall = false;
+static short   sInfoLayout = 0;
+static const short kInfoLayoutWH[3][2] = { {224, 129}, {112, 120}, {360, 66} };
+
+/* the next info-area content rect: same bottom-right corner, next size */
+static void InfoLayoutNextRect(short layout, const Rect *cur, Rect *out)
+{
+    short n = (short)((layout + 1) % 3);
+    out->right = cur->right;
+    out->bottom = cur->bottom;
+    out->left = (short)(cur->right - kInfoLayoutWH[n][0]);
+    out->top = (short)(cur->bottom - kInfoLayoutWH[n][1]);
+}
+
+/* the other overview content rect: same top-left corner */
+static void OverviewToggleRect(Boolean small, const Rect *cur, Rect *out)
+{
+    out->left = cur->left;
+    out->top = cur->top;
+    out->right = (short)(cur->left + (small ? 224 : 112));
+    out->bottom = (short)(cur->top + (small ? 312 : 156));
+}
 
 /* Selected army tracking: -1 = no selection */
 static short sSelectedArmy = -1;
@@ -1775,6 +1808,7 @@ static void GetDATRawString(short rawIdx, Str255 out);
 static void FormatHeroLine(ConstStr255Param fmt, ConstStr255Param city, short num, Str255 out);
 #define kOvFrame    1   /* viewport frame (overview window) */
 #define kOvOverlays 2   /* shields, ruins, armies (not in the city window) */
+#define kOvSmall    4   /* the zoomed-in overview: 1 px a tile */
 static void DrawOverviewTo(GrafPtr port, Rect r, short flags);
 static void OverviewRedrawTile(short x, short y);   /* FUN_10064498 */
 static void HandleUpdate(EventRecord *event);
@@ -12108,7 +12142,8 @@ static void DrawOverviewInWindow(WindowPtr win)
         PaintRect(&win->portRect);
         return;
     }
-    DrawOverviewTo((GrafPtr)win, win->portRect, kOvFrame | kOvOverlays);
+    DrawOverviewTo((GrafPtr)win, win->portRect,
+                   kOvFrame | kOvOverlays | (sOverviewSmall ? kOvSmall : 0));
 }
 
 static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
@@ -12129,13 +12164,17 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
         if (LockPixels(opm)) {
             srcR = (**opm).bounds;
             OffsetRect(&srcR, r.left - srcR.left, r.top - srcR.top);
+            if (flags & kOvSmall) {   /* the 2:1 shrink of the same image */
+                srcR.right = (short)(srcR.left + ((**opm).bounds.right - (**opm).bounds.left) / 2);
+                srcR.bottom = (short)(srcR.top + ((**opm).bounds.bottom - (**opm).bounds.top) / 2);
+            }
             CopyBits((BitMap *)*opm, &port->portBits, &(**opm).bounds, &srcR, srcCopy, NULL);
             UnlockPixels(opm);
         }
     }
 
     if (flags & kOvOverlays) {
-        short scale = 2;
+        short scale = (flags & kOvSmall) ? 1 : 2;
 
         /* Fog of war overlay on minimap */
         if (*gGameState != 0 && *(short *)((unsigned char *)*gGameState + 0x124) != 0) {
@@ -12183,7 +12222,7 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
          * Off: the original's overview showed no marker even for the human's
          * hero outside a city (turn 2, Erythea); kept for the remake's
          * debug overlays. */
-        if (*gGameState != 0 && sShowCityLabels) {
+        if (*gGameState != 0 && sShowCityLabels && scale == 2) {
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short armyCount = *(short *)(gs2 + 0x1602);
             short ai;
@@ -12271,9 +12310,31 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
                             RGBColor ruinCol = {0xFFFF, 0xFFFF, 0xFFFF};
                             Rect dot;
                             SetRect(&dot, r.left + cx * scale, r.top + cy * scale,
-                                    r.left + cx * scale + 2, r.top + cy * scale + 2);
+                                    r.left + cx * scale + scale, r.top + cy * scale + scale);
                             RGBForeColor(&ruinCol);
                             PaintRect(&dot);
+                        } else if (scale == 1) {
+                            /* the 1 px overview: a 4x4 shield at (x-1, y-1),
+                             * rows ####/#..#/#..#/.##. in black round a 2x2 of
+                             * the owner's colour (neutral grey); the black
+                             * side's is red round black (measured, all 8
+                             * sides + neutral, Erythea) */
+                            static const RGBColor kSmallShield[9] = {
+                                {0xFFFF, 0xFFFF, 0xFFFF}, {0xFFFF, 0xE7E7, 0x3737},
+                                {0xFFFF, 0x9D9D, 0x0000}, {0xD3D3, 0x3333, 0x0000},
+                                {0x7171, 0xC1C1, 0x3333}, {0x0000, 0x7373, 0xDCDC},
+                                {0x6464, 0xCFCF, 0xFFFF}, {0x0000, 0x0000, 0x0000},
+                                {0xABAB, 0xABAB, 0xABAB} };
+                            RGBColor rim = {0, 0, 0}, red = {0xD3D3, 0x3333, 0x0000};
+                            short o = (owner >= 0 && owner < 8) ? owner : 8;
+                            short sx0 = r.left + cx - 1, sy0 = r.top + cy - 1;
+                            Rect q;
+                            if (o == 7) rim = red;
+                            RGBForeColor(&rim);
+                            SetRect(&q, sx0, sy0, sx0 + 4, sy0 + 3);  PaintRect(&q);
+                            SetRect(&q, sx0 + 1, sy0 + 3, sx0 + 3, sy0 + 4); PaintRect(&q);
+                            RGBForeColor(&kSmallShield[o]);
+                            SetRect(&q, sx0 + 1, sy0 + 1, sx0 + 3, sy0 + 3); PaintRect(&q);
                         } else {
                             /* City: shield sprite from PICT 30010 */
                             Rect srcR, dstR;
@@ -12336,8 +12397,12 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
             long px = (long)sViewportX * TERRAIN_TILE_W + sViewPixX;
             long py = (long)sViewportY * TERRAIN_TILE_H + sViewPixY;
             RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-            SetRect(&vr, r.left + (short)(px / 20), r.top + (short)(py / 20),
-                    r.left + (short)((px + vw + 19) / 20) + 1, r.top + (short)((py + vh + 19) / 20) + 1);
+            if (flags & kOvSmall)      /* 1 px a tile: (74..98 x ..19) for the same view */
+                SetRect(&vr, r.left + (short)(px / 40), r.top + (short)(py / 40),
+                        r.left + (short)((px + vw + 39) / 40), r.top + (short)((py + vh + 39) / 40));
+            else
+                SetRect(&vr, r.left + (short)(px / 20), r.top + (short)(py / 20),
+                        r.left + (short)((px + vw + 19) / 20) + 1, r.top + (short)((py + vh + 19) / 20) + 1);
             InsetRect(&vr, -2, -2);
             RGBForeColor(&white);
             PenSize(2, 2);
@@ -12476,67 +12541,6 @@ static void DrawMinimapInRect(Rect *destRect, short highlightX, short highlightY
 }
 
 
-/* ===================================================================
- * ToggleMinimapZoom — cycle through 3 minimap zoom levels
- *
- * Small:  124x160, 1px/tile (default)
- * Medium: 180x220, 2px/tile
- * Large:  240x300, 2px/tile (more map visible)
- * =================================================================== */
-static void ToggleMinimapZoom(void)
-{
-    WindowPtr overWin, infoWin;
-
-    if (*gOverviewWindow == 0 || *gInfoWindow == 0)
-        return;
-
-    /* Get current overview window position for reference */
-    overWin = (WindowPtr)*gOverviewWindow;
-    infoWin = (WindowPtr)*gInfoWindow;
-
-    sMinimapZoom = (sMinimapZoom + 1) % 3;
-
-    {
-        short newW, newH, infoTop;
-
-        if (sMinimapZoom == 0) {
-            /* Small: 2px/tile (drawing always uses 2), compact window */
-            newW = sMapWidth * 2;
-            newH = sMapHeight * 2;
-            if (newW < 124) newW = 124;
-            if (newH < 100) newH = 100;
-            if (newW > 240) newW = 240;
-            if (newH > 200) newH = 200;
-        } else if (sMinimapZoom == 1) {
-            /* Medium: 2px/tile, sized to fit map */
-            newW = sMapWidth * 2;
-            newH = sMapHeight * 2;
-            if (newW > 300) newW = 300;
-            if (newH > 350) newH = 350;
-        } else {
-            /* Large: sized to show entire map at 2px/tile */
-            newW = sMapWidth * 2;
-            newH = sMapHeight * 2;
-            if (newW < 240) newW = 240;
-            if (newH < 300) newH = 300;
-            if (newW > 500) newW = 500;
-            if (newH > 680) newH = 680;
-        }
-
-        SizeWindow(overWin, newW, newH, true);
-
-        /* Info panel goes below minimap, moderate height */
-        infoTop = 40 + newH + 2;
-        MoveWindow(infoWin, 514, infoTop, false);
-        SizeWindow(infoWin, newW, 160, true);
-    }
-
-    /* Force redraw of both windows */
-    SetPort(overWin);
-    InvalRect(&overWin->portRect);
-    SetPort(infoWin);
-    InvalRect(&infoWin->portRect);
-}
 
 
 /* ===================================================================
@@ -37150,6 +37154,37 @@ static Boolean StackPanelClick(short lx, short ly)
     return false;
 }
 
+/* A float's zoom box (see sOverviewSmall / sInfoLayout): the overview
+ * toggles its two sizes, the info area steps through its three layouts.
+ * The button area keeps its size (not measured on the original). */
+static void FloatZoomBox(WindowPtr w)
+{
+    Rect cur, next;
+    Point tl;
+    GrafPtr saved;
+    Boolean isOver = gOverviewWindow != NULL && w == (WindowPtr)*gOverviewWindow;
+    Boolean isInfo = gStatusWindow != NULL && w == (WindowPtr)*gStatusWindow;
+    if (!isOver && !isInfo) return;
+    GetPort(&saved);
+    SetPort(w);
+    tl.h = w->portRect.left; tl.v = w->portRect.top;
+    LocalToGlobal(&tl);
+    SetRect(&cur, tl.h, tl.v, tl.h + (w->portRect.right - w->portRect.left),
+            tl.v + (w->portRect.bottom - w->portRect.top));
+    if (isOver) {
+        OverviewToggleRect(sOverviewSmall, &cur, &next);
+        sOverviewSmall = !sOverviewSmall;
+    } else {
+        InfoLayoutNextRect(sInfoLayout, &cur, &next);
+        sInfoLayout = (short)((sInfoLayout + 1) % 3);
+    }
+    MoveWindow(w, next.left, next.top, false);
+    SizeWindow(w, next.right - next.left, next.bottom - next.top, true);
+    SetPort(w);
+    InvalRect(&w->portRect);
+    SetPort(saved);
+}
+
 static void HandleMouseDown(EventRecord *event)
 {
     WindowPtr   whichWindow;
@@ -37186,8 +37221,7 @@ static void HandleMouseDown(EventRecord *event)
         if (TrackBox(whichWindow, event->where, partCode)) {
             /* Overview window zoom box = toggle minimap size */
             if (IsFloatWin(whichWindow)) {
-                /* TODO: the original's TTripleSizeFloatWindow cycles three
-                 * sizes; ToggleMinimapZoom assumes the old 640x480 layout. */
+                FloatZoomBox(whichWindow);
             } else {
                 SetPort(whichWindow);
                 EraseRect(&whichWindow->portRect);
@@ -37242,7 +37276,8 @@ static void HandleMouseDown(EventRecord *event)
                     (void)moved; (void)startPt;
                     oldVX = sViewportX; oldVY = sViewportY;
                     oldPX = sViewPixX;  oldPY = sViewPixY;
-                    CenterViewportOn((dragPt.h - oPort.left) / 2, (dragPt.v - oPort.top) / 2);
+                    CenterViewportOn((dragPt.h - oPort.left) / (sOverviewSmall ? 1 : 2),
+                                     (dragPt.v - oPort.top) / (sOverviewSmall ? 1 : 2));
                     if (sViewportX != oldVX || sViewportY != oldVY ||
                         sViewPixX != oldPX || sViewPixY != oldPY) {
                         SetPort((WindowPtr)*gMainGameWindow);
@@ -38571,9 +38606,20 @@ static void HandleUpdate(EventRecord *event)
             short cur = *(short *)(gs + 0x110);
             short gold = *(short *)(gs + 0x186 + cur * 0x14);
             short cities = 0, income = 0, upkeep = 0, ci;
-            static const short cells[4][4] = {     /* srcX, srcY, dstX, dstY */
-                {344, 0, 36, 22}, {344, 20, 124, 22}, {384, 0, 36, 78}, {384, 20, 114, 78} };
-            short vals[4], penX[4] = {78, 149, 67, 149}, base[4] = {33, 33, 89, 89};
+            /* ABITS sources castle, chest, coins, hand; per layout (sInfoLayout,
+             * measured on the original) the cell and the number's pen:
+             * 224x129 2x2, 112x120 one column, 360x66 one row */
+            static const short src[4][2] = { {344, 0}, {344, 20}, {384, 0}, {384, 20} };
+            static const short kCell[3][4][2] = {
+                { {36, 22}, {124, 22}, {36, 78}, {114, 78} },
+                { {21, 13}, {21, 39},  {21, 64}, {19, 91} },
+                { {16, 22}, {104, 22}, {184, 22}, {264, 22} } };
+            static const short kPen[3][4][2] = {
+                { {78, 33}, {149, 33}, {67, 89}, {149, 89} },
+                { {63, 24}, {56, 50},  {56, 75}, {56, 102} },
+                { {58, 33}, {129, 33}, {217, 33}, {305, 33} } };
+            short L = (sInfoLayout >= 0 && sInfoLayout < 3) ? sInfoLayout : 0;
+            short vals[4];
             RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
             short k;
 
@@ -38597,9 +38643,9 @@ static void HandleUpdate(EventRecord *event)
                 RGBBackColor(&sAbitsBgColor);
                 for (k = 0; k < 4; k++) {
                     Rect sr, dr;
-                    SetRect(&sr, cells[k][0], cells[k][1], cells[k][0] + 40, cells[k][1] + 20);
-                    SetRect(&dr, r.left + cells[k][2], r.top + cells[k][3],
-                            r.left + cells[k][2] + 40, r.top + cells[k][3] + 20);
+                    SetRect(&sr, src[k][0], src[k][1], src[k][0] + 40, src[k][1] + 20);
+                    SetRect(&dr, r.left + kCell[L][k][0], r.top + kCell[L][k][1],
+                            r.left + kCell[L][k][0] + 40, r.top + kCell[L][k][1] + 20);
                     CopyBits((BitMap *)*pm, &((GrafPtr)win)->portBits, &sr, &dr, 36, NULL);
                 }
                 RGBBackColor(&savedBg);
@@ -38610,7 +38656,7 @@ static void HandleUpdate(EventRecord *event)
                 Str255 t;
                 NumToString((long)vals[k], t);
                 if (k > 0) { t[++t[0]] = 'g'; t[++t[0]] = 'p'; }
-                DrawEmbossedString(t, r.left + penX[k], r.top + base[k], &cream);
+                DrawEmbossedString(t, r.left + kPen[L][k][0], r.top + kPen[L][k][1], &cream);
             }
         }
     }
@@ -39179,7 +39225,7 @@ int main(void)
 
         /* Overview (minimap) window — floating palette (WDEF 3 = Infinity Windoid)
          * procID = WDEF_ID * 16 + variant; WDEF 3 * 16 = 48
-         * The original game uses TTripleSizeFloatWindow (3 zoom levels).
+         * The info area is a TTripleSizeFloatWindow (three layouts, sInfoLayout).
          * goAwayFlag=true gives a close box on the palette. */
         sMinimapZoom = 1;  /* Start at medium zoom */
         SetRect(&overRect, colL, 34, colR, 346);
