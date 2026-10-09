@@ -9,7 +9,8 @@ Checks that must hold regardless of seed:
   4. production sanity: PROD is -1 or a valid unit type 0..28; PRG is -1 or
      0..30 (no slot takes 30 turns)
   5. role sanity: ROLE in 0..14 (the web's known roles) or 0 for non-own cities
-  6. army sanity: every record's tile is on the map; types are 0..28 or 0xFF
+  6. army sanity: every record's tile is on the map (negative = in vectoring
+     transit, allowed); types are 0..28 or 0xFF
 
 Usage: python3 tools/ai_trace_checks.py aitrace3_r2.txt [r3 r4 ...]
 """
@@ -67,8 +68,11 @@ def main(paths):
                     print(f'FAIL [{label} side {s}] own city {ci}: role {role} invalid'); failures += 1
         for s, rows in armies.items():
             for (i, x, y, own) in rows:
-                # 6: on the map
-                if not (0 <= x < 112 and 0 <= y < 156):
+                # 6: on the map; negative coordinates are a record in
+                # vectoring transit (x = -1, docs/2026-10-08-ai-trace.md)
+                if x < 0 or y < 0:
+                    continue
+                if not (x < 112 and y < 156):
                     print(f'FAIL [{label} side {s}] army {i} off-map at {x},{y}'); failures += 1
     # 1: the ledger across consecutive rounds for sides present in both
     labels = sorted({lbl for (lbl, _s) in econ}, key=lambda l: int(l[1:]) if l[1:].isdigit() else 0)

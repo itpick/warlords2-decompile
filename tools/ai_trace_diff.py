@@ -27,41 +27,40 @@ from collections import defaultdict
 
 
 def parse_trace(path):
-    """-> dict[(round, side)] = {gold, income, upkeep, cities}"""
+    """-> dict[(round, side)] = {gold, income, upkeep, cities}
+
+    Each side's record opens with `T<s> TURN <n> ...`; the CITY lines that
+    follow (up to `T<s> END`) belong to that round.  `R<n> BEGIN` markers
+    are not needed: the per-round files the emulator publishes do not
+    carry them."""
     snaps = defaultdict(lambda: {"gold": None, "income": None,
                                  "upkeep": None, "cities": None})
-    cur_round = None
+    open_round = {}          # side -> round of its open record
     with open(path, "r", errors="replace") as f:
         for line in f:
-            line = line.strip()
-            if line.startswith("R") and " BEGIN" in line:
-                try:
-                    cur_round = int(line[1:].split()[0])
-                except ValueError:
-                    cur_round = None
-                continue
-            if not line.startswith("T"):
-                continue
             parts = line.split()
-            # T<s> TURN <n> GOLD <g> INC <i> UPK <u> SEED <seed>
-            if len(parts) >= 9 and parts[1] == "TURN":
+            if not parts or not parts[0].startswith("T") or len(parts) < 2:
+                continue
+            try:
                 side = int(parts[0][1:])
+            except ValueError:
+                continue
+            # T<s> TURN <n> GOLD <g> INC <i> UPK <u> SEED <seed>
+            if parts[1] == "TURN" and len(parts) >= 9:
                 rnd = int(parts[2])
                 snap = snaps[(rnd, side)]
                 snap["gold"] = int(parts[4])
                 snap["income"] = int(parts[6])
                 snap["upkeep"] = int(parts[8])
+                snap["cities"] = 0
+                open_round[side] = rnd
             # T<s> CITY <ci> OWN <o> ...
-            elif len(parts) >= 5 and parts[1] == "CITY":
-                if cur_round is None:
-                    continue
-                side = int(parts[0][1:])
-                owner = int(parts[4])
-                if owner == side:
-                    key = (cur_round, side)
-                    if key in snaps:
-                        prev = snaps[key]["cities"]
-                        snaps[key]["cities"] = 1 if prev is None else prev + 1
+            elif parts[1] == "CITY" and len(parts) >= 5:
+                rnd = open_round.get(side)
+                if rnd is not None and int(parts[4]) == side:
+                    snaps[(rnd, side)]["cities"] += 1
+            elif parts[1] == "END":
+                open_round.pop(side, None)
     return snaps
 
 
