@@ -1,6 +1,6 @@
 # Warlords II — PowerPC Reconstruction
 
-## Fidelity status vs the original (updated Oct 2, 2026)
+## Fidelity status vs the original (updated Oct 9, 2026)
 
 Measured by running the original game and the remake side by side in two
 InfiniteMac emulators and diffing screenshots pixel by pixel
@@ -40,12 +40,20 @@ Other comparisons:
 - **Backend rules** (reviewed against the PPC 1.0.7 decompile, Oct 2):
   combat engine, production, movement/boats, hero offers, temples,
   diplomacy, elimination and game options now follow the original's code.
-  Still different: the **AI** (the original's 20-step planner is specified
-  in `docs/ai_port_spec.md` and is the next port — the goal is identical
-  AI code), quests, vectoring transit time, per-city unit stat rolls, saving
-  city ownership. Goal: every gameplay number identical to the original.
-- **Next**: replay the recorded Isles of Sorcery game on the remake and
-  compare the two movies flow by flow; multi-turn number comparisons.
+  Ported since: the AI's 20-step planner (b1f5691, 1e017d9; per-turn
+  trace harness in d1cda28), quests, vectoring transit, per-city unit stat
+  rolls (FUN_1003b9f8) and city ownership in saves (save v9+, now v11).
+  Still different: the **AI's play**. The first same-seed run (Oct 9,
+  `docs/2026-10-09-same-seed-run.md`) agrees on the hero offer and the
+  human side's gold / income / upkeep / cities for rounds 1-5, but the
+  overview's hill pool is rolled from a different point of the random
+  stream, and the AI's city captures first differ after round 2's AI
+  turns. Open items: `docs/2026-10-07-tasklist.md`. Goal: every gameplay
+  number identical to the original.
+- **Next**: find the first diverging roll of the same-seed run (tasklist
+  D15/D16) and take the AI's captures to round-by-round agreement.
+- **Testing**: `tools/run_tests.sh` (or `make -C src test`) runs the host
+  tests; `--emulator` adds the emulator checks. See `docs/testing.md`.
 
 Details and history: `docs/2026-10-01-fidelity-log.md`.
 
@@ -99,6 +107,19 @@ The deploy script does the following:
 Launch SheepShaver and run "Warlords II" from the shared folder.
 
 **Primary testing campaign:** Erythea (no port cities, good coverage of ruins/temples and multi-faction combat).
+
+## Testing
+
+```bash
+tools/run_tests.sh              # host: the C game rules (tests/host) + the Python tools (tests/python)
+tools/run_tests.sh --emulator   # also the emulator checks (needs the devloop bridge on :3201)
+```
+
+The host tests compile all of `src/main.c` with the host compiler against
+Retro68's multiversal headers and check its rules (dice, combat, economy,
+movement and paths, city slot rolls, the sage, stacks and temples, the
+help pages, the floats' zoom boxes) against numbers from the PPC
+decompile and from measurements of the original. See `docs/testing.md`.
 
 ## Original Compiler
 
