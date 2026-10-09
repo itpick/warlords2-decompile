@@ -38784,7 +38784,13 @@ int main(void)
      * write of randSeed in the binary).  The seed is never saved with a game,
      * so a battle replayed after File > Revert is a fresh roll in the
      * original too. */
+#ifdef WL2_FIXED_SEED
+    /* same-seed comparisons with the original (tools/patch_orig_seed.py
+     * pins FUN_1005f32c's seed the same way): make FIXED_SEED=<n> */
+    { unsigned long secs = (unsigned long)(WL2_FIXED_SEED); qd.randSeed = (long)secs; }
+#else
     { unsigned long secs; GetDateTime(&secs); qd.randSeed = (long)secs; }
+#endif
 
     /* Initialize sound system early so first sound plays without delay */
     InitSoundSystem();
