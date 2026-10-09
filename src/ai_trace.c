@@ -36,11 +36,11 @@
 #define AIT_ORD_SIZE   ((long)sizeof(WL2AIOrdMirror))
 #define AIT_ORD(base, i) ((const WL2AIOrdMirror *)((const unsigned char *)(base) + (long)(i) * AIT_ORD_SIZE))
 
-#define AIT_TRACE_PATH "aitrace3.txt"
+#define AIT_TRACE_PATH "aitrace4.txt"
 /* the devloop pulls files out of the emulator only from The Outside World:Uploads;
  * writing there directly saves the Finder copy dance. Fall back to the working
  * directory when the volume is not mounted (local runs). */
-#define AIT_TRACE_UPLOADS "The Outside World:Uploads:aitrace3.txt"
+#define AIT_TRACE_UPLOADS "The Outside World:Uploads:aitrace4.txt"
 
 /* raw table offsets (main.c mirrors of the original's memory layout) */
 #define AIT_GS         ((unsigned char *)*gGameState)
@@ -69,7 +69,7 @@ static void AITEmit(const char *text, long n)
     char path[80];
     if (AITCurRound < 0) return;
     if (!f) {
-        sprintf(path, "The Outside World:Uploads:aitrace3_r%d.txt", AITCurRound);
+        sprintf(path, "The Outside World:Uploads:aitrace4_r%d.txt", AITCurRound);
         f = fopen(path, "a");
         if (!f) f = fopen(AIT_TRACE_PATH, "a");
         if (!f) return;
