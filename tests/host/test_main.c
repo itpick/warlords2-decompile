@@ -32,6 +32,7 @@
 #include "t_stack.c"
 #include "t_help.c"
 #include "t_zoom.c"
+#include "t_samegame.c"
 
 int main(int argc, char **argv)
 {

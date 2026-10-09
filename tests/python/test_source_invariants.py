@@ -30,7 +30,12 @@ def test_dice_is_the_only_random_caller():
     any other call desyncs every later roll (docs/2026-10-03-dice-sites.md)."""
     calls = [m.start() for m in re.finditer(r"\bRandom\s*\(\s*\)", CODE)]
     owners = {function_containing(CODE, p) for p in calls}
-    assert owners == {"Dice"}, f"Random() called outside Dice: {owners - {'Dice'}}"
+    # DiceImpl is Dice's body in the FIXED_SEED build, which logs each call
+    # for same-seed runs (tools/rng_log.py); Dice is then its noinline shim.
+    assert owners and owners <= {"Dice", "DiceImpl"}, f"Random() called outside Dice: {owners - {'Dice', 'DiceImpl'}}"
+    if "DiceImpl" in owners:
+        start = CODE.index("static short DiceImpl(short n, short sides, short add, long ra)\n{")
+        assert CODE.rfind("#ifdef WL2_FIXED_SEED", 0, start) > CODE.rfind("#endif", 0, start)
 
 
 def test_randseed_written_only_at_launch():
