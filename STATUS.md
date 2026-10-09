@@ -1,10 +1,17 @@
 # Warlords II Decompilation - Project Status
 
 ## Build System
-- Cross-compiled via Retro68 (powerpc-apple-macos-gcc)
+- Cross-compiled via Retro68 (powerpc-apple-macos-gcc); `cd src && make PLATFORM=powerpc` links `warlords2_ppc`
 - `deploy.sh` builds, creates PEF, assembles app with resource fork, deploys to SheepShaver
 - `deploy.sh solo` for quick builds (main.c only)
+- `make PLATFORM=powerpc AI_TRACE=1` builds the per-turn AI trace dump (docs/2026-10-08-ai-trace.md)
+- Day-to-day runs use the InfiniteMac devloop bridges, original on :3200 and remake on :3201 (tools/infinitemac/devloop/README.md)
 - Asset folders (Terrain, Armies, Cities, Shields) deployed with resource forks intact
+- Testing: `tools/run_tests.sh` / `make -C src test` (docs/testing.md)
+
+> Status as of Oct 2026. The authoritative fidelity table is the README's
+> "Fidelity status vs the original"; open work is in docs/2026-10-07-tasklist.md.
+> The Feb 2026 sections below are kept as history.
 
 ## What's Working
 
@@ -174,13 +181,9 @@
 - Autotile pass for random maps: 4-direction neighbor mask → 16 tile variants
 - Road buffer always 112 wide, hardcoded
 
-### Control Window Layout
-- Original uses View 2000 with T3DCluster containing 26 T3DIconRadio buttons (100x30 each, icon+text)
-- Our code draws a flat 4x7 grid of 27x27 icon-only buttons — doesn't match original
-- Original has 2 TSunkenText areas at top for gold/status display
-- Original has separate T3DButton entries for End Turn / Save+End Turn
-- PICT 1020 "HELPGFX" shows toolbar sections: minimap, task, speed, end, skill, options, misc
-- 15 CMNU resources define all toolbar commands
+### Control Window Layout (done)
+- The control panel follows View 1008 inside the View 1004 'butt' button area, measured on the original (main.c, ButtonAreaHit / the View 1008 layout block); the stack panel is View 1006
+- The in-game screens' layout matches the original (0346ef1); pixel diffs per screen are in the README table
 
 ### Random Map Minimap Roads (Design Artifact, Not a Bug)
 - Random scenarios show disconnected road stubs across water on the minimap
@@ -192,24 +195,23 @@
 - Anchor/water port icons on cities are not labeled correctly
 - Need to verify port detection and ensure correct icon rendering for coastal cities
 
-### Stack Grouping Info Window (WIP)
-- Goal: replace modal ShowStackDialog with inline stack UI in the gold info panel, matching the original game
-- Helper functions extracted and ready: StackToggleSlot, StackGroupAll, StackUngroupAll, StackCommitGroups, StackRestoreBackup, StackTakeBackup
-- DrawInfoStackUI (4x2 circular army grid) and HandleInfoStackClick written and wired into HandleUpdate/HandleMouseDown
-- **Blocked**: info window not visually refreshing when selecting a multi-army tile. InvalRect is called via BuildStackArrays with GetPort/SetPort save/restore, but HandleUpdate is not receiving the update event. Needs investigation — may be a port context issue or event delivery problem
-- Keyboard G shortcut for grouping works correctly
+### Stack Grouping (done)
+- The stack panel (View 1006) draws in the info area and takes clicks (StackPanelClick: ring toggles a unit, check/X selects one group, Grp groups/ungroups all — PPC FUN_1005d0cc / FUN_1005cffc / FUN_1005d240 / FUN_1005d2dc)
+- ShowStackDialog (modal) is still reachable from the Stack... menu item (cmd 0x6AB) and the plain G key
+- StackCommitGroups writes the window's groups back as record group tags (PPC_0002.c:17000-17124, FUN_10021d50 for a new tag)
+- A stack is the records on a tile that share a group tag; produced units and hero allies get one record each (504d545), and Orders > Group Stack / Ungroup no longer pack units into one record (0a21710, PPC FUN_1005d240 / FUN_1005d2dc). Scenario starting armies can still hold several units in one record
 
-### Testing Automation (TODO)
-- Set up InfiniteMac browser instance with Playwright for automated visual testing
-- Enable quick build→deploy→screenshot→verify iterations instead of manual SheepShaver testing
-- Would have caught the info window refresh issue much faster
+### Testing Automation
+- Done: the InfiniteMac devloop (two headless emulators driven over HTTP, step scripts, pixel diffs, movie recording) — tools/infinitemac/devloop/README.md
+- Done: the AI trace harness and its offline checks (tools/ai_trace_checks.py, tools/ai_trace_diff.py)
+- Done: host unit tests of main.c's rules and pytest for the tools (`tools/run_tests.sh`, docs/testing.md); emulator checks behind `--emulator`
 
-### Missing Game Logic
-- No save/load game implementation yet
-- No unit production queue management (basic production timer exists)
+### Game Logic (formerly "Missing")
+- Save/load: implemented, save format version 11 (SAVE_VERSION in main.c; army table in an 'ARMY' block after 'QGRD', 80c0b12). Saves hold city ownership and the city/ruin table (v9), per-city slot stats (v8) and vectoring transit (v10)
+- Production: the original's per-city slots, slot jitter (FUN_1003b9f8) and vectoring, including transit off the map (x = -1 records, vector landing in 24f7a29)
 - Sage dialog implemented (Items/Maps/Money/Done) — matches 68k View 4120
-- Quest reward choice (4 options: item, site reveal, gold, allies) auto-applies instead of player choice
-- Army selection after hero hire not fully implemented
+- Quests: the original's quest system is ported (docs/2026-10-03-quest-spec-disassembly.md, 3ffaccc); the reward is rolled as the original does (QuestRewardRoll / QuestRewardApply), not chosen by the player
+- AI: the original's 20-step planner is ported (b1f5691 phase 1, 1e017d9 phase 2, ExecuteAITurn); its numbers are not yet checked against the original (docs/2026-10-07-tasklist.md D15/D16)
 
 ### Map Data
 - Map tile data lives in gMapTiles (separate from gGameState)

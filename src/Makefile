@@ -80,6 +80,13 @@ ifeq ($(AI_TRACE),1)
     CFLAGS += -DAI_TRACE
 endif
 
+# Same-seed comparisons with the original: `make PLATFORM=powerpc FIXED_SEED=12345`
+# replaces the launch seed (GetDateTime, PPC FUN_1005f32c) with a constant;
+# tools/patch_orig_seed.py makes the matching copy of the original.
+ifneq ($(FIXED_SEED),)
+    CFLAGS += -DWL2_FIXED_SEED=$(FIXED_SEED)
+endif
+
 OBJS = $(ALL_SRCS:.c=.o)
 
 all: $(TARGET)
@@ -131,4 +138,8 @@ stats:
 todos:
 	@grep -rn "TODO" $(ALL_SRCS) include/ || echo "No TODOs found"
 
-.PHONY: all clean stats todos pef app
+# The automated tests (host C rules + Python tools); see docs/testing.md
+test:
+	../tools/run_tests.sh
+
+.PHONY: all clean stats todos pef app test

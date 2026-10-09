@@ -1294,8 +1294,41 @@ static short sViewportY = 0;   /* topmost visible tile row */
 static short sViewPixX = 0;
 static short sViewPixY = 0;
 
-/* Minimap zoom: 0 = small (default), 1 = large */
-static short sMinimapZoom = 0;  /* 0=small(124x160), 1=medium(180x220), 2=large(240x300) */
+/* Kept only for the save's UI state block (stateBlock[3]); the overview's
+ * size is sOverviewSmall below, which the original never saves either. */
+static short sMinimapZoom = 0;
+
+/* The floats' zoom boxes, measured on the original (Erythea, bridge :3200,
+ * 9 Oct 2026; content sizes, frame and title bar excluded):
+ *  - the overview (View 1002, TBetterFloatWindow: FUN_10078074 zooms out to
+ *    the resize maximum, FUN_1007833c in to the minimum) toggles between
+ *    224x312 (2 px a tile) and 112x156 (1 px a tile), top-left corner fixed;
+ *  - the info area (View 1003, TTripleSizeFloatWindow: FUN_10078884 ->
+ *    FUN_100788bc cycles three remembered frames) goes 224x129 (the start-up
+ *    2x2 layout) -> 112x120 (one column) -> 360x66 (one row, the View
+ *    resource's own 360x66) -> 224x129, bottom-right corner fixed. */
+static Boolean sOverviewSmall = false;
+static short   sInfoLayout = 0;
+static const short kInfoLayoutWH[3][2] = { {224, 129}, {112, 120}, {360, 66} };
+
+/* the next info-area content rect: same bottom-right corner, next size */
+static void InfoLayoutNextRect(short layout, const Rect *cur, Rect *out)
+{
+    short n = (short)((layout + 1) % 3);
+    out->right = cur->right;
+    out->bottom = cur->bottom;
+    out->left = (short)(cur->right - kInfoLayoutWH[n][0]);
+    out->top = (short)(cur->bottom - kInfoLayoutWH[n][1]);
+}
+
+/* the other overview content rect: same top-left corner */
+static void OverviewToggleRect(Boolean small, const Rect *cur, Rect *out)
+{
+    out->left = cur->left;
+    out->top = cur->top;
+    out->right = (short)(cur->left + (small ? 224 : 112));
+    out->bottom = (short)(cur->top + (small ? 312 : 156));
+}
 
 /* Selected army tracking: -1 = no selection */
 static short sSelectedArmy = -1;
@@ -1775,6 +1808,7 @@ static void GetDATRawString(short rawIdx, Str255 out);
 static void FormatHeroLine(ConstStr255Param fmt, ConstStr255Param city, short num, Str255 out);
 #define kOvFrame    1   /* viewport frame (overview window) */
 #define kOvOverlays 2   /* shields, ruins, armies (not in the city window) */
+#define kOvSmall    4   /* the zoomed-in overview: 1 px a tile */
 static void DrawOverviewTo(GrafPtr port, Rect r, short flags);
 static void OverviewRedrawTile(short x, short y);   /* FUN_10064498 */
 static void HandleUpdate(EventRecord *event);
@@ -8010,6 +8044,38 @@ static void ParseText(const char **p, const char *end, Str255 out)
     *p = s;
 }
 
+/* PICT 1020 "HELPGFX" (512x110, sheet 62 of the GFX scripts) in a GWorld,
+ * loaded on first use; its green field (bottom-right pixel) is the key. */
+static GWorldPtr sHelpGfxGW = NULL;
+static RGBColor  sHelpGfxKey;
+
+static GWorldPtr HelpGfxSheet(void)
+{
+    PicHandle pic;
+    Rect      bounds;
+    CGrafPtr  savedPort;
+    GDHandle  savedDevice;
+
+    if (sHelpGfxGW != NULL) return sHelpGfxGW;
+    pic = GetPicture(1020);
+    if (pic == NULL) return NULL;
+    bounds = (**pic).picFrame;
+    OffsetRect(&bounds, -bounds.left, -bounds.top);
+    if (NewGWorld(&sHelpGfxGW, 0, &bounds, NULL, NULL, 0) != noErr) {
+        sHelpGfxGW = NULL;
+        return NULL;
+    }
+    GetGWorld(&savedPort, &savedDevice);
+    SetGWorld(sHelpGfxGW, NULL);
+    LockPixels(GetGWorldPixMap(sHelpGfxGW));
+    EraseRect(&bounds);
+    DrawPicture(pic, &bounds);
+    GetCPixel(bounds.right - 1, bounds.bottom - 1, &sHelpGfxKey);
+    UnlockPixels(GetGWorldPixMap(sHelpGfxGW));
+    SetGWorld(savedPort, savedDevice);
+    return sHelpGfxGW;
+}
+
 static void DrawTutorialScript(Handle script, short ox, short oy)
 {
     const char *p, *end;
@@ -8067,19 +8133,22 @@ static void DrawTutorialScript(Handle script, short ox, short oy)
              * sheet. nnn 100/101/102 pick shields/PICTS0/SCENERY0 (unused by the
              * shipped scripts); every other value is sheet 14, which on the Mac
              * holds the first army sheet (A0: the hero knight at (384,30) in
-             * THERO matches the original pixel for pixel). */
+             * THERO matches the original pixel for pixel). The PPC (FUN_1005fa94
+             * 'G' case) indexes its sheet table with nnn directly, in the DOS
+             * .PCK order: 062 is helpgfx.pck = PICT 1020 "HELPGFX", the key caps
+             * and cursor pictures of the help pages (HKEYS/HMOUSE/HMOUSE2). */
             short sx, sy, w, h, sheet, dx, dy;
             p++; sx = ParseNum3(&p); p++; sy = ParseNum3(&p);
             p++; w = ParseNum3(&p);  p++; h = ParseNum3(&p); p++;
             sheet = ParseNum3(&p);
             ParsePoint(&p, &dx, &dy);
-            if (sheet < 100 && sArmyGW[0] != NULL) {
+            if (sheet < 100 && (sheet == 62 ? HelpGfxSheet() : sArmyGW[0]) != NULL) {
                 Rect src, dst;
                 RGBColor key;
-                GWorldPtr gw = sArmyGW[0];
+                GWorldPtr gw = (sheet == 62) ? sHelpGfxGW : sArmyGW[0];
                 SetRect(&src, sx, sy, sx + w, sy + h);
                 SetRect(&dst, ox + dx, oy + dy, ox + dx + w, oy + dy + h);
-                key = sArmyBgColor[0];
+                key = (sheet == 62) ? sHelpGfxKey : sArmyBgColor[0];
                 RGBBackColor(&key);
                 CopyBits((BitMap *)*GetGWorldPixMap(gw), &qd.thePort->portBits,
                          &src, &dst, transparent, NULL);
@@ -8108,27 +8177,19 @@ static void DrawTutorialScript(Handle script, short ox, short oy)
     HSetState(script, saved);
 }
 
-/* Show tutorial screen 'name' if the tutorial is active and its gs+0x134 bit
- * (0 = no bit, may repeat) is clear; modal until Done. Restores the port.
- * Returns true if it was shown (callers then redraw what was underneath). */
-static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
+/* View 1030 (PPC FUN_10040040): one 'GFX ' script in the 366x352 marble
+ * window, modal until Done. Shared by the tutorial and the help pages.
+ * Restores the port. Returns false if the window could not be opened. */
+static Boolean ShowGfxScriptWindow(Handle script)
 {
     GrafPtr savedPort;
-    unsigned char *gsp;
     WindowPtr win;
     Rect wr, r;
-    short i, idx = -1, left, top, mbar = GetMBarHeight();
+    short i, left, top, mbar = GetMBarHeight();
     Rect screen = qd.screenBits.bounds;
     Boolean done = false;
     unsigned long openTick;
 
-    if (!TutorialActive()) return false;
-    gsp = (unsigned char *)*gGameState;
-    if (bit != 0 && (gsp[0x134] & bit)) return false;
-    for (i = 0; i < sTutorialCount; i++)
-        if (EqualString(sTutorialNames[i], name, false, true)) { idx = i; break; }
-    if (idx < 0) return false;
-    gsp[0x134] |= bit;
     GetPort(&savedPort);
 
     /* View 1030 placement (MacApp alert position, counting the 5px shadow):
@@ -8137,7 +8198,7 @@ static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
     top  = mbar + (screen.bottom - mbar - (352 + 5)) / 3;
     SetRect(&wr, left, top, left + 366, top + 352);
     win = NewCWindow(NULL, &wr, "\p", true, 0x0807, (WindowPtr)-1L, false, 0);
-    if (win == NULL) return false;
+    if (win == NULL) { SetPort(savedPort); return false; }
     {   /* MacApp windows take their WDEF colours from wctb 1000 */
         Handle wctb = GetResource('wctb', 1000);
         if (wctb != NULL) SetWinColor(win, (CTabHandle)wctb);
@@ -8194,7 +8255,7 @@ static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
                     DrawPicture(pic, &pf);
                 }
                 ClipRect(&win->portRect);
-                DrawTutorialScript(sTutorialScripts[idx], 7, 7);
+                DrawTutorialScript(script, 7, 7);
                 {
                     RGBColor black = {0, 0, 0};
                     RGBForeColor(&black);
@@ -8225,6 +8286,50 @@ static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
     DisposeWindow(win);
     SetPort(savedPort);
     return true;
+}
+
+/* Show tutorial screen 'name' if the tutorial is active and its gs+0x134 bit
+ * (0 = no bit, may repeat) is clear; modal until Done. Restores the port.
+ * Returns true if it was shown (callers then redraw what was underneath). */
+static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
+{
+    unsigned char *gsp;
+    short i, idx = -1;
+
+    if (!TutorialActive()) return false;
+    gsp = (unsigned char *)*gGameState;
+    if (bit != 0 && (gsp[0x134] & bit)) return false;
+    for (i = 0; i < sTutorialCount; i++)
+        if (EqualString(sTutorialNames[i], name, false, true)) { idx = i; break; }
+    if (idx < 0) return false;
+    gsp[0x134] |= bit;
+    return ShowGfxScriptWindow(sTutorialScripts[idx]);
+}
+
+/* The help pages (PPC FUN_100402e0, the button bar's 'help' diamond and the
+ * Help key in FUN_1008330c): three View 1030 windows in a row, each closed
+ * with Done, from the app's 'GFX ' scripts "HELP\HMOUSE.GFX",
+ * "HELP\HKEYS.GFX", "HELP\HMOUSE2.GFX" (the names at TOC-0x1a14 +0x0c/+0x1c/
+ * +0x2c; FUN_10051f98 finds the resource by the file's base name, as the
+ * tutorial's "TUTORIA\THERO.GFX" is 'GFX ' "THERO"): GFX 2002, 2001, 2003.
+ * FUN_1003dc28 then redraws the game windows. GFX 2000 "HITEM" is never shown
+ * on the Mac. */
+static void ShowHelpScreens(void)
+{
+    static ConstStr255Param kHelpPages[3] = { "\pHMOUSE", "\pHKEYS", "\pHMOUSE2" };
+    short i;
+
+    for (i = 0; i < 3; i++) {
+        Handle h = GetNamedResource('GFX ', kHelpPages[i]);
+        if (h == NULL) continue;
+        HNoPurge(h);
+        ShowGfxScriptWindow(h);
+        ReleaseResource(h);
+    }
+    if (*gMainGameWindow != 0) {
+        SetPort((WindowPtr)*gMainGameWindow);
+        InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+    }
 }
 
 /* ===================================================================
@@ -12037,7 +12142,8 @@ static void DrawOverviewInWindow(WindowPtr win)
         PaintRect(&win->portRect);
         return;
     }
-    DrawOverviewTo((GrafPtr)win, win->portRect, kOvFrame | kOvOverlays);
+    DrawOverviewTo((GrafPtr)win, win->portRect,
+                   kOvFrame | kOvOverlays | (sOverviewSmall ? kOvSmall : 0));
 }
 
 static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
@@ -12058,13 +12164,17 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
         if (LockPixels(opm)) {
             srcR = (**opm).bounds;
             OffsetRect(&srcR, r.left - srcR.left, r.top - srcR.top);
+            if (flags & kOvSmall) {   /* the 2:1 shrink of the same image */
+                srcR.right = (short)(srcR.left + ((**opm).bounds.right - (**opm).bounds.left) / 2);
+                srcR.bottom = (short)(srcR.top + ((**opm).bounds.bottom - (**opm).bounds.top) / 2);
+            }
             CopyBits((BitMap *)*opm, &port->portBits, &(**opm).bounds, &srcR, srcCopy, NULL);
             UnlockPixels(opm);
         }
     }
 
     if (flags & kOvOverlays) {
-        short scale = 2;
+        short scale = (flags & kOvSmall) ? 1 : 2;
 
         /* Fog of war overlay on minimap */
         if (*gGameState != 0 && *(short *)((unsigned char *)*gGameState + 0x124) != 0) {
@@ -12112,7 +12222,7 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
          * Off: the original's overview showed no marker even for the human's
          * hero outside a city (turn 2, Erythea); kept for the remake's
          * debug overlays. */
-        if (*gGameState != 0 && sShowCityLabels) {
+        if (*gGameState != 0 && sShowCityLabels && scale == 2) {
             unsigned char *gs2 = (unsigned char *)*gGameState;
             short armyCount = *(short *)(gs2 + 0x1602);
             short ai;
@@ -12200,9 +12310,31 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
                             RGBColor ruinCol = {0xFFFF, 0xFFFF, 0xFFFF};
                             Rect dot;
                             SetRect(&dot, r.left + cx * scale, r.top + cy * scale,
-                                    r.left + cx * scale + 2, r.top + cy * scale + 2);
+                                    r.left + cx * scale + scale, r.top + cy * scale + scale);
                             RGBForeColor(&ruinCol);
                             PaintRect(&dot);
+                        } else if (scale == 1) {
+                            /* the 1 px overview: a 4x4 shield at (x-1, y-1),
+                             * rows ####/#..#/#..#/.##. in black round a 2x2 of
+                             * the owner's colour (neutral grey); the black
+                             * side's is red round black (measured, all 8
+                             * sides + neutral, Erythea) */
+                            static const RGBColor kSmallShield[9] = {
+                                {0xFFFF, 0xFFFF, 0xFFFF}, {0xFFFF, 0xE7E7, 0x3737},
+                                {0xFFFF, 0x9D9D, 0x0000}, {0xD3D3, 0x3333, 0x0000},
+                                {0x7171, 0xC1C1, 0x3333}, {0x0000, 0x7373, 0xDCDC},
+                                {0x6464, 0xCFCF, 0xFFFF}, {0x0000, 0x0000, 0x0000},
+                                {0xABAB, 0xABAB, 0xABAB} };
+                            RGBColor rim = {0, 0, 0}, red = {0xD3D3, 0x3333, 0x0000};
+                            short o = (owner >= 0 && owner < 8) ? owner : 8;
+                            short sx0 = r.left + cx - 1, sy0 = r.top + cy - 1;
+                            Rect q;
+                            if (o == 7) rim = red;
+                            RGBForeColor(&rim);
+                            SetRect(&q, sx0, sy0, sx0 + 4, sy0 + 3);  PaintRect(&q);
+                            SetRect(&q, sx0 + 1, sy0 + 3, sx0 + 3, sy0 + 4); PaintRect(&q);
+                            RGBForeColor(&kSmallShield[o]);
+                            SetRect(&q, sx0 + 1, sy0 + 1, sx0 + 3, sy0 + 3); PaintRect(&q);
                         } else {
                             /* City: shield sprite from PICT 30010 */
                             Rect srcR, dstR;
@@ -12265,8 +12397,12 @@ static void DrawOverviewTo(GrafPtr port, Rect r, short flags)
             long px = (long)sViewportX * TERRAIN_TILE_W + sViewPixX;
             long py = (long)sViewportY * TERRAIN_TILE_H + sViewPixY;
             RGBColor white = {0xFFFF, 0xFFFF, 0xFFFF};
-            SetRect(&vr, r.left + (short)(px / 20), r.top + (short)(py / 20),
-                    r.left + (short)((px + vw + 19) / 20) + 1, r.top + (short)((py + vh + 19) / 20) + 1);
+            if (flags & kOvSmall)      /* 1 px a tile: (74..98 x ..19) for the same view */
+                SetRect(&vr, r.left + (short)(px / 40), r.top + (short)(py / 40),
+                        r.left + (short)((px + vw + 39) / 40), r.top + (short)((py + vh + 39) / 40));
+            else
+                SetRect(&vr, r.left + (short)(px / 20), r.top + (short)(py / 20),
+                        r.left + (short)((px + vw + 19) / 20) + 1, r.top + (short)((py + vh + 19) / 20) + 1);
             InsetRect(&vr, -2, -2);
             RGBForeColor(&white);
             PenSize(2, 2);
@@ -12405,67 +12541,6 @@ static void DrawMinimapInRect(Rect *destRect, short highlightX, short highlightY
 }
 
 
-/* ===================================================================
- * ToggleMinimapZoom — cycle through 3 minimap zoom levels
- *
- * Small:  124x160, 1px/tile (default)
- * Medium: 180x220, 2px/tile
- * Large:  240x300, 2px/tile (more map visible)
- * =================================================================== */
-static void ToggleMinimapZoom(void)
-{
-    WindowPtr overWin, infoWin;
-
-    if (*gOverviewWindow == 0 || *gInfoWindow == 0)
-        return;
-
-    /* Get current overview window position for reference */
-    overWin = (WindowPtr)*gOverviewWindow;
-    infoWin = (WindowPtr)*gInfoWindow;
-
-    sMinimapZoom = (sMinimapZoom + 1) % 3;
-
-    {
-        short newW, newH, infoTop;
-
-        if (sMinimapZoom == 0) {
-            /* Small: 2px/tile (drawing always uses 2), compact window */
-            newW = sMapWidth * 2;
-            newH = sMapHeight * 2;
-            if (newW < 124) newW = 124;
-            if (newH < 100) newH = 100;
-            if (newW > 240) newW = 240;
-            if (newH > 200) newH = 200;
-        } else if (sMinimapZoom == 1) {
-            /* Medium: 2px/tile, sized to fit map */
-            newW = sMapWidth * 2;
-            newH = sMapHeight * 2;
-            if (newW > 300) newW = 300;
-            if (newH > 350) newH = 350;
-        } else {
-            /* Large: sized to show entire map at 2px/tile */
-            newW = sMapWidth * 2;
-            newH = sMapHeight * 2;
-            if (newW < 240) newW = 240;
-            if (newH < 300) newH = 300;
-            if (newW > 500) newW = 500;
-            if (newH > 680) newH = 680;
-        }
-
-        SizeWindow(overWin, newW, newH, true);
-
-        /* Info panel goes below minimap, moderate height */
-        infoTop = 40 + newH + 2;
-        MoveWindow(infoWin, 514, infoTop, false);
-        SizeWindow(infoWin, newW, 160, true);
-    }
-
-    /* Force redraw of both windows */
-    SetPort(overWin);
-    InvalRect(&overWin->portRect);
-    SetPort(infoWin);
-    InvalRect(&infoWin->portRect);
-}
 
 
 /* ===================================================================
@@ -35340,179 +35415,30 @@ static void HandleMenuChoice(long menuResult)
      *       (-;Fight Order...;Disband Group;Change Signpost...;(-;Resign... */
     case 4:
         switch (menuItem) {
-        case 1:  /* Group Stack (cmd 0x578) — merge units from other armies at same tile */
+        case 1:  /* Group Stack (cmd 0x578) - PPC FUN_100a1604 -> FUN_1005d240:
+                  * with a unit selected, every entry of the stack window joins
+                  * group 0 and is selected; then the sort (FUN_1005c2d4(1)),
+                  * the tag commit (FUN_1005c7d0(0)), the group MP
+                  * (FUN_1005cc8c) and the redraw (FUN_1003dc28).  Records are
+                  * never packed into one another: one unit per record, as the
+                  * info panel, the battle and the temple count them. */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
-                unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = ARMY_REC(sSelectedArmy);
-                short sx = *(short *)(army + 0x00);
-                short sy = *(short *)(army + 0x02);
-                short curPlayer = *(short *)(gs + 0x110);
-                short armyCount = *(short *)(gs + 0x1602);
-                short ai;
-                Boolean merged = false;
-                if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
-
-                /* Try to merge units from other friendly armies at same tile */
-                for (ai = 0; ai < armyCount; ai++) {
-                    unsigned char *other;
-                    short slot;
-                    if (ai == sSelectedArmy) continue;
-                    other = ARMY_REC(ai);
-                    if (*(short *)(other + 0x00) != sx ||
-                        *(short *)(other + 0x02) != sy ||
-                        (short)(unsigned char)other[0x15] != curPlayer)
-                        continue;
-
-                    /* Try to move units from other army into selected army's empty slots */
-                    for (slot = 0; slot < 4; slot++) {
-                        if (army[0x16 + slot] == 0xFF) {
-                            /* Find a unit in other army to transfer */
-                            short oSlot;
-                            for (oSlot = 0; oSlot < 4; oSlot++) {
-                                if (other[0x16 + oSlot] != 0xFF) {
-                                    if (other[0x16 + oSlot] == 0x1C) {   /* a hero brings its items and quest */
-                                        HeroItemsMove(ai, sSelectedArmy);
-                                        QuestRecMoved(ai, sSelectedArmy);
-                                    }
-                                    army[0x16 + slot] = other[0x16 + oSlot];
-                                    army[0x1a + slot] = other[0x1a + oSlot];
-                                    army[0x1e + slot] = other[0x1e + oSlot];
-                                    army[0x22 + slot] = other[0x22 + oSlot];
-                                    army[0x26 + slot] = other[0x26 + oSlot];
-                                    other[0x16 + oSlot] = 0xFF;
-                                    other[0x1a + oSlot] = 0;
-                                    other[0x1e + oSlot] = 0;
-                                    other[0x22 + oSlot] = 0;
-                                    other[0x26 + oSlot] = 0;
-                                    merged = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    /* If other army is now empty, remove it */
-                    if (other[0x16] == 0xFF && other[0x17] == 0xFF &&
-                        other[0x18] == 0xFF && other[0x19] == 0xFF) {
-                        RemoveArmy(ai);
-                        /* Note: RemoveArmy already adjusts sSelectedArmy */
-                        armyCount = *(short *)(gs + 0x1602);
-                        if (armyCount > MAX_ARMIES) armyCount = MAX_ARMIES;
-                        ai--;  /* re-check this index */
-                    }
-                }
-
-                /* Recalculate strength display */
-                if (merged) {
-                    RecalcArmyStrength(army);
-                }
-
-                if (*gMainGameWindow != 0) {
-                    SetPort((WindowPtr)*gMainGameWindow);
-                    InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
-                }
-                if (gInfoWindow != NULL && *gInfoWindow != 0) {
-                    SetPort((WindowPtr)*gInfoWindow);
-                    InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
-                }
+                BuildStackArrays(sSelectedArmy);
+                StackGroupAll();
+                StackCommitGroups();
+                if (sSelectedArmy >= 0) BuildStackArrays(sSelectedArmy);
+                InvalidateAllGameWindows();
             }
             break;
-        case 2:  /* Ungroup (cmd 0x579) — split last unit into new army */
+        case 2:  /* Ungroup (cmd 0x579) - PPC FUN_100a1604 -> FUN_1005d2dc:
+                  * every entry its own group, only the first selected; the
+                  * rest stay on the tile (their tags go to 0 in the commit) */
             if (sSelectedArmy >= 0 && *gGameState != 0) {
-                unsigned char *gs = (unsigned char *)*gGameState;
-                unsigned char *army = ARMY_REC(sSelectedArmy);
-                short armyCount = *(short *)(gs + 0x1602);
-                short unitCount = 0, lastSlot = -1, slot;
-
-                /* Count active units and find last occupied slot */
-                for (slot = 0; slot < 4; slot++) {
-                    if (army[0x16 + slot] != 0xFF) {
-                        unitCount++;
-                        lastSlot = slot;
-                    }
-                }
-
-                /* Need at least 2 units to split, and room for a new army */
-                if (unitCount >= 2 && armyCount < MAX_ARMIES && lastSlot >= 0) {
-                    unsigned char *newArmy = ARMY_REC(armyCount);
-                    short j;
-
-                    /* Zero out new army */
-                    for (j = 0; j < 0x42; j++) newArmy[j] = 0;
-
-                    /* Place at same location */
-                    *(short *)(newArmy + 0x00) = *(short *)(army + 0x00);
-                    *(short *)(newArmy + 0x02) = *(short *)(army + 0x02);
-                    newArmy[0x15] = army[0x15]; /* same owner */
-                    newArmy[0x14] = army[0x14]; /* sprite */
-
-                    /* Transfer last unit to new army slot 0 */
-                    newArmy[0x16] = army[0x16 + lastSlot];
-                    newArmy[0x1a] = army[0x1a + lastSlot];
-                    newArmy[0x1e] = army[0x1e + lastSlot];
-                    newArmy[0x22] = army[0x22 + lastSlot];
-                    newArmy[0x26] = army[0x26 + lastSlot];
-                    newArmy[0x17] = 0xFF; newArmy[0x18] = 0xFF; newArmy[0x19] = 0xFF;
-
-                    /* Hero leaving: its name, its items and its quest go along */
-                    if (newArmy[0x16] == 0x1C) {
-                        short hni;
-                        for (hni = 0; hni < 16; hni++)
-                            newArmy[0x04 + hni] = army[0x04 + hni];
-                        HeroItemsMove(sSelectedArmy, armyCount);
-                        QuestRecMoved(sSelectedArmy, armyCount);
-                        /* Update hero instance record */
-                        { short hOwner = (short)(unsigned char)army[0x15];
-                          if (hOwner >= 0 && hOwner < 8) {
-                            unsigned char *hr = gs + 0x1422 + hOwner * 0x2C;
-                            if (hr[0x00] != 0)
-                                *(short *)(hr + 0x04) = armyCount;
-                          }
-                        }
-                    }
-
-                    /* Set new army sprite from unit type table (offset 0x24) */
-                    {
-                        short ut = (short)(unsigned char)newArmy[0x16];
-                        if (sUnitTypesLoaded && ut >= 0 && ut < sUnitTypeCount) {
-                            unsigned char *ute = sUnitTypeTable + ut * UNIT_TYPE_ENTRY;
-                            newArmy[0x14] = (unsigned char)ute[0x00];
-                        } else {
-                            newArmy[0x14] = army[0x14]; /* copy from source */
-                        }
-                    }
-
-                    /* Set new army strength and movement */
-                    RecalcArmyStrength(newArmy);
-                    newArmy[0x2e] = (unsigned char)(newArmy[0x1a]);
-
-                    /* Remove unit from original army */
-                    army[0x16 + lastSlot] = 0xFF;
-                    army[0x1a + lastSlot] = 0;
-                    army[0x1e + lastSlot] = 0;
-                    army[0x22 + lastSlot] = 0;
-                    army[0x26 + lastSlot] = 0;
-
-                    /* Recalculate original army strength */
-                    RecalcArmyStrength(army);
-
-                    *(short *)(gs + 0x1602) = armyCount + 1;
-
-                    /* Select the new army */
-                    sSelectedArmy = armyCount;
-                } else {
-                    /* Can't split: cycle to next */
-                    SelectNextArmy();
-                }
-
-                if (*gMainGameWindow != 0) {
-                    SetPort((WindowPtr)*gMainGameWindow);
-                    InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
-                }
-                if (gInfoWindow != NULL && *gInfoWindow != 0) {
-                    SetPort((WindowPtr)*gInfoWindow);
-                    InvalRect(&((WindowPtr)*gInfoWindow)->portRect);
-                }
+                BuildStackArrays(sSelectedArmy);
+                StackUngroupAll();
+                StackCommitGroups();
+                if (sSelectedArmy >= 0) BuildStackArrays(sSelectedArmy);
+                InvalidateAllGameWindows();
             }
             break;
         case 4:  /* Move Group (cmd 0x57A) — FUN_1007c618: the selected stack
@@ -37228,6 +37154,37 @@ static Boolean StackPanelClick(short lx, short ly)
     return false;
 }
 
+/* A float's zoom box (see sOverviewSmall / sInfoLayout): the overview
+ * toggles its two sizes, the info area steps through its three layouts.
+ * The button area keeps its size (not measured on the original). */
+static void FloatZoomBox(WindowPtr w)
+{
+    Rect cur, next;
+    Point tl;
+    GrafPtr saved;
+    Boolean isOver = gOverviewWindow != NULL && w == (WindowPtr)*gOverviewWindow;
+    Boolean isInfo = gStatusWindow != NULL && w == (WindowPtr)*gStatusWindow;
+    if (!isOver && !isInfo) return;
+    GetPort(&saved);
+    SetPort(w);
+    tl.h = w->portRect.left; tl.v = w->portRect.top;
+    LocalToGlobal(&tl);
+    SetRect(&cur, tl.h, tl.v, tl.h + (w->portRect.right - w->portRect.left),
+            tl.v + (w->portRect.bottom - w->portRect.top));
+    if (isOver) {
+        OverviewToggleRect(sOverviewSmall, &cur, &next);
+        sOverviewSmall = !sOverviewSmall;
+    } else {
+        InfoLayoutNextRect(sInfoLayout, &cur, &next);
+        sInfoLayout = (short)((sInfoLayout + 1) % 3);
+    }
+    MoveWindow(w, next.left, next.top, false);
+    SizeWindow(w, next.right - next.left, next.bottom - next.top, true);
+    SetPort(w);
+    InvalRect(&w->portRect);
+    SetPort(saved);
+}
+
 static void HandleMouseDown(EventRecord *event)
 {
     WindowPtr   whichWindow;
@@ -37264,8 +37221,7 @@ static void HandleMouseDown(EventRecord *event)
         if (TrackBox(whichWindow, event->where, partCode)) {
             /* Overview window zoom box = toggle minimap size */
             if (IsFloatWin(whichWindow)) {
-                /* TODO: the original's TTripleSizeFloatWindow cycles three
-                 * sizes; ToggleMinimapZoom assumes the old 640x480 layout. */
+                FloatZoomBox(whichWindow);
             } else {
                 SetPort(whichWindow);
                 EraseRect(&whichWindow->portRect);
@@ -37320,7 +37276,8 @@ static void HandleMouseDown(EventRecord *event)
                     (void)moved; (void)startPt;
                     oldVX = sViewportX; oldVY = sViewportY;
                     oldPX = sViewPixX;  oldPY = sViewPixY;
-                    CenterViewportOn((dragPt.h - oPort.left) / 2, (dragPt.v - oPort.top) / 2);
+                    CenterViewportOn((dragPt.h - oPort.left) / (sOverviewSmall ? 1 : 2),
+                                     (dragPt.v - oPort.top) / (sOverviewSmall ? 1 : 2));
                     if (sViewportX != oldVX || sViewportY != oldVY ||
                         sViewPixX != oldPX || sViewPixY != oldPY) {
                         SetPort((WindowPtr)*gMainGameWindow);
@@ -38096,7 +38053,7 @@ static void HandleMouseDown(EventRecord *event)
                 case kBtnPath:  HandleMenuChoice((4L << 16) | 6);  break;  /* Cancel Path */
                 case kBtnDele:  HandleMenuChoice((4L << 16) | 6);  break;  /* Cancel Path (cicn 1006: X over the path) */
                 case kBtnDipl:  HandleMenuChoice((5L << 16) | 9);  break;  /* Diplomacy */
-                case kBtnHelp:  SysBeep(1); break;                         /* TODO: help */
+                case kBtnHelp:  ShowHelpScreens(); break;                  /* 'help' -> FUN_100402e0 */
                 default: {
                     short cmdIdx = sShortcutSlot[hit - kBtnSlot0];
                     unsigned short cmd = sButtonCommands[cmdIdx];
@@ -38649,9 +38606,20 @@ static void HandleUpdate(EventRecord *event)
             short cur = *(short *)(gs + 0x110);
             short gold = *(short *)(gs + 0x186 + cur * 0x14);
             short cities = 0, income = 0, upkeep = 0, ci;
-            static const short cells[4][4] = {     /* srcX, srcY, dstX, dstY */
-                {344, 0, 36, 22}, {344, 20, 124, 22}, {384, 0, 36, 78}, {384, 20, 114, 78} };
-            short vals[4], penX[4] = {78, 149, 67, 149}, base[4] = {33, 33, 89, 89};
+            /* ABITS sources castle, chest, coins, hand; per layout (sInfoLayout,
+             * measured on the original) the cell and the number's pen:
+             * 224x129 2x2, 112x120 one column, 360x66 one row */
+            static const short src[4][2] = { {344, 0}, {344, 20}, {384, 0}, {384, 20} };
+            static const short kCell[3][4][2] = {
+                { {36, 22}, {124, 22}, {36, 78}, {114, 78} },
+                { {21, 13}, {21, 39},  {21, 64}, {19, 91} },
+                { {16, 22}, {104, 22}, {184, 22}, {264, 22} } };
+            static const short kPen[3][4][2] = {
+                { {78, 33}, {149, 33}, {67, 89}, {149, 89} },
+                { {63, 24}, {56, 50},  {56, 75}, {56, 102} },
+                { {58, 33}, {129, 33}, {217, 33}, {305, 33} } };
+            short L = (sInfoLayout >= 0 && sInfoLayout < 3) ? sInfoLayout : 0;
+            short vals[4];
             RGBColor cream = {0xFFFF, 0xFFFF, 0xCCCC};
             short k;
 
@@ -38675,9 +38643,9 @@ static void HandleUpdate(EventRecord *event)
                 RGBBackColor(&sAbitsBgColor);
                 for (k = 0; k < 4; k++) {
                     Rect sr, dr;
-                    SetRect(&sr, cells[k][0], cells[k][1], cells[k][0] + 40, cells[k][1] + 20);
-                    SetRect(&dr, r.left + cells[k][2], r.top + cells[k][3],
-                            r.left + cells[k][2] + 40, r.top + cells[k][3] + 20);
+                    SetRect(&sr, src[k][0], src[k][1], src[k][0] + 40, src[k][1] + 20);
+                    SetRect(&dr, r.left + kCell[L][k][0], r.top + kCell[L][k][1],
+                            r.left + kCell[L][k][0] + 40, r.top + kCell[L][k][1] + 20);
                     CopyBits((BitMap *)*pm, &((GrafPtr)win)->portBits, &sr, &dr, 36, NULL);
                 }
                 RGBBackColor(&savedBg);
@@ -38688,7 +38656,7 @@ static void HandleUpdate(EventRecord *event)
                 Str255 t;
                 NumToString((long)vals[k], t);
                 if (k > 0) { t[++t[0]] = 'g'; t[++t[0]] = 'p'; }
-                DrawEmbossedString(t, r.left + penX[k], r.top + base[k], &cream);
+                DrawEmbossedString(t, r.left + kPen[L][k][0], r.top + kPen[L][k][1], &cream);
             }
         }
     }
@@ -38816,7 +38784,13 @@ int main(void)
      * write of randSeed in the binary).  The seed is never saved with a game,
      * so a battle replayed after File > Revert is a fresh roll in the
      * original too. */
+#ifdef WL2_FIXED_SEED
+    /* same-seed comparisons with the original (tools/patch_orig_seed.py
+     * pins FUN_1005f32c's seed the same way): make FIXED_SEED=<n> */
+    { unsigned long secs = (unsigned long)(WL2_FIXED_SEED); qd.randSeed = (long)secs; }
+#else
     { unsigned long secs; GetDateTime(&secs); qd.randSeed = (long)secs; }
+#endif
 
     /* Initialize sound system early so first sound plays without delay */
     InitSoundSystem();
@@ -39257,7 +39231,7 @@ int main(void)
 
         /* Overview (minimap) window — floating palette (WDEF 3 = Infinity Windoid)
          * procID = WDEF_ID * 16 + variant; WDEF 3 * 16 = 48
-         * The original game uses TTripleSizeFloatWindow (3 zoom levels).
+         * The info area is a TTripleSizeFloatWindow (three layouts, sInfoLayout).
          * goAwayFlag=true gives a close box on the palette. */
         sMinimapZoom = 1;  /* Start at medium zoom */
         SetRect(&overRect, colL, 34, colR, 346);
@@ -40005,6 +39979,9 @@ int main(void)
                     AdjustGameMenus();   /* a disabled item's key does nothing */
                     HandleMenuChoice(MenuKey(key));
                 }
+            } else if (sMapLoaded && key == 0x05) {
+                /* Help key (kHelpCharCode): FUN_1008330c case 5 -> FUN_100402e0 */
+                ShowHelpScreens();
             } else if (sMapLoaded) {
                 Boolean scrolled = false;
 
