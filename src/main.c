@@ -8010,6 +8010,38 @@ static void ParseText(const char **p, const char *end, Str255 out)
     *p = s;
 }
 
+/* PICT 1020 "HELPGFX" (512x110, sheet 62 of the GFX scripts) in a GWorld,
+ * loaded on first use; its green field (bottom-right pixel) is the key. */
+static GWorldPtr sHelpGfxGW = NULL;
+static RGBColor  sHelpGfxKey;
+
+static GWorldPtr HelpGfxSheet(void)
+{
+    PicHandle pic;
+    Rect      bounds;
+    CGrafPtr  savedPort;
+    GDHandle  savedDevice;
+
+    if (sHelpGfxGW != NULL) return sHelpGfxGW;
+    pic = GetPicture(1020);
+    if (pic == NULL) return NULL;
+    bounds = (**pic).picFrame;
+    OffsetRect(&bounds, -bounds.left, -bounds.top);
+    if (NewGWorld(&sHelpGfxGW, 0, &bounds, NULL, NULL, 0) != noErr) {
+        sHelpGfxGW = NULL;
+        return NULL;
+    }
+    GetGWorld(&savedPort, &savedDevice);
+    SetGWorld(sHelpGfxGW, NULL);
+    LockPixels(GetGWorldPixMap(sHelpGfxGW));
+    EraseRect(&bounds);
+    DrawPicture(pic, &bounds);
+    GetCPixel(bounds.right - 1, bounds.bottom - 1, &sHelpGfxKey);
+    UnlockPixels(GetGWorldPixMap(sHelpGfxGW));
+    SetGWorld(savedPort, savedDevice);
+    return sHelpGfxGW;
+}
+
 static void DrawTutorialScript(Handle script, short ox, short oy)
 {
     const char *p, *end;
@@ -8067,19 +8099,22 @@ static void DrawTutorialScript(Handle script, short ox, short oy)
              * sheet. nnn 100/101/102 pick shields/PICTS0/SCENERY0 (unused by the
              * shipped scripts); every other value is sheet 14, which on the Mac
              * holds the first army sheet (A0: the hero knight at (384,30) in
-             * THERO matches the original pixel for pixel). */
+             * THERO matches the original pixel for pixel). The PPC (FUN_1005fa94
+             * 'G' case) indexes its sheet table with nnn directly, in the DOS
+             * .PCK order: 062 is helpgfx.pck = PICT 1020 "HELPGFX", the key caps
+             * and cursor pictures of the help pages (HKEYS/HMOUSE/HMOUSE2). */
             short sx, sy, w, h, sheet, dx, dy;
             p++; sx = ParseNum3(&p); p++; sy = ParseNum3(&p);
             p++; w = ParseNum3(&p);  p++; h = ParseNum3(&p); p++;
             sheet = ParseNum3(&p);
             ParsePoint(&p, &dx, &dy);
-            if (sheet < 100 && sArmyGW[0] != NULL) {
+            if (sheet < 100 && (sheet == 62 ? HelpGfxSheet() : sArmyGW[0]) != NULL) {
                 Rect src, dst;
                 RGBColor key;
-                GWorldPtr gw = sArmyGW[0];
+                GWorldPtr gw = (sheet == 62) ? sHelpGfxGW : sArmyGW[0];
                 SetRect(&src, sx, sy, sx + w, sy + h);
                 SetRect(&dst, ox + dx, oy + dy, ox + dx + w, oy + dy + h);
-                key = sArmyBgColor[0];
+                key = (sheet == 62) ? sHelpGfxKey : sArmyBgColor[0];
                 RGBBackColor(&key);
                 CopyBits((BitMap *)*GetGWorldPixMap(gw), &qd.thePort->portBits,
                          &src, &dst, transparent, NULL);
@@ -8108,27 +8143,19 @@ static void DrawTutorialScript(Handle script, short ox, short oy)
     HSetState(script, saved);
 }
 
-/* Show tutorial screen 'name' if the tutorial is active and its gs+0x134 bit
- * (0 = no bit, may repeat) is clear; modal until Done. Restores the port.
- * Returns true if it was shown (callers then redraw what was underneath). */
-static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
+/* View 1030 (PPC FUN_10040040): one 'GFX ' script in the 366x352 marble
+ * window, modal until Done. Shared by the tutorial and the help pages.
+ * Restores the port. Returns false if the window could not be opened. */
+static Boolean ShowGfxScriptWindow(Handle script)
 {
     GrafPtr savedPort;
-    unsigned char *gsp;
     WindowPtr win;
     Rect wr, r;
-    short i, idx = -1, left, top, mbar = GetMBarHeight();
+    short i, left, top, mbar = GetMBarHeight();
     Rect screen = qd.screenBits.bounds;
     Boolean done = false;
     unsigned long openTick;
 
-    if (!TutorialActive()) return false;
-    gsp = (unsigned char *)*gGameState;
-    if (bit != 0 && (gsp[0x134] & bit)) return false;
-    for (i = 0; i < sTutorialCount; i++)
-        if (EqualString(sTutorialNames[i], name, false, true)) { idx = i; break; }
-    if (idx < 0) return false;
-    gsp[0x134] |= bit;
     GetPort(&savedPort);
 
     /* View 1030 placement (MacApp alert position, counting the 5px shadow):
@@ -8137,7 +8164,7 @@ static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
     top  = mbar + (screen.bottom - mbar - (352 + 5)) / 3;
     SetRect(&wr, left, top, left + 366, top + 352);
     win = NewCWindow(NULL, &wr, "\p", true, 0x0807, (WindowPtr)-1L, false, 0);
-    if (win == NULL) return false;
+    if (win == NULL) { SetPort(savedPort); return false; }
     {   /* MacApp windows take their WDEF colours from wctb 1000 */
         Handle wctb = GetResource('wctb', 1000);
         if (wctb != NULL) SetWinColor(win, (CTabHandle)wctb);
@@ -8194,7 +8221,7 @@ static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
                     DrawPicture(pic, &pf);
                 }
                 ClipRect(&win->portRect);
-                DrawTutorialScript(sTutorialScripts[idx], 7, 7);
+                DrawTutorialScript(script, 7, 7);
                 {
                     RGBColor black = {0, 0, 0};
                     RGBForeColor(&black);
@@ -8225,6 +8252,50 @@ static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
     DisposeWindow(win);
     SetPort(savedPort);
     return true;
+}
+
+/* Show tutorial screen 'name' if the tutorial is active and its gs+0x134 bit
+ * (0 = no bit, may repeat) is clear; modal until Done. Restores the port.
+ * Returns true if it was shown (callers then redraw what was underneath). */
+static Boolean ShowTutorialScreen(ConstStr255Param name, unsigned char bit)
+{
+    unsigned char *gsp;
+    short i, idx = -1;
+
+    if (!TutorialActive()) return false;
+    gsp = (unsigned char *)*gGameState;
+    if (bit != 0 && (gsp[0x134] & bit)) return false;
+    for (i = 0; i < sTutorialCount; i++)
+        if (EqualString(sTutorialNames[i], name, false, true)) { idx = i; break; }
+    if (idx < 0) return false;
+    gsp[0x134] |= bit;
+    return ShowGfxScriptWindow(sTutorialScripts[idx]);
+}
+
+/* The help pages (PPC FUN_100402e0, the button bar's 'help' diamond and the
+ * Help key in FUN_1008330c): three View 1030 windows in a row, each closed
+ * with Done, from the app's 'GFX ' scripts "HELP\HMOUSE.GFX",
+ * "HELP\HKEYS.GFX", "HELP\HMOUSE2.GFX" (the names at TOC-0x1a14 +0x0c/+0x1c/
+ * +0x2c; FUN_10051f98 finds the resource by the file's base name, as the
+ * tutorial's "TUTORIA\THERO.GFX" is 'GFX ' "THERO"): GFX 2002, 2001, 2003.
+ * FUN_1003dc28 then redraws the game windows. GFX 2000 "HITEM" is never shown
+ * on the Mac. */
+static void ShowHelpScreens(void)
+{
+    static ConstStr255Param kHelpPages[3] = { "\pHMOUSE", "\pHKEYS", "\pHMOUSE2" };
+    short i;
+
+    for (i = 0; i < 3; i++) {
+        Handle h = GetNamedResource('GFX ', kHelpPages[i]);
+        if (h == NULL) continue;
+        HNoPurge(h);
+        ShowGfxScriptWindow(h);
+        ReleaseResource(h);
+    }
+    if (*gMainGameWindow != 0) {
+        SetPort((WindowPtr)*gMainGameWindow);
+        InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+    }
 }
 
 /* ===================================================================
@@ -37947,7 +38018,7 @@ static void HandleMouseDown(EventRecord *event)
                 case kBtnPath:  HandleMenuChoice((4L << 16) | 6);  break;  /* Cancel Path */
                 case kBtnDele:  HandleMenuChoice((4L << 16) | 6);  break;  /* Cancel Path (cicn 1006: X over the path) */
                 case kBtnDipl:  HandleMenuChoice((5L << 16) | 9);  break;  /* Diplomacy */
-                case kBtnHelp:  SysBeep(1); break;                         /* TODO: help */
+                case kBtnHelp:  ShowHelpScreens(); break;                  /* 'help' -> FUN_100402e0 */
                 default: {
                     short cmdIdx = sShortcutSlot[hit - kBtnSlot0];
                     unsigned short cmd = sButtonCommands[cmdIdx];
@@ -39856,6 +39927,9 @@ int main(void)
                     AdjustGameMenus();   /* a disabled item's key does nothing */
                     HandleMenuChoice(MenuKey(key));
                 }
+            } else if (sMapLoaded && key == 0x05) {
+                /* Help key (kHelpCharCode): FUN_1008330c case 5 -> FUN_100402e0 */
+                ShowHelpScreens();
             } else if (sMapLoaded) {
                 Boolean scrolled = false;
 
