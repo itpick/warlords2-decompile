@@ -361,3 +361,62 @@ restart). Still open:
    at sea, side by side (boarding penalty, boat sprites, naval combat).
 4. **A complete game:** once the above holds, play one game to the end in
    both (a small scenario), checking the victory flow, history and reports.
+
+## 10 October 2026: the talking-head helmet (HelmetVoice, PICT 1050) verified
+
+Screenshot-verified at Begin Game for the first time (Erythea, default setup,
+bridge :3200, original and remake launched in the same emulator session). The
+helmet now matches the original **pixel-exact**: over the 309x431 rect at
+screen (357,124)-(666,555), the matched frames differ by **19 pixels of
+133,179 (0.014%)** — `dd_03` (remake) vs `oo_02` (original) in
+`.devloop/shots/3200/`; the comparison pair is saved as
+`.devloop/helmet_orig_vs_remake.png`.
+
+Evidence (all numeric — PIL histograms/walks, no screenshots viewed):
+
+- **Position/art:** the helmet fills exactly the (357,124)-(666,555) rect; the
+  dome greys, horn outlines, face browns and eye band match the original's
+  pixel counts (eye band (435,370)-(593,417): black 2064 vs 2064 in the open
+  frames).
+- **Timing:** Begin Game → helmet up within 0.5 s, VBEGIN voice 1.0–3.0 s
+  (audio tap RMS peaks 5191/6975/4837 per half-second), helmet closes ~4.2 s,
+  first map after — the same windows as the original's (16 shots at 0.6 s
+  intervals per side, `dd_*` remake / `oo_*` original).
+- **Blink:** both sides blink while the head is up. The original's eye band
+  flips open 2064 → closed 1980 (`oo_03`); the remake flips 2064 → closed
+  1948/1980 in its runs (`pp_03`, `g4_04`, `fin_04`) — the PICT 1051 frames
+  at rows 47/94/47/0 with the same cadence.
+
+### What was broken
+
+`HelmetVoice` drew PICT 1050 into an offscreen GWorld with `DrawPicture` and
+then blitted it keyed. Both voice PICTs hold stacked 8-bit PackBitsRect ops
+(1050: rows 0-165 / 165-330 / 330-431, all 309 wide; 1051: one 160x141 op)
+whose inline Clip opcode is degenerate (bbox (-32458,152)-(0,0)) with the real
+region data following. DrawPicture in this environment honours that clip, so
+the GWorld ended up holding only the eye band (measured: 2068 black pixels,
+the eye band's exact count, on an otherwise white GWorld) and the keyed blit
+dropped everything — the voice played over a bare desktop. Two further traps:
+- **Rgn 1001 is a 1-px outline** (229 scan rows, ~1% of the rect: horns, rim,
+  arms, chair), not a filled silhouette — clipping the blit to it drew an
+  outline only. The blit now covers the whole rect; the rgn is still what
+  PaintBehind erases on close.
+- **Colour-table entries are 8 bytes** (value word + RGB): a first decode
+  walked them at 6 and turned the dome greys white.
+
+### The fix
+
+`DecodeVoicePICTStrips` (main.c) now decodes both PICTs op by op: it scans
+for each PackBitsRect/Rgn op, unpacks the PackBits rows, maps them through
+the op's own colour table, and writes the pixels with `SetCPixel` into an
+8-bit GWorld created with the game palette (`sGameCTab`); the port clip is
+reset to the full bounds first (`ClipRect`), the resource handle is locked
+across the walk, and the voice-wait loop got a 20 s cap for the case where
+the emulator's sound channel never leaves the busy state. `DrawPicture` is no
+longer used for these two PICTs (every other PICT keeps it — their sheets
+draw correctly through it).
+
+Residual: in emulator sessions where the Finder's CLUT (no mid-greys) is
+active when the GWorld is created, `SetCPixel`'s RGB match can round the dome
+greys toward white; the game-palette GWorld removes the dependency — the
+verified session shows 0.014%.

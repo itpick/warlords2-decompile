@@ -3756,6 +3756,109 @@ static void TryLoadScenario(void)
 }
 
 
+static CTabHandle sGameCTab;                 /* installed by InstallGamePalette */
+static void InstallGamePalette(void);
+
+/* ===================================================================
+ * DecodeVoicePICTStrips — decode PICT 1050 "talking head" / 1051
+ * "VOICEBIT" op by op into a GWorld.
+ *
+ * Both PICTs hold stacked 8-bit PackBitsRect ops (1050: rows 0-165 /
+ * 165-330 / 330-431, all 309 wide; 1051: one 160x141 op) whose inline
+ * Clip opcode carries a degenerate rect followed by real region data, so
+ * DrawPicture renders only the eye band and the keyed blit dropped
+ * everything. The other ops also vary between writers, so the stream can't
+ * be walked op by op; instead every PackBitsRect op is found by scanning
+ * for 00 98 / 00 99 and parsed in place — the row-length walk
+ * resynchronises on the next op whatever sits between the bitmaps.
+ * =================================================================== */
+static void DecodeVoicePICTStrips(const unsigned char *p, long len, GWorldPtr gw)
+{
+    PixMapHandle pm;
+    short w, h, depth;
+    long i;
+
+    Rect full;
+    if (p == NULL || gw == NULL || len < 12) return;
+    pm = GetGWorldPixMap(gw);
+    if (pm == NULL || !LockPixels(pm)) return;
+    full = (**pm).bounds;
+    ClipRect(&full);        /* SetCPixel honours the port clip — never trust it */
+    w = (**pm).bounds.right - (**pm).bounds.left;
+    h = (**pm).bounds.bottom - (**pm).bounds.top;
+    depth = (**pm).pixelSize;
+
+    /* The two voice PICTs hold stacked 8-bit PackBitsRect ops (1050: rows
+     * 0-165 / 165-330 / 330-431, all 309 wide; 1051: one 160x141 op) whose
+     * inline Clip opcode is degenerate and whose other ops vary, so the
+     * opcode stream can't be walked reliably. Like the Python tooling, scan
+     * for every PackBitsRect op (00 98 / 00 99) and parse it in place: the
+     * row length walk resynchronises on the next op regardless of what sits
+     * between the bitmaps. */
+    for (i = 10; i + 2 <= len; i++) {
+        short op = (short)((p[i] << 8) | p[i+1]);
+        long j;
+        short rowbytes, t, l, b, rows, y, ctSize;
+        const unsigned char *ctab;
+        if (op != 0x0098 && op != 0x0099) continue;
+        j = i + 2;
+        if (op == 0x0099) {
+            short sz = (short)((p[j] << 8) | p[j+1]);
+            j += (sz >= 10) ? sz : 10;              /* skip clip rgn  */
+        }
+        rowbytes = (short)((p[j] << 8) | p[j+1]); j += 2;
+        if (!(rowbytes & 0x8000)) continue;         /* packed pixmaps only */
+        t = (short)((p[j] << 8) | p[j+1]);
+        l = (short)((p[j+2] << 8) | p[j+3]);
+        b = (short)((p[j+4] << 8) | p[j+5]);
+        j += 8;
+        j += 36;                                    /* pixMap fields       */
+        ctab = p + j;                               /* seed, flags, ctSize */
+        ctSize = (short)((ctab[6] << 8) | ctab[7]);
+        if (ctSize > 255) continue;                 /* not a real ctab     */
+        j += 8 + (ctSize + 1) * 8;                  /* colour table        */
+        j += 18;                                    /* src, dst, mode      */
+        rows = b - t;
+        for (y = 0; y < rows; y++) {
+            short rowLen, x;
+            long outn = 0, k;
+            unsigned char line[1600];
+            short dx = l, dy = t + y;
+            if ((rowbytes & 0x3FFF) > 250) {
+                rowLen = (short)((p[j] << 8) | p[j+1]); j += 2;
+            } else {
+                rowLen = p[j]; j += 1;
+            }
+            if (rowLen < 0 || j + rowLen > len) { y = rows; break; }
+            k = 0;
+            while (k < rowLen && outn < w) {
+                signed char c = (signed char)p[j + k]; k++;
+                if (c >= 0) {
+                    while (c-- >= 0 && k < rowLen && outn < w) line[outn++] = p[j + k++];
+                } else if (c != -128) {
+                    long n = 1 - (long)c;
+                    unsigned char v = p[j + k]; k++;
+                    while (n-- > 0 && outn < w) line[outn++] = v;
+                }
+            }
+            if (dy >= 0 && dy < h) {
+                RGBColor col;
+                const unsigned char *ctR = ctab + 8;   /* entries: value(2)+RGB(6) */
+                for (x = 0; x < outn && dx + x < w; x++) {
+                    long e = line[x] * 8;
+                    col.red   = (ctR[e+2] << 8) | ctR[e+3];
+                    col.green = (ctR[e+4] << 8) | ctR[e+5];
+                    col.blue  = (ctR[e+6] << 8) | ctR[e+7];
+                    SetCPixel(dx + x, dy, &col);
+                }
+            }
+            j += rowLen;
+        }
+        i = j - 1;                                  /* loop's ++ lands past it */
+    }
+    UnlockPixels(pm);
+}
+
 /* ===================================================================
  * LoadTerrainSprites — Load terrain sprite sheets from Terrain folder
  *
@@ -3768,6 +3871,8 @@ static GWorldPtr LoadPICTIntoGWorld(short pictID)
     GWorldPtr  gw = NULL;
     OSErr      err;
 
+    if (pictID == 1050 || pictID == 1051)
+        InstallGamePalette();          /* the GW must use the game palette */
     pic = (PicHandle)Get1Resource('PICT', pictID);
     if (pic == NULL)
         return NULL;
@@ -3779,16 +3884,44 @@ static GWorldPtr LoadPICTIntoGWorld(short pictID)
         Rect     bounds;
         CGrafPtr savedPort;
         GDHandle savedDevice;
-
         SetRect(&bounds, 0, 0, w, h);
-        err = NewGWorld(&gw, 0, &bounds, NULL, NULL, 0);
+        /* 1050/1051: an 8-bit GWorld in the game palette (sGameCTab) — the
+         * decoder writes the PICT's palette indices directly and CopyBits
+         * then maps index to identical index on the pltt-1000 screen (the
+         * setup dialog leaves the game palette active). SetCPixel against
+         * the device CLUT proved session-dependent: on a fresh boot with the
+         * Finder's CLUT the dome greys rounded to white. */
+        err = NewGWorld(&gw, (pictID == 1050 || pictID == 1051) ? 8 : 0,
+                        &bounds,
+                        (pictID == 1050 || pictID == 1051) ? sGameCTab : NULL,
+                        NULL, 0);
         if (err == noErr && gw != NULL) {
             GetGWorld(&savedPort, &savedDevice);
             SetGWorld(gw, NULL);
-            LockPixels(GetGWorldPixMap(gw));
-            EraseRect(&bounds);
-            DrawPicture(pic, &bounds);
-            UnlockPixels(GetGWorldPixMap(gw));
+            if (pictID == 1050 || pictID == 1051) {
+                /* decoded op by op below. No DrawPicture: it honours the
+                 * PICTs' degenerate inline Clip opcode (only the eye band
+                 * survived). Any pixel the decode misses must not stay
+                 * white — erase to the art's own key colour so the keyed
+                 * blit drops it like the background. HLock: the decode's
+                 * allocations could move the unlocked resource handle. */
+                HLock((Handle)pic);
+                DecodeVoicePICTStrips((unsigned char *)*pic, GetHandleSize((Handle)pic), gw);
+                HUnlock((Handle)pic);
+                {   /* any pixel the decode missed must not stay white — the
+                     * art's key colour makes the keyed blit drop it like the
+                     * background. Repaint the frame's border ring only. */
+                    RGBColor green;
+                    green.red = 79 << 8; green.green = 171 << 8; green.blue = 27 << 8;
+                    RGBForeColor(&green);
+                    FrameRect(&bounds);
+                }
+            } else {
+                LockPixels(GetGWorldPixMap(gw));
+                EraseRect(&bounds);
+                DrawPicture(pic, &bounds);
+                UnlockPixels(GetGWorldPixMap(gw));
+            }
             SetGWorld(savedPort, savedDevice);
         }
     }
@@ -32039,7 +32172,12 @@ static void HelmetVoice(short sndID)
     SetPort((GrafPtr)wm);
     saveClip = NewRgn();
     GetClip(saveClip);
-    SetClip(rgn);
+    /* Rgn 1001 turned out to be a 1-px outline (229 scan rows, ~1% of the
+     * rect: horns, helmet rim, arms, chair), not a filled silhouette —
+     * measured by decoding it. Clipping to it shows an outline only, so
+     * the blit runs over the whole rect and the keyed mode-36 copy
+     * (bg = the art's own green, as the shields do) leaves just the head.
+     * The outline rgn is still what PaintBehind erases on close. */
     GWorldKeyColor(helmGW, &key);
     BlitKeyedColor(helmGW, &key, 0, 0, 309, 431, X, Y);
 
@@ -32048,8 +32186,14 @@ static void HelmetVoice(short sndID)
     next = TickCount();
     for (;;) {
         SCStatus st;
+        unsigned long now = TickCount();
         if (sVoiceChannel == NULL || SndChannelStatus(sVoiceChannel, sizeof(st), &st) != noErr ||
             !st.scChannelBusy) break;
+        if (now - next > 60 * 20) break;   /* cap: the emulator's channel can stay
+                                            * "busy" forever when its audio context
+                                            * dies mid-line; the original never
+                                            * hits this because its sound never
+                                            * stalls. 20s covers the longest line */
         WaitNextEvent(0, &e, 3, NULL);                /* Wait(1) = 3 ticks */
         if (TickCount() - next < 3) continue;
         next = TickCount();
