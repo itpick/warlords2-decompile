@@ -99,6 +99,11 @@ def orig_log(a):
                             7: 'FUN_1001c2dc front {} target {}'}[tag]
                     a1 = r3 & 0xFFFF if tag != 6 else (r3 if r3 < 32768 else r3 - 65536) & 0xFFFF
                     notes.setdefault(k, []).append(f'NOTE {tag} ' + what.format(r3 & 0xFFFF, r4 & 0xFFFF) + f' group {grp}')
+                elif tag == 14:
+                    r3 = struct.unpack('>i', e[8:12])[0]
+                    f = struct.unpack('>8h', e[12:28])
+                    notes.setdefault(k, []).append(f'NOTE 14 FUN_100161fc idx {r3 & 0xFFFF} temple {f[0]}/{f[1]} '
+                                                   f'ruin {f[2]}/{f[3]} city {f[4]}/{f[5]} item {f[6]}/{f[7]}')
                 else:
                     r = struct.unpack('>iiiii', e[8:28])
                     notes.setdefault(k, []).append(f'NOTE {tag} ' + ' '.join(str(x) for x in r))

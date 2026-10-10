@@ -23,7 +23,10 @@ cfrg says "the whole data fork", is kept):
 
 A break: when the word before the header (H-4) is non-zero, the call
 whose count reaches it spins until the host clears the word (bridge
-/poke), so both games can be stopped at the same roll and read.
+/poke), so both games can be stopped at the same roll and read.  A
+function break: the hooks marked '+brk' (ENTRY_HOOKS) spin at the
+function's entry while the word before the notes' entries is non-zero and
+the Random() count has reached it.
 
 Buffer: header at H = cave + 0x80: 'WL2O' 'RIGL' count entries_runtime,
 then 65536 entries of 8 bytes: the caller's return address, then the die's
@@ -120,7 +123,8 @@ def add_battle_notes(code, E):
 # Function-entry notes: (address, tag, mode).  'args' notes r3..r7;
 # 'list6' notes r3, r4 and the first six shorts r6 points at (FUN_10018800's
 # group: unit-table indices, -1 for none); 'list3' notes r4, r5 and six
-# shorts at r3; 'list4' notes r3, r5 and six shorts at r4.
+# shorts at r3; 'list4' notes r3, r5 and six shorts at r4; 'h30' notes r3 and
+# the eight shorts at r4+0x30.
 ENTRY_HOOKS = [
     (0x10018B14, 2, 'args'),     # FUN_10018b14(city, ordered): a city's expansion
     (0x10018800, 3, 'list6'),    # FUN_10018800(city, n, ordered, group, flag): the group it sends
@@ -130,6 +134,16 @@ ENTRY_HOOKS = [
     (0x1001C2DC, 7, 'list4'),    # FUN_1001c2dc(front, group, target): a front stack's attack
     (0x1001CB24, 8, 'args'),     # FUN_1001cb24(front): a new front stack
     (0x1001EFF8, 9, 'args'),     # FUN_1001eff8(x, y): a win estimate against (x,y)
+    (0x100448E4, 10, 'args'),    # FUN_100448e4(radius, x, y, mode, flags): the AI's flood
+    (0x1001F220, 11, 'args+brk'),  # FUN_1001f220(x, y, allowed): the target re-check (flood in place)
+    (0x100143B8, 12, 'args+brk'),  # FUN_100143b8(n): the redispatch's city pick (flood in place)
+    (0x1001C6FC, 13, 'args+brk'),  # FUN_1001c6fc(front, list, target, 15): a front stack (flood in place)
+    (0x100161FC, 14, 'h30'),     # FUN_100161fc(idx, info): the hero's choice; info+0x30..0x3f
+    (0x10018180, 15, 'args'),    # FUN_10018180(x, y, flag): the selected stack moves to (x,y)
+    (0x10014214, 16, 'args'),    # FUN_10014214: step 3, expeditions
+    (0x1001D014, 17, 'args'),    # FUN_1001d014: step 4, attack groups
+    (0x10013484, 18, 'args'),    # FUN_10013484: steps 5 and 10, the orders
+    (0x1001497C, 19, 'args'),    # FUN_1001497c: step 6, re-dispatch
 ]
 
 
@@ -156,8 +170,16 @@ def add_entry_hooks(code, E, NE, hooks=ENTRY_HOOKS):
             0x7D6B5214,                                      # add r11,r11,r10
             D(36, 9, 11, 0), D(14, 9, 0, tag), D(36, 9, 11, 4),
         ]
+        brk = mode.endswith('+brk')
+        mode = mode.split('+')[0]
         lists = {'list6': (3, 4, 6), 'list3': (4, 5, 3), 'list4': (3, 5, 4)}
-        if mode in lists:
+        if mode == 'h30':
+            # r3, then the eight shorts at r4+0x30 (temple, its distance,
+            # ruin, distance, city, distance, item, distance)
+            w += [D(36, 3, 11, 8),
+                  D(32, 9, 4, 0x30), D(36, 9, 11, 12), D(32, 9, 4, 0x34), D(36, 9, 11, 16),
+                  D(32, 9, 4, 0x38), D(36, 9, 11, 20), D(32, 9, 4, 0x3C), D(36, 9, 11, 24)]
+        elif mode in lists:
             a, b, lr = lists[mode]
             w += [D(36, a, 11, 8), D(36, b, 11, 12),
                   D(32, 9, lr, 0), D(36, 9, 11, 16), D(32, 9, lr, 4), D(36, 9, 11, 20),
@@ -165,6 +187,20 @@ def add_entry_hooks(code, E, NE, hooks=ENTRY_HOOKS):
         else:
             w += [D(36, 3, 11, 8), D(36, 4, 11, 12), D(36, 5, 11, 16), D(36, 6, 11, 20), D(36, 7, 11, 24)]
         w += [D(36, 0, 11, 28)]
+        if brk:
+            # the function break: while (fbrk != 0 && Random count >= fbrk)
+            # spin; fbrk is the word before the notes' entries (NE - 4), the
+            # host clears it (bridge /poke) to go on
+            w += [
+                0x7D8A5850,                                  # subf  r12,r10,r11  (= NE)
+                D(32, 9, 12, -4),                            # L: lwz r9,-4(r12)
+                0x2C090000,                                  # cmpwi r9,0
+                0x41820018,                                  # beq   done
+                D(15, 10, 12, h2), D(32, 10, 10, l2),        # r10 = Random count
+                0x7C0A4840,                                  # cmplw r10,r9
+                0x41800008,                                  # blt   done
+                0x4BFFFFE4,                                  # b     L
+            ]
         w.append(bl(C + 4 * len(w), func + 4, link=False))
         cave = b''.join(struct.pack('>I', x) for x in w)
         site = func - GHIDRA_BASE

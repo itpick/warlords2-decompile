@@ -72,10 +72,15 @@ def orig_state(port, turn_hint=None):
         c, ert = struct.unpack('>II', mem(port, h + 8, 8))
         if ert:
             count = c
+    # stopped at the Random() break, the cave has counted the call that is
+    # waiting: randSeed is then one step behind the count
     s = SEED
-    for _ in range(count):
+    seeds = []
+    for k in range(count + 1):
+        if k >= count - 1:
+            seeds.append(s)
         s = (s * 16807) % 2147483647
-    rs = [int(x) for x in get(port, f'/memfind?hex={s:08x}').split() if x]
+    rs = [int(x) for s_ in reversed(seeds) for x in get(port, f'/memfind?hex={s_:08x}').split() if x]
     for r in rs:
         qd = r - 0x4c
         for slot in [int(x) for x in get(port, f'/memfind?hex={qd:08x}').split() if x]:
