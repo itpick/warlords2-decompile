@@ -22914,6 +22914,12 @@ static short AddAlliesToStack(short armyIdx, short type, short count)
             dst[0x14] = (sUnitTypesLoaded && type < sUnitTypeCount) ?
                         sUnitTypeTable[type * UNIT_TYPE_ENTRY] : (unsigned char)type;
         RecalcArmyStrength(dst);
+        /* FUN_10053838 allocates the ally's unit-table entry at once
+         * (FUN_10021434, the lowest free index): a ruin's allies found by a
+         * computer's hero in its hero step are indexed before the step goes
+         * on (Erythea round 9, side 2: units 21 and 117, the latter with
+         * the heap's leftover front 7) */
+        UidSync();
         if (*gMapTiles != 0 && x >= 0 && x < sMapWidth && y >= 0 && y < sMapHeight) {
             unsigned char *md = (unsigned char *)*gMapTiles;
             unsigned short off = (unsigned short)(y * 0xE0 + x * 2);

@@ -417,3 +417,25 @@ TEST(battle_defenders_come_in_unit_table_order)
     CHECK_EQ(b.def[1].rec, r1);
     CHECK_EQ(b.nAtt, 1);
 }
+
+/* FUN_10053838 gives each ally its unit-table entry when it is placed
+ * (FUN_10021434: the lowest free index), so allies a hero finds in the
+ * middle of a computer turn are indexed before the turn goes on (Erythea
+ * round 9, side 2's ruin: indices 21 and 117). */
+TEST(allies_take_their_unit_table_index_when_placed)
+{
+    short hero, other, n0;
+    fx_reset();
+    fx_unit_types(29);
+    hero = fx_army(57, 91, 2, 0x1C, -1, -1, -1);
+    other = fx_army(10, 10, 3, 4, -1, -1, -1);
+    ARMY_REC(hero)[0x1e] = 5; ARMY_REC(other)[0x1e] = 5;
+    UidReset();
+    sArmyUid[hero][0] = 0; sArmyUid[other][0] = 2;     /* index 1 is free */
+    UidSync();
+    n0 = *(short *)(fx_gs() + 0x1602);
+    CHECK_EQ(AddAlliesToStack(hero, 24, 2), 2);
+    CHECK_EQ(*(short *)(fx_gs() + 0x1602), n0 + 2);
+    CHECK_EQ(sArmyUid[n0][0], 1);                     /* the lowest free index, at once */
+    CHECK_EQ(sArmyUid[n0 + 1][0], 3);
+}
