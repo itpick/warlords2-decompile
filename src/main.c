@@ -138,6 +138,7 @@ static unsigned char sUidEver[UID_MAX];     /* the index has held a unit this ga
 static unsigned char sUidStale[UID_MAX];    /* its unit's leftover front bits (see below) */
 #ifdef WL2_FIXED_SEED
 #include "orig_unit_front_bits.inc"
+#include "orig_ai_block_bits.inc"
 #endif
 static void UidReset(void)
 {
@@ -10755,6 +10756,7 @@ static void TryTempleBlessing(short armyIdx);
 static void CheckGroundItemPickup(short armyIdx);
 /* the computer player's hooks into the path core and the record table */
 static Boolean AIAttackGate(short armyIdx, short bx, short by);
+static void AITotalsRecompute(Boolean income, Boolean upkeep);   /* DAT_3bc00000 / DAT_2c9d0000 */
 static void AIAnimateStep(short x, short y);
 static void AIOrdOnRemove(short armyIndex, short armyCount);
 static void AIResetAll(void);
@@ -19217,6 +19219,7 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         }
     }
     sPreviewPathLen = 0; sPreviewGridValid = false;   /* the old path's rings go */
+    AITotalsRecompute(true, true);                    /* FUN_1002e7d4: after the battle and the capture */
 #undef IN_BATTLE_ZONE
     return true;
 }
@@ -27694,10 +27697,21 @@ static short PlayerUpkeep(short p)
 
 static short AIIncomeLive(void) { return PlayerIncome(sAIMe); }
 static short AIUpkeepLive(void) { return PlayerUpkeep(sAIMe); }
-static void AITurnTotals(void)
+/* DAT_3bc00000 / DAT_2c9d0000, every side's income and upkeep as
+ * FUN_1002bcd8 / FUN_1002bbd4 last computed them: at a turn start's income
+ * (FUN_10064e84 - before the production, so this turn's new units are not
+ * in the upkeep yet) and after every real battle and capture (FUN_1002e7d4,
+ * which also covers a raze from the Victory screen, FUN_1004f664).  (The
+ * original also refreshes the upkeep after the Disband command, FUN_10021848,
+ * a human's.)  The AI reads these, not live totals (Erythea round 12, side
+ * 2's garrison test at city 54: upkeep < income). */
+static void AITotalsRecompute(Boolean income, Boolean upkeep)
 {
-    sAIIncomeAt[sAIMe] = AIIncomeLive();
-    sAIUpkeepAt[sAIMe] = AIUpkeepLive();
+    short p;
+    for (p = 0; p < 8; p++) {
+        if (income) sAIIncomeAt[p] = PlayerIncome(p);
+        if (upkeep) sAIUpkeepAt[p] = PlayerUpkeep(p);
+    }
 }
 static short AIIncome(void) { return (sAIMe >= 0 && sAIMe < 8) ? sAIIncomeAt[sAIMe] : AIIncomeLive(); }
 static short AIUpkeep(void) { return (sAIMe >= 0 && sAIMe < 8) ? sAIUpkeepAt[sAIMe] : AIUpkeepLive(); }
@@ -27888,8 +27902,17 @@ static void AIInitBlock(short p)
         b->role[i] = roleInit;
         b->turnsOwned[i] = 0;
         b->cflags[i] = cfInit;
+        /* FUN_10020ae8 leaves the unit and pool counts as the heap had
+         * them; only the same-seed builds know the original's heap
+         * (orig_ai_block_bits.inc).  A city's first garrison placement
+         * compares its count with that. */
+#ifdef WL2_FIXED_SEED
+        b->unitCount[i] = (p >= 0 && p < 8 && i < 100) ? kOrigAIUnitCount[p][i] : 0;
+        b->poolCount[i] = (p >= 0 && p < 8 && i < 100) ? kOrigAIPoolCount[p][i] : 0;
+#else
         b->unitCount[i] = 0;
         b->poolCount[i] = 0;
+#endif
     }
     if (*(short *)(AI_GS + 0xd0 + p * 2) == 0) level = 2;      /* a human driven by the AI: Warlord */
     else {
@@ -32423,7 +32446,8 @@ static void ExecuteAITurn(short aiPlayer)
     if (!gAI->inited) AIInitBlock(aiPlayer);        /* FUN_10020ae8 */
     AIOrigEnsure();
     AIOrdSync();
-    AITurnTotals();                                  /* the turn-start income / upkeep */
+    /* the income / upkeep the AI reads: AITotalsRecompute's (the turn
+     * start's, before the production; refreshed by battles) */
 
     /* the turn-start hero offer ran in ProcessStartOfTurn, before the
      * income and the production (FUN_10032a24 in the computer's turn start) */
@@ -33483,7 +33507,8 @@ static void ProcessStartOfTurn(short player)
      * FUN_1002bbd4 (the units' own upkeep, see PlayerUpkeep) */
     {
         long curGold = (long)*(short *)(gs + 0x186 + player * 0x14);
-        curGold += (long)PlayerIncome(player) - PlayerUpkeep(player);
+        AITotalsRecompute(true, true);              /* FUN_1002bcd8 + FUN_1002bbd4, every side */
+        curGold += (long)sAIIncomeAt[player] - sAIUpkeepAt[player];
         if (curGold < 0) curGold = 0;
         if (curGold > 30000) curGold = 30000;
         *(short *)(gs + 0x186 + player * 0x14) = (short)curGold;

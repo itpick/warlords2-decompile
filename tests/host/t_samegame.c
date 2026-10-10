@@ -439,3 +439,38 @@ TEST(allies_take_their_unit_table_index_when_placed)
     CHECK_EQ(sArmyUid[n0][0], 1);                     /* the lowest free index, at once */
     CHECK_EQ(sArmyUid[n0 + 1][0], 3);
 }
+
+/* FUN_10020ae8 never sets the blocks' unit counts (+0x182): a city keeps
+ * the heap's value until its first garrison placement, which compares its
+ * old count with the new one before the 1d6 (Erythea round 12, side 2's
+ * city 54 still held 44 and did not roll).  Same-seed builds start the
+ * counts from orig_ai_block_bits.inc; here the comparison itself. */
+TEST(the_garrison_rolls_only_when_the_old_count_matches)
+{
+    short ci, r, pass;
+    long before[2], after[2];
+    for (pass = 0; pass < 2; pass++) {
+        fx_reset();
+        fx_unit_types(29);
+        *(short *)(fx_gs() + 0x110) = 2;
+        *(short *)(fx_gs() + 0xd0 + 2 * 2) = 1;
+        ci = fx_city(30, 30, 2, 1, 50);
+        r = fx_army(30, 30, 2, 0, -1, -1, -1);
+        ARMY_REC(r)[0x1e] = 5;
+        AIResetAll();
+        AIOrdSync();
+        UidReset(); UidSync();
+        sAIMe = 2; gAI = &sAIBlocks[2];
+        AIInitBlock(2);
+        gAI->role[ci] = 1;
+        gAI->unitCount[ci] = (pass == 0) ? 44 : 1;   /* the heap's leftover / a real count */
+        sAIIncomeAt[2] = 50; sAIUpkeepAt[2] = 4;
+        fx_seed(1234);
+        before[pass] = qd.randSeed;
+        (void)AIGarrison(ci, false);
+        after[pass] = qd.randSeed;
+    }
+    CHECK_EQ(sg_count(before[0], after[0]), 0);     /* 44 != 1: no 1d6 */
+    CHECK_EQ(sg_count(before[1], after[1]), 1);     /* 1 == 1: the 1d6 */
+    sAIMe = -1; gAI = NULL;
+}
