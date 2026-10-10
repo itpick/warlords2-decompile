@@ -56,6 +56,7 @@ or from measurements of the original, not from the port itself.
 | `t_stack.c` | Orders > Group Stack / Ungroup (FUN_1005d240 / FUN_1005d2dc) never pack records; the temple blesses each unit of the grouped stack once (tasklist A1/A6) | the PPC functions |
 | `t_help.c` | the help pages: HMOUSE, HKEYS, HMOUSE2 in order, each waiting for Done (B9) | FUN_100402e0 + the original, live |
 | `t_zoom.c` | the overview and info-area zoom frames (B10) | measured on the original |
+| `t_samegame.c` | the same-seed fixes (`docs/2026-10-09-same-seed-ai.md`): the PICT overview, the Start's AI blocks, unit-table indices and leftover fronts, regrouped records, the neighbour table; the AI flood's ring sweep and mode, the hero offer's block and place, the order loop's start, the defenders' order, allies' indices, the garrison's old count, a front's stack slots | the original's Random() log and memory, read live |
 
 Limits:
 
@@ -169,7 +170,27 @@ is non-zero and the count has reached it, and a FIXED_SEED remake does the
 same with `sRngState.brk`. Write the count with the bridge's `/poke?a=&hex=`
 on both, end the turn, wait until both counts reach it, read, then poke 0.
 (`/break?a=&v=` freezes at the next frame instead, which is many rolls too
-late for battle simulations.)
+late for battle simulations.)  Stopped there, the original's randSeed is one
+step behind the count (the cave counts the call before it calls Random);
+`state_diff.py` allows for that.
+
+A second break stops both games where an AI flood has just been built, to
+compare the grids cell by cell: the original's hooks marked `+brk` in
+`ENTRY_HOOKS` (the flood's consumers FUN_1001f220, FUN_100143b8,
+FUN_1001c6fc) spin at their entry while the word before the notes' entries
+(the log header + 16 + 0x80000 + 0xAC) is non-zero and the count has reached
+it; the remake spins at the end of `AIFloodForStack` on `sRngState.fbrk`
+(`sRngState.fgrid` is its flag grid, `.flood` its cost grid).  The original's
+grids are at **(r2-776) (costs, x-major, 0x138 bytes a column) and
+**(r2-768) (flags, 0x9c a column); the flood's start, mode and flags are the
+FUN_100448e4 note (tag 10).  Other notes: the hero's choice inputs
+(FUN_100161fc, tag 14: temple / ruin / city / item and their distances), the
+stack mover FUN_10018180 (tag 15: the destination) and the entries of steps
+3-6 (tags 16-19); the remake writes the same tags.
+
+Use bridge ports of your own (for example 3211 for the remake, 3212 for the
+original): a bridge's `/reload` or a push from another checkout reboots or
+changes the emulator under a running comparison.
 
 Two things to check before trusting a run. A freshly booted emulator's first
 launch of the original makes no helmet roll at the Start button (the
