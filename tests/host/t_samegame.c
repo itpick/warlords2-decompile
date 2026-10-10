@@ -350,3 +350,70 @@ TEST(the_ai_hero_offer_comes_before_the_turns_income)
     CHECK(*(short *)(gs + 0x186 + 3 * 0x14) > gold);   /* the income came after */
     CHECK_EQ(sg_count(seed, qd.randSeed), 1);         /* the cost only: short, no 1d30 */
 }
+
+/* FUN_100558f8 (every turn start) puts FUN_1005619c's last position at the
+ * side's capital (pstat+0x04/06); the order loop then takes the nearest
+ * unit to the last one taken (Erythea round 8, side 1: capital (48,121),
+ * stacks at (44,121), (41,115), (38,116), (55,116)). */
+TEST(the_ai_order_loop_starts_at_the_capital)
+{
+    unsigned char *gs;
+    short a, b, c, d, i;
+    fx_reset();
+    fx_unit_types(29);
+    gs = fx_gs();
+    *(short *)(gs + 0x136) = 8;
+    *(short *)(gs + 0x110) = 1;
+    *(short *)(gs + 0x138 + 1 * 2) = 1;
+    *(short *)(gs + 0xd0 + 1 * 2) = 1;
+    *(short *)(gs + 0x186 + 1 * 0x14) = 1000;          /* gold: no upkeep disbanding */
+    *(short *)(gs + 0x186 + 1 * 0x14 + 0x04) = 48;
+    *(short *)(gs + 0x186 + 1 * 0x14 + 0x06) = 121;
+    (void)fx_city(48, 121, 1, 1, 10);
+    c = fx_army(55, 116, 1, 0, -1, -1, -1);
+    b = fx_army(38, 116, 1, 22, -1, -1, -1);
+    a = fx_army(41, 115, 1, 9, -1, -1, -1);
+    d = fx_army(44, 121, 1, 0, -1, -1, -1);
+    for (i = 0; i < 4; i++) ARMY_REC(i)[0x1e] = 5;     /* alive */
+    AIResetAll();
+    AIOrdSync();
+    UidReset();
+    UidSync();
+    sAILastX = 3; sAILastY = 3;                       /* left over from another side */
+    for (i = 0; i < 4; i++) sAIOrd[i].flags |= AIO_DONE | AIO_STUCK;
+    ProcessStartOfTurn(1);
+    CHECK_EQ(sAILastX, 48);
+    CHECK_EQ(sAILastY, 121);
+    CHECK_EQ(sAIOrd[a].flags & (AIO_DONE | AIO_STUCK), 0);
+    sAIMe = 1; gAI = &sAIBlocks[1];
+    CHECK_EQ(AINextOrdered(), d); sAIOrd[d].flags |= AIO_DONE;
+    CHECK_EQ(AINextOrdered(), a); sAIOrd[a].flags |= AIO_DONE;
+    CHECK_EQ(AINextOrdered(), b); sAIOrd[b].flags |= AIO_DONE;
+    CHECK_EQ(AINextOrdered(), c); sAIOrd[c].flags |= AIO_DONE;
+    CHECK_EQ(AINextOrdered(), -1);
+    sAIMe = -1; gAI = NULL;
+}
+
+/* FUN_100ac0cc gathers the defenders walking the unit table from the last
+ * index down; the fight-order sort is stable, so two units of one type
+ * fight in that order (Erythea round 8, side 7's estimate at (29,49): the
+ * type-1 units valued 5 and 6, the higher index first). */
+TEST(battle_defenders_come_in_unit_table_order)
+{
+    Battle b;
+    short r0, r1, r2;
+    fx_reset();
+    fx_unit_types(29);
+    r0 = fx_army(10, 10, 2, 1, -1, -1, -1);
+    r1 = fx_army(10, 10, 2, 1, -1, -1, -1);
+    r2 = fx_army(11, 10, 3, 4, -1, -1, -1);          /* the attacker */
+    ARMY_REC(r0)[0x1e] = 3; ARMY_REC(r1)[0x1e] = 4; ARMY_REC(r2)[0x1e] = 5;
+    UidReset();
+    sArmyUid[r0][0] = 90; sArmyUid[r1][0] = 85; sArmyUid[r2][0] = 7;
+    UidSync();
+    BattleGather(&b, r2, 3, 10, 10, -1, 0, 0, 2);
+    CHECK_EQ(b.nDef, 2);
+    CHECK_EQ(b.def[0].rec, r0);                       /* index 90 before 85 */
+    CHECK_EQ(b.def[1].rec, r1);
+    CHECK_EQ(b.nAtt, 1);
+}

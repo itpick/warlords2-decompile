@@ -1553,8 +1553,10 @@ static Boolean   sClickWasDrag = false;
 /* The map's ground layers (terrain, roads, port anchors) as last drawn,
  * reused while the view and the visible tiles are unchanged (DrawMapInWindow). */
 #define GROUND_MAX_TILES 64
+#define GROUND_MARGIN    8
 static GWorldPtr sGroundGW = NULL;
-static short sGroundKey[9];
+static short sGroundKey[5];
+static short sGroundLastVX = -100, sGroundLastVY = -100;   /* the view at the last drawing */
 static unsigned char sGroundSnap[3 * GROUND_MAX_TILES * GROUND_MAX_TILES];
 static Boolean sGroundValid = false;
 static GWorldPtr sMapBufGW = NULL;   /* the map window's offscreen copy (DrawMapInWindow) */   /* the last map press was a drag */     /* mouse held on the map with an army selected */
@@ -10760,145 +10762,31 @@ static void AIBattleMemory(short defOwner, short attOwner, short heroesKilled, s
                            short defUnits, Boolean cityBattle);
 static Boolean sPathForceAI;   /* BuildPathFlagGrid: treat the owner as a computer player */
 
-static void DrawMapInWindow(WindowPtr win)
+/* the cache's tiles (sGroundKey: roads, x0, y0, tiles wide, high): compare
+ * the bytes the ground layers read with the snapshot, or store them */
+static Boolean GroundSnap(const unsigned char *mapData, Boolean store)
 {
-    unsigned char *mapData;
-    unsigned char *scnData;
-    Rect           winRect;
-    short          tx, ty;
-    short          tilesWide, tilesHigh;
-    Boolean        hasScn;
-    short          i;
-    GWorldPtr      bufGW = NULL;
-    WindowPtr      realWin = win;
-    CGrafPtr       bufSavePort = NULL;
-    GDHandle       bufSaveDev = NULL;
-    Boolean        groundCache = false, groundHit = false;
-
-    if (!sMapLoaded || *gMapTiles == 0)
-        return;
-
-    /* FUN_1003d5d4 set the map view's +0xBE. The redraw paints nothing. */
-    if (sMapConcealed) {
-        RGBColor black = {0, 0, 0};
-        RGBForeColor(&black);
-        PaintRect(&win->portRect);
-        return;
-    }
-
-    mapData = (unsigned char *)*gMapTiles;
-    hasScn  = (*gGameState != 0);
-    scnData = hasScn ? (unsigned char *)*gGameState : NULL;
-    winRect = win->portRect;
-
-    /* Reserve space for scrollbars and shields at edges */
-    winRect.right  -= SCROLLBAR_W;
-    winRect.bottom -= SCROLLBAR_H;
-
-    /* How many tiles fit in the window (+1 for the partial tile the
-     * sub-tile scroll exposes on the right/bottom) */
-    tilesWide = (winRect.right - winRect.left) / TERRAIN_TILE_W + 2;
-    tilesHigh = (winRect.bottom - winRect.top) / TERRAIN_TILE_H + 2;
-
-    /* Double buffer the map area (terrain, roads, cities, armies, path):
-     * drawn straight to the window the layers showed one after another,
-     * which blinked while a path was dragged. */
-    {
-        static short sBufW = 0, sBufH = 0;
-        short bw = win->portRect.right - win->portRect.left;
-        short bh = win->portRect.bottom - win->portRect.top;
-        if (sMapBufGW != NULL && (bw != sBufW || bh != sBufH)) {
-            DisposeGWorld(sMapBufGW); sMapBufGW = NULL;
+    short x, y, n = 0;
+    Boolean roads = sGroundKey[0] != 0;
+    const unsigned char *rd = roads ? (const unsigned char *)*gRoadData : NULL;
+    for (y = sGroundKey[2]; y < sGroundKey[2] + sGroundKey[4]; y++)
+        for (x = sGroundKey[1]; x < sGroundKey[1] + sGroundKey[3]; x++, n += 3) {
+            /* the terrain index, the anchor bit, the road type */
+            unsigned char a = mapData[y * 0xE0 + x * 2], b = mapData[y * 0xE0 + x * 2 + 1] & 0x80, c = 0;
+            if (rd != NULL && x < 112 && y < 156) c = rd[y * 112 + x] & 0x1F;
+            if (store) { sGroundSnap[n] = a; sGroundSnap[n + 1] = b; sGroundSnap[n + 2] = c; }
+            else if (sGroundSnap[n] != a || sGroundSnap[n + 1] != b || sGroundSnap[n + 2] != c) return false;
         }
-        if (sMapBufGW == NULL) {
-            Rect b;
-            Handle ct = (Handle)sGameCTab;
-            SetRect(&b, 0, 0, bw, bh);
-            if (ct == NULL || HandToHand(&ct) != noErr) ct = NULL;
-            if (NewGWorld(&sMapBufGW, 8, &b, (CTabHandle)ct, NULL, 0) != noErr) sMapBufGW = NULL;
-            sBufW = bw; sBufH = bh;
-        }
-        if (sMapBufGW != NULL && LockPixels(GetGWorldPixMap(sMapBufGW))) {
-            GetGWorld(&bufSavePort, &bufSaveDev);
-            realWin = win;
-            SetGWorld(sMapBufGW, NULL);
-            win = (WindowPtr)sMapBufGW;
-            bufGW = sMapBufGW;
-            {   /* a GWorld keeps its last colours: the map's CopyBits colourise
-                 * with fore/back, so start from black on white every time */
-                RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
-                RGBForeColor(&black); RGBBackColor(&white);
-                PenNormal(); TextMode(srcOr);
-            }
-        }
-    }
+    return true;
+}
 
-    /* Sub-tile scroll: draw everything in unscrolled coordinates with the
-     * port origin moved by the pixel remainder, clipped to the map area. */
-    {
-        Rect mapClip = winRect;
-        SetOrigin(sViewPixX, sViewPixY);
-        OffsetRect(&mapClip, sViewPixX, sViewPixY);
-        ClipRect(&mapClip);
-    }
-
-    /* The ground layers depend only on the view, the window size and the
-     * visible tiles' MAP bytes and road bytes: while those are unchanged
-     * (a computer stack walking across the view redraws the whole map at
-     * every step, AIAnimateStep) the last drawing is copied back instead
-     * of some 400 CopyBits.  The pixels are the same. */
-    {
-        short key[9], n = 0;
-        Boolean roads = (*gRoadData != 0 && sRoadGW != NULL && sRoadBgColorValid);
-        groundCache = (bufGW != NULL && sTerrainLoaded && sTerrainGW != NULL && sTerrainGW2 != NULL &&
-                       tilesWide <= GROUND_MAX_TILES && tilesHigh <= GROUND_MAX_TILES);
-        if (groundCache) {
-            key[0] = sViewportX; key[1] = sViewportY; key[2] = sViewPixX; key[3] = sViewPixY;
-            key[4] = bufGW->portRect.right - bufGW->portRect.left;
-            key[5] = bufGW->portRect.bottom - bufGW->portRect.top;
-            key[6] = tilesWide; key[7] = tilesHigh; key[8] = roads;
-            groundHit = sGroundValid && sGroundGW != NULL;
-            for (n = 0; n < 9; n++) if (key[n] != sGroundKey[n]) groundHit = false;
-            n = 0;
-            for (ty = 0; ty < tilesHigh; ty++)
-                for (tx = 0; tx < tilesWide; tx++, n += 3) {
-                    short mx = sViewportX + tx, my = sViewportY + ty;
-                    unsigned char a = 0xFF, b = 0xFF, c = 0;
-                    if (mx < sMapWidth && my < sMapHeight) {
-                        /* what the layers read: the terrain index, the anchor bit, the road type */
-                        a = mapData[my * 0xE0 + mx * 2]; b = mapData[my * 0xE0 + mx * 2 + 1] & 0x80;
-                        if (roads && mx < 112 && my < 156) c = ((unsigned char *)*gRoadData)[my * 112 + mx] & 0x1F;
-                    }
-                    if (sGroundSnap[n] != a || sGroundSnap[n + 1] != b || sGroundSnap[n + 2] != c) groundHit = false;
-                    sGroundSnap[n] = a; sGroundSnap[n + 1] = b; sGroundSnap[n + 2] = c;
-                }
-            for (n = 0; n < 9; n++) sGroundKey[n] = key[n];
-            if (groundHit && !LockPixels(GetGWorldPixMap(sGroundGW))) groundHit = false;   /* purged */
-            sGroundValid = false;               /* until this drawing is stored */
-        }
-    }
-    if (groundHit) {
-        RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
-        Rect mapClip = winRect, cr = winRect;
-        /* only what reaches the window this time needs fresh ground: the
-         * window's visible region (inside BeginUpdate, the update region);
-         * the layers above are drawn whole, and every later update restores
-         * the ground over its own region first */
-        if (((GrafPtr)realWin)->visRgn != NULL &&
-            !SectRect(&(**((GrafPtr)realWin)->visRgn).rgnBBox, &winRect, &cr))
-            SetRect(&cr, 0, 0, 0, 0);
-        SetOrigin(0, 0);
-        ClipRect(&winRect);
-        RGBForeColor(&black); RGBBackColor(&white);
-        if (!EmptyRect(&cr))
-            CopyBits((BitMap *)*GetGWorldPixMap(sGroundGW), &((GrafPtr)win)->portBits,
-                     &cr, &cr, srcCopy, NULL);
-        UnlockPixels(GetGWorldPixMap(sGroundGW));
-        SetOrigin(sViewPixX, sViewPixY);
-        OffsetRect(&mapClip, sViewPixX, sViewPixY);
-        ClipRect(&mapClip);
-        sGroundValid = true;
-    } else {
+/* The map's ground layers - terrain tiles, roads, port anchors - for the
+ * tiles (vx..vx+tilesWide-1, vy..vy+tilesHigh-1) drawn from winRect's
+ * top-left into the current port win (DrawMapInWindow and its cache). */
+static void DrawGroundLayers(WindowPtr win, Rect winRect, short vx, short vy, short tilesWide,
+                             short tilesHigh, unsigned char *mapData, unsigned char *scnData, Boolean hasScn)
+{
+    short tx, ty;
 
     /* Lock terrain sheet pixmaps for the draw loop */
     if (sTerrainLoaded) {
@@ -10908,8 +10796,8 @@ static void DrawMapInWindow(WindowPtr win)
 
     for (ty = 0; ty < tilesHigh; ty++) {
         for (tx = 0; tx < tilesWide; tx++) {
-            short mapX = sViewportX + tx;
-            short mapY = sViewportY + ty;
+            short mapX = vx + tx;
+            short mapY = vy + ty;
             unsigned short tileOffset;
             unsigned char  terrainIdx;
             short          terrainType;
@@ -10996,8 +10884,8 @@ static void DrawMapInWindow(WindowPtr win)
 
         for (ty = 0; ty < tilesHigh; ty++) {
             for (tx = 0; tx < tilesWide; tx++) {
-                short rMapX = sViewportX + tx;
-                short rMapY = sViewportY + ty;
+                short rMapX = vx + tx;
+                short rMapY = vy + ty;
                 unsigned char rd;
                 Rect srcRect, dstRect;
                 short tileIdx, srcX, srcY;
@@ -11035,7 +10923,7 @@ static void DrawMapInWindow(WindowPtr win)
         short tx2, ty2;
         for (ty2 = 0; ty2 < tilesHigh; ty2++)
             for (tx2 = 0; tx2 < tilesWide; tx2++) {
-                short mx2 = sViewportX + tx2, my2 = sViewportY + ty2;
+                short mx2 = vx + tx2, my2 = vy + ty2;
                 Rect ar;
                 if (mx2 < 0 || mx2 >= sMapWidth || my2 < 0 || my2 >= sMapHeight) continue;
                 if (!(mapData[my2 * 0xE0 + mx2 * 2 + 1] & 0x80)) continue;
@@ -11045,39 +10933,183 @@ static void DrawMapInWindow(WindowPtr win)
             }
     }
 
-    if (groundCache) {                          /* keep this drawing of the ground layers */
-        short bw = bufGW->portRect.right - bufGW->portRect.left;
-        short bh = bufGW->portRect.bottom - bufGW->portRect.top;
-        if (sGroundGW != NULL && (sGroundGW->portRect.right - sGroundGW->portRect.left != bw ||
-                                  sGroundGW->portRect.bottom - sGroundGW->portRect.top != bh)) {
-            DisposeGWorld(sGroundGW); sGroundGW = NULL;
+}
+
+static void DrawMapInWindow(WindowPtr win)
+{
+    unsigned char *mapData;
+    unsigned char *scnData;
+    Rect           winRect;
+    short          tx, ty;
+    short          tilesWide, tilesHigh;
+    Boolean        hasScn;
+    short          i;
+    GWorldPtr      bufGW = NULL;
+    WindowPtr      realWin = win;
+    CGrafPtr       bufSavePort = NULL;
+    GDHandle       bufSaveDev = NULL;
+    Boolean        groundCache = false, groundHit = false;
+
+    if (!sMapLoaded || *gMapTiles == 0)
+        return;
+
+    /* FUN_1003d5d4 set the map view's +0xBE. The redraw paints nothing. */
+    if (sMapConcealed) {
+        RGBColor black = {0, 0, 0};
+        RGBForeColor(&black);
+        PaintRect(&win->portRect);
+        return;
+    }
+
+    mapData = (unsigned char *)*gMapTiles;
+    hasScn  = (*gGameState != 0);
+    scnData = hasScn ? (unsigned char *)*gGameState : NULL;
+    winRect = win->portRect;
+
+    /* Reserve space for scrollbars and shields at edges */
+    winRect.right  -= SCROLLBAR_W;
+    winRect.bottom -= SCROLLBAR_H;
+
+    /* How many tiles fit in the window (+1 for the partial tile the
+     * sub-tile scroll exposes on the right/bottom) */
+    tilesWide = (winRect.right - winRect.left) / TERRAIN_TILE_W + 2;
+    tilesHigh = (winRect.bottom - winRect.top) / TERRAIN_TILE_H + 2;
+
+    /* Double buffer the map area (terrain, roads, cities, armies, path):
+     * drawn straight to the window the layers showed one after another,
+     * which blinked while a path was dragged. */
+    {
+        static short sBufW = 0, sBufH = 0;
+        short bw = win->portRect.right - win->portRect.left;
+        short bh = win->portRect.bottom - win->portRect.top;
+        if (sMapBufGW != NULL && (bw != sBufW || bh != sBufH)) {
+            DisposeGWorld(sMapBufGW); sMapBufGW = NULL;
         }
-        if (sGroundGW == NULL) {
+        if (sMapBufGW == NULL) {
             Rect b;
             Handle ct = (Handle)sGameCTab;
             SetRect(&b, 0, 0, bw, bh);
             if (ct == NULL || HandToHand(&ct) != noErr) ct = NULL;
-            /* the application heap seldom has room for a second window-sized
-             * GWorld: temporary memory first */
-            if (NewGWorld(&sGroundGW, 8, &b, (CTabHandle)ct, NULL, useTempMem) != noErr &&
-                NewGWorld(&sGroundGW, 8, &b, (CTabHandle)ct, NULL, 0) != noErr) sGroundGW = NULL;
+            if (NewGWorld(&sMapBufGW, 8, &b, (CTabHandle)ct, NULL, 0) != noErr) sMapBufGW = NULL;
+            sBufW = bw; sBufH = bh;
         }
-        if (sGroundGW != NULL && LockPixels(GetGWorldPixMap(sGroundGW))) {
-            RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
-            Rect mapClip = winRect;
-            SetOrigin(0, 0);
-            ClipRect(&winRect);
-            RGBForeColor(&black); RGBBackColor(&white);
-            CopyBits(&((GrafPtr)win)->portBits, (BitMap *)*GetGWorldPixMap(sGroundGW),
-                     &winRect, &winRect, srcCopy, NULL);
-            UnlockPixels(GetGWorldPixMap(sGroundGW));
-            SetOrigin(sViewPixX, sViewPixY);
-            OffsetRect(&mapClip, sViewPixX, sViewPixY);
-            ClipRect(&mapClip);
-            sGroundValid = true;
+        if (sMapBufGW != NULL && LockPixels(GetGWorldPixMap(sMapBufGW))) {
+            GetGWorld(&bufSavePort, &bufSaveDev);
+            realWin = win;
+            SetGWorld(sMapBufGW, NULL);
+            win = (WindowPtr)sMapBufGW;
+            bufGW = sMapBufGW;
+            {   /* a GWorld keeps its last colours: the map's CopyBits colourise
+                 * with fore/back, so start from black on white every time */
+                RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+                RGBForeColor(&black); RGBBackColor(&white);
+                PenNormal(); TextMode(srcOr);
+            }
         }
     }
-    }   /* the ground layers drawn */
+
+    /* Sub-tile scroll: draw everything in unscrolled coordinates with the
+     * port origin moved by the pixel remainder, clipped to the map area. */
+    {
+        Rect mapClip = winRect;
+        SetOrigin(sViewPixX, sViewPixY);
+        OffsetRect(&mapClip, sViewPixX, sViewPixY);
+        ClipRect(&mapClip);
+    }
+
+    /* The ground layers depend only on the tiles' MAP and road bytes.  They
+     * are drawn into a cache (sGroundGW) covering the view and GROUND_MARGIN
+     * tiles round it, and the view's part is copied into the buffer: a
+     * computer stack walking across the map redraws the whole window at
+     * every step (AIAnimateStep), and the view follows it a few pixels at a
+     * time (RevealTile).  The cache is drawn again when the view leaves it or
+     * one of its tiles changed.  The pixels are the same as drawn directly. */
+    {
+        Boolean roads = (*gRoadData != 0 && sRoadGW != NULL && sRoadBgColorValid);
+        long vxPix = (long)sViewportX * TERRAIN_TILE_W + sViewPixX, vyPix = (long)sViewportY * TERRAIN_TILE_H + sViewPixY;
+        short viewW = winRect.right - winRect.left, viewH = winRect.bottom - winRect.top;
+        groundCache = (bufGW != NULL && sTerrainLoaded && sTerrainGW != NULL && sTerrainGW2 != NULL);
+        if (groundCache && sGroundValid && sGroundGW != NULL && sGroundKey[0] == roads &&
+            vxPix >= (long)sGroundKey[1] * TERRAIN_TILE_W && vyPix >= (long)sGroundKey[2] * TERRAIN_TILE_H &&
+            vxPix + viewW <= (long)(sGroundKey[1] + sGroundKey[3]) * TERRAIN_TILE_W &&
+            vyPix + viewH <= (long)(sGroundKey[2] + sGroundKey[4]) * TERRAIN_TILE_H &&
+            GroundSnap(mapData, false))
+            groundHit = true;
+        /* a view that jumped is drawn directly; the cache is built when the
+         * view creeps (it moved by at most a tile since the last drawing) */
+        if (groundCache && !groundHit &&
+            (sGroundLastVX - sViewportX > 1 || sViewportX - sGroundLastVX > 1 ||
+             sGroundLastVY - sViewportY > 1 || sViewportY - sGroundLastVY > 1))
+            groundCache = false;
+        sGroundLastVX = sViewportX; sGroundLastVY = sViewportY;
+        if (groundCache && !groundHit) {
+            short x0 = sViewportX - GROUND_MARGIN, y0 = sViewportY - GROUND_MARGIN;
+            short tw = tilesWide + 2 * GROUND_MARGIN, th = tilesHigh + 2 * GROUND_MARGIN;
+            if (x0 < 0) x0 = 0;
+            if (y0 < 0) y0 = 0;
+            if (x0 + tw > sMapWidth) tw = sMapWidth - x0;
+            if (y0 + th > sMapHeight) th = sMapHeight - y0;
+            groundCache = (tw > 0 && th > 0 && tw <= GROUND_MAX_TILES && th <= GROUND_MAX_TILES);
+            if (groundCache && sGroundGW != NULL &&
+                (sGroundGW->portRect.right - sGroundGW->portRect.left != tw * TERRAIN_TILE_W ||
+                 sGroundGW->portRect.bottom - sGroundGW->portRect.top != th * TERRAIN_TILE_H)) {
+                DisposeGWorld(sGroundGW); sGroundGW = NULL;
+            }
+            if (groundCache && sGroundGW == NULL) {
+                Rect b;
+                Handle ct = (Handle)sGameCTab;
+                SetRect(&b, 0, 0, tw * TERRAIN_TILE_W, th * TERRAIN_TILE_H);
+                if (ct == NULL || HandToHand(&ct) != noErr) ct = NULL;
+                /* the application heap seldom has room for it: temporary memory first */
+                if (NewGWorld(&sGroundGW, 8, &b, (CTabHandle)ct, NULL, useTempMem) != noErr &&
+                    NewGWorld(&sGroundGW, 8, &b, (CTabHandle)ct, NULL, 0) != noErr) sGroundGW = NULL;
+            }
+            sGroundValid = false;
+            if (groundCache && sGroundGW != NULL && LockPixels(GetGWorldPixMap(sGroundGW))) {
+                RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+                Rect gr = sGroundGW->portRect;
+                SetGWorld(sGroundGW, NULL);
+                SetOrigin(0, 0);
+                ClipRect(&gr);
+                RGBForeColor(&black); RGBBackColor(&white);
+                PenNormal(); TextMode(srcOr);
+                DrawGroundLayers((WindowPtr)sGroundGW, gr, x0, y0, tw, th, mapData, scnData, hasScn);
+                UnlockPixels(GetGWorldPixMap(sGroundGW));
+                SetGWorld(bufGW, NULL);
+                sGroundKey[0] = roads; sGroundKey[1] = x0; sGroundKey[2] = y0; sGroundKey[3] = tw; sGroundKey[4] = th;
+                (void)GroundSnap(mapData, true);
+                sGroundValid = true;
+                groundHit = true;
+            } else groundCache = false;
+        }
+    }
+    if (groundHit && LockPixels(GetGWorldPixMap(sGroundGW))) {
+        RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+        Rect mapClip = winRect, cr = winRect, sr;
+        /* only what reaches the window this time needs fresh ground: the
+         * window's visible region (inside BeginUpdate, the update region);
+         * the layers above are drawn whole, and every later update restores
+         * the ground over its own region first */
+        if (((GrafPtr)realWin)->visRgn != NULL &&
+            !SectRect(&(**((GrafPtr)realWin)->visRgn).rgnBBox, &winRect, &cr))
+            SetRect(&cr, 0, 0, 0, 0);
+        SetOrigin(0, 0);
+        ClipRect(&winRect);
+        RGBForeColor(&black); RGBBackColor(&white);
+        sr = cr;
+        OffsetRect(&sr, (short)((long)sViewportX * TERRAIN_TILE_W + sViewPixX - (long)sGroundKey[1] * TERRAIN_TILE_W - winRect.left),
+                        (short)((long)sViewportY * TERRAIN_TILE_H + sViewPixY - (long)sGroundKey[2] * TERRAIN_TILE_H - winRect.top));
+        if (!EmptyRect(&cr))
+            CopyBits((BitMap *)*GetGWorldPixMap(sGroundGW), &((GrafPtr)win)->portBits,
+                     &sr, &cr, srcCopy, NULL);
+        UnlockPixels(GetGWorldPixMap(sGroundGW));
+        SetOrigin(sViewPixX, sViewPixY);
+        OffsetRect(&mapClip, sViewPixX, sViewPixY);
+        ClipRect(&mapClip);
+    } else {
+        /* (a cache elsewhere stays valid: its snapshot is checked at its next use) */
+        DrawGroundLayers(win, winRect, sViewportX, sViewportY, tilesWide, tilesHigh, mapData, scnData, hasScn);
+    }
 
     /* --- Fog of war: drawn AFTER all sprites (see block below stack badges) --- */
 
@@ -17069,15 +17101,54 @@ static Boolean UnitTypeNaval(short t)
 }
 
 /* add the live units of record rec to a side (the moving record first) */
+static void BattleAddUnit(BattleUnit *side, short *n, short max, short rec, short k, Boolean onWater);
 static void BattleAddRecord(BattleUnit *side, short *n, short max, short rec, Boolean onWater)
+{
+    short k;
+    for (k = 0; k < 4 && *n < max; k++) BattleAddUnit(side, n, max, rec, k, onWater);
+}
+
+/* The defenders: every unit not mOwner's on (mx,my), or in city ci's 2x2,
+ * in the order FUN_100ac0cc gathers them - the unit table from the last
+ * index down (the stable fight-order sort keeps it among equals: Erythea
+ * round 8, side 7's estimate at (29,49), two type-1 defenders) */
+static void BattleAddDefenders(Battle *b, short mOwner, short mx, short my, short cityIdx,
+                               short cx, short cy, Boolean onWater)
+{
+    unsigned char *gs = (unsigned char *)*gGameState;
+    short n = *(short *)(gs + 0x1602), i, k, m = 0, j;
+    static short urec[BATTLE_DEF_MAX * 4], uslot[BATTLE_DEF_MAX * 4], uid[BATTLE_DEF_MAX * 4];
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
+    for (i = n - 1; i >= 0; i--) {
+        unsigned char *a = ARMY_REC(i);
+        short ox = *(short *)(a + 0x00), oy = *(short *)(a + 0x02);
+        if ((short)(unsigned char)a[0x15] == mOwner) continue;
+        if (!((ox == mx && oy == my) ||
+              (cityIdx >= 0 && ox >= cx && ox <= cx + 1 && oy >= cy && oy <= cy + 1)))
+            continue;
+        for (k = 0; k < 4 && m < BATTLE_DEF_MAX * 4; k++) {
+            short u = UnitUid(i, k);
+            if (a[0x16 + k] == 0xFF) continue;
+            /* insertion by index, highest first; a unit without an index
+             * (-1) keeps the record walk's place after the indexed ones */
+            for (j = m; j > 0 && uid[j - 1] < u; j--) {
+                urec[j] = urec[j - 1]; uslot[j] = uslot[j - 1]; uid[j] = uid[j - 1];
+            }
+            urec[j] = i; uslot[j] = k; uid[j] = u; m++;
+        }
+    }
+    for (j = 0; j < m && b->nDef < BATTLE_DEF_MAX; j++)
+        BattleAddUnit(b->def, &b->nDef, BATTLE_DEF_MAX, urec[j], uslot[j], onWater);
+}
+
+static void BattleAddUnit(BattleUnit *side, short *n, short max, short rec, short k, Boolean onWater)
 {
     unsigned char *a = ARMY_REC(rec);
     Boolean naval = ArmyIsNaval(rec);
-    short k;
-    for (k = 0; k < 4 && *n < max; k++) {
+    {
         short t = (short)(unsigned char)a[0x16 + k];
         BattleUnit *u;
-        if (t == 0xFF || (unsigned char)a[0x1e + k] == 0) continue;
+        if (*n >= max || t == 0xFF || (unsigned char)a[0x1e + k] == 0) return;
         u = side + (*n)++;
         u->rec = rec; u->slot = k; u->type = t;
         u->str = (short)(unsigned char)a[0x1e + k];
@@ -17125,15 +17196,7 @@ static void BattleGather(Battle *b, short movingIdx, short mOwner, short mx, sho
         BattleAddRecord(b->att, &b->nAtt, BATTLE_ATT_MAX, i, onWater);
     }
     /* the original walks the unit table from the end */
-    for (i = n - 1; i >= 0; i--) {
-        unsigned char *a = ARMY_REC(i);
-        short ox = *(short *)(a + 0x00), oy = *(short *)(a + 0x02);
-        if ((short)(unsigned char)a[0x15] == mOwner) continue;
-        if (!((ox == mx && oy == my) ||
-              (cityIdx >= 0 && ox >= cx && ox <= cx + 1 && oy >= cy && oy <= cy + 1)))
-            continue;
-        BattleAddRecord(b->def, &b->nDef, BATTLE_DEF_MAX, i, onWater);
-    }
+    BattleAddDefenders(b, mOwner, mx, my, cityIdx, cx, cy, onWater);
 }
 
 /* fight order, the flyer's +80, the stable sort of a side */
@@ -28651,8 +28714,8 @@ static void AIBattleGather(Battle *b, const AIStack *s, short tx, short ty)
               (cityIdx >= 0 && ox >= cx && ox <= cx + 1 && oy >= cy && oy <= cy + 1)))
             continue;
         if (defOwner < 0) defOwner = (short)(unsigned char)a[0x15];
-        BattleAddRecord(b->def, &b->nDef, BATTLE_DEF_MAX, i, onWater);
     }
+    BattleAddDefenders(b, sAIMe, tx, ty, cityIdx, cx, cy, onWater);
     if (defOwner < 0) defOwner = (cityIdx >= 0) ? AICityOwner(cityIdx) : 0x0F;
     if (defOwner < 0 || defOwner > 7) defOwner = 0x0F;
     b->defOwner = defOwner;
@@ -29028,15 +29091,19 @@ static Boolean AIContinueCapture(AIStack *s)
  * (Manhattan) to the last position; a zero distance counts 9000 */
 static short AINextOrdered(void)
 {
-    short i, n = AIArmyCount(), best = -1, bestD = 10000;
+    /* FUN_1005619c walks the unit table from the last index down and keeps
+     * the first unit at the smallest distance: a tie goes to the record
+     * holding the highest unit-table index */
+    short i, n = AIArmyCount(), best = -1, bestD = 10000, bestU = -1;
     for (i = n - 1; i >= 0; i--) {
-        short d;
+        short d, k, u = -1;
         if (!AIRecMine(i)) continue;
         if (sAIOrd[i].flags & (AIO_STUCK | AIO_DONE)) continue;
         d = (short)((AIRecY(i) - sAILastY < 0 ? sAILastY - AIRecY(i) : AIRecY(i) - sAILastY) +
                     (AIRecX(i) - sAILastX < 0 ? sAILastX - AIRecX(i) : AIRecX(i) - sAILastX));
         if (d == 0) d = 9000;
-        if (d < bestD) { bestD = d; best = i; }
+        for (k = 0; k < 4; k++) if (AI_REC(i)[0x16 + k] != 0xFF && UnitUid(i, k) > u) u = UnitUid(i, k);
+        if (d < bestD || (d == bestD && u > bestU)) { bestD = d; best = i; bestU = u; }
     }
     if (best >= 0) { sAILastX = AIRecX(best); sAILastY = AIRecY(best); }
     return best;
@@ -33860,12 +33927,19 @@ static void ProcessStartOfTurn(short player)
         }
     }
 
-    /* --- 3d. FUN_100558f8: unit status 0x40 / 0x200 cleared, both paths --- */
+    /* --- 3d. FUN_100558f8: unit status 0x40 / 0x200 cleared, both paths;
+     * FUN_1005619c's last position becomes the capital (pstat+0x04/06), so
+     * the computer's order loop starts from there (Erythea round 8: side 1
+     * from (48,121) takes the stack at (44,121), then the hero's at
+     * (41,115) before the unit at (38,116)) --- */
     for (i = 0; i < armyCount; i++) {
         unsigned char *army = ARMY_REC(i);
         if ((short)(unsigned char)army[0x15] != player || army[0x16] == 0xFF) continue;
         *(short *)(army + 0x2c) &= ~0x0240;
+        if (i < AI_MAX_RECS) sAIOrd[i].flags &= (unsigned short)~(AIO_STUCK | AIO_DONE);
     }
+    sAILastX = *(short *)(gs + 0x186 + player * 0x14 + 0x04);
+    sAILastY = *(short *)(gs + 0x186 + player * 0x14 + 0x06);
 
     /* the human's hero level-ups come after its MP reset, fortify and
      * income (FUN_10065b2c -> the turn's state machine, PPC_0002.c:21649):
