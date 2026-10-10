@@ -1151,8 +1151,9 @@ static struct {
 } sRngNotes = { { 0x574C324EL, 0x4F544553L }, 0 };
 static void RngNote(short tag, short a, short b, short c)
 {
-    if (sRngNotes.count < RNG_NOTE_MAX) {
-        long i = sRngNotes.count;
+    /* a ring: the last RNG_NOTE_MAX notes (note n at n % RNG_NOTE_MAX) */
+    {
+        long i = sRngNotes.count % RNG_NOTE_MAX;
         sRngNotes.e[i].k = sRngLog.count; sRngNotes.e[i].tag = tag;
         sRngNotes.e[i].a = a; sRngNotes.e[i].b = b; sRngNotes.e[i].c = c;
     }
@@ -32022,15 +32023,30 @@ static Boolean AIFrontRepickStaging(short f)
     fr->staging = best;
     return true;
 }
-/* FUN_1001b4ac: the registered attack stacks must still be ours and on this front */
+/* the record holding unit-table index uid (-1: none) */
+static short AIRecOfUid(short uid)
+{
+    short i, k, n = AIArmyCount();
+    if (uid < 0) return -1;
+    for (i = 0; i < n; i++)
+        for (k = 0; k < 4; k++)
+            if (AI_REC(i)[0x16 + k] != 0xFF && UnitUid(i, k) == uid) return i;
+    return -1;
+}
+/* FUN_1001b4ac: the registered attack stacks must still be ours and on
+ * this front.  A front's stack slots hold unit-table indices (block+0x28a),
+ * which records shifting down never move (Erythea round 14: side 7's slot
+ * held unit 189, record 185 by then; the remake kept the record number
+ * 189 and lost the stack) */
 static void AIFrontValidateStacks(short f)
 {
     AIFront *fr = &gAI->fronts[f];
     short k;
     for (k = 3; k >= 0; k--) {
-        short u = fr->stacks[k];
+        short u = fr->stacks[k], r;
         if (u == -1) continue;
-        if (u >= AIArmyCount() || !AIRecMine(u) || sAIOrd[u].front != f + 1) fr->stacks[k] = -1;
+        r = AIRecOfUid(u);
+        if (r < 0 || !AIRecMine(r) || AIRecFront(r) != f + 1) fr->stacks[k] = -1;
     }
 }
 
@@ -32286,7 +32302,7 @@ static void AIFrontMoveStacks(short f)
         short u, r;
         AIStack s;
         AIFrontValidateStacks(f);
-        u = fr->stacks[k];
+        u = AIRecOfUid(fr->stacks[k]);
         if (u == -1 || AIStackAt(AIRecX(u), AIRecY(u), sAIOrd[u].front, sAIOrd[u].type, 0, &s) == 0) { k--; guard = 0; continue; }
         AIFloodForStack(&s, 15);
         r = AIFrontMoveStack(f, &s, fr->targetPlayer);
@@ -32311,7 +32327,7 @@ static void AIFrontRegisterStack(short f, const AIStack *s)
         if (AIRecHasHero(s->rec[i])) break;
         if (bestStr < (short)a[0x1e]) { best = s->rec[i]; bestStr = a[0x1e]; }
     }
-    if (best != -1) fr->stacks[k] = best;
+    if (best != -1) fr->stacks[k] = UnitUid(best, 0);      /* the unit's table index */
 }
 /* FUN_1001cb24: launch a new attack stack from the staging strike tile */
 static Boolean AIFrontLaunch(short f)

@@ -474,3 +474,35 @@ TEST(the_garrison_rolls_only_when_the_old_count_matches)
     CHECK_EQ(sg_count(before[1], after[1]), 1);     /* 1 == 1: the 1d6 */
     sAIMe = -1; gAI = NULL;
 }
+
+/* A front's stack slots hold unit-table indices (block+0x28a): FUN_1001b4ac
+ * finds the unit wherever its record moved (Erythea round 14: side 7's
+ * slot held unit 189, by then in record 185). */
+TEST(a_fronts_stack_slot_follows_the_unit_not_the_record)
+{
+    short other, mine;
+    fx_reset();
+    fx_unit_types(29);
+    other = fx_army(5, 5, 3, 0, -1, -1, -1);
+    mine = fx_army(20, 32, 7, 24, -1, -1, -1);
+    ARMY_REC(other)[0x1e] = 5; ARMY_REC(mine)[0x1e] = 7;
+    AIResetAll();
+    AIOrdSync();
+    UidReset();
+    sArmyUid[other][0] = 3; sArmyUid[mine][0] = 189;
+    UidSync();
+    sAIMe = 7; gAI = &sAIBlocks[7];
+    AIInitBlock(7);
+    gAI->frontCount = 1;
+    gAI->fronts[0].active = 3;
+    AIRecSetFront(mine, 1);
+    gAI->fronts[0].stacks[3] = 189;
+    RemoveArmy(other);                                /* the record moves down to 0 */
+    AIFrontValidateStacks(0);
+    CHECK_EQ(gAI->fronts[0].stacks[3], 189);
+    CHECK_EQ(AIRecOfUid(189), 0);
+    AIRecSetFront(0, 2);                              /* on another front now */
+    AIFrontValidateStacks(0);
+    CHECK_EQ(gAI->fronts[0].stacks[3], -1);
+    sAIMe = -1; gAI = NULL;
+}

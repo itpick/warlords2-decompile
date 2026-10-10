@@ -172,7 +172,9 @@ def main():
         if ncount <= 0:
             continue
         nraw = mem(a.port, h + 12, min(ncount, 16384) * 12)
-        for i in range(min(ncount, 16384)):
+        # a ring of 16384: note n sits at n % 16384, the oldest first
+        for n in range(max(0, ncount - 16384), ncount):
+            i = n % 16384
             k, tag, x, y, z = struct.unpack('>ihhhh', nraw[i * 12:(i + 1) * 12])
             notes.setdefault(k, []).append(f'NOTE {tag} {x} {y} {z}')
 
