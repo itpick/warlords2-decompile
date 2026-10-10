@@ -86,10 +86,19 @@ def orig_log(a):
             nraw = mem(a.port, nh + 16, 32 * 16384)
             for n in range(max(1, ncount - 16383), ncount + 1):
                 e = nraw[(n & 0x3FFF) * 32:(n & 0x3FFF) * 32 + 32]
-                k, tag, na, nd = struct.unpack('>IIBB', e[:10])
-                av, ah, dv, dh = e[12:16], e[16:20], e[20:24], e[24:28]
-                notes.setdefault(k, []).append(f'NOTE {tag} att {na}: ' + ' '.join(f'{av[i]}/{ah[i]}' for i in range(min(na, 4)))
-                                               + f' def {nd}: ' + ' '.join(f'{dv[i]}/{dh[i]}' for i in range(min(nd, 4))))
+                k, tag = struct.unpack('>II', e[:8])
+                if tag == 1:
+                    na, nd = e[8], e[9]
+                    av, ah, dv, dh = e[12:16], e[16:20], e[20:24], e[24:28]
+                    notes.setdefault(k, []).append(f'NOTE {tag} att {na}: ' + ' '.join(f'{av[i]}/{ah[i]}' for i in range(min(na, 4)))
+                                                   + f' def {nd}: ' + ' '.join(f'{dv[i]}/{dh[i]}' for i in range(min(nd, 4))))
+                elif tag == 3:
+                    r3, r4 = struct.unpack('>ii', e[8:16])
+                    grp = struct.unpack('>6h', e[16:28])
+                    notes.setdefault(k, []).append(f'NOTE 3 FUN_10018800 city {r3 & 0xFFFF} n {r4 & 0xFF} group {list(grp)}')
+                else:
+                    r = struct.unpack('>iiiii', e[8:28])
+                    notes.setdefault(k, []).append(f'NOTE {tag} ' + ' '.join(str(x) for x in r))
     funcs = ppc_functions()
     addrs = [f[0] for f in funcs]
     hi = count if a.hi is None else min(a.hi, count)
@@ -119,7 +128,8 @@ def orig_log(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', default='3201')
-    ap.add_argument('--elf', default=os.path.join(REPO, 'src', 'warlords2_ppc'))
+    ap.add_argument('--elf', default=os.environ.get('WL2_ELF', os.path.join(REPO, 'src', 'warlords2_ppc')),
+                    help='the linked image of the RUNNING build (env WL2_ELF; default src/warlords2_ppc)')
     ap.add_argument('--from', dest='lo', type=int, default=0)
     ap.add_argument('--to', dest='hi', type=int, default=None)
     ap.add_argument('--summary', action='store_true')

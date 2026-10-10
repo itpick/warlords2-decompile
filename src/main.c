@@ -10740,8 +10740,8 @@ static Boolean AIAttackGate(short armyIdx, short bx, short by);
 static void AIAnimateStep(short x, short y);
 static void AIOrdOnRemove(short armyIndex, short armyCount);
 static void AIResetAll(void);
-static void AIBattleMemory(short defOwner, short attOwner, short heroesLeft, short unitsLeft,
-                           short attUnits, Boolean cityBattle);
+static void AIBattleMemory(short defOwner, short attOwner, short heroesKilled, short unitsKilled,
+                           short defUnits, Boolean cityBattle);
 static Boolean sPathForceAI;   /* BuildPathFlagGrid: treat the owner as a computer player */
 
 static void DrawMapInWindow(WindowPtr win)
@@ -18892,11 +18892,14 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         }
         won = (nDefLive == 0 && nAttLive > 0);
 
-        /* PPC FUN_1000dc4c: the defending player's AI remembers the attack */
+        /* PPC FUN_1000dc4c: the defending player's AI remembers the attack:
+         * its own losses, counted over the battle's defenders (the alive
+         * flags FUN_1002d654 clears), and whether it lost them all */
         {
-            short hl = 0, q;
-            for (q = 0; q < nAttLive; q++) if (liveAtt[q] == 0x1C || liveAtt[q] == 0x1D) hl++;
-            AIBattleMemory(defOwner, mOwner, hl, nAttLive, sBattle.nAtt,
+            short hk = 0, uk = 0, q;
+            for (q = 0; q < sBattle.nDef; q++)
+                if (sBattle.def[q].hp < 0) { uk++; if (sBattle.def[q].type == 0x1C) hk++; }
+            AIBattleMemory(defOwner, mOwner, hk, uk, sBattle.nDef,
                            cityIdx >= 0 || GetTerrainType(mx, my) == 10);
         }
 
@@ -27241,6 +27244,7 @@ static short UnitStatLE(short t, short k)
 #define AI_MAX_RECS   MAX_ARMIES
 
 typedef struct { short rec, slot; } AIUnit;           /* one unit = a record slot */
+static short AIUnitsInDesc(short x0, short y0, short x1, short y1, AIUnit *out, short max);
 typedef struct { short rec[8]; short n; } AIStack;     /* the current stack (records) */
 
 typedef struct {                /* one front, 0x5C bytes at block+0x24c */
@@ -27284,7 +27288,7 @@ typedef struct {
     unsigned char poolCount[AI_MAX_CITIES];   /* +0x1e6 */
     short frontCount;           /* +0x24a */
     AIFront fronts[4];          /* +0x24c */
-    short battleMem[6][8];      /* +0x3bc: [field][attacker] heroes, units, battles, wins, cityBattles, cityWins */
+    short battleMem[6][8];      /* +0x3bc: [field][attacker] my heroes killed, my units killed, battles, lost outright, city battles, city lost outright */
 } AIBlock;
 
 /* per-record orders (the original's u32 at unit+0xc, dest at +0x12/+0x14,
@@ -29185,6 +29189,7 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
     Boolean disbanded = false;
 
     if (ci < 0 || ci >= AICityCount()) return false;
+    RNG_NOTE(22, ci, fromFront, 0);
     gAI->cflags[ci] |= 4;
     gAI->unitCount[ci] = 0;
     for (i = 0; i < 32; i++) { list[i].rec = -1; out[i].rec = -1; }
@@ -29210,15 +29215,30 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
         gAI->unitCount[ci] = (unsigned char)(gAI->unitCount[ci] + units);
         if (sAIOrd[i].type == 1 && sAIOrd[i].target == ci) { sAIOrd[i].type = 0; sAIOrd[i].target = 0; }
         if (sAIOrd[i].type != 0) ordered += units;
-        for (k = 0; k < 4; k++) {
-            short t = a[0x16 + k];
-            if (t == 0xFF) continue;
-            if (t == 0x1C) { heroes++; heroRec = i; }
+    }
+    /* the units in the order FUN_10010b30 walks the unit table: from the
+     * last index down (UnitUid); past 32 they are disbanded */
+    {
+        AIUnit all[64];
+        short na = AIUnitsInDesc(cx, cy, cx + 1, cy + 1, all, 64), q, nd = 0;
+        AIUnit drop[32];
+        for (q = 0; q < na; q++) {
+            short t = AI_REC(all[q].rec)[0x16 + all[q].slot];
+            if (t == 0x1C) { heroes++; heroRec = all[q].rec; }
             if (AIFlies(t)) flyers++;
             if (AITypeFlag(t, 4)) spec++;
-            if (listed < 32) { list[listed].rec = i; list[listed].slot = k; listed++; }
-            else { AIDisbandUnit(i, k); disbanded = true; k--; }
+            if (listed < 32) list[listed++] = all[q];
+            else if (nd < 32) drop[nd++] = all[q];
         }
+        /* disband from the highest slot of each record down, so the slot
+         * numbers of the later entries stay valid */
+        for (q = 0; q < nd; q++) {
+            short j, best = q;
+            for (j = q + 1; j < nd; j++)
+                if (drop[j].rec == drop[best].rec && drop[j].slot > drop[best].slot) best = j;
+            if (best != q) { AIUnit t = drop[q]; drop[q] = drop[best]; drop[best] = t; }
+        }
+        for (q = 0; q < nd; q++) { AIDisbandUnit(drop[q].rec, drop[q].slot); disbanded = true; }
     }
     if (heroRec >= 0) CheckGroundItemPickup(heroRec);     /* FUN_100169c0 */
     if (heroes > 1) {                                      /* FUN_10016df0 */
@@ -29360,13 +29380,13 @@ static void AIExpandStack(short ci, short stackSize, unsigned char *ordered, AIS
 
 /* sAIMe's units on (x,y) in the order the original walks its unit table:
  * from the last index down (UnitUid).  Returns the count (at most max). */
-static short AIUnitsAtDesc(short x, short y, AIUnit *out, short max)
+static short AIUnitsInDesc(short x0, short y0, short x1, short y1, AIUnit *out, short max)
 {
     short n = 0, i, k, j;
     short uid[64];
     for (i = AIArmyCount() - 1; i >= 0; i--) {
         unsigned char *a = AI_REC(i);
-        if (!AIRecMine(i) || AIRecX(i) != x || AIRecY(i) != y) continue;
+        if (!AIRecMine(i) || AIRecX(i) < x0 || AIRecX(i) > x1 || AIRecY(i) < y0 || AIRecY(i) > y1) continue;
         for (k = 0; k < 4; k++) {
             short u;
             if (a[0x16 + k] == 0xFF || n >= 64) continue;
@@ -29377,6 +29397,10 @@ static short AIUnitsAtDesc(short x, short y, AIUnit *out, short max)
         }
     }
     return n < max ? n : max;
+}
+static short AIUnitsAtDesc(short x, short y, AIUnit *out, short max)
+{
+    return AIUnitsInDesc(x, y, x, y, out, max);
 }
 
 /* FUN_10018b14(city, ordered): the pool units beyond the reserve go out in
@@ -29393,6 +29417,7 @@ static short AIExpandCity(short ci, unsigned char *ordered)
     for (p = 0; p < 8; p++) sumWins += gAI->battleMem[5][p];
     R += sumWins > 2 ? 2 : sumWins;
     skip = R;
+    RNG_NOTE(20, ci, R, d);
     /* order-free units on the pool tile (x,y), the first R stay; the units
      * are walked as the original walks its unit table, from the last index
      * down (FUN_10018b14), not by record and slot */
@@ -29429,6 +29454,7 @@ static short AIExpandCity(short ci, unsigned char *ordered)
             if (sorted[j].rec != -1) { group[ng++] = sorted[j]; sorted[j].rec = -1; }
         if (ng == 0) break;
         if (R == 0 && AIHidden() && AINearestEnemyUnit(cx, cy) < 15) break;
+        RNG_NOTE(21, ci, UnitUid(group[0].rec, group[0].slot), ng > 1 ? UnitUid(group[1].rec, group[1].slot) : -1);
         /* the group's units become their own records on the pool tile */
         AISeparateUnits(group, ng, &s, sorted, nCand);
         if (s.n == 0) break;
@@ -29451,6 +29477,7 @@ static void AIReleasePool(short ci, Boolean flyersOnly)
     Boolean anyFront = false;
     AIUnit cand[8], sorted[8];
     for (i = 0; i < 4; i++) if (gAI->fronts[i].active) anyFront = true;
+    RNG_NOTE(23, ci, flyersOnly, 0);
     R = (short)((d < 5 ? 2 : 0) + (d < 15 ? 1 : 0) + (gAI->passive ? 2 : 0));
     for (p = 0; p < 8; p++) sumWins += gAI->battleMem[5][p];
     R += sumWins > 2 ? 2 : sumWins;
@@ -30163,23 +30190,26 @@ static short AIHomeCity(short p)
 
 /* ------------------------------------------------------------------ */
 /* FUN_1000dc4c: the battle memory of the defending player (indexed by  */
-/* the attacker): heroes and units the attacker kept, battles, wins     */
-/* (no losses), city battles and city wins.  Called after every battle. */
+/* the attacker): the defender's heroes and units killed, battles,       */
+/* battles it lost outright (every defender killed), city battles and    */
+/* city battles lost outright.  Called after every real battle on a tile */
+/* that is not neutral.  (The remake kept the attacker's survivors and   */
+/* "no attacker lost" instead; FUN_10018b14's reserve reads [5].)        */
 /* ------------------------------------------------------------------ */
-static void AIBattleMemory(short defOwner, short attOwner, short heroesLeft, short unitsLeft,
-                           short attUnits, Boolean cityBattle)
+static void AIBattleMemory(short defOwner, short attOwner, short heroesKilled, short unitsKilled,
+                           short defUnits, Boolean cityBattle)
 {
     AIBlock *b;
     if (defOwner < 0 || defOwner > 7 || attOwner < 0 || attOwner > 7) return;
     b = &sAIBlocks[defOwner];
     if (!b->inited) return;
-    b->battleMem[0][attOwner] += heroesLeft;
-    b->battleMem[1][attOwner] += unitsLeft;
+    b->battleMem[0][attOwner] += heroesKilled;
+    b->battleMem[1][attOwner] += unitsKilled;
     b->battleMem[2][attOwner] += 1;
-    if (unitsLeft == attUnits) b->battleMem[3][attOwner] += 1;
+    if (unitsKilled == defUnits) b->battleMem[3][attOwner] += 1;
     if (cityBattle) {
         b->battleMem[4][attOwner] += 1;
-        if (unitsLeft == attUnits) b->battleMem[5][attOwner] += 1;
+        if (unitsKilled == defUnits) b->battleMem[5][attOwner] += 1;
     }
 }
 
@@ -30923,9 +30953,18 @@ static void AIHeroList(AIHeroInfo *h)
     short i, n = 0;
     for (i = 0; i < 6; i++) { h->rec[i] = -1; h->city[i] = -1; h->ruin[i] = -1; h->flightItem[i] = 0; }
     gAI->heroCount = 0;
-    for (i = AIArmyCount() - 1; i >= 0 && n < 6; i--) {
+    {   /* FUN_10014e44 walks the unit table from the last index down */
+        short recs[64], uids[64], nr = 0, j, k;
+        for (i = AIArmyCount() - 1; i >= 0; i--) {
+            short u = -1;
+            if (!AIRecMine(i) || !AIRecHasHero(i) || nr >= 64) continue;
+            for (k = 0; k < 4; k++) if (AI_REC(i)[0x16 + k] == 0x1C) { u = UnitUid(i, k); break; }
+            for (j = nr; j > 0 && uids[j - 1] < u; j--) { uids[j] = uids[j - 1]; recs[j] = recs[j - 1]; }
+            uids[j] = u; recs[j] = i; nr++;
+        }
+    for (j = 0; j < nr && n < 6; j++) {
         short t;
-        if (!AIRecMine(i) || !AIRecHasHero(i)) continue;
+        i = recs[j];
         h->rec[n] = i;
         t = GetTerrainType(AIRecX(i), AIRecY(i));
         if (t == 10) h->city[n] = AICityAt(AIRecX(i), AIRecY(i));
@@ -30933,6 +30972,7 @@ static void AIHeroList(AIHeroInfo *h)
         if (ArmyHasFlightItem(i)) h->flightItem[n] = 1;
         n++;
         gAI->heroCount++;
+    }
     }
 }
 /* FUN_100151e8: the hero searches the site it stands on */

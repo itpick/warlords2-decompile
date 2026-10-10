@@ -132,4 +132,38 @@ clicking. Results of the first run: `docs/2026-10-09-same-seed-run.md`.
 
 AI-internal fields (roles, production, orders) exist only in the remake's
 trace (`AI_TRACE=1`). The original exposes only what is on screen or in its
-saves (`tools/infinitemac/devloop/savedec.py`).
+saves (`tools/infinitemac/devloop/savedec.py`), and in its memory (below).
+
+### 4a. Reading both games' random streams and state
+
+The bridge reads the emulator's memory: `/mem?a=&n=` (hex of the wasm heap;
+the guest's RAM sits at heap offset 0, so a host offset is the Mac address),
+`/memfind?hex=` and `/seedscan?seed=&n=`. A bridge started before this
+change has no hook; restart it (`/quit`, then `node bridge.mjs --headless
+--port N`).
+
+The original: `tools/patch_orig_rnglog.py SEED SRC DST` makes a seeded copy
+that logs every `Random()` call (the return address of Dice's caller and the
+die) and notes every battle (units, values, hit points) and a few AI
+functions' arguments (`ENTRY_HOOKS`: FUN_10018b14, FUN_10018800). Name the
+copy differently from the app on the disk (for example "wl2 rnglog"), push
+its folder, open "The Outside World:Downloads:<folder>" in the Finder, drag
+it onto the "Warlords II" disk icon (972,172), and launch it from the disk.
+The copy stays on the disk until the bridge reboots.
+
+The remake: a `FIXED_SEED` build logs every `Dice` call with its caller and
+(n, sides, add), notes battles and AI choices (`RNG_NOTE`), and publishes
+where its state lives (`sRngState`). Normal builds have none of it.
+
+```bash
+export WL2_ELF=src/warlords2_ppc       # the linked image of the RUNNING remake build
+tools/rng_log.py --summary             # the remake's log, runs of one caller
+tools/rng_log.py --orig --notes        # the original's, with battle and AI notes
+tools/rng_log_diff.py --from 1200      # the first call whose die differs
+tools/state_diff.py                    # units, unit-table indices, gold, city owners
+```
+
+`rng_log_diff.py` compares the dice (sides, add) call by call, so the first
+difference is usually one roll after the decision that differs; the notes
+around it name the battle or the AI step. `state_diff.py` should be run at a
+human turn (both games idle). Results: `docs/2026-10-09-same-seed-ai.md`.

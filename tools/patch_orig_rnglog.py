@@ -110,6 +110,57 @@ def add_battle_notes(code, E):
     code[site:site + 4] = struct.pack('>I', bl(BATTLE_ROUNDS, BA, link=False))
     code += bytes(BA - GHIDRA_BASE - len(code)) + cave + bytes(0xA0 - len(cave))
     code += NOTE_MAGIC + bytes(8) + bytes(32 * NOTE_ENTRIES)
+    return NE
+
+
+# Function-entry notes: (address, tag, mode).  'args' notes r3..r7;
+# 'list6' notes r3, r4 and the first six shorts r6 points at (FUN_10018800's
+# group: unit-table indices, -1 for none).
+ENTRY_HOOKS = [
+    (0x10018B14, 2, 'args'),     # FUN_10018b14(city, ordered): a city's expansion
+    (0x10018800, 3, 'list6'),    # FUN_10018800(city, n, ordered, group, flag): the group it sends
+    (0x10010B30, 4, 'args'),     # FUN_10010b30(city, fromFront): the garrison placement
+    (0x1001A470, 5, 'args'),     # FUN_1001a470(city, flyersOnly): the pool release
+]
+
+
+def hi_lo(x):
+    hi = (x + 0x8000) >> 16
+    return hi & 0xFFFF, (x - (hi << 16)) & 0xFFFF
+
+
+def add_entry_hooks(code, E, NE, hooks=ENTRY_HOOKS):
+    """One cave per hooked function, its first instruction (mflr r0) made
+    a branch to it.  Each notes the Random() count, the tag, the arguments
+    and the caller into the battle notes' ring, does the mflr itself and
+    branches back to the function's second instruction."""
+    for func, tag, mode in hooks:
+        C = GHIDRA_BASE + ((len(code) + 15) & ~15)
+        h1, l1 = hi_lo(NE - (C + 8))
+        h2, l2 = hi_lo((E - 8) - NE)
+        w = [
+            0x7C0802A6, bl(C + 4, C + 8), 0x7D6802A6, 0x7C0803A6,
+            D(15, 11, 11, h1), D(14, 11, 11, l1),            # r11 = NE
+            D(32, 12, 11, -8), D(14, 12, 12, 1), D(36, 12, 11, -8),
+            0x54000000 | (12 << 21) | (10 << 16) | (5 << 11) | (13 << 6) | (26 << 1),
+            D(15, 9, 11, h2), D(32, 9, 9, l2),               # Random count
+            0x7D6B5214,                                      # add r11,r11,r10
+            D(36, 9, 11, 0), D(14, 9, 0, tag), D(36, 9, 11, 4),
+            D(36, 3, 11, 8), D(36, 4, 11, 12),
+        ]
+        if mode == 'list6':
+            w += [D(32, 9, 6, 0), D(36, 9, 11, 16), D(32, 9, 6, 4), D(36, 9, 11, 20),
+                  D(32, 9, 6, 8), D(36, 9, 11, 24)]
+        else:
+            w += [D(36, 5, 11, 16), D(36, 6, 11, 20), D(36, 7, 11, 24)]
+        w += [D(36, 0, 11, 28)]
+        w.append(bl(C + 4 * len(w), func + 4, link=False))
+        cave = b''.join(struct.pack('>I', x) for x in w)
+        site = func - GHIDRA_BASE
+        if struct.unpack('>I', code[site:site + 4])[0] != 0x7C0802A6:
+            raise ValueError('0x%x does not start with mflr r0' % func)
+        code[site:site + 4] = struct.pack('>I', bl(func, C, link=False))
+        code += bytes(C - GHIDRA_BASE - len(code)) + cave
 
 
 def patch(data, seed):
@@ -154,7 +205,8 @@ def patch(data, seed):
     code[site:site + 4] = struct.pack('>I', bl(DICE_RANDOM_CALL, A))
     code += bytes(cave_off - len(code)) + cave + bytes(0x60 - len(cave))
     code += MAGIC + bytes(8) + bytes(8 * ENTRIES)
-    add_battle_notes(code, E)
+    NE = add_battle_notes(code, E)
+    add_entry_hooks(code, E, NE)
     new_off = (len(data) + 15) & ~15
     data += bytes(new_off - len(data)) + code
     struct.pack_into('>IIII', data, sh + 8, len(code), len(code), len(code), new_off)

@@ -34,7 +34,10 @@ def test_patched_original_layout():
     total, unpacked, clen, coff = struct.unpack(">IIII", out[48:64])
     assert total == unpacked == clen and coff >= len(data)
     code = out[coff:coff + clen]
-    assert code[:0x2D654] == data[0x2E10:0x2E10 + 0x2D654]
+    first = min([0x2D654] + [f - 0x10000000 for f, _, _ in prl.ENTRY_HOOKS])
+    assert code[:first] == data[0x2E10:0x2E10 + first]
+    for f, _, _ in prl.ENTRY_HOOKS:                  # each hooked entry branches to its cave
+        assert words(code, f - 0x10000000, 1)[0] >> 26 == 18
     # Dice calls the cave instead of the Random glue; the cave ends in a
     # branch to the glue and its buffer header follows
     assert words(code, 0x5F268, 1) == [prl.bl(0x1005F268, 0x101178A0)]
