@@ -196,3 +196,157 @@ TEST(ai_stacks_follow_the_unit_table_and_its_leftover_fronts)
     CHECK_EQ(AIStackAt(103, 64, 0, 0, 0, &s), 3);
 }
 
+
+/* FUN_100448e4 -> FUN_10043e60 / FUN_10043248 with the flood flag: the
+ * start is -1 (cost 1), pass r expands the open cells within r of the
+ * start, the flood stops before pass `radius`, and a cell labelled after
+ * its scan keeps the dearer label (no shortest-path search).  Expected
+ * values: tools/ppc_decompiled FUN_10043248 transcribed (the transcription
+ * reproduced all 17472 cells of the original's grid at roll 7336 of the
+ * Erythea run).  The wall at x 42 / y 54 makes the sweep come round late:
+ * (43,60) is 21 where a shortest path costs 15. */
+TEST(the_ai_flood_is_the_originals_ring_sweep)
+{
+    short x, y;
+    unsigned long cs = 0;
+    path_world();
+    for (y = 0; y < FX_MAP_H; y++)
+        for (x = 0; x < FX_MAP_W; x++) {
+            unsigned char f = 1;
+            if ((x == 42 && y >= 54 && y <= 66) || (y == 54 && x >= 36 && x <= 42)) f = 0;
+            sPathFlagGrid[y * PATH_GRID_W + x] = f;
+        }
+    sPathMode = PMODE_GROUND; sPathFlags = 0; sPathOwner = 1; sPathPenalty = 30;
+    AIFloodRun(40, 60, 8);
+#define FL(x, y) sAIFloodCost[(y) * PATH_GRID_W + (x)]
+    CHECK_EQ(FL(40, 60), 1);
+    CHECK_EQ(FL(41, 60), 2);
+    CHECK_EQ(FL(43, 60), 21);
+    CHECK_EQ(FL(44, 60), 21);
+    CHECK_EQ(FL(43, 67), 9);
+    CHECK_EQ(FL(48, 60), -21);                      /* radius 8: labelled, never expanded */
+    CHECK_EQ(FL(49, 60), PATH_COST_MAX);            /* beyond the radius */
+    CHECK_EQ(FL(42, 60), PATH_COST_BLOCK);
+    CHECK_EQ(FL(40, 52), -12);
+    CHECK_EQ(FL(40, 53), 12);
+    CHECK_EQ(FL(32, 68), -9);
+#undef FL
+    for (y = 0; y < FX_MAP_H; y++)
+        for (x = 0; x < FX_MAP_W; x++)
+            cs = (cs * 31 + (unsigned short)sAIFloodCost[y * PATH_GRID_W + x]) & 0x7fffffffUL;
+    CHECK_EQ(cs, 517124948UL);
+}
+
+/* FUN_10041de8 selects the whole list before FUN_100448e4 floods with its
+ * mode: a hero with a flyer floods as a flyer even when the hero's record
+ * leads (Erythea round 7, side 1's redispatch: mode 2 in the original). */
+TEST(the_ai_flood_takes_the_whole_stacks_mode)
+{
+    AIStack s;
+    short hero, fly;
+    path_world();
+    fx_unit_types(29);
+    sUnitTypeTable[9 * UNIT_TYPE_ENTRY + UTE_STAT_FLYING] = 1;
+    sAIMe = 1;
+    hero = fx_army(47, 110, 1, 0x1C, -1, -1, -1);
+    fly = fx_army(47, 110, 1, 9, -1, -1, -1);
+    fx_gs()[0x60C + 1 * 0x1D + 0x1C] = 20;           /* the hero fights last: it leads */
+    fx_gs()[0x60C + 1 * 0x1D + 9] = 5;
+    s.n = 2; s.rec[0] = fly; s.rec[1] = hero;
+    CHECK_EQ(AIStackLead(&s), hero);
+    sSelectedArmy = -1; sStackCount = 0;
+    AIFloodForStack(&s, 3);
+    CHECK_EQ(sPathMode, PMODE_FLYING);
+    CHECK_EQ(sPathMoverCount, 2);
+    CHECK_EQ(sPathMovers[0], hero);
+    CHECK_EQ(sAIFloodCost[110 * PATH_GRID_W + 47], 1);
+    sAIMe = -1;
+}
+
+/* the number of Random() calls that take seed s0 to s1 (-1 past 500) */
+static short sg_count(long s0, long s1)
+{
+    unsigned long long s = (unsigned long long)(uint32_t)s0;
+    short n;
+    for (n = 0; n <= 500; n++) {
+        if ((long)(int32_t)s == s1) return n;
+        s = (s * 16807ULL) % 0x7FFFFFFFULL;
+    }
+    return -1;
+}
+
+/* FUN_10032a24 -> FUN_1000db10 runs at the side's turn start, before its
+ * step 0 (FUN_1000c9c8) installs its block, so the city roles it rolls on
+ * are the previous computer side's: for this side's cities that block
+ * holds no role 2/3/7 and nothing is rolled (Erythea round 7, side 3's
+ * offer from roll 8604: cost, 1d30, the city, then the name). */
+TEST(the_ai_hero_offer_reads_the_previous_sides_block)
+{
+    long seed = 1;
+    short pass, ci, calls[2];
+    unsigned char *gs;
+    for (pass = 0; pass < 2; pass++) {
+        fx_reset();
+        fx_unit_types(29);
+        gs = fx_gs();
+        *(short *)(gs + 0x136) = 7;                  /* turn 7: no free hero */
+        *(short *)(gs + 0x110) = 3;
+        *(short *)(gs + 0xd0 + 3 * 2) = 1;           /* side 3 is a computer */
+        *(short *)(gs + 0x186 + 3 * 0x14) = 3000;    /* gold for any cost */
+        ci = fx_city(30, 30, 3, 1, 10);
+        AIResetAll();
+        sAIBlocks[2].role[ci] = 0;
+        sAIBlocks[3].role[ci] = 7;
+        sAIMe = 3; gAI = &sAIBlocks[3];
+        sAIBlockInstalled = (pass == 0) ? 2 : 3;
+        for (seed = 1; seed < 100000; seed++) {      /* a seed whose 1d30 passes */
+            fx_seed(seed);
+            (void)Dice(1, 400, 300);
+            if (Dice(1, 30, 0) <= 6) break;
+        }
+        fx_seed(seed);
+        AIHeroOffer(3);
+        CHECK(*(short *)(gs + 0x1602) >= 1);         /* the hero (and its allies) */
+        calls[pass] = sg_count(seed, qd.randSeed);
+    }
+    /* cost, 1d30, 1d1 city, then the allies' 1d100 (no name list, no ally
+     * types here); side 3's own block would add its role-7 Dice(1,100,100) */
+    CHECK_EQ(calls[0], 4);
+    CHECK_EQ(calls[1], 5);
+    sAIMe = -1; gAI = NULL; sAIBlockInstalled = -1;
+}
+
+/* The computer's turn start (the function that calls FUN_10032a24, then
+ * FUN_10033548, FUN_10033b4c, FUN_10064e84 income, ..., FUN_10021e20
+ * production): the hero offer comes before the income, so it weighs the
+ * cost against the gold the side had before this turn's income (Erythea
+ * round 8: side 1 had 357 at its offer, 395 after). */
+TEST(the_ai_hero_offer_comes_before_the_turns_income)
+{
+    long seed;
+    short cost, gold, n0, ci;
+    unsigned char *gs;
+    fx_reset();
+    fx_unit_types(29);
+    gs = fx_gs();
+    *(short *)(gs + 0x136) = 7;
+    *(short *)(gs + 0x110) = 3;
+    *(short *)(gs + 0x138 + 3 * 2) = 1;                /* alive */
+    *(short *)(gs + 0xd0 + 3 * 2) = 1;                 /* computer */
+    ci = fx_city(30, 30, 3, 1, 200);                   /* income 200 */
+    (void)ci;
+    AIResetAll();
+    for (seed = 1; seed < 100000; seed++) {            /* a seed whose 1d30 passes */
+        fx_seed(seed);
+        cost = Dice(1, 400, 300);
+        if (Dice(1, 30, 0) <= 6) break;
+    }
+    gold = (short)(cost - 1);                          /* short by one before the income */
+    *(short *)(gs + 0x186 + 3 * 0x14) = gold;
+    n0 = *(short *)(gs + 0x1602);
+    fx_seed(seed);
+    ProcessStartOfTurn(3);
+    CHECK_EQ(*(short *)(gs + 0x1602), n0);             /* no hero: the gold was short */
+    CHECK(*(short *)(gs + 0x186 + 3 * 0x14) > gold);   /* the income came after */
+    CHECK_EQ(sg_count(seed, qd.randSeed), 1);         /* the cost only: short, no 1d30 */
+}

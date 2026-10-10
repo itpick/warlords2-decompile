@@ -1161,8 +1161,8 @@ static void RngNote(short tag, short a, short b, short c)
 /* Where the state lives, for tools/state_diff.py: the game state handle's
  * pointer, the army records (ARMY_REC_SIZE each), the city/site records
  * and their count.  Filled at the first Dice call. */
-static volatile struct { long magic[2]; long gs, armies, cities, cityCount, uids, flood, brk; } sRngState =
-    { { 0x574C3253L, 0x54415445L }, 0, 0, 0, 0, 0, 0, 0 };
+static volatile struct { long magic[2]; long gs, armies, cities, cityCount, uids, flood, brk, fbrk, fgrid; } sRngState =
+    { { 0x574C3253L, 0x54415445L }, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 static short DiceImpl(short n, short sides, short add, long ra);
 static short __attribute__((noinline)) Dice(short n, short sides, short add)
 {
@@ -1550,6 +1550,13 @@ static short     sAIProgress = 0;
 static Str255    sInfoMsg;                /* info-area message over the AI turn display */         /* its flag strip as a progress bar, 0-100 */
 static Boolean   sDragPreview = false;
 static Boolean   sClickWasDrag = false;
+/* The map's ground layers (terrain, roads, port anchors) as last drawn,
+ * reused while the view and the visible tiles are unchanged (DrawMapInWindow). */
+#define GROUND_MAX_TILES 64
+static GWorldPtr sGroundGW = NULL;
+static short sGroundKey[9];
+static unsigned char sGroundSnap[3 * GROUND_MAX_TILES * GROUND_MAX_TILES];
+static Boolean sGroundValid = false;
 static GWorldPtr sMapBufGW = NULL;   /* the map window's offscreen copy (DrawMapInWindow) */   /* the last map press was a drag */     /* mouse held on the map with an army selected */
 static short     sPathTargetX = -1, sPathTargetY = -1;  /* current path search target */
 static RGBColor  sHaloKey;
@@ -1933,6 +1940,7 @@ static void LayoutMapScrollBars(WindowPtr w);
 static void ComputePathGridOnly(short srcX, short srcY, short armyIdx);
 static void TracePreviewPath(short srcX, short srcY, short dstX, short dstY);
 static void PathBuildStack(short armyIdx, Boolean useSelection);
+static void PathBuildMovers(const short *recs, short n);
 static short PathStackSig(short armyIdx);
 static short RunStoredPath(short armyIdx);
 static void PathCacheClear(void);
@@ -10765,6 +10773,7 @@ static void DrawMapInWindow(WindowPtr win)
     WindowPtr      realWin = win;
     CGrafPtr       bufSavePort = NULL;
     GDHandle       bufSaveDev = NULL;
+    Boolean        groundCache = false, groundHit = false;
 
     if (!sMapLoaded || *gMapTiles == 0)
         return;
@@ -10832,6 +10841,64 @@ static void DrawMapInWindow(WindowPtr win)
         OffsetRect(&mapClip, sViewPixX, sViewPixY);
         ClipRect(&mapClip);
     }
+
+    /* The ground layers depend only on the view, the window size and the
+     * visible tiles' MAP bytes and road bytes: while those are unchanged
+     * (a computer stack walking across the view redraws the whole map at
+     * every step, AIAnimateStep) the last drawing is copied back instead
+     * of some 400 CopyBits.  The pixels are the same. */
+    {
+        short key[9], n = 0;
+        Boolean roads = (*gRoadData != 0 && sRoadGW != NULL && sRoadBgColorValid);
+        groundCache = (bufGW != NULL && sTerrainLoaded && sTerrainGW != NULL && sTerrainGW2 != NULL &&
+                       tilesWide <= GROUND_MAX_TILES && tilesHigh <= GROUND_MAX_TILES);
+        if (groundCache) {
+            key[0] = sViewportX; key[1] = sViewportY; key[2] = sViewPixX; key[3] = sViewPixY;
+            key[4] = bufGW->portRect.right - bufGW->portRect.left;
+            key[5] = bufGW->portRect.bottom - bufGW->portRect.top;
+            key[6] = tilesWide; key[7] = tilesHigh; key[8] = roads;
+            groundHit = sGroundValid && sGroundGW != NULL;
+            for (n = 0; n < 9; n++) if (key[n] != sGroundKey[n]) groundHit = false;
+            n = 0;
+            for (ty = 0; ty < tilesHigh; ty++)
+                for (tx = 0; tx < tilesWide; tx++, n += 3) {
+                    short mx = sViewportX + tx, my = sViewportY + ty;
+                    unsigned char a = 0xFF, b = 0xFF, c = 0;
+                    if (mx < sMapWidth && my < sMapHeight) {
+                        /* what the layers read: the terrain index, the anchor bit, the road type */
+                        a = mapData[my * 0xE0 + mx * 2]; b = mapData[my * 0xE0 + mx * 2 + 1] & 0x80;
+                        if (roads && mx < 112 && my < 156) c = ((unsigned char *)*gRoadData)[my * 112 + mx] & 0x1F;
+                    }
+                    if (sGroundSnap[n] != a || sGroundSnap[n + 1] != b || sGroundSnap[n + 2] != c) groundHit = false;
+                    sGroundSnap[n] = a; sGroundSnap[n + 1] = b; sGroundSnap[n + 2] = c;
+                }
+            for (n = 0; n < 9; n++) sGroundKey[n] = key[n];
+            if (groundHit && !LockPixels(GetGWorldPixMap(sGroundGW))) groundHit = false;   /* purged */
+            sGroundValid = false;               /* until this drawing is stored */
+        }
+    }
+    if (groundHit) {
+        RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+        Rect mapClip = winRect, cr = winRect;
+        /* only what reaches the window this time needs fresh ground: the
+         * window's visible region (inside BeginUpdate, the update region);
+         * the layers above are drawn whole, and every later update restores
+         * the ground over its own region first */
+        if (((GrafPtr)realWin)->visRgn != NULL &&
+            !SectRect(&(**((GrafPtr)realWin)->visRgn).rgnBBox, &winRect, &cr))
+            SetRect(&cr, 0, 0, 0, 0);
+        SetOrigin(0, 0);
+        ClipRect(&winRect);
+        RGBForeColor(&black); RGBBackColor(&white);
+        if (!EmptyRect(&cr))
+            CopyBits((BitMap *)*GetGWorldPixMap(sGroundGW), &((GrafPtr)win)->portBits,
+                     &cr, &cr, srcCopy, NULL);
+        UnlockPixels(GetGWorldPixMap(sGroundGW));
+        SetOrigin(sViewPixX, sViewPixY);
+        OffsetRect(&mapClip, sViewPixX, sViewPixY);
+        ClipRect(&mapClip);
+        sGroundValid = true;
+    } else {
 
     /* Lock terrain sheet pixmaps for the draw loop */
     if (sTerrainLoaded) {
@@ -10977,6 +11044,40 @@ static void DrawMapInWindow(WindowPtr win)
                 DrawPortAnchor(&ar);
             }
     }
+
+    if (groundCache) {                          /* keep this drawing of the ground layers */
+        short bw = bufGW->portRect.right - bufGW->portRect.left;
+        short bh = bufGW->portRect.bottom - bufGW->portRect.top;
+        if (sGroundGW != NULL && (sGroundGW->portRect.right - sGroundGW->portRect.left != bw ||
+                                  sGroundGW->portRect.bottom - sGroundGW->portRect.top != bh)) {
+            DisposeGWorld(sGroundGW); sGroundGW = NULL;
+        }
+        if (sGroundGW == NULL) {
+            Rect b;
+            Handle ct = (Handle)sGameCTab;
+            SetRect(&b, 0, 0, bw, bh);
+            if (ct == NULL || HandToHand(&ct) != noErr) ct = NULL;
+            /* the application heap seldom has room for a second window-sized
+             * GWorld: temporary memory first */
+            if (NewGWorld(&sGroundGW, 8, &b, (CTabHandle)ct, NULL, useTempMem) != noErr &&
+                NewGWorld(&sGroundGW, 8, &b, (CTabHandle)ct, NULL, 0) != noErr) sGroundGW = NULL;
+        }
+        if (sGroundGW != NULL && LockPixels(GetGWorldPixMap(sGroundGW))) {
+            RGBColor black = {0, 0, 0}, white = {0xFFFF, 0xFFFF, 0xFFFF};
+            Rect mapClip = winRect;
+            SetOrigin(0, 0);
+            ClipRect(&winRect);
+            RGBForeColor(&black); RGBBackColor(&white);
+            CopyBits(&((GrafPtr)win)->portBits, (BitMap *)*GetGWorldPixMap(sGroundGW),
+                     &winRect, &winRect, srcCopy, NULL);
+            UnlockPixels(GetGWorldPixMap(sGroundGW));
+            SetOrigin(sViewPixX, sViewPixY);
+            OffsetRect(&mapClip, sViewPixX, sViewPixY);
+            ClipRect(&mapClip);
+            sGroundValid = true;
+        }
+    }
+    }   /* the ground layers drawn */
 
     /* --- Fog of war: drawn AFTER all sprites (see block below stack badges) --- */
 
@@ -15250,10 +15351,7 @@ static short PathDirFromDelta(short dx, short dy)
 static void PathBuildStack(short armyIdx, Boolean useSelection)
 {
     unsigned char *gs;
-    short count, i, s, n = 0;
-    Boolean embarked = false, naval = false, anyUnit = false, anyHero = false,
-            anyNonHero = false, allFly = true, nonHeroFly = true, flightItem = false,
-            hills = false, forest = false;
+    short count, i, n = 0;
 
     sPathMoverCount = 0; sPathMode = PMODE_GROUND; sPathFlags = 0; sPathOwner = -1;
     if (*gGameState == 0 || armyIdx < 0) return;
@@ -15276,8 +15374,25 @@ static void PathBuildStack(short armyIdx, Boolean useSelection)
         }
     }
     if (n == 0) sPathMovers[n++] = armyIdx;
+    PathBuildMovers(sPathMovers, n);
+}
+
+/* The movement rules of the movers recs[0..n) (recs[0] is the lead; the
+ * owner is its owner): FUN_10041de8's mode and abilities for a selected
+ * stack.  recs may be sPathMovers itself. */
+static void PathBuildMovers(const short *recs, short n)
+{
+    short i, s;
+    Boolean embarked = false, naval = false, anyUnit = false, anyHero = false,
+            anyNonHero = false, allFly = true, nonHeroFly = true, flightItem = false,
+            hills = false, forest = false;
+
+    sPathMode = PMODE_GROUND; sPathFlags = 0;
+    if (*gGameState == 0 || n <= 0) { sPathMoverCount = 0; sPathOwner = -1; return; }
+    if (n > 8) n = 8;
+    for (i = 0; i < n; i++) sPathMovers[i] = recs[i];
     sPathMoverCount = n;
-    sPathOwner = (short)(unsigned char)(ARMY_REC(armyIdx))[0x15];
+    sPathOwner = (short)(unsigned char)(ARMY_REC(sPathMovers[0]))[0x15];
 
     for (i = 0; i < n; i++) {
         unsigned char *a = ARMY_REC(sPathMovers[i]);
@@ -27066,6 +27181,10 @@ static Boolean AIMovesShown(void)
     return sGameSpeed < 3 && !sOptHiddenMap;
 }
 
+/* the tile the shown computer stack was last drawn on (AIShowStack /
+ * AIAnimateStep), with the record it belongs to; -1 when the next step must redraw the whole map */
+static short sAIAnimX = -1, sAIAnimY = -1;
+static short sAIAnimRec = -1;
 static void AIShowStack(short armyIdx)
 {
     unsigned char *a;
@@ -27084,6 +27203,7 @@ static void AIShowStack(short armyIdx)
         InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
         SetPort(sp);
     }
+    sAIAnimX = *(short *)(a + 0x00); sAIAnimY = *(short *)(a + 0x02); sAIAnimRec = armyIdx;
     DrainUpdates();
     while (TickCount() - t < 1) WaitNextEvent(0, &ev, 0, NULL);
 }
@@ -27333,13 +27453,17 @@ static short   sAIAllyFlag[8];
 static void AIHeroHandover(short *heroes, short nHeroes); /* FUN_10016df0 (below) */
 static AIBlock  sAIBlocks[8];
 static AIBlock *gAI = NULL;                 /* the block of the player whose turn runs */
+/* The block FUN_1000c9c8 locked last (_DAT_3be00000 at the next turn's
+ * start): step 0 installs the side's block, and nothing puts it back at
+ * the turn's end (FUN_1000d808 only unlocks it). */
+static short    sAIBlockInstalled = -1;
 static short    sAIMe = -1;
 static AIOrder  sAIOrd[AI_MAX_RECS];
 static short    sAIOrdValid = 0;            /* records below this index have maintained orders */
 static unsigned char sAINbIdx[AI_MAX_CITIES][AI_NB];
 static unsigned char sAINbDist[AI_MAX_CITIES][AI_NB];
 static Boolean  sAINbValid = false;
-static short    sAIFloodCost[PATH_GRID_W * PATH_GRID_H];   /* the flood grid (-1 unlabelled) */
+static short    sAIFloodCost[PATH_GRID_W * PATH_GRID_H];   /* the flood grid (FUN_10043248's: 30000 unlabelled, 30001 blocked, <0 open) */
 /* sAILastX/Y (FUN_1005619c's last position) are defined with Next Group */
 static short    sAIExpandLastTarget = -1, sAIExpandLastCity = -1;   /* FUN_10018800 statics */
 static short    sAIGateTarget = -1;          /* set by AIAttackGate when the stack is redirected */
@@ -27631,6 +27755,7 @@ static void AIResetAll(void)
 {
     short p, i;
     for (p = 0; p < 8; p++) sAIBlocks[p].inited = false;
+    sAIBlockInstalled = -1;
     for (i = 0; i < AI_MAX_RECS; i++) AIOrdClear(i);
     sAIOrdValid = 0;
     sAINbValid = false;
@@ -27719,59 +27844,86 @@ static void AIInitBlock(short p)
 /* ------------------------------------------------------------------ */
 static Boolean sPathForceAI = false;        /* BuildPathFlagGrid: the player type is "computer" */
 
-/* Dijkstra from (sx,sy) over the prepared sPathFlagGrid, expanding cells
- * within Chebyshev distance radius (their neighbours get labelled), with
- * the search's blocking rules (PathSearch attempt 0). */
+/* FUN_100448e4 -> FUN_10043e60 with the flood flag 0x10: FUN_10042ee4's
+ * grid (30000 unlabelled, 30001 blocked), the start set to -1 (cost 1),
+ * then FUN_10043248's passes with the destination = the start: pass r
+ * scans the cells within Chebyshev distance r of the start (x-major, then
+ * y; clamped to the start +/- radius), expands every open (<= 0) cell and
+ * labels its neighbours with -(cost so far + the neighbour's cost) when
+ * that beats |label|.  The flood stops before pass `radius` (so it
+ * expands the cells within radius-1 and labels those within radius), or
+ * after a pass that expands nothing (FUN_10043e60 then runs attempt 1 on
+ * the same grid, which finds nothing open and changes nothing).  It is not
+ * a shortest-path search: a cell labelled after its scan in the last
+ * passes keeps a dearer label.  The grid is left as the original leaves
+ * it: open cells negative (FUN_10003768 = abs reads them), 30000 / 30001.
+ * Erythea round 7 (seed 715183689), side 1's redispatch flood at roll
+ * 7336: every one of the 17472 cells equals the original's. */
 static void AIFloodRun(short sx, short sy, short radius)
 {
-    static short qx[PATH_GRID_W * PATH_GRID_H], qy[PATH_GRID_W * PATH_GRID_H];
-    long i, total = (long)PATH_GRID_W * PATH_GRID_H, head = 0, tail = 0;
+    long i, total = (long)PATH_GRID_W * PATH_GRID_H;
     short maxX = sMapWidth > PATH_GRID_W ? PATH_GRID_W : sMapWidth;
     short maxY = sMapHeight > PATH_GRID_H ? PATH_GRID_H : sMapHeight;
-    short x, y;
+    short x, y, ring, bx0, by0, bx1, by1;
     Boolean fog = false;
 
 #ifdef WL2_FIXED_SEED
     sRngState.flood = (long)sAIFloodCost;
 #endif
-    for (i = 0; i < total; i++) sAIFloodCost[i] = -1;
+    for (i = 0; i < total; i++) sAIFloodCost[i] = PATH_COST_MAX;
     if (sx < 0 || sy < 0 || sx >= maxX || sy >= maxY) return;
     if (sOptHiddenMap && sPathOwner >= 0 && sPathOwner < 8 && !sPathForceAI &&
         *(short *)(AI_GS + 0xd0 + sPathOwner * 2) == 0) fog = true;
-    /* blocked cells get PATH_COST_BLOCK */
+    /* FUN_10042ee4: blocked cells get PATH_COST_BLOCK (PathSearch's rules,
+     * the destination being the start) */
     for (y = 0; y < maxY; y++)
         for (x = 0; x < maxX; x++) {
             unsigned char f = sPathFlagGrid[y * PATH_GRID_W + x];
             Boolean blocked;
             if (sPathMode == PMODE_GROUND)      blocked = (f & 7) == 0;
-            else if (sPathMode == PMODE_NAVAL)  blocked = !(f & PFLAG_WATER); /* FUN_10042ee4: a coastal city stays open */
+            else if (sPathMode == PMODE_NAVAL)  blocked = !(f & PFLAG_WATER);
             else                                blocked = (f & PFLAG_CITY) && (f & 7) == 0;
-            /* ground and flying: only cost-0 tiles block (foreign and neutral
-             * cities). Naval blocks a tile only when it has no water bit. */
-            if (fog && !(x == sx && y == sy) && !FogGetBit(sFogExplored[sPathOwner], x, y)) blocked = true;
+            if (fog && !FogGetBit(sFogExplored[sPathOwner], x, y)) {
+                Boolean exempt = (sPathMode == PMODE_GROUND) ? (x == sx && y == sy) : (x == sx || y == sy);
+                if (!exempt) blocked = true;
+            }
             if (blocked) sAIFloodCost[y * PATH_GRID_W + x] = PATH_COST_BLOCK;
         }
-    sAIFloodCost[sy * PATH_GRID_W + sx] = 0;
-    qx[tail] = sx; qy[tail] = sy; tail++;
-    /* label-correcting search (costs are small; the queue is a plain FIFO) */
-    while (head < tail) {
-        short cx = qx[head], cy = qy[head], d;
-        short v = sAIFloodCost[cy * PATH_GRID_W + cx];
-        unsigned char fc = sPathFlagGrid[cy * PATH_GRID_W + cx];
-        head++;
-        if (cx - sx > radius || sx - cx > radius || cy - sy > radius || sy - cy > radius) continue;
-        for (d = 0; d < 8; d++) {
-            short nx = cx + sPathDX[d], ny = cy + sPathDY[d], c, g, nv;
-            if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
-            g = sAIFloodCost[ny * PATH_GRID_W + nx];
-            if (g == PATH_COST_BLOCK) continue;
-            c = PathRelaxCost(fc, sPathFlagGrid[ny * PATH_GRID_W + nx], false);
-            if (c < 0) continue;
-            nv = (short)(v + c);
-            if (g >= 0 && nv >= g) continue;
-            sAIFloodCost[ny * PATH_GRID_W + nx] = nv;
-            if (tail < total) { qx[tail] = nx; qy[tail] = ny; tail++; }
+    /* FUN_10043e60: a blocked start is opened only on a city tile */
+    if (sAIFloodCost[sy * PATH_GRID_W + sx] == PATH_COST_BLOCK &&
+        !(sPathFlagGrid[sy * PATH_GRID_W + sx] & PFLAG_CITY)) return;
+    sAIFloodCost[sy * PATH_GRID_W + sx] = -1;
+    bx0 = sx - radius; if (bx0 < 0) bx0 = 0;
+    by0 = sy - radius; if (by0 < 0) by0 = 0;
+    bx1 = sx + radius; if (bx1 >= maxX) bx1 = maxX - 1;
+    by1 = sy + radius; if (by1 >= maxY) by1 = maxY - 1;
+    for (ring = 0; ring != radius; ring++) {
+        short xlo = sx - ring, xhi = sx + ring, ylo = sy - ring, yhi = sy + ring;
+        Boolean changed = false;
+        if (xlo < bx0) xlo = bx0;  if (xhi > bx1) xhi = bx1;
+        if (ylo < by0) ylo = by0;  if (yhi > by1) yhi = by1;
+        for (x = xlo; x <= xhi; x++) {
+            for (y = ylo; y <= yhi; y++) {
+                short v = sAIFloodCost[y * PATH_GRID_W + x], d;
+                unsigned char fc;
+                if (v >= 1) continue;               /* expanded, unlabelled or blocked */
+                sAIFloodCost[y * PATH_GRID_W + x] = (short)-v;
+                changed = true;
+                fc = sPathFlagGrid[y * PATH_GRID_W + x];
+                for (d = 0; d < 8; d++) {
+                    short nx = x + sPathDX[d], ny = y + sPathDY[d], g, c, nv;
+                    if (nx < 0 || nx >= maxX || ny < 0 || ny >= maxY) continue;
+                    g = sAIFloodCost[ny * PATH_GRID_W + nx];
+                    if (g == PATH_COST_BLOCK) continue;
+                    c = PathRelaxCost(fc, sPathFlagGrid[ny * PATH_GRID_W + nx], nx == sx && ny == sy);
+                    if (c < 0) continue;
+                    nv = (short)(-v + c);
+                    if (g < 0) g = (short)-g;
+                    if (nv < g) sAIFloodCost[ny * PATH_GRID_W + nx] = (short)-nv;
+                }
+            }
         }
+        if (!changed) break;
     }
 }
 
@@ -27779,12 +27931,24 @@ static void AIFloodRun(short sx, short sy, short radius)
  * (sPathMode/sPathFlags/sPathOwner prepared by PathBuildStack) */
 static void AIFloodForStack(const AIStack *s, short radius)
 {
-    short lead = AIStackLead(s);
+    short lead = AIStackLead(s), recs[8], n = 0, i;
     if (lead < 0) return;
-    PathBuildStack(lead, lead == sSelectedArmy);
+    /* the mode is the whole stack's (FUN_10041de8 selects the list first):
+     * a hero with a flyer floods as a flyer (Erythea round 7, side 1) */
+    recs[n++] = lead;
+    for (i = 0; i < s->n && n < 8; i++) if (s->rec[i] != lead) recs[n++] = s->rec[i];
+    PathBuildMovers(recs, n);
+    RNG_NOTE(10, radius, AIRecX(lead), AIRecY(lead));
+    RNG_NOTE(14, sPathMode, sPathFlags, n);
     BuildPathFlagGrid();
     PathSetPenalty(AIRecX(lead), AIRecY(lead), AIRecX(lead), AIRecY(lead));   /* FUN_10042ee4 with dist 0 */
     AIFloodRun(AIRecX(lead), AIRecY(lead), radius);
+#ifdef WL2_FIXED_SEED
+    /* for tools: the flood is complete; sRngState.fbrk stops here (the
+     * patched original stops at the entry of the flood's consumers) */
+    sRngState.fgrid = (long)sPathFlagGrid;
+    while (sRngState.fbrk != 0 && sRngLog.count >= sRngState.fbrk) { }
+#endif
 }
 
 /* FUN_10020d88: the cheapest labelled tile on the ring walked round the
@@ -27800,8 +27964,8 @@ static short AICityReachCost(short ci, Boolean big, Boolean *ok)
         x += sPathDX[kAIRingDirs[i]]; y += sPathDY[kAIRingDirs[i]];
         if (x < 0 || y < 0 || x >= sMapWidth || y >= sMapHeight) break;   /* FUN_10017170 fails: the walk ends */
         v = sAIFloodCost[y * PATH_GRID_W + x];
-        if (v < 0 || v == PATH_COST_BLOCK) continue;
-        if (v < best) { best = v; *ok = true; }
+        if (v < 0) v = (short)-v;                 /* FUN_10003768: an open cell counts */
+        if (v < best) { best = v; *ok = true; }   /* 30000 / 30001 never beat the cap */
     }
     return best;
 }
@@ -28519,14 +28683,34 @@ static void AIAnimateStep(short x, short y)
 {
     unsigned long t = TickCount();
     EventRecord ev;
+    short vx = sViewportX, vy = sViewportY, px = sViewPixX, py = sViewPixY;
     RevealTile(x, y);
     if (gMainGameWindow != NULL && *gMainGameWindow != 0) {
+        WindowPtr mw = (WindowPtr)*gMainGameWindow;
         GrafPtr sp;
+        Rect r = mw->portRect;
         GetPort(&sp);
-        SetPort((WindowPtr)*gMainGameWindow);
-        InvalRect(&((WindowPtr)*gMainGameWindow)->portRect);
+        SetPort(mw);
+        if (vx == sViewportX && vy == sViewportY && px == sViewPixX && py == sViewPixY &&
+            sAIAnimX >= 0 && sAIAnimRec == sSelectedArmy && sAIAnimX - x <= 1 && x - sAIAnimX <= 1 && sAIAnimY - y <= 1 && y - sAIAnimY <= 1) {
+            /* the view stayed: only the stack's old and new tiles change on
+             * the screen (no path is drawn for a computer stack, and AI
+             * moves are shown only without the hidden map, so no fog) - the
+             * update copies just them, a tile of margin round each */
+            short x0 = (x < sAIAnimX ? x : sAIAnimX) - 1, y0 = (y < sAIAnimY ? y : sAIAnimY) - 1;
+            short x1 = (x > sAIAnimX ? x : sAIAnimX) + 2, y1 = (y > sAIAnimY ? y : sAIAnimY) + 2;
+            Rect d;
+            SetRect(&d, (short)((x0 - sViewportX) * TERRAIN_TILE_W - sViewPixX),
+                        (short)((y0 - sViewportY) * TERRAIN_TILE_H - sViewPixY),
+                        (short)((x1 - sViewportX) * TERRAIN_TILE_W - sViewPixX),
+                        (short)((y1 - sViewportY) * TERRAIN_TILE_H - sViewPixY));
+            d.left += r.left; d.right += r.left; d.top += r.top; d.bottom += r.top;
+            if (SectRect(&d, &r, &d)) InvalRect(&d);
+        } else
+            InvalRect(&r);
         SetPort(sp);
     }
+    sAIAnimX = x; sAIAnimY = y; sAIAnimRec = sSelectedArmy;
     DrainUpdates();
     while (TickCount() - t < 1) WaitNextEvent(0, &ev, 0, NULL);
 }
@@ -28704,6 +28888,7 @@ static short AIMoveStack(AIStack *s, short dx, short dy)
     if (s->n == 0) return 0;
     if (dx < 0 || dy < 0 || dx >= sMapWidth || dy >= sMapHeight) return 0;
     task = sAIOrd[AIStackLead(s)].type;             /* (status >> 12) & 0xF, read once */
+    RNG_NOTE(15, dx, dy, UnitUid(AIStackLead(s), 0));
     do {
         short bx, by;
         again = false;
@@ -28724,6 +28909,7 @@ static short AIMoveStack(AIStack *s, short dx, short dy)
             len = ComputeWavefrontPath(x, y, dx, dy, lead);
             if (len < 0) { AIUntagStack(s); sSelectedArmy = -1; sStackCount = 0; return 1; }
             ExecutePathSteps(lead);
+            sAIAnimX = -1;                                  /* the next stack redraws in full */
             r = sPathResult; bx = sPathBlockX; by = sPathBlockY;
             if (r == 3) {
                 /* FUN_100180d0: the battle; while units survive, FUN_10041de8
@@ -30041,13 +30227,19 @@ static void AIHeroOffer(short aiPlayer)
             if (n++ == kth) break;
         }
     if (pickCity == -1) return;
-    {   /* FUN_1000db10: role 7 Dice(1,100,100), role 2 Dice(1,100,50),
-         * role 3 Dice(1,100,0); the first highest (from the last city) */
+    if (sAIBlockInstalled >= 0) {
+        /* FUN_1000db10: role 7 Dice(1,100,100), role 2 Dice(1,100,50),
+         * role 3 Dice(1,100,0); the first highest (from the last city).
+         * It runs before this side's step 0, so the roles it reads are
+         * those of the block still installed, the previous computer
+         * side's (Erythea round 7: side 3's offer rolled nothing in the
+         * original, its own block held three such cities) */
+        const AIBlock *rb = &sAIBlocks[sAIBlockInstalled];
         short best = 0;
         for (ci = AICityCount() - 1; ci >= 0; ci--) {
             short v = 0;
             if (AI_CITY(ci)[0x17] >= 2 || AICityOwner(ci) != aiPlayer) continue;
-            switch (gAI->role[ci]) {
+            switch (rb->role[ci]) {
                 case 7: v = Dice(1, 100, 100); break;
                 case 2: v = Dice(1, 100, 50); break;
                 case 3: v = Dice(1, 100, 0); break;
@@ -31152,6 +31344,10 @@ static void AIHeroPickCity(short idx, AIHeroInfo *h)
 static short AIHeroChoose(short idx, AIHeroInfo *h)
 {
     short choice = (h->temple != -1) ? 1 : 0, best = 0, v;
+    RNG_NOTE(30, idx, h->temple, h->templeDist);
+    RNG_NOTE(31, h->ruin2, h->ruinDist, h->cityT);
+    RNG_NOTE(32, h->cityDist, h->item, h->itemDist);
+    RNG_NOTE(33, h->city[idx], h->city[idx] >= 0 ? gAI->unitCount[h->city[idx]] : -1, 0);
     v = AIRnd(20, 20);
     if (choice) best = (short)(v - h->templeDist + 100);
     v = (short)(AIRnd(20, 20) - h->ruinDist + 100);
@@ -31945,7 +32141,7 @@ static short AIFieldAttack(AIStack *s, short targetPlayer, short radius)
             t = GetTerrainType(px, py);
             if (t == 10 || t == 3 || t == 2) continue;
             cost = sAIFloodCost[py * PATH_GRID_W + px];
-            if (cost < 0) cost = (short)-cost;          /* FUN_10003768 = abs: an unreached tile is 1 */
+            if (cost < 0) cost = (short)-cost;          /* FUN_10003768 = abs: open cells count, 30000 = unreached */
             if (cost == PATH_COST_BLOCK || cost > minMP - 1) continue;
             if (!FogGetBit(sFogExplored[sAIMe], px, py)) continue;   /* FUN_1001b584 0x1001b6fc: bit 0x20, not gated on gs+0x124 */
             est = AIWinEstimate(s, px, py);
@@ -32156,8 +32352,8 @@ static void ExecuteAITurn(short aiPlayer)
     AIOrdSync();
     AITurnTotals();                                  /* the turn-start income / upkeep */
 
-    /* the turn-start hero offer (PPC FUN_10032a24, as for a human) */
-    AIHeroOffer(aiPlayer);
+    /* the turn-start hero offer ran in ProcessStartOfTurn, before the
+     * income and the production (FUN_10032a24 in the computer's turn start) */
     AIOrdSync();
     UidSync();
     /* the quest at turn start (FUN_1004e384(-1), PPC_0002.c:21317) */
@@ -32165,6 +32361,7 @@ static void ExecuteAITurn(short aiPlayer)
 
     /* step 0 (FUN_1000c9c8): ally flag, neighbour table, role reset */
     sAIAllyFlag[aiPlayer] = gAI->allyHumans;
+    sAIBlockInstalled = aiPlayer;                    /* FUN_1000c9c8 locks this side's block */
     AIStep0();
     AISetProgress(10);
     /* step 1 (FUN_1000cafc): diplomacy FUN_10011804, heroes FUN_100164e4 */
@@ -32175,15 +32372,19 @@ static void ExecuteAITurn(short aiPlayer)
     if (AIHidden()) AIStepRelease();
     AISetProgress(20);
     /* step 3 (FUN_1000cbb8): FUN_10014214 hero + flyer expeditions */
+    RNG_NOTE(16, sAIMe, 0, 0);
     AIStepExpeditions();
     AISetProgress(25);
     /* step 4 (FUN_1000cc08): FUN_1001d014 attack groups */
+    RNG_NOTE(17, sAIMe, 0, 0);
     AIStepAttackGroups();
     AISetProgress(30);
     /* step 5 (FUN_1000cc58): FUN_10013484 execute orders */
+    RNG_NOTE(18, sAIMe, 0, 0);
     AIStepExecute();
     AISetProgress(40);
     /* step 6 (FUN_1000cca8): FUN_1001497c re-dispatch idle stacks */
+    RNG_NOTE(19, sAIMe, 0, 0);
     AIStepRedispatch(false);
     AISetProgress(45);
     /* step 7 (FUN_1000ccf8): FUN_1001f9e4 roles */
@@ -32196,6 +32397,7 @@ static void ExecuteAITurn(short aiPlayer)
     AIStepExpand();
     AISetProgress(60);
     /* step 10 (FUN_1000cdf4): FUN_10013484 execute orders again */
+    RNG_NOTE(18, sAIMe, 0, 0);
     AIStepExecute();
     AISetProgress(65);
     /* step 11 (FUN_1000ce44): FUN_10013040 neighbour raids */
@@ -33185,6 +33387,18 @@ static void ProcessStartOfTurn(short player)
             if (QuestCityAt(*(short *)(a + 0), *(short *)(a + 2)) >= 0)
                 a[0x2C] &= ~ARMY_EMBARKED_BIT;
         }
+    }
+
+    /* --- 0c3. The computer's hero offer (FUN_10032a24, then FUN_10033548):
+     * first in its turn start, after the turn music and before the level-ups,
+     * the income and the production.  So the offer sees the gold before this
+     * turn's income, the new hero and its allies count in this turn's
+     * upkeep, and they take lower unit-table indices than the units the
+     * cities produce (Erythea round 8: side 1's gold 357, not 395; side 7's
+     * round-7 hero is index 111, its cities' new units 113 and 114). --- */
+    if (!isHuman) {
+        AIHeroOffer(player);
+        UidSync();
     }
 
     /* --- 0d. Hero level-ups (FUN_10033b4c): the computer's before its
@@ -34180,6 +34394,16 @@ static void AdvanceToNextPlayer(void)
 
         /* Check if alive */
         if (*(short *)(gs + 0x138 + nextPlayer * 2) != 0) {
+            if (*(short *)(gs + 0xd0 + nextPlayer * 2) != 0) {
+                /* AI player: the original clears the selection, greys the
+                 * buttons and shows the faction's name and flag strip in the
+                 * info area while it plays (measured, turn 1 -> 2).  The turn
+                 * music comes before the turn start's hero offer. */
+                sAITurnPlayer = nextPlayer;
+                LoadAndPlayMusic(MUSIC_STATE_AITURN);
+                sSelectedArmy = -1; sStackCount = 0;
+                sControlsLive = false;
+            }
             /* Process start-of-turn for this player: income, production, movement reset */
             ProcessStartOfTurn(nextPlayer);
 
@@ -34239,13 +34463,7 @@ static void AdvanceToNextPlayer(void)
                 }
                 foundHuman = true;
             } else {
-                /* AI player: the original clears the selection, greys the
-                 * buttons and shows the faction's name and flag strip in the
-                 * info area while it plays (measured, turn 1 -> 2). */
-                sAITurnPlayer = nextPlayer;
-                LoadAndPlayMusic(MUSIC_STATE_AITURN);
-                sSelectedArmy = -1; sStackCount = 0;
-                sControlsLive = false;
+                /* AI player (the music and the selection: above) */
                 InvalidateAllGameWindows();
                 DrainUpdates();
                 {
