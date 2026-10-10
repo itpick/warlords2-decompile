@@ -166,3 +166,32 @@ TEST(the_city_neighbour_table_is_the_scenarios)
     sScnAINbValid = false;
     sAINbValid = false;
 }
+
+/* FUN_1001ee88 walks the unit table from the last index down; a unit whose
+ * table entry still holds leftover front bits (FUN_10021434 keeps bits 7-11)
+ * does not join a stack asked for front 0 until the AI gives it a front or
+ * a garrison placement clears them (round 5 of the Erythea run: unit 90). */
+TEST(ai_stacks_follow_the_unit_table_and_its_leftover_fronts)
+{
+    AIStack s;
+    short a, b, c;
+    fx_reset();
+    fx_unit_types(29);
+    sAIMe = 4;
+    a = fx_army(103, 64, 4, 12, -1, -1, -1);
+    b = fx_army(103, 64, 4, 12, -1, -1, -1);
+    c = fx_army(103, 64, 4, 12, -1, -1, -1);
+    AIOrdSync();
+    UidReset();
+    sArmyUid[a][0] = 7; sArmyUid[b][0] = 90; sArmyUid[c][0] = 88;
+    UidSync();
+    CHECK_EQ(AIStackAt(103, 64, 0, 0, 0, &s), 3);
+    CHECK_EQ(s.rec[0], b); CHECK_EQ(s.rec[1], c); CHECK_EQ(s.rec[2], a);
+    sUidStale[90] = 3;                              /* front 2's bits, left over */
+    CHECK_EQ(AIRecFront(b), 3);
+    CHECK_EQ(AIStackAt(103, 64, 0, 0, 0, &s), 2);
+    CHECK_EQ(s.rec[0], c); CHECK_EQ(s.rec[1], a);
+    AIRecSetFront(b, 0);                            /* the AI writes the field */
+    CHECK_EQ(sUidStale[90], 0);
+    CHECK_EQ(AIStackAt(103, 64, 0, 0, 0, &s), 3);
+}
