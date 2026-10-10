@@ -11,7 +11,7 @@
 //         InfiniteMac and downloaded; we catch it and `ditto -x -k` it into .devloop/pulled/.
 //
 // Endpoints (all GET, see wl.sh): /status /shot?name= /click?x=&y=[&dbl=1] /key?k= /type?t=
-//   /push?path= /pulled /reload[?disk=] /eval?js= /mem?a=&n= /break?a=&v= /memfind?hex= /seedscan?seed=&n= /front /quit
+//   /push?path= /pulled /reload[?disk=] /eval?js= /mem?a=&n= /poke?a=&hex= /break?a=&v= /memfind?hex= /seedscan?seed=&n= /front /quit
 import pkg from '/opt/homebrew/lib/node_modules/playwright/index.js';
 import http from 'http';
 import fs from 'fs';
@@ -89,7 +89,8 @@ await ctx.route(/\/assets\/worker-[^/]*\.js(\?.*)?$/, async route => {
     const hook = `{const H=${H};if(!globalThis.__wlpub){globalThis.__wlpub=1;` +
       `globalThis.__wlq=new Int32Array(new SharedArrayBuffer(32));globalThis.__wlr=new Uint8Array(new SharedArrayBuffer(1<<24));` +
       `postMessage({type:"__wlmem",buf:(H.buffer instanceof SharedArrayBuffer)?H.buffer:null,q:globalThis.__wlq,r:globalThis.__wlr,size:H.length});}` +
-      `const q=globalThis.__wlq;const sv=()=>{if(Atomics.load(q,0)===1){const a=q[1],n=Math.min(q[2],1<<24);globalThis.__wlr.set(H.subarray(a,a+n));q[3]=H.length;Atomics.store(q,0,2);}};sv();` +
+      `const q=globalThis.__wlq;const sv=()=>{const o=Atomics.load(q,0);if(o===1){const a=q[1],n=Math.min(q[2],1<<24);globalThis.__wlr.set(H.subarray(a,a+n));q[3]=H.length;Atomics.store(q,0,2);}` +
+      `else if(o===3){H.set(globalThis.__wlr.subarray(0,q[2]),q[1]);Atomics.store(q,0,2);}};sv();` +
       `if(q[4]){const a=q[4]>>>0;const v=((H[a]<<24)|(H[a+1]<<16)|(H[a+2]<<8)|H[a+3])>>>0;if(v>=(q[5]>>>0)){q[4]=0;Atomics.store(q,6,1);}}` +
       `while(Atomics.load(q,6)===1){sv();Atomics.wait(q,7,0,5);}}`;
     t = t.replace(m[0], `blit(${m[1]},${m[2]},${m[3]}){${hook}` + m[0].slice(m[0].indexOf('{') + 1));
@@ -232,6 +233,19 @@ http.createServer(async (req, res) => {
           if (a) { Atomics.store(m.q, 6, 0); m.q[5] = v | 0; m.q[4] = a | 0; return 'armed'; }
           return Atomics.load(m.q, 6) ? 'paused' : (m.q[4] ? 'armed' : 'idle');
         }, { a: +(q('a') || 0), v: +(q('v') || 0), off: !!q('off') });
+        return reply(200, out);
+      }
+      case '/poke': {
+        // /poke?a=<addr>&hex=<bytes>: write guest memory (a break word, say)
+        const out = await page.evaluate(async ({ a, hex }) => {
+          const m = window.__wlmem; if (!m || !m.q) return 'no emulator memory hook';
+          const b = new Uint8Array(hex.match(/../g).map(h => parseInt(h, 16)));
+          m.r.set(b); m.q[1] = a; m.q[2] = b.length; Atomics.store(m.q, 0, 3);
+          const t0 = Date.now();
+          while (Atomics.load(m.q, 0) !== 2) { if (Date.now() - t0 > 5000) return 'emulator did not answer'; await new Promise(r => setTimeout(r, 5)); }
+          Atomics.store(m.q, 0, 0);
+          return 'ok';
+        }, { a: +q('a'), hex: q('hex') });
         return reply(200, out);
       }
       case '/memfind': {

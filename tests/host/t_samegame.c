@@ -195,3 +195,4 @@ TEST(ai_stacks_follow_the_unit_table_and_its_leftover_fronts)
     CHECK_EQ(sUidStale[90], 0);
     CHECK_EQ(AIStackAt(103, 64, 0, 0, 0, &s), 3);
 }
+

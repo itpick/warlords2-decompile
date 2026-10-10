@@ -163,6 +163,22 @@ tools/rng_log_diff.py --from 1200      # the first call whose die differs
 tools/state_diff.py                    # units, unit-table indices, gold, city owners
 ```
 
+To read both games in the middle of a computer turn, stop them at the same
+roll: the original's Random cave spins while the word before its log header
+is non-zero and the count has reached it, and a FIXED_SEED remake does the
+same with `sRngState.brk`. Write the count with the bridge's `/poke?a=&hex=`
+on both, end the turn, wait until both counts reach it, read, then poke 0.
+(`/break?a=&v=` freezes at the next frame instead, which is many rolls too
+late for battle simulations.)
+
+Two things to check before trusting a run. A freshly booted emulator's first
+launch of the original makes no helmet roll at the Start button (the
+original's turn-1 count is then 1213 instead of 1214): launch it once, quit
+and launch again. And `state_diff.py` finds the original's state through its
+randSeed, so it fails when the original's randSeed is not the seed stepped by
+its logged count; that happened once, two `Random()` calls outside Dice
+during the game start, and the run had to be repeated.
+
 `rng_log_diff.py` compares the dice (sides, add) call by call, so the first
 difference is usually one roll after the decision that differs; the notes
 around it name the battle or the AI step. `state_diff.py` should be run at a

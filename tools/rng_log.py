@@ -26,7 +26,7 @@ MAGIC = '574c32524e474c47'
 NOTES_MAGIC = '574c324e4f544553'
 ENTRY = 12
 ORIG_MAGIC = b'WL2ORIGL'.hex()
-ORIG_ENTRIES_GHIDRA = 0x10117910          # patch_orig_rnglog.py: cave + 0x60 + 16
+ORIG_ENTRIES_GHIDRA = 0x10117930          # patch_orig_rnglog.py: cave + 0x80 + 16
 
 
 def get(port, path):
@@ -92,10 +92,13 @@ def orig_log(a):
                     av, ah, dv, dh = e[12:16], e[16:20], e[20:24], e[24:28]
                     notes.setdefault(k, []).append(f'NOTE {tag} att {na}: ' + ' '.join(f'{av[i]}/{ah[i]}' for i in range(min(na, 4)))
                                                    + f' def {nd}: ' + ' '.join(f'{dv[i]}/{dh[i]}' for i in range(min(nd, 4))))
-                elif tag == 3:
+                elif tag in (3, 6, 7):
                     r3, r4 = struct.unpack('>ii', e[8:16])
-                    grp = struct.unpack('>6h', e[16:28])
-                    notes.setdefault(k, []).append(f'NOTE 3 FUN_10018800 city {r3 & 0xFFFF} n {r4 & 0xFF} group {list(grp)}')
+                    grp = [g for g in struct.unpack('>6h', e[16:28])]
+                    what = {3: 'FUN_10018800 city {} n {}', 6: 'FUN_1001e160 type {} target {}',
+                            7: 'FUN_1001c2dc front {} target {}'}[tag]
+                    a1 = r3 & 0xFFFF if tag != 6 else (r3 if r3 < 32768 else r3 - 65536) & 0xFFFF
+                    notes.setdefault(k, []).append(f'NOTE {tag} ' + what.format(r3 & 0xFFFF, r4 & 0xFFFF) + f' group {grp}')
                 else:
                     r = struct.unpack('>iiiii', e[8:28])
                     notes.setdefault(k, []).append(f'NOTE {tag} ' + ' '.join(str(x) for x in r))

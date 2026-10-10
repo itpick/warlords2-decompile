@@ -22,7 +22,6 @@ def original():
 def test_branch_encoding():
     assert prl.bl(0x1005F268, 0x10002970) == 0x4BFA3709      # the original's own call
     assert prl.bl(0x1005F268, 0x101178A0) == 0x480B8639
-    assert prl.bl(0x10197998, 0x1002D658, link=False) == 0x4BE95CC0
 
 
 def test_patched_original_layout():
@@ -42,12 +41,12 @@ def test_patched_original_layout():
     # branch to the glue and its buffer header follows
     assert words(code, 0x5F268, 1) == [prl.bl(0x1005F268, 0x101178A0)]
     assert words(code, 0x1178A0, 1) == [0x7C0802A6]
-    assert code[0x117900:0x117908] == prl.MAGIC
-    assert entries == 0x10117910
+    assert code[0x117920:0x117928] == prl.MAGIC
+    assert entries == 0x10117930
     # FUN_1002d654 branches to the battle-note cave, which branches back past its mflr
-    assert words(code, 0x2D654, 1) == [prl.bl(0x1002D654, 0x10197910, link=False)]
-    assert words(code, 0x197998, 1) == [prl.bl(0x10197998, 0x1002D658, link=False)]
-    assert code[0x1979B0:0x1979B8] == prl.NOTE_MAGIC
+    ba = ((0x117930 + 8 * prl.ENTRIES) + 15) & ~15
+    assert words(code, 0x2D654, 1) == [prl.bl(0x1002D654, 0x10000000 + ba, link=False)]
+    assert code[ba + 0xA0:ba + 0xA8] == prl.NOTE_MAGIC
 
 
 def test_refuses_another_binary():

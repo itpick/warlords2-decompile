@@ -21,7 +21,11 @@ cfrg says "the whole data fork", is kept):
     glue returns into Dice as before (r0, r11, r12 are volatile across the
     call).
 
-Buffer: header at H = cave + 0x60: 'WL2O' 'RIGL' count entries_runtime,
+A break: when the word before the header (H-4) is non-zero, the call
+whose count reaches it spins until the host clears the word (bridge
+/poke), so both games can be stopped at the same roll and read.
+
+Buffer: header at H = cave + 0x80: 'WL2O' 'RIGL' count entries_runtime,
 then 65536 entries of 8 bytes: the caller's return address, then the die's
 sides (high half) and add (low half), which Dice keeps in r28 and r27
 from its prologue on; call n (1-based) goes in slot n & 0xffff.  entries_runtime lets the reader rebase the runtime
@@ -115,12 +119,17 @@ def add_battle_notes(code, E):
 
 # Function-entry notes: (address, tag, mode).  'args' notes r3..r7;
 # 'list6' notes r3, r4 and the first six shorts r6 points at (FUN_10018800's
-# group: unit-table indices, -1 for none).
+# group: unit-table indices, -1 for none); 'list3' notes r4, r5 and six
+# shorts at r3; 'list4' notes r3, r5 and six shorts at r4.
 ENTRY_HOOKS = [
     (0x10018B14, 2, 'args'),     # FUN_10018b14(city, ordered): a city's expansion
     (0x10018800, 3, 'list6'),    # FUN_10018800(city, n, ordered, group, flag): the group it sends
     (0x10010B30, 4, 'args'),     # FUN_10010b30(city, fromFront): the garrison placement
     (0x1001A470, 5, 'args'),     # FUN_1001a470(city, flyersOnly): the pool release
+    (0x1001E160, 6, 'list3'),    # FUN_1001e160(group, type, target, flags): orders for a group
+    (0x1001C2DC, 7, 'list4'),    # FUN_1001c2dc(front, group, target): a front stack's attack
+    (0x1001CB24, 8, 'args'),     # FUN_1001cb24(front): a new front stack
+    (0x1001EFF8, 9, 'args'),     # FUN_1001eff8(x, y): a win estimate against (x,y)
 ]
 
 
@@ -146,13 +155,15 @@ def add_entry_hooks(code, E, NE, hooks=ENTRY_HOOKS):
             D(15, 9, 11, h2), D(32, 9, 9, l2),               # Random count
             0x7D6B5214,                                      # add r11,r11,r10
             D(36, 9, 11, 0), D(14, 9, 0, tag), D(36, 9, 11, 4),
-            D(36, 3, 11, 8), D(36, 4, 11, 12),
         ]
-        if mode == 'list6':
-            w += [D(32, 9, 6, 0), D(36, 9, 11, 16), D(32, 9, 6, 4), D(36, 9, 11, 20),
-                  D(32, 9, 6, 8), D(36, 9, 11, 24)]
+        lists = {'list6': (3, 4, 6), 'list3': (4, 5, 3), 'list4': (3, 5, 4)}
+        if mode in lists:
+            a, b, lr = lists[mode]
+            w += [D(36, a, 11, 8), D(36, b, 11, 12),
+                  D(32, 9, lr, 0), D(36, 9, 11, 16), D(32, 9, lr, 4), D(36, 9, 11, 20),
+                  D(32, 9, lr, 8), D(36, 9, 11, 24)]
         else:
-            w += [D(36, 5, 11, 16), D(36, 6, 11, 20), D(36, 7, 11, 24)]
+            w += [D(36, 3, 11, 8), D(36, 4, 11, 12), D(36, 5, 11, 16), D(36, 6, 11, 20), D(36, 7, 11, 24)]
         w += [D(36, 0, 11, 28)]
         w.append(bl(C + 4 * len(w), func + 4, link=False))
         cave = b''.join(struct.pack('>I', x) for x in w)
@@ -178,7 +189,7 @@ def patch(data, seed):
         raise ValueError('Dice does not call the Random glue at 0x%x' % DICE_RANDOM_CALL)
     cave_off = (len(code) + 15) & ~15
     A = GHIDRA_BASE + cave_off                  # cave address (Ghidra numbering)
-    H = A + 0x60                                # header
+    H = A + 0x80                                # header (the word before it: the break count)
     E = H + 16                                  # entries
     words = [
         0x7C0802A6,                             # mflr  r0          (return into Dice)
@@ -190,6 +201,13 @@ def patch(data, seed):
         0x818BFFF8,                             # lwz   r12,-8(r11)  (count)
         0x398C0001,                             # addi  r12,r12,1
         0x918BFFF8,                             # stw   r12,-8(r11)
+        # break: while (brk != 0 && count >= brk) spin; the host clears brk
+        D(32, 0, 11, -20),                      # lwz   r0,-20(r11)  (brk = H-4)
+        0x2C000000,                             # cmpwi r0,0
+        0x41820010,                             # beq   +16
+        0x7C0C0040,                             # cmplw r12,r0
+        0x41800008,                             # blt   +8
+        0x4BFFFFEC,                             # b     -20 (the lwz)
         0x54000000 | (12 << 21) | (0 << 16) | (3 << 11) | (13 << 6) | (28 << 1),  # rlwinm r0,r12,3,13,28
         0x7D6B0214,                             # add   r11,r11,r0
         0x81810000,                             # lwz   r12,0(r1)   (Dice's back chain)
@@ -201,9 +219,9 @@ def patch(data, seed):
     ]
     words.append(bl(A + 4 * len(words), RANDOM_GLUE, link=False))   # b Random glue
     cave = b''.join(struct.pack('>I', w) for w in words)
-    assert len(cave) <= 0x60
+    assert len(cave) <= 0x7C
     code[site:site + 4] = struct.pack('>I', bl(DICE_RANDOM_CALL, A))
-    code += bytes(cave_off - len(code)) + cave + bytes(0x60 - len(cave))
+    code += bytes(cave_off - len(code)) + cave + bytes(0x80 - len(cave))
     code += MAGIC + bytes(8) + bytes(8 * ENTRIES)
     NE = add_battle_notes(code, E)
     add_entry_hooks(code, E, NE)

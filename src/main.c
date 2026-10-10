@@ -1161,8 +1161,8 @@ static void RngNote(short tag, short a, short b, short c)
 /* Where the state lives, for tools/state_diff.py: the game state handle's
  * pointer, the army records (ARMY_REC_SIZE each), the city/site records
  * and their count.  Filled at the first Dice call. */
-static volatile struct { long magic[2]; long gs, armies, cities, cityCount, uids; } sRngState =
-    { { 0x574C3253L, 0x54415445L }, 0, 0, 0, 0, 0 };
+static volatile struct { long magic[2]; long gs, armies, cities, cityCount, uids, flood, brk; } sRngState =
+    { { 0x574C3253L, 0x54415445L }, 0, 0, 0, 0, 0, 0, 0 };
 static short DiceImpl(short n, short sides, short add, long ra);
 static short __attribute__((noinline)) Dice(short n, short sides, short add)
 {
@@ -1184,6 +1184,9 @@ static short DiceImpl(short n, short sides, short add, long ra)
             sRngLog.e[c].add = add; sRngLog.e[c].r = r;
         }
         sRngLog.count++;
+        /* a break for tools: the host writes a count into sRngState.brk and
+         * clears it to go on (bridge /poke) */
+        while (sRngState.brk != 0 && sRngLog.count >= sRngState.brk) { }
 #else
 #define RNG_NOTE(t, a, b, c) ((void)0)
 static short Dice(short n, short sides, short add)
@@ -27728,6 +27731,9 @@ static void AIFloodRun(short sx, short sy, short radius)
     short x, y;
     Boolean fog = false;
 
+#ifdef WL2_FIXED_SEED
+    sRngState.flood = (long)sAIFloodCost;
+#endif
     for (i = 0; i < total; i++) sAIFloodCost[i] = -1;
     if (sx < 0 || sy < 0 || sx >= maxX || sy >= maxY) return;
     if (sOptHiddenMap && sPathOwner >= 0 && sPathOwner < 8 && !sPathForceAI &&
@@ -28492,6 +28498,7 @@ static short AIWinEstimate(const AIStack *s, short tx, short ty)
 {
     short N = gAI->winSamples, wins = 0, i;
     if (N < 1) N = 1;
+    RNG_NOTE(9, tx, ty, s->n);
     if (s->n == 0) return 0;
     AIBattleGather(&sBattleSim, s, tx, ty);
     BattleValues(&sBattleSim);
