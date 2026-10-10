@@ -1,5 +1,11 @@
 # First same-seed run: original vs remake (9 Oct 2026, tasklist D15/D16)
 
+> **Follow-up:** `docs/2026-10-09-same-seed-ai.md` explains both
+> divergences below. The hill pool is the scenario's PICT 10001, which the
+> original draws without rolling. The AI captures came from the setup order,
+> the unit-table order and five other causes. The two games now agree on
+> every roll and unit through turn 7.
+
 Setup:
 - Erythea, default setup, human = Sirians (side 0), sides 1-7 computer.
 - Launch seed randSeed = 715183689 (0x2AA0D649) on both.

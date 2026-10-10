@@ -121,6 +121,44 @@ static short sCityCount = 0;
 static unsigned char sArmyTab[MAX_ARMIES * ARMY_REC_SIZE];
 #define ARMY_REC(i)     (sArmyTab + (long)(i) * ARMY_REC_SIZE)
 static unsigned char sArmyState[MAX_ARMIES];   /* was ext+0x56; shifted on RemoveArmy */
+
+/* The original's unit-table index of every unit (PPC: one 0x16-byte record
+ * per unit in a 1000-unit table; FUN_10021434 gives a new unit the LOWEST
+ * free index, so a unit made after a death takes the dead unit's place).
+ * The computer player walks that table from the last index down
+ * (FUN_10018b14, FUN_1001a470 and others), so which unit it takes first
+ * follows these indices, not the remake's record and slot order.  -1: no
+ * unit.  Moves between slots and records carry the index (UidMove); a
+ * unit's death frees it; UidSync frees the indices of emptied slots and
+ * gives every new unit the lowest free one, in record and slot order. */
+#define UID_MAX 1000
+static short sArmyUid[MAX_ARMIES][4];
+static unsigned char sUidUsed[UID_MAX];
+static unsigned char sUidEver[UID_MAX];     /* the index has held a unit this game */
+static unsigned char sUidStale[UID_MAX];    /* its unit's leftover front bits (see below) */
+#ifdef WL2_FIXED_SEED
+#include "orig_unit_front_bits.inc"
+#endif
+static void UidReset(void)
+{
+    short i, k;
+    for (i = 0; i < MAX_ARMIES; i++) for (k = 0; k < 4; k++) sArmyUid[i][k] = -1;
+    for (i = 0; i < UID_MAX; i++) { sUidUsed[i] = 0; sUidEver[i] = 0; sUidStale[i] = 0; }
+}
+static void UidKill(short rec, short k)
+{
+    if (rec < 0 || rec >= MAX_ARMIES || k < 0 || k > 3) return;
+    if (sArmyUid[rec][k] >= 0) sUidUsed[sArmyUid[rec][k]] = 0;
+    sArmyUid[rec][k] = -1;
+}
+static void UidMove(short dRec, short dK, short sRec, short sK)
+{
+    if (dRec < 0 || dRec >= MAX_ARMIES || sRec < 0 || sRec >= MAX_ARMIES) return;
+    sArmyUid[dRec][dK] = sArmyUid[sRec][sK];
+    if (dRec != sRec || dK != sK) sArmyUid[sRec][sK] = -1;
+}
+static void UidSync(void);
+static short UnitUid(short rec, short k) { return (rec >= 0 && rec < MAX_ARMIES && k >= 0 && k < 4) ? sArmyUid[rec][k] : -1; }
 typedef char kArmyBlessFits[(0x3500 + MAX_ARMIES * 2 <= 0x4000) ? 1 : -1];
 
 /* DEBUG: capital matching diagnostics */
@@ -325,13 +363,51 @@ static void StopMusic(void)
     }
 }
 
+/* The original's music switch (app+0x1a1, FUN_100276ec), read at start-up
+ * (PPC_0003.c:2304): byte 0 of the 'Soun' 1000 preference.  FUN_100981f8
+ * names the preferences file from 'Prfl' 128 (+0x0C, "Warlords II
+ * Preferences") in the Preferences folder; FUN_10098320 takes 'Soun' 1000
+ * from it, else the application's own 'Soun' 1000 (music on).  While the
+ * switch is off FUN_10092484 returns at once, so no tune is picked and no
+ * Dice roll is spent on music. */
+static Boolean ReadMusicPref(void)
+{
+    Boolean on = true;
+    short saved = CurResFile(), vRef = 0, ref = -1;
+    long dirID = 0;
+    Handle h, prfl = GetResource('Prfl', 128);
+    if (prfl != NULL && GetHandleSize(prfl) > 0x0C + 1 &&
+        FindFolder((short)0x8000, 'pref', false, &vRef, &dirID) == noErr) {
+        FSSpec spec;
+        Str255 name;
+        unsigned char n = (unsigned char)(*prfl)[0x0C];
+        if (n > 63) n = 63;
+        BlockMoveData(*prfl + 0x0C, name, n + 1);
+        if (FSMakeFSSpec(vRef, dirID, name, &spec) == noErr)
+            ref = FSpOpenResFile(&spec, fsRdPerm);
+    }
+    h = NULL;
+    if (ref != -1) {
+        UseResFile(ref);
+        h = Get1Resource('Soun', 1000);
+        if (h != NULL && GetHandleSize(h) >= 1) on = (**h != 0);
+        CloseResFile(ref);
+        UseResFile(saved);
+    }
+    if (h == NULL) {
+        h = GetResource('Soun', 1000);
+        if (h != NULL && GetHandleSize(h) >= 1) on = (**h != 0);
+    }
+    return on;
+}
+
 static void InitMusicSystem(void)
 {
     gTunePlayer = OpenDefaultComponent('tune', 0);
     if (gTunePlayer == NULL) {
         gMusicEnabled = false;
     } else {
-        gMusicEnabled = true;
+        gMusicEnabled = ReadMusicPref();
     }
 }
 
@@ -1052,12 +1128,74 @@ static Boolean IsSpecialItemTV(short type, short value)
  * [add+n, add+n*sides].  Each die is Toolbox Random() mapped as
  * trunc(|r| / 32767.0 * sides + 1.0) (fabs, fdiv, fmadd, fctiwz; the int
  * operands pass through frsp, exact for shorts).  sides 0: add, no roll. */
+#ifdef WL2_FIXED_SEED
+/* Same-seed runs: a log of every Random() call, read out of the emulator's
+ * memory by tools/rng_log.py (bridge /mem).  Each entry is the caller's
+ * return address and the (n, sides, add) of the Dice call.  `code` holds
+ * Dice's own entry address, so the reader can rebase the return addresses
+ * onto the linked image's symbols. */
+#define RNG_LOG_MAX 65536
+static struct {
+    long magic[2];                  /* 'WL2R','NGLG' */
+    long count, code;
+    struct { long ra; short n, sides, add, r; } e[RNG_LOG_MAX];
+} sRngLog = { { 0x574C3252L, 0x4E474C47L }, 0, 0 };
+/* Notes beside the log (same reader): k = the Random() count when the note
+ * was made, then a tag and two values.  Battles note their sides' units. */
+#define RNG_NOTE_MAX 16384
+static struct {
+    long magic[2];                  /* 'WL2N','OTES' */
+    long count;
+    struct { long k; short tag, a, b, c; } e[RNG_NOTE_MAX];
+} sRngNotes = { { 0x574C324EL, 0x4F544553L }, 0 };
+static void RngNote(short tag, short a, short b, short c)
+{
+    if (sRngNotes.count < RNG_NOTE_MAX) {
+        long i = sRngNotes.count;
+        sRngNotes.e[i].k = sRngLog.count; sRngNotes.e[i].tag = tag;
+        sRngNotes.e[i].a = a; sRngNotes.e[i].b = b; sRngNotes.e[i].c = c;
+    }
+    sRngNotes.count++;
+}
+#define RNG_NOTE(t, a, b, c) RngNote((t), (a), (b), (c))
+/* Where the state lives, for tools/state_diff.py: the game state handle's
+ * pointer, the army records (ARMY_REC_SIZE each), the city/site records
+ * and their count.  Filled at the first Dice call. */
+static volatile struct { long magic[2]; long gs, armies, cities, cityCount, uids, flood, brk; } sRngState =
+    { { 0x574C3253L, 0x54415445L }, 0, 0, 0, 0, 0, 0, 0 };
+static short DiceImpl(short n, short sides, short add, long ra);
+static short __attribute__((noinline)) Dice(short n, short sides, short add)
+{
+    return DiceImpl(n, sides, add, (long)__builtin_return_address(0));
+}
+static short DiceImpl(short n, short sides, short add, long ra)
+{
+    short s = 0, i;
+    if (sRngLog.code == 0) sRngLog.code = *(long *)(void *)Dice;   /* the TVector's code address */
+    sRngState.gs = (long)*gGameState; sRngState.armies = (long)sArmyTab;
+    sRngState.cities = (long)sCityData; sRngState.cityCount = (long)&sCityCount;
+    sRngState.uids = (long)sArmyUid;
+    if (sides == 0) return add;
+    for (i = 0; i < n; i++) {
+        short r = Random();
+        if (sRngLog.count < RNG_LOG_MAX) {
+            long c = sRngLog.count;
+            sRngLog.e[c].ra = ra; sRngLog.e[c].n = n; sRngLog.e[c].sides = sides;
+            sRngLog.e[c].add = add; sRngLog.e[c].r = r;
+        }
+        sRngLog.count++;
+        /* a break for tools: the host writes a count into sRngState.brk and
+         * clears it to go on (bridge /poke) */
+        while (sRngState.brk != 0 && sRngLog.count >= sRngState.brk) { }
+#else
+#define RNG_NOTE(t, a, b, c) ((void)0)
 static short Dice(short n, short sides, short add)
 {
     short s = 0, i;
     if (sides == 0) return add;
     for (i = 0; i < n; i++) {
         short r = Random();
+#endif
         double f = __builtin_fabs((double)r) / 32767.0;
         s = (short)(s + (short)(long)__builtin_fma(f, (double)sides, 1.0));
     }
@@ -1107,6 +1245,32 @@ static Handle sHeroNameDat[8];   /* DAT 30010-30017 from the terrain file */
 static unsigned char sMapColorFull[1200];       /* DAT 30020 MAPCOLOR, see BuildOverviewBase */
 static Boolean   sMapColorFullLoaded = false;
 static Ptr       sOverviewBaseFor = NULL;
+/* The scenario's PICT 10001, the prerendered strategic overview. FUN_1002869c
+ * draws it into the overview offscreen and only builds the overview from the
+ * map (FUN_100641d0 -> FUN_10063af8, the 256-roll hill pool) when the
+ * resource chain has no PICT 10001; every shipped scenario carries one. */
+static Handle    sScenarioOverviewPict = NULL;
+/* The scenario's 'AI  ' 10000: the city neighbour table (100 cities x 6
+ * neighbour indices, then 100 x 6 distances), which FUN_1001db60 takes
+ * as is at the game's start and only computes (FUN_1001d66c) when the
+ * scenario has none.  Every shipped scenario carries one. */
+static unsigned char sScnAINb[1200];
+static Boolean sScnAINbValid = false;
+static void SetScenarioOverviewPict(Boolean fromCurResFile)
+{
+    if (sScenarioOverviewPict != NULL) { DisposeHandle(sScenarioOverviewPict); sScenarioOverviewPict = NULL; }
+    sScnAINbValid = false;
+    if (fromCurResFile) {
+        Handle h = Get1Resource('PICT', 10001);
+        if (h != NULL) { DetachResource(h); sScenarioOverviewPict = h; }
+        h = Get1Resource('AI  ', 10000);
+        if (h != NULL) {
+            if (GetHandleSize(h) >= 1200) { BlockMoveData(*h, sScnAINb, 1200); sScnAINbValid = true; }
+            ReleaseResource(h);
+        }
+    }
+    sOverviewBaseFor = NULL;   /* rebuild the overview for the new map */
+}
 #define MAPCOLOR_SIZE 256
 static unsigned char sMapColor[MAPCOLOR_SIZE];
 static Boolean       sMapColorLoaded = false;
@@ -3064,7 +3228,17 @@ static void GameInit(void)
  * =================================================================== */
 static short AIDist(short x1, short y1, short x2, short y2);
 static void AISetupZones(void);
+static void AIInitBlock(short p);
 static short PathCityIndexAt(short x, short y);
+
+/* FUN_1000c67c: every side's computer block, sides 7..0 (FUN_10020ae8;
+ * FUN_10020640 rolls the personality: Dice(1,4,0) x3 for a Knight, a Lord
+ * 1d4 1d4 1d8, a Warlord and a human side 1d10 1d8 1d6) */
+static void NewGameComputerBlocks(void)
+{
+    short p;
+    for (p = 7; p >= 0; p--) AIInitBlock(p);
+}
 
 static void BeginNewGame(void)
 {
@@ -3074,6 +3248,16 @@ static void BeginNewGame(void)
     if (!sNewGamePending || *gGameState == 0) return;
     sNewGamePending = false;
     gs = (unsigned char *)*gGameState;
+
+    /* --- The Start button (FUN_1005a6ac) sets the options, then
+     * FUN_1000c67c builds every side's computer block, sides 7..0, with
+     * FUN_10020ae8 -> FUN_10020640: three personality rolls per side
+     * (a human side as a Warlord), 24 rolls before the turn order and the
+     * sites.  The remake built a block lazily at that side's first turn,
+     * so the whole new-game stream started 24 rolls early (the original's
+     * Random() log, tools/rng_log.py --orig: FUN_10020640 at rolls 1-24,
+     * then FUN_10038fb8). --- */
+    NewGameComputerBlocks();
 
     /* --- FUN_1003c838: the turn order --- */
     for (i = 0; i < 8; i++) *(short *)(gs + 0x164 + i * 2) = i;
@@ -3264,7 +3448,7 @@ static void BeginNewGame(void)
             if (site[0x17] == 2) continue;                       /* temple: none */
             if (SITE_KIND(site) == SITE_ALLIES) {
                 if (!SITE_HARD(site)) {
-                    if (SiteFarFromCapitals(site)) SITE_ALLY_RANK(site) = (unsigned char)(3 + Dice(1, 3, 0));
+                    if (SiteFarFromCapitals(site)) SITE_ALLY_RANK(site) = (unsigned char)(4 + Dice(1, 3, -1));   /* FUN_1003956c: Dice(1,3,-1) into the far list */
                     else { (void)Dice(1, 2, -1); SITE_ALLY_RANK(site) = 0xFF; }
                 } else
                     SITE_ALLY_RANK(site) = (unsigned char)Dice(1, 4, -1);
@@ -3428,6 +3612,8 @@ static void BeginNewGame(void)
     (void)j;
     CenterViewportOnPlayer();
     SiteTilesFor(*(short *)(gs + 0x110));   /* FUN_10039ec8 */
+    UidReset();
+    UidSync();   /* the starting units: indices in creation order (FUN_1002cbbc) */
 }
 
 
@@ -3710,6 +3896,7 @@ static void TryLoadScenario(void)
     }
 
     LoadScenarioItemPool();   /* FUN_10039180: the scenario's ITM 10000 */
+    SetScenarioOverviewPict(true);   /* FUN_1002869c: GetResource('PICT', 10001) */
     CloseResFile(refNum);
 
     /* Allocate extended state if needed (cities, per-army arrays) */
@@ -7832,6 +8019,7 @@ static Boolean GenerateRandomMap(WindowPtr scenWin,
 
     sMapLoaded = true;
     sRandomMap = true;
+    SetScenarioOverviewPict(false);   /* no PICT 10001: FUN_100641d0 builds it */
     sMapWidth = 112;
     sMapHeight = 156;
 
@@ -8872,6 +9060,7 @@ static Boolean ShowScenarioSelection(void)
             }
 
             LoadScenarioItemPool();   /* FUN_10039180: the scenario's ITM 10000 */
+            SetScenarioOverviewPict(true);   /* FUN_1002869c: GetResource('PICT', 10001) */
             CloseResFile(refNum);
 
             /* Allocate extended state and run game initialization.
@@ -10559,8 +10748,8 @@ static Boolean AIAttackGate(short armyIdx, short bx, short by);
 static void AIAnimateStep(short x, short y);
 static void AIOrdOnRemove(short armyIndex, short armyCount);
 static void AIResetAll(void);
-static void AIBattleMemory(short defOwner, short attOwner, short heroesLeft, short unitsLeft,
-                           short attUnits, Boolean cityBattle);
+static void AIBattleMemory(short defOwner, short attOwner, short heroesKilled, short unitsKilled,
+                           short defUnits, Boolean cityBattle);
 static Boolean sPathForceAI;   /* BuildPathFlagGrid: treat the owner as a computer player */
 
 static void DrawMapInWindow(WindowPtr win)
@@ -11998,8 +12187,15 @@ static void DrawMapInWindow(WindowPtr win)
  * 2..4 rolled up front (256 x Dice(1,3,1) on the game's Random() stream,
  * once per map: the sage's map refresh reuses the pool); the 4th read can
  * land one past the pool (white).  Validated against the original on
- * Erythea (100% of uncovered pixels) with the pool that run rolled
- * (QuickDraw randSeed 0x2AA0D649 at that point).
+ * Erythea (100% of uncovered pixels): Erythea's shipped PICT 10001 is
+ * exactly this build with the pool rolled from randSeed 0x2AA0D649.
+ *
+ * That build runs only for a map without PICT 10001 (a random map):
+ * FUN_1002869c takes GetResource('PICT', 10001) when it exists and draws
+ * it, so a shipped scenario spends no rolls on the overview.  Rolling the
+ * pool anyway put 256 extra Dice calls into the remake's stream at the
+ * first overview draw (offset 1204 from the launch seed on Erythea), which
+ * shifted every roll after it (docs/2026-10-09-same-seed-run.md).
  * =================================================================== */
 static GWorldPtr sOverviewBaseGW = NULL;
 
@@ -12017,7 +12213,8 @@ static void BuildOverviewBase(void)
     mapData = (unsigned char *)*gMapTiles;
     rdData = (*gRoadData != 0) ? (unsigned char *)*gRoadData : NULL;
 
-    if (sOverviewBaseFor != (Ptr)*gMapTiles || pool[0] == 0) {   /* FUN_10063af8 */
+    if (sScenarioOverviewPict == NULL &&
+        (sOverviewBaseFor != (Ptr)*gMapTiles || pool[0] == 0)) {   /* FUN_10063af8 */
         for (i = 0; i < 256; i++) pool[i] = (unsigned char)Dice(1, 3, 1);
         pool[256] = 0;
     }
@@ -12039,6 +12236,16 @@ static void BuildOverviewBase(void)
     LockPixels(pm);
     GetGWorld(&sp, &sd);
     SetGWorld(sOverviewBaseGW, NULL);
+    if (sScenarioOverviewPict != NULL) {
+        /* FUN_1002869c: the scenario's own overview, drawn as is (no rolls) */
+        HLock(sScenarioOverviewPict);
+        DrawPicture((PicHandle)sScenarioOverviewPict, &b);
+        HUnlock(sScenarioOverviewPict);
+        SetGWorld(sp, sd);
+        UnlockPixels(pm);
+        sOverviewBaseFor = (Ptr)*gMapTiles;
+        return;
+    }
     {
         PicHandle ocean = GetPicture(1012);
         if (ocean != NULL) DrawPicture(ocean, &b);
@@ -16480,6 +16687,39 @@ static void AddHeroXP(unsigned char *army, short k, short n)
  * entries down.  Adjusts sSelectedArmy if needed.
  * =================================================================== */
 static void BattleOnRemove(short idx);
+static void UidSync(void)
+{
+    short n, i, k, next = 0;
+    if (*gGameState == 0) return;
+    n = *(short *)((unsigned char *)*gGameState + 0x1602);
+    if (n > MAX_ARMIES) n = MAX_ARMIES;
+    for (i = 0; i < UID_MAX; i++) sUidUsed[i] = 0;
+    for (i = 0; i < MAX_ARMIES; i++)
+        for (k = 0; k < 4; k++) {
+            short u = sArmyUid[i][k];
+            if (u < 0) continue;
+            if (i >= n || ARMY_REC(i)[0x16 + k] == 0xFF || u >= UID_MAX || sUidUsed[u]) sArmyUid[i][k] = -1;
+            else sUidUsed[u] = 1;
+        }
+    for (i = 0; i < n; i++)
+        for (k = 0; k < 4; k++) {
+            if (ARMY_REC(i)[0x16 + k] == 0xFF || sArmyUid[i][k] >= 0) continue;
+            while (next < UID_MAX && sUidUsed[next]) next++;
+            if (next >= UID_MAX) return;
+            sArmyUid[i][k] = next; sUidUsed[next] = 1;
+            /* the first unit in an index inherits the table's leftover
+             * front bits (FUN_10021434 keeps bits 7-11); a dead unit's
+             * index is clean.  Only the same-seed builds know the original's
+             * heap (orig_unit_front_bits.inc). */
+#ifdef WL2_FIXED_SEED
+            sUidStale[next] = sUidEver[next] ? 0 : kOrigUnitFrontBits[next];
+#else
+            sUidStale[next] = 0;
+#endif
+            sUidEver[next] = 1;
+        }
+}
+
 static void RemoveArmy(short armyIndex)
 {
     unsigned char *gs;
@@ -16539,11 +16779,16 @@ static void RemoveArmy(short armyIndex)
     /* Shift all armies after this one down by one slot */
     /* visited, Move All skip, and defend state follow the records.
      * ext+0x56 did not, so a removed record's state stuck to the next index. */
+    for (j = 0; j < 4; j++) UidKill(armyIndex, j);
     for (j = armyIndex; j < MAX_ARMIES - 1; j++) {
         sArmyVisited[j] = sArmyVisited[j + 1];
         sArmySkip[j] = sArmySkip[j + 1];
         sArmyState[j] = sArmyState[j + 1];
+        sArmyUid[j][0] = sArmyUid[j + 1][0]; sArmyUid[j][1] = sArmyUid[j + 1][1];
+        sArmyUid[j][2] = sArmyUid[j + 1][2]; sArmyUid[j][3] = sArmyUid[j + 1][3];
     }
+    sArmyUid[MAX_ARMIES - 1][0] = sArmyUid[MAX_ARMIES - 1][1] = -1;
+    sArmyUid[MAX_ARMIES - 1][2] = sArmyUid[MAX_ARMIES - 1][3] = -1;
     sArmyVisited[MAX_ARMIES - 1] = 0;
     sArmySkip[MAX_ARMIES - 1] = 0;
     sArmyState[MAX_ARMIES - 1] = 0;
@@ -16933,6 +17178,15 @@ static Boolean BattleRounds(Battle *b, Boolean record)
 
     /* an empty side: the attacker wins (PPC_0001.c:22785-22788) */
     if (b->nAtt == 0 || b->nDef == 0) return true;
+    {   /* same-seed runs: the battle's units, attackers then defenders */
+        short q;
+        RNG_NOTE(1, b->mOwner, b->nAtt, b->nDef);
+        RNG_NOTE(5, b->mx, b->my, b->cityIdx);
+        for (q = 0; q < b->nAtt; q++) RNG_NOTE(2, b->att[q].type, b->att[q].value, b->att[q].hp);
+        for (q = 0; q < b->nAtt; q++) RNG_NOTE(4, b->att[q].rec, b->att[q].str, b->att[q].slot);
+        for (q = 0; q < b->nDef; q++) RNG_NOTE(3, b->def[q].type, b->def[q].value, b->def[q].hp);
+        for (q = 0; q < b->nDef; q++) RNG_NOTE(6, b->def[q].rec, b->def[q].str, b->def[q].slot);
+    }
     for (;;) {
         BattleUnit *a = b->att + ai, *d = b->def + di;
         short av = a->value < 1 ? 1 : a->value, dv = d->value < 1 ? 1 : d->value;
@@ -17035,6 +17289,7 @@ static void BattleApply(Battle *b, short *movingIdx)
             k = u->slot;
             a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0;
             SetMedals(a, k, 0);
+            UidKill(u->rec, k);
         } else if (u->type == 0x1C) {
             short di = i - b->nAtt;
             if (attacker)
@@ -17057,6 +17312,7 @@ static void BattleApply(Battle *b, short *movingIdx)
                 SetMedals(a, put, GetMedals(a, k));
                 a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0;
                 SetMedals(a, k, 0);
+                UidMove(touched[i], put, touched[i], k);
                 /* the survivors' battle entries follow their slots (the medal
                  * after the battle picks among them) */
                 for (j = 0; j < b->nAtt + b->nDef; j++) {
@@ -17082,6 +17338,7 @@ static void BattleApply(Battle *b, short *movingIdx)
             else if (*movingIdx > touched[i]) (*movingIdx)--;
         }
     }
+    UidSync();   /* the dead free their unit-table indices */
 }
 
 /* FUN_10030e0c: the Military Advisor rehearses the battle 19 times and
@@ -18653,11 +18910,14 @@ static Boolean CheckAndResolveCombat(short movingArmyIdx)
         }
         won = (nDefLive == 0 && nAttLive > 0);
 
-        /* PPC FUN_1000dc4c: the defending player's AI remembers the attack */
+        /* PPC FUN_1000dc4c: the defending player's AI remembers the attack:
+         * its own losses, counted over the battle's defenders (the alive
+         * flags FUN_1002d654 clears), and whether it lost them all */
         {
-            short hl = 0, q;
-            for (q = 0; q < nAttLive; q++) if (liveAtt[q] == 0x1C || liveAtt[q] == 0x1D) hl++;
-            AIBattleMemory(defOwner, mOwner, hl, nAttLive, sBattle.nAtt,
+            short hk = 0, uk = 0, q;
+            for (q = 0; q < sBattle.nDef; q++)
+                if (sBattle.def[q].hp < 0) { uk++; if (sBattle.def[q].type == 0x1C) hk++; }
+            AIBattleMemory(defOwner, mOwner, hk, uk, sBattle.nDef,
                            cityIdx >= 0 || GetTerrainType(mx, my) == 10);
         }
 
@@ -24838,6 +25098,7 @@ static void HeroBringsAllies(short player, short heroArmyIdx)
     (void)added;
 }
 
+static Boolean sHeroOffered = false;   /* the last ShowHeroHire opened its window */
 static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
 {
     WindowPtr  hireWin;
@@ -25016,6 +25277,7 @@ static Boolean ShowHeroHire(short playerIdx, Boolean initialOffer)
     }
 
     /* WDEF 128 variant 7: no frame, soft drop shadow (as the tutorial window) */
+    sHeroOffered = true;                  /* FUN_10032a24 returned non-zero */
     LoadAndPlayMusic(MUSIC_STATE_HERO);   /* RINT11; stays until the next state */
     hireWin = NewCWindow(NULL, &winRect, "\p", false,
                           0x0807, (WindowPtr)-1L, false, 0);
@@ -26788,6 +27050,7 @@ static void ShowCityProductionDialog(short cityIndex)
  * every step, 1 tick per tile; no path dots, no sounds. */
 static void AISetProgress(short pct)
 {
+    UidSync();   /* new units take their unit-table index before the next step */
     sAIProgress = pct;
     if (gInfoWindow != NULL && *gInfoWindow != 0) {
         GrafPtr sp;
@@ -26851,6 +27114,7 @@ static short SplitUnitsOff(short idx, short nLeave)
     if (nLeave >= have) return -1;
     b = ARMY_REC(n);
     for (k = 0; k < 0x42; k++) b[k] = 0;
+    for (k = 0; k < 4; k++) UidKill(n, k);
     *(short *)(b + 0) = *(short *)(a + 0);
     *(short *)(b + 2) = *(short *)(a + 2);
     b[0x15] = a[0x15]; b[0x2f] = a[0x2f]; b[0x2e] = a[0x2e];
@@ -26863,6 +27127,7 @@ static short SplitUnitsOff(short idx, short nLeave)
         SetMedals(b, put, GetMedals(a, k));
         a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0;
         SetMedals(a, k, 0);
+        UidMove(n, put, idx, k);
         put++;
     }
     if (put == 0) return -1;
@@ -26997,6 +27262,8 @@ static short UnitStatLE(short t, short k)
 #define AI_MAX_RECS   MAX_ARMIES
 
 typedef struct { short rec, slot; } AIUnit;           /* one unit = a record slot */
+static short AIUnitsInDesc(short x0, short y0, short x1, short y1, AIUnit *out, short max);
+static short AIUnitsAtDesc(short x, short y, AIUnit *out, short max);
 typedef struct { short rec[8]; short n; } AIStack;     /* the current stack (records) */
 
 typedef struct {                /* one front, 0x5C bytes at block+0x24c */
@@ -27040,7 +27307,7 @@ typedef struct {
     unsigned char poolCount[AI_MAX_CITIES];   /* +0x1e6 */
     short frontCount;           /* +0x24a */
     AIFront fronts[4];          /* +0x24c */
-    short battleMem[6][8];      /* +0x3bc: [field][attacker] heroes, units, battles, wins, cityBattles, cityWins */
+    short battleMem[6][8];      /* +0x3bc: [field][attacker] my heroes killed, my units killed, battles, lost outright, city battles, city lost outright */
 } AIBlock;
 
 /* per-record orders (the original's u32 at unit+0xc, dest at +0x12/+0x14,
@@ -27464,6 +27731,9 @@ static void AIFloodRun(short sx, short sy, short radius)
     short x, y;
     Boolean fog = false;
 
+#ifdef WL2_FIXED_SEED
+    sRngState.flood = (long)sAIFloodCost;
+#endif
     for (i = 0; i < total; i++) sAIFloodCost[i] = -1;
     if (sx < 0 || sy < 0 || sx >= maxX || sy >= maxY) return;
     if (sOptHiddenMap && sPathOwner >= 0 && sPathOwner < 8 && !sPathForceAI &&
@@ -27643,7 +27913,19 @@ static void AINeighbourBuild(void)          /* FUN_1001d66c */
 }
 static void AINeighbourEnsure(void)         /* FUN_1000c7b4 */
 {
-    if (!sAINbValid) AINeighbourBuild();
+    if (sAINbValid) return;
+    if (sScnAINbValid) {
+        /* FUN_1001db60: the scenario's 'AI  ' 10000 is the table */
+        short ci, i;
+        for (ci = 0; ci < AI_MAX_CITIES; ci++)
+            for (i = 0; i < AI_NB; i++) {
+                sAINbIdx[ci][i] = (ci < 100) ? sScnAINb[ci * 6 + i] : 0xFF;
+                sAINbDist[ci][i] = (ci < 100) ? sScnAINb[600 + ci * 6 + i] : 0;
+            }
+        sAINbValid = true;
+        return;
+    }
+    AINeighbourBuild();
 }
 
 /* FUN_10018574: the neutral neighbours of a city (idx + dist), as the
@@ -27732,14 +28014,42 @@ static Boolean AITileHasUnits(short x, short y)
 /* ------------------------------------------------------------------ */
 /* own records on (x,y) with orders (front,type), optionally base moves
  * >= minMoves; at most 8 units; the original walks the units from the end */
+/* the record's front as the original's unit word holds it: the AI's own
+ * front, else the unit's leftover table bits (sUidStale) */
+static short AIRecFront(short r)
+{
+    short u;
+    if (sAIOrd[r].front != 0) return sAIOrd[r].front;
+    u = UnitUid(r, 0);
+    return (u >= 0) ? sUidStale[u] : 0;
+}
+/* the AI gives a record a front (or none): the leftover bits are gone */
+static void AIRecSetFront(short r, short f)
+{
+    short k;
+    sAIOrd[r].front = (unsigned char)f;
+    for (k = 0; k < 4; k++) if (UnitUid(r, k) >= 0) sUidStale[UnitUid(r, k)] = 0;
+}
+/* own records holding the units on (x,y), in unit-table order from the
+ * last index down (each record once) */
+static short AIRecsAtDesc(short x, short y, short *recs, short max)
+{
+    AIUnit u[64];
+    short n = AIUnitsAtDesc(x, y, u, 64), i, j, nr = 0;
+    for (i = 0; i < n && nr < max; i++) {
+        for (j = 0; j < nr && recs[j] != u[i].rec; j++) ;
+        if (j == nr) recs[nr++] = u[i].rec;
+    }
+    return nr;
+}
 static short AIStackAt(short x, short y, short front, short type, short minMoves, AIStack *s)
 {
-    short i, n = AIArmyCount(), units = 0;
+    short q, nr, units = 0, recs[64];
     s->n = 0;
-    for (i = n - 1; i >= 0 && s->n < 8; i--) {
-        short u;
-        if (!AIRecMine(i) || AIRecX(i) != x || AIRecY(i) != y) continue;
-        if (sAIOrd[i].front != front || sAIOrd[i].type != type) continue;
+    nr = AIRecsAtDesc(x, y, recs, 64);       /* FUN_1001ee88 walks the unit table down */
+    for (q = 0; q < nr && s->n < 8; q++) {
+        short u, i = recs[q];
+        if (AIRecFront(i) != front || sAIOrd[i].type != type) continue;
         if (minMoves != 0 && AIRecMaxMoves(i) < minMoves) continue;
         u = AIRecUnits(i);
         if (units + u > 8) continue;
@@ -27752,11 +28062,11 @@ static short AIStackAt(short x, short y, short front, short type, short minMoves
 /* FUN_1001ed3c: own records on (x,y) with MP >= minMP (0: any) */
 static short AIStackAtAny(short x, short y, short minMP, AIStack *s)
 {
-    short i, n = AIArmyCount(), units = 0;
+    short q, nr, units = 0, recs[64];
     s->n = 0;
-    for (i = n - 1; i >= 0 && s->n < 8; i--) {
-        short u;
-        if (!AIRecMine(i) || AIRecX(i) != x || AIRecY(i) != y) continue;
+    nr = AIRecsAtDesc(x, y, recs, 64);       /* FUN_1001ed3c walks the unit table down */
+    for (q = 0; q < nr && s->n < 8; q++) {
+        short u, i = recs[q];
         if (minMP != 0 && AIRecMP(i) < minMP) continue;
         u = AIRecUnits(i);
         if (units + u > 8) continue;
@@ -27807,6 +28117,8 @@ static void AISetOrders(const AIStack *s, short type, short target, unsigned sho
     short i;
     unsigned char group = 0;
     if (s->n == 0) return;
+    RNG_NOTE(26, type, target, UnitUid(s->rec[0], 0));
+    for (i = 1; i < s->n && i < 6; i++) RNG_NOTE(29, i, UnitUid(s->rec[i], 0), 0);
     /* orders to more than one unit share a new group id; one unit gets 0 */
     if (AIStackUnits(s) > 1) group = AINewGroup();
     for (i = 0; i < s->n; i++) {
@@ -27859,6 +28171,7 @@ static void AIDisbandUnit(short rec, short slot)
     }
     a[0x16 + slot] = 0xFF; a[0x1a + slot] = 0; a[0x1e + slot] = 0; a[0x22 + slot] = 0; a[0x26 + slot] = 0;
     SetMedals(a, slot, 0);
+    UidKill(rec, slot);
     /* compact the slots */
     for (k = 0; k < 4; k++) {
         if (a[0x16 + k] == 0xFF) continue;
@@ -27868,6 +28181,7 @@ static void AIDisbandUnit(short rec, short slot)
             SetMedals(a, put, GetMedals(a, k));
             a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0;
             SetMedals(a, k, 0);
+            UidMove(rec, put, rec, k);
         }
         put++;
     }
@@ -27904,6 +28218,7 @@ static void AIDisbandStack(const AIStack *s)
 /* ------------------------------------------------------------------ */
 typedef struct {
     unsigned char type, moves, str, b22, xp, medals;
+    short uid;                  /* the unit-table index (sArmyUid) */
     short mp;                   /* the old record's MP */
     unsigned char name[16];     /* a hero's name */
     unsigned char level;        /* a[0x31] */
@@ -27921,6 +28236,7 @@ static void AISnapUnit(short rec, short slot, AIUnitSnap *u)
     short k;
     u->type = a[0x16 + slot]; u->moves = a[0x1a + slot]; u->str = a[0x1e + slot];
     u->b22 = a[0x22 + slot]; u->xp = a[0x26 + slot]; u->medals = (unsigned char)GetMedals(a, slot);
+    u->uid = sArmyUid[rec][slot];
     u->mp = (short)(unsigned char)a[0x2e];
     for (k = 0; k < 16; k++) u->name[k] = a[0x04 + k];
     /* a hero takes the record's items and quest references along */
@@ -27947,8 +28263,9 @@ static void AIFillRecord(short rec, AIUnitSnap *units, short n, short x, short y
     *(short *)(a + 0) = x; *(short *)(a + 2) = y;
     a[0x15] = (unsigned char)sAIMe; a[0x2f] = (unsigned char)sAIMe;
     *(short *)(a + 0x34) = -1; *(short *)(a + 0x36) = -1;
-    for (k = 0; k < 4; k++) a[0x16 + k] = 0xFF;
+    for (k = 0; k < 4; k++) { a[0x16 + k] = 0xFF; sArmyUid[rec][k] = -1; }
     for (k = 0; k < n; k++) {
+        sArmyUid[rec][k] = units[k].uid;   /* the units keep their table index */
         a[0x16 + k] = units[k].type; a[0x1a + k] = units[k].moves; a[0x1e + k] = units[k].str;
         a[0x22 + k] = units[k].b22; a[0x26 + k] = units[k].xp;
         SetMedals(a, k, units[k].medals);
@@ -27987,8 +28304,12 @@ static void AIFillRecord(short rec, AIUnitSnap *units, short n, short x, short y
 }
 
 /* Regroup the listed units (in list order) into records standing on their
- * (qx,qy) tiles: consecutive units with the same tile share a record (at
- * most four).  Records of the player involved in the list are reused,
+ * (qx,qy) tiles, one unit per record.  The original has no records: each
+ * unit is its own entry in the unit table, and an action takes exactly the
+ * units it picks (the hero step moves the hero alone, FUN_100161fc; its win
+ * estimate fights the hero alone).  Packing a quadrant's units into one
+ * record made them travel and fight together wherever the AI used the
+ * record as its stack.  Records of the player involved in the list are reused,
  * further records are created; emptied records are compacted.  The AI
  * orders of every produced record are reset as the garrison placement
  * does (dest -1, no front, home city, not stuck); type/target carry over
@@ -28006,7 +28327,7 @@ static Boolean AIRegroup(AIUnitSnap *units, short n, short homeCity)
     /* empty the involved records (the hero/item links are rebuilt below) */
     for (j = 0; j < nInv; j++) {
         unsigned char *a = AI_REC(involved[j]);
-        for (k = 0; k < 4; k++) { a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0; }
+        for (k = 0; k < 4; k++) { a[0x16 + k] = 0xFF; a[0x1a + k] = 0; a[0x1e + k] = 0; a[0x22 + k] = 0; a[0x26 + k] = 0; sArmyUid[involved[j]][k] = -1; }
         a[0x38] = 0; a[0x39] = 0;
         for (k = 0; k < 4; k++) *(short *)(a + 0x3A + k * 2) = 0;
     }
@@ -28014,7 +28335,7 @@ static Boolean AIRegroup(AIUnitSnap *units, short n, short homeCity)
     while (i < n) {
         short cnt = 1, rec, srcInv;
         AIOrder *o;
-        while (i + cnt < n && cnt < 4 && units[i + cnt].qx == units[i].qx && units[i + cnt].qy == units[i].qy) cnt++;
+        /* (one unit per record: cnt stays 1) */
         if (nextInv < nInv) { rec = involved[nextInv]; srcInv = nextInv; nextInv++; }
         else {
             short tot = *(short *)(AI_GS + 0x1602);
@@ -28047,6 +28368,7 @@ static Boolean AIRegroup(AIUnitSnap *units, short n, short homeCity)
                 if (k == 4) break;
                 a[0x16 + k] = units[i].type; a[0x1a + k] = units[i].moves; a[0x1e + k] = units[i].str;
                 a[0x22 + k] = units[i].b22; a[0x26 + k] = units[i].xp;
+                sArmyUid[rec][k] = units[i].uid;
                 i++;
             }
             RecalcArmyStrength(a);
@@ -28176,6 +28498,7 @@ static short AIWinEstimate(const AIStack *s, short tx, short ty)
 {
     short N = gAI->winSamples, wins = 0, i;
     if (N < 1) N = 1;
+    RNG_NOTE(9, tx, ty, s->n);
     if (s->n == 0) return 0;
     AIBattleGather(&sBattleSim, s, tx, ty);
     BattleValues(&sBattleSim);
@@ -28443,7 +28766,7 @@ static short AIMoveStack(AIStack *s, short dx, short dy)
                     (void)AISearchSite(hero, si);            /* FUN_10013a10 */
                     AIUntagStack(s);
                 }
-                for (k = 0; k < s->n; k++) { sAIOrd[s->rec[k]].type = 0; sAIOrd[s->rec[k]].front = 0; }
+                for (k = 0; k < s->n; k++) { sAIOrd[s->rec[k]].type = 0; AIRecSetFront(s->rec[k], 0); }
             }
         }
     } while (again && ++guard < 100);
@@ -28684,7 +29007,7 @@ static void AIStepRedispatch(Boolean late)
                 short j, tgt = sAIOrd[i].target;
                 for (j = AIArmyCount() - 1; j >= 0; j--)
                     if (AIRecMine(j) && AIRecX(j) == AIRecX(i) && AIRecY(j) == AIRecY(i) &&
-                        sAIOrd[j].type == 1 && sAIOrd[j].target == tgt) { sAIOrd[j].type = 0; sAIOrd[j].front = 0; }
+                        sAIOrd[j].type == 1 && sAIOrd[j].target == tgt) { sAIOrd[j].type = 0; AIRecSetFront(j, 0); }
             }
             if (!(sAIOrd[i].flags & AIO_RELEASED) && sAIOrd[i].type == 0) AIRedispatch(i);
         } else {
@@ -28919,6 +29242,7 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
     Boolean disbanded = false;
 
     if (ci < 0 || ci >= AICityCount()) return false;
+    RNG_NOTE(22, ci, fromFront, 0);
     gAI->cflags[ci] |= 4;
     gAI->unitCount[ci] = 0;
     for (i = 0; i < 32; i++) { list[i].rec = -1; out[i].rec = -1; }
@@ -28944,15 +29268,30 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
         gAI->unitCount[ci] = (unsigned char)(gAI->unitCount[ci] + units);
         if (sAIOrd[i].type == 1 && sAIOrd[i].target == ci) { sAIOrd[i].type = 0; sAIOrd[i].target = 0; }
         if (sAIOrd[i].type != 0) ordered += units;
-        for (k = 0; k < 4; k++) {
-            short t = a[0x16 + k];
-            if (t == 0xFF) continue;
-            if (t == 0x1C) { heroes++; heroRec = i; }
+    }
+    /* the units in the order FUN_10010b30 walks the unit table: from the
+     * last index down (UnitUid); past 32 they are disbanded */
+    {
+        AIUnit all[64];
+        short na = AIUnitsInDesc(cx, cy, cx + 1, cy + 1, all, 64), q, nd = 0;
+        AIUnit drop[32];
+        for (q = 0; q < na; q++) {
+            short t = AI_REC(all[q].rec)[0x16 + all[q].slot];
+            if (t == 0x1C) { heroes++; heroRec = all[q].rec; }
             if (AIFlies(t)) flyers++;
             if (AITypeFlag(t, 4)) spec++;
-            if (listed < 32) { list[listed].rec = i; list[listed].slot = k; listed++; }
-            else { AIDisbandUnit(i, k); disbanded = true; k--; }
+            if (listed < 32) list[listed++] = all[q];
+            else if (nd < 32) drop[nd++] = all[q];
         }
+        /* disband from the highest slot of each record down, so the slot
+         * numbers of the later entries stay valid */
+        for (q = 0; q < nd; q++) {
+            short j, best = q;
+            for (j = q + 1; j < nd; j++)
+                if (drop[j].rec == drop[best].rec && drop[j].slot > drop[best].slot) best = j;
+            if (best != q) { AIUnit t = drop[q]; drop[q] = drop[best]; drop[best] = t; }
+        }
+        for (q = 0; q < nd; q++) { AIDisbandUnit(drop[q].rec, drop[q].slot); disbanded = true; }
     }
     if (heroRec >= 0) CheckGroundItemPickup(heroRec);     /* FUN_100169c0 */
     if (heroes > 1) {                                      /* FUN_10016df0 */
@@ -29017,6 +29356,8 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
      * unit; the remake moves slots between records) */
     {
         /* the records keep their type/target but lose dest/front/stuck */
+        short q;
+        for (q = 0; q < picked; q++) if (snaps[q].uid >= 0 && snaps[q].uid < UID_MAX) sUidStale[snaps[q].uid] = 0;
         AIRegroup(snaps, picked, ci);
     }
     return true;
@@ -29092,6 +29433,31 @@ static void AIExpandStack(short ci, short stackSize, unsigned char *ordered, AIS
         AISetOrders(s, 1, sAIExpandLastTarget, AIO_CONTINUE);
 }
 
+/* sAIMe's units on (x,y) in the order the original walks its unit table:
+ * from the last index down (UnitUid).  Returns the count (at most max). */
+static short AIUnitsInDesc(short x0, short y0, short x1, short y1, AIUnit *out, short max)
+{
+    short n = 0, i, k, j;
+    short uid[64];
+    for (i = AIArmyCount() - 1; i >= 0; i--) {
+        unsigned char *a = AI_REC(i);
+        if (!AIRecMine(i) || AIRecX(i) < x0 || AIRecX(i) > x1 || AIRecY(i) < y0 || AIRecY(i) > y1) continue;
+        for (k = 0; k < 4; k++) {
+            short u;
+            if (a[0x16 + k] == 0xFF || n >= 64) continue;
+            u = UnitUid(i, k);
+            for (j = n; j > 0 && uid[j - 1] < u; j--) { uid[j] = uid[j - 1]; out[j] = out[j - 1]; }
+            uid[j] = u; out[j].rec = i; out[j].slot = k;
+            n++;
+        }
+    }
+    return n < max ? n : max;
+}
+static short AIUnitsAtDesc(short x, short y, AIUnit *out, short max)
+{
+    return AIUnitsInDesc(x, y, x, y, out, max);
+}
+
 /* FUN_10018b14(city, ordered): the pool units beyond the reserve go out in
  * stacks (of up to 8 with strong neutrals, gs+0x11a, else single units) sorted by base moves */
 static short AIExpandCity(short ci, unsigned char *ordered)
@@ -29106,16 +29472,18 @@ static short AIExpandCity(short ci, unsigned char *ordered)
     for (p = 0; p < 8; p++) sumWins += gAI->battleMem[5][p];
     R += sumWins > 2 ? 2 : sumWins;
     skip = R;
-    /* order-free units on the pool tile (x,y), the first R stay */
-    for (i = AIArmyCount() - 1; i >= 0 && nCand < 8; i--) {
-        unsigned char *a = AI_REC(i);
-        short k;
-        if (!AIRecMine(i) || AIRecX(i) != cx || AIRecY(i) != cy) continue;
-        if (sAIOrd[i].front != 0 || (sAIOrd[i].flags & AIO_STUCK) || sAIOrd[i].type != 0) continue;
-        for (k = 0; k < 4 && nCand < 8; k++) {
-            if (a[0x16 + k] == 0xFF) continue;
+    RNG_NOTE(20, ci, R, d);
+    /* order-free units on the pool tile (x,y), the first R stay; the units
+     * are walked as the original walks its unit table, from the last index
+     * down (FUN_10018b14), not by record and slot */
+    {
+        AIUnit at[64];
+        short na = AIUnitsAtDesc(cx, cy, at, 64), q;
+        for (q = 0; q < na && nCand < 8; q++) {
+            short r = at[q].rec;
+            if (AIRecFront(r) != 0 || (sAIOrd[r].flags & AIO_STUCK) || sAIOrd[r].type != 0) continue;
             if (skip > 0) { skip--; continue; }
-            cand[nCand].rec = i; cand[nCand].slot = k; nCand++;
+            cand[nCand++] = at[q];
         }
     }
     if (nCand == 0) return 0;               /* FUN_10018b14: no free pool units -> 0 */
@@ -29141,6 +29509,7 @@ static short AIExpandCity(short ci, unsigned char *ordered)
             if (sorted[j].rec != -1) { group[ng++] = sorted[j]; sorted[j].rec = -1; }
         if (ng == 0) break;
         if (R == 0 && AIHidden() && AINearestEnemyUnit(cx, cy) < 15) break;
+        RNG_NOTE(21, ci, UnitUid(group[0].rec, group[0].slot), ng > 1 ? UnitUid(group[1].rec, group[1].slot) : -1);
         /* the group's units become their own records on the pool tile */
         AISeparateUnits(group, ng, &s, sorted, nCand);
         if (s.n == 0) break;
@@ -29163,21 +29532,21 @@ static void AIReleasePool(short ci, Boolean flyersOnly)
     Boolean anyFront = false;
     AIUnit cand[8], sorted[8];
     for (i = 0; i < 4; i++) if (gAI->fronts[i].active) anyFront = true;
+    RNG_NOTE(23, ci, flyersOnly, 0);
     R = (short)((d < 5 ? 2 : 0) + (d < 15 ? 1 : 0) + (gAI->passive ? 2 : 0));
     for (p = 0; p < 8; p++) sumWins += gAI->battleMem[5][p];
     R += sumWins > 2 ? 2 : sumWins;
     skip = R;
-    for (i = AIArmyCount() - 1; i >= 0 && nCand < 8; i--) {
-        unsigned char *a = AI_REC(i);
-        if (!AIRecMine(i) || AIRecX(i) != cx || AIRecY(i) != cy) continue;
-        if (sAIOrd[i].front != 0 || (sAIOrd[i].flags & AIO_STUCK) || sAIOrd[i].type != 0) continue;
-        for (k = 0; k < 4 && nCand < 8; k++) {
-            short t = a[0x16 + k];
-            if (t == 0xFF) continue;
+    {   /* the unit table's order, from the last index down (FUN_1001a470) */
+        AIUnit at[64];
+        short na = AIUnitsAtDesc(cx, cy, at, 64), q;
+        for (q = 0; q < na && nCand < 8; q++) {
+            short r = at[q].rec, t = AI_REC(r)[0x16 + at[q].slot];
+            if (AIRecFront(r) != 0 || (sAIOrd[r].flags & AIO_STUCK) || sAIOrd[r].type != 0) continue;
             if (t == 0x1C && anyFront) continue;
             if (flyersOnly && !AIFlies(t)) continue;
             if (skip > 0) { skip--; continue; }
-            cand[nCand].rec = i; cand[nCand].slot = k; nCand++;
+            cand[nCand++] = at[q];
         }
     }
     if (nCand == 0) return;
@@ -29876,23 +30245,26 @@ static short AIHomeCity(short p)
 
 /* ------------------------------------------------------------------ */
 /* FUN_1000dc4c: the battle memory of the defending player (indexed by  */
-/* the attacker): heroes and units the attacker kept, battles, wins     */
-/* (no losses), city battles and city wins.  Called after every battle. */
+/* the attacker): the defender's heroes and units killed, battles,       */
+/* battles it lost outright (every defender killed), city battles and    */
+/* city battles lost outright.  Called after every real battle on a tile */
+/* that is not neutral.  (The remake kept the attacker's survivors and   */
+/* "no attacker lost" instead; FUN_10018b14's reserve reads [5].)        */
 /* ------------------------------------------------------------------ */
-static void AIBattleMemory(short defOwner, short attOwner, short heroesLeft, short unitsLeft,
-                           short attUnits, Boolean cityBattle)
+static void AIBattleMemory(short defOwner, short attOwner, short heroesKilled, short unitsKilled,
+                           short defUnits, Boolean cityBattle)
 {
     AIBlock *b;
     if (defOwner < 0 || defOwner > 7 || attOwner < 0 || attOwner > 7) return;
     b = &sAIBlocks[defOwner];
     if (!b->inited) return;
-    b->battleMem[0][attOwner] += heroesLeft;
-    b->battleMem[1][attOwner] += unitsLeft;
+    b->battleMem[0][attOwner] += heroesKilled;
+    b->battleMem[1][attOwner] += unitsKilled;
     b->battleMem[2][attOwner] += 1;
-    if (unitsLeft == attUnits) b->battleMem[3][attOwner] += 1;
+    if (unitsKilled == defUnits) b->battleMem[3][attOwner] += 1;
     if (cityBattle) {
         b->battleMem[4][attOwner] += 1;
-        if (unitsLeft == attUnits) b->battleMem[5][attOwner] += 1;
+        if (unitsKilled == defUnits) b->battleMem[5][attOwner] += 1;
     }
 }
 
@@ -30636,9 +31008,18 @@ static void AIHeroList(AIHeroInfo *h)
     short i, n = 0;
     for (i = 0; i < 6; i++) { h->rec[i] = -1; h->city[i] = -1; h->ruin[i] = -1; h->flightItem[i] = 0; }
     gAI->heroCount = 0;
-    for (i = AIArmyCount() - 1; i >= 0 && n < 6; i--) {
+    {   /* FUN_10014e44 walks the unit table from the last index down */
+        short recs[64], uids[64], nr = 0, j, k;
+        for (i = AIArmyCount() - 1; i >= 0; i--) {
+            short u = -1;
+            if (!AIRecMine(i) || !AIRecHasHero(i) || nr >= 64) continue;
+            for (k = 0; k < 4; k++) if (AI_REC(i)[0x16 + k] == 0x1C) { u = UnitUid(i, k); break; }
+            for (j = nr; j > 0 && uids[j - 1] < u; j--) { uids[j] = uids[j - 1]; recs[j] = recs[j - 1]; }
+            uids[j] = u; recs[j] = i; nr++;
+        }
+    for (j = 0; j < nr && n < 6; j++) {
         short t;
-        if (!AIRecMine(i) || !AIRecHasHero(i)) continue;
+        i = recs[j];
         h->rec[n] = i;
         t = GetTerrainType(AIRecX(i), AIRecY(i));
         if (t == 10) h->city[n] = AICityAt(AIRecX(i), AIRecY(i));
@@ -30646,6 +31027,7 @@ static void AIHeroList(AIHeroInfo *h)
         if (ArmyHasFlightItem(i)) h->flightItem[n] = 1;
         n++;
         gAI->heroCount++;
+    }
     }
 }
 /* FUN_100151e8: the hero searches the site it stands on */
@@ -31502,6 +31884,7 @@ static short AIFrontAttack(short f, AIStack *s, short target)
 {
     AIFront *fr = &gAI->fronts[f];
     short lead = s->n > 0 ? s->rec[0] : -1, i;     /* the re-target measures from list[0] */
+    RNG_NOTE(27, f, target, s->n);
     if (lead >= 0 && !AIIsCity(target)) {
         short best = -1, bestD = 1000;
         for (i = 0; i < 6; i++) {
@@ -31644,6 +32027,7 @@ static Boolean AIFrontLaunch(short f)
     AIFront *fr = &gAI->fronts[f];
     AIStack s;
     short n, i, best = -1, bestScore = -1, minMP;
+    RNG_NOTE(28, f, fr->staging, 0);
     n = AIStackAtAny(AICityX(fr->staging) + 1, AICityY(fr->staging), 0, &s);
     if (n == 0) return false;
     minMP = AIStackMinMP(&s);
@@ -31660,7 +32044,7 @@ static Boolean AIFrontLaunch(short f)
     }
     if (best == -1) return false;
     AIFrontRegisterStack(f, &s);
-    for (i = 0; i < s.n; i++) sAIOrd[s.rec[i]].front = (unsigned char)(f + 1);
+    for (i = 0; i < s.n; i++) AIRecSetFront(s.rec[i], f + 1);
     AIFrontAttack(f, &s, best);
     return true;
 }
@@ -31775,6 +32159,7 @@ static void ExecuteAITurn(short aiPlayer)
     /* the turn-start hero offer (PPC FUN_10032a24, as for a human) */
     AIHeroOffer(aiPlayer);
     AIOrdSync();
+    UidSync();
     /* the quest at turn start (FUN_1004e384(-1), PPC_0002.c:21317) */
     if (QREC(aiPlayer)[0] != 0) (void)QuestCheck(-1, 0);
 
@@ -33277,6 +33662,7 @@ static void ProcessStartOfTurn(short player)
     if (player >= 0 && player < 8)
         FogUpdatePlayer(player);
         SiteTilesFor(player);
+    UidSync();   /* the turn's new units take their unit-table indices */
 }
 
 /* PPC FUN_1003cb84 + FUN_1003d094, at the round boundary: a side without a
@@ -33917,8 +34303,8 @@ static void AdvanceToNextPlayer(void)
         /* Autosave at start of human turn */
         DoAutosave();
 
-        /* Show turn start banner (PICT 3100 castle gate) */
-        LoadAndPlayMusic(MUSIC_STATE_TURN);
+        /* Show turn start banner (PICT 3100 castle gate).  The turn tune
+         * comes later, from FUN_10065d24 phase 0, after the hero offer. */
         ShowTurnSplash(curPlayer);  /* plays SND_TURN internally */
         /* The view methods that store 0 at +0xBE run as this turn is shown. */
         if (sMapConcealed) {
@@ -33928,6 +34314,15 @@ static void AdvanceToNextPlayer(void)
             if (*gOverviewWindow != 0)
                 InvalRect(&((WindowPtr)*gOverviewWindow)->portRect);
         }
+        /* FUN_10065d24 runs the turn start in phases, each posted as command
+         * 0x3ef with the phase at app+0x1dc.  The banner sets it to -1, so
+         * the first phase (PPC_0002.c:21600-21643) closes the banner, checks
+         * the quest (FUN_1004e384(-1): a razed or already owned quest city,
+         * a slain target hero, dead foes or a lost item end it; nothing
+         * generates a quest here) and has the helmet comment
+         * (FUN_10092c5c(5)), then sets the phase to 0 for the hero offer and
+         * the turn tune.  Their rolls come in that order. */
+        if (QREC(curPlayer)[0] != 0) (void)QuestCheck(-1, 0);
         ShowVoiceAdvisor(curPlayer);  /* the helmet's comment on how it goes */
         /* Tutorial: TTURN2 at the start of turn 2 (68k CODE_080) */
         if (*(short *)(gs + 0x136) == 2)
@@ -34146,7 +34541,12 @@ static void AdvanceToNextPlayer(void)
          * 68k CODE_103: blocked when gs+0x15e (endgame flag) is set.
          * Endgame = a player has >50% of all armies AND leads by armies/8. */
         if (*(short *)(gs + 0x15e) == 0) {
+            /* FUN_10065d24 phase 0: FUN_10032a24 (the offer and its rolls),
+             * then FUN_10092484(4) when a hero is offered, else
+             * FUN_10092484(1), the turn tune and its Dice(1,8,-1). */
+            sHeroOffered = false;
             ShowHeroHire(curPlayer, false);
+            if (!sHeroOffered) LoadAndPlayMusic(MUSIC_STATE_TURN);
             /* FUN_10065d24 phase 1 on turn 1: the start city's window follows
              * the (free) hero offer - for every human side in a hot-seat game
              * (the first side gets it from the game-start code). */
@@ -34190,11 +34590,6 @@ static void AdvanceToNextPlayer(void)
             }
         }
 
-        /* The quest at turn start (PPC FUN_1004e384(-1), after the hero
-         * offer and the level-ups; PPC_0002.c:21637): a razed or already
-         * owned quest city, a slain target hero, dead foes or a lost item
-         * end it.  Nothing generates a quest here. */
-        if (QREC(curPlayer)[0] != 0) (void)QuestCheck(-1, 0);
 
         /* The victory: gs+0x15c is set at the round boundary
          * (RoundEndGameFlags); it shows at the winner's turn start */
@@ -34885,6 +35280,9 @@ static Boolean LoadGameFromFile(FSSpec *spec)
 
     FSClose(refNum);
     sMapLoaded = true;
+    SetScenarioOverviewPict(false);   /* the remake's save has no PICT 10001 */
+    UidReset();
+    UidSync();   /* the save has no unit-table indices: record order */
     return true;
 }
 
@@ -39390,7 +39788,12 @@ int main(void)
         /* 'vbegin' ("Let the war begin!") was spoken by the helmet before the
          * windows opened (HelmetVoice after ShowGameSetup); the banner and
          * its chime follow (recorded: VBEGIN 12.3s, SND_TURN 18.7s). */
-        LoadAndPlayMusic(MUSIC_STATE_TURN);   /* FUN_10029ac0: game start */
+        /* No turn tune here: FUN_10029ac0 (which plays one) is the
+         * saved-game loader.  A new game's first turn goes through
+         * FUN_10065d24 phase 0, and the turn-1 hero offer always shows,
+         * so it plays the hero tune (FUN_10092484(4), no roll) instead.
+         * The remake's Dice(1,8,-1) here was one roll the original never
+         * makes. */
 
         /* Turn 1 announcement splash (castle gate with faction name). */
         ShowTurnSplash(startPlayer);  /* plays SND_TURN internally */

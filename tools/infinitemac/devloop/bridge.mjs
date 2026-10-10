@@ -11,7 +11,7 @@
 //         InfiniteMac and downloaded; we catch it and `ditto -x -k` it into .devloop/pulled/.
 //
 // Endpoints (all GET, see wl.sh): /status /shot?name= /click?x=&y=[&dbl=1] /key?k= /type?t=
-//   /push?path= /pulled /reload[?disk=] /eval?js= /front /quit
+//   /push?path= /pulled /reload[?disk=] /eval?js= /mem?a=&n= /poke?a=&hex= /break?a=&v= /memfind?hex= /seedscan?seed=&n= /front /quit
 import pkg from '/opt/homebrew/lib/node_modules/playwright/index.js';
 import http from 'http';
 import fs from 'fs';
@@ -73,6 +73,55 @@ await ctx.addInitScript(() => {
     return r;
   };
 });
+// Emulator memory (/mem, /seedscan). The InfiniteMac worker keeps the wasm
+// module in a private field and its event loop is busy running the emulator,
+// so nothing can be evaluated in it. Its script is served with a hook at the
+// top of blit() (called every frame): on the first call it posts the module's
+// HEAPU8 buffer when that is a SharedArrayBuffer, else a request/response
+// pair of SharedArrayBuffers it then serves each frame (copy len bytes at a
+// host offset). The page side catches the post in a patched Worker.
+await ctx.route(/\/assets\/worker-[^/]*\.js(\?.*)?$/, async route => {
+  const r = await route.fetch();
+  let t = await r.text();
+  const m = t.match(/blit\((\w),(\w),(\w)\)\{if\(G\(this,(\w+)\)\._\+\+,\1\)\{const \w=r\(this,(\w+)\)\.HEAPU8/);
+  if (m) {
+    const H = `r(this,${m[5]}).HEAPU8`;
+    const hook = `{const H=${H};if(!globalThis.__wlpub){globalThis.__wlpub=1;` +
+      `globalThis.__wlq=new Int32Array(new SharedArrayBuffer(32));globalThis.__wlr=new Uint8Array(new SharedArrayBuffer(1<<24));` +
+      `postMessage({type:"__wlmem",buf:(H.buffer instanceof SharedArrayBuffer)?H.buffer:null,q:globalThis.__wlq,r:globalThis.__wlr,size:H.length});}` +
+      `const q=globalThis.__wlq;const sv=()=>{const o=Atomics.load(q,0);if(o===1){const a=q[1],n=Math.min(q[2],1<<24);globalThis.__wlr.set(H.subarray(a,a+n));q[3]=H.length;Atomics.store(q,0,2);}` +
+      `else if(o===3){H.set(globalThis.__wlr.subarray(0,q[2]),q[1]);Atomics.store(q,0,2);}};sv();` +
+      `if(q[4]){const a=q[4]>>>0;const v=((H[a]<<24)|(H[a+1]<<16)|(H[a+2]<<8)|H[a+3])>>>0;if(v>=(q[5]>>>0)){q[4]=0;Atomics.store(q,6,1);}}` +
+      `while(Atomics.load(q,6)===1){sv();Atomics.wait(q,7,0,5);}}`;
+    t = t.replace(m[0], `blit(${m[1]},${m[2]},${m[3]}){${hook}` + m[0].slice(m[0].indexOf('{') + 1));
+  } else note('worker hook not found: /mem will not see the emulator');
+  return route.fulfill({ response: r, body: t, headers: { ...r.headers(), 'content-type': 'text/javascript' } });
+});
+await ctx.addInitScript(() => {
+  const OW = window.Worker;
+  if (!OW || OW.__wl) return;
+  const W = function (u, o) {
+    const w = new OW(u, o);
+    w.addEventListener('message', ev => { if (ev.data && ev.data.type === '__wlmem') { window.__wlmem = ev.data; ev.stopImmediatePropagation(); } });
+    return w;
+  };
+  W.prototype = OW.prototype; W.__wl = true;
+  window.Worker = W;
+});
+// Read len bytes of the emulator's wasm heap at host offset a (page side).
+const MEMREAD = `async (a, n) => {
+  const m = window.__wlmem; if (!m) throw new Error('no emulator memory hook');
+  if (m.buf) return new Uint8Array(m.buf, a, n).slice();
+  const out = new Uint8Array(n);
+  for (let o = 0; o < n; o += 1 << 24) {
+    const k = Math.min(1 << 24, n - o);
+    m.q[1] = a + o; m.q[2] = k; Atomics.store(m.q, 0, 1);
+    const t0 = Date.now();
+    while (Atomics.load(m.q, 0) !== 2) { if (Date.now() - t0 > 5000) throw new Error('emulator did not answer'); await new Promise(r => setTimeout(r, 5)); }
+    out.set(m.r.subarray(0, k), o); Atomics.store(m.q, 0, 0);
+  }
+  return out;
+}`;
 let page, aborted = false, bootedAt = 0;
 
 async function open(d) {
@@ -163,6 +212,78 @@ http.createServer(async (req, res) => {
       case '/pulled': return reply(200, fs.readdirSync(PULLED).join('\n'));
       case '/reload': await open(q('disk')); return reply(200, 'rebooting ' + disk);
       case '/eval': return reply(200, JSON.stringify(await page.evaluate(q('js'))));
+      case '/mem': {
+        // /mem?a=<host offset>&n=<bytes> -> hex. /mem?size=1 -> heap size.
+        const out = await page.evaluate(async ({ src, a, n, size }) => {
+          const rd = eval(src), m = window.__wlmem;
+          if (!m) return { err: 'no emulator memory hook (reboot with this bridge)' };
+          if (size) return { size: m.buf ? m.buf.byteLength : m.size };
+          const b = await rd(a, n); let h = '';
+          for (const x of b) h += x.toString(16).padStart(2, '0');
+          return { hex: h };
+        }, { src: MEMREAD, a: +(q('a') || 0), n: +(q('n') || 0), size: !!q('size') });
+        return reply(out.err ? 500 : 200, out.err || (out.hex ?? String(out.size)));
+      }
+      case '/break': {
+        // /break?a=<addr>&v=<value>: freeze the emulator at the first frame where the
+        // big-endian word at a is >= v (unsigned). /break?off=1 resumes; /break shows state.
+        const out = await page.evaluate(({ a, v, off }) => {
+          const m = window.__wlmem; if (!m || !m.q) return 'no emulator memory hook';
+          if (off) { m.q[4] = 0; Atomics.store(m.q, 6, 0); Atomics.notify(m.q, 7); return 'resumed'; }
+          if (a) { Atomics.store(m.q, 6, 0); m.q[5] = v | 0; m.q[4] = a | 0; return 'armed'; }
+          return Atomics.load(m.q, 6) ? 'paused' : (m.q[4] ? 'armed' : 'idle');
+        }, { a: +(q('a') || 0), v: +(q('v') || 0), off: !!q('off') });
+        return reply(200, out);
+      }
+      case '/poke': {
+        // /poke?a=<addr>&hex=<bytes>: write guest memory (a break word, say)
+        const out = await page.evaluate(async ({ a, hex }) => {
+          const m = window.__wlmem; if (!m || !m.q) return 'no emulator memory hook';
+          const b = new Uint8Array(hex.match(/../g).map(h => parseInt(h, 16)));
+          m.r.set(b); m.q[1] = a; m.q[2] = b.length; Atomics.store(m.q, 0, 3);
+          const t0 = Date.now();
+          while (Atomics.load(m.q, 0) !== 2) { if (Date.now() - t0 > 5000) return 'emulator did not answer'; await new Promise(r => setTimeout(r, 5)); }
+          Atomics.store(m.q, 0, 0);
+          return 'ok';
+        }, { a: +q('a'), hex: q('hex') });
+        return reply(200, out);
+      }
+      case '/memfind': {
+        // /memfind?hex=<bytes>[&align=4]: host offsets of every occurrence.
+        const out = await page.evaluate(async ({ src, hex, align }) => {
+          const rd = eval(src), m = window.__wlmem;
+          if (!m) return 'no emulator memory hook';
+          const pat = new Uint8Array(hex.match(/../g).map(h => parseInt(h, 16)));
+          const size = m.buf ? m.buf.byteLength : m.size, hits = [], C = 1 << 24;
+          for (let a = 0; a < size; a += C - pat.length) {
+            const b = await rd(a, Math.min(C, size - a));
+            for (let i = 0; i + pat.length <= b.length; i += align) {
+              let j = 0; while (j < pat.length && b[i + j] === pat[j]) j++;
+              if (j === pat.length && !hits.includes(a + i)) hits.push(a + i);
+            }
+          }
+          return hits.join('\n');
+        }, { src: MEMREAD, hex: q('hex'), align: +(q('align') || 4) });
+        return reply(200, out);
+      }
+      case '/seedscan': {
+        // /seedscan?seed=S&n=N[&lo=&hi=]: every 4-aligned big-endian word in the
+        // heap equal to the Toolbox Random() state after k < N calls from seed S
+        // (Park-Miller, 16807 mod 2^31-1). Prints "offset k" per hit.
+        const out = await page.evaluate(async ({ src, seed, n, lo, hi }) => {
+          const rd = eval(src), m = window.__wlmem;
+          if (!m) return 'no emulator memory hook';
+          const map = new Map(); let s = seed;
+          for (let k = 0; k < n; k++) { if (!map.has(s)) map.set(s, k); s = (s * 16807) % 2147483647; }
+          const size = m.buf ? m.buf.byteLength : m.size, end = Math.min(hi || size, size), hits = [];
+          for (let a = lo; a < end; a += 1 << 24) {
+            const b = await rd(a, Math.min(1 << 24, end - a)), dv = new DataView(b.buffer);
+            for (let i = 0; i + 4 <= b.length; i += 4) { const k = map.get(dv.getUint32(i)); if (k !== undefined && k > 0) hits.push((a + i) + ' ' + k); }
+          }
+          return hits.join('\n');
+        }, { src: MEMREAD, seed: +q('seed'), n: +(q('n') || 1000000), lo: +(q('lo') || 0), hi: +(q('hi') || 0) });
+        return reply(200, out);
+      }
       case '/front': {
         // Which app owns the menu bar? Warlords' menus (Heroes / View / History,
         // black or greyed) occupy x 300..380 of the menu bar; the Finder's menus
