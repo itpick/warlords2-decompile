@@ -134,11 +134,16 @@ static unsigned char sArmyState[MAX_ARMIES];   /* was ext+0x56; shifted on Remov
 #define UID_MAX 1000
 static short sArmyUid[MAX_ARMIES][4];
 static unsigned char sUidUsed[UID_MAX];
+static unsigned char sUidEver[UID_MAX];     /* the index has held a unit this game */
+static unsigned char sUidStale[UID_MAX];    /* its unit's leftover front bits (see below) */
+#ifdef WL2_FIXED_SEED
+#include "orig_unit_front_bits.inc"
+#endif
 static void UidReset(void)
 {
     short i, k;
     for (i = 0; i < MAX_ARMIES; i++) for (k = 0; k < 4; k++) sArmyUid[i][k] = -1;
-    for (i = 0; i < UID_MAX; i++) sUidUsed[i] = 0;
+    for (i = 0; i < UID_MAX; i++) { sUidUsed[i] = 0; sUidEver[i] = 0; sUidStale[i] = 0; }
 }
 static void UidKill(short rec, short k)
 {
@@ -16699,6 +16704,16 @@ static void UidSync(void)
             while (next < UID_MAX && sUidUsed[next]) next++;
             if (next >= UID_MAX) return;
             sArmyUid[i][k] = next; sUidUsed[next] = 1;
+            /* the first unit in an index inherits the table's leftover
+             * front bits (FUN_10021434 keeps bits 7-11); a dead unit's
+             * index is clean.  Only the same-seed builds know the original's
+             * heap (orig_unit_front_bits.inc). */
+#ifdef WL2_FIXED_SEED
+            sUidStale[next] = sUidEver[next] ? 0 : kOrigUnitFrontBits[next];
+#else
+            sUidStale[next] = 0;
+#endif
+            sUidEver[next] = 1;
         }
 }
 
@@ -27245,6 +27260,7 @@ static short UnitStatLE(short t, short k)
 
 typedef struct { short rec, slot; } AIUnit;           /* one unit = a record slot */
 static short AIUnitsInDesc(short x0, short y0, short x1, short y1, AIUnit *out, short max);
+static short AIUnitsAtDesc(short x, short y, AIUnit *out, short max);
 typedef struct { short rec[8]; short n; } AIStack;     /* the current stack (records) */
 
 typedef struct {                /* one front, 0x5C bytes at block+0x24c */
@@ -27992,14 +28008,42 @@ static Boolean AITileHasUnits(short x, short y)
 /* ------------------------------------------------------------------ */
 /* own records on (x,y) with orders (front,type), optionally base moves
  * >= minMoves; at most 8 units; the original walks the units from the end */
+/* the record's front as the original's unit word holds it: the AI's own
+ * front, else the unit's leftover table bits (sUidStale) */
+static short AIRecFront(short r)
+{
+    short u;
+    if (sAIOrd[r].front != 0) return sAIOrd[r].front;
+    u = UnitUid(r, 0);
+    return (u >= 0) ? sUidStale[u] : 0;
+}
+/* the AI gives a record a front (or none): the leftover bits are gone */
+static void AIRecSetFront(short r, short f)
+{
+    short k;
+    sAIOrd[r].front = (unsigned char)f;
+    for (k = 0; k < 4; k++) if (UnitUid(r, k) >= 0) sUidStale[UnitUid(r, k)] = 0;
+}
+/* own records holding the units on (x,y), in unit-table order from the
+ * last index down (each record once) */
+static short AIRecsAtDesc(short x, short y, short *recs, short max)
+{
+    AIUnit u[64];
+    short n = AIUnitsAtDesc(x, y, u, 64), i, j, nr = 0;
+    for (i = 0; i < n && nr < max; i++) {
+        for (j = 0; j < nr && recs[j] != u[i].rec; j++) ;
+        if (j == nr) recs[nr++] = u[i].rec;
+    }
+    return nr;
+}
 static short AIStackAt(short x, short y, short front, short type, short minMoves, AIStack *s)
 {
-    short i, n = AIArmyCount(), units = 0;
+    short q, nr, units = 0, recs[64];
     s->n = 0;
-    for (i = n - 1; i >= 0 && s->n < 8; i--) {
-        short u;
-        if (!AIRecMine(i) || AIRecX(i) != x || AIRecY(i) != y) continue;
-        if (sAIOrd[i].front != front || sAIOrd[i].type != type) continue;
+    nr = AIRecsAtDesc(x, y, recs, 64);       /* FUN_1001ee88 walks the unit table down */
+    for (q = 0; q < nr && s->n < 8; q++) {
+        short u, i = recs[q];
+        if (AIRecFront(i) != front || sAIOrd[i].type != type) continue;
         if (minMoves != 0 && AIRecMaxMoves(i) < minMoves) continue;
         u = AIRecUnits(i);
         if (units + u > 8) continue;
@@ -28012,11 +28056,11 @@ static short AIStackAt(short x, short y, short front, short type, short minMoves
 /* FUN_1001ed3c: own records on (x,y) with MP >= minMP (0: any) */
 static short AIStackAtAny(short x, short y, short minMP, AIStack *s)
 {
-    short i, n = AIArmyCount(), units = 0;
+    short q, nr, units = 0, recs[64];
     s->n = 0;
-    for (i = n - 1; i >= 0 && s->n < 8; i--) {
-        short u;
-        if (!AIRecMine(i) || AIRecX(i) != x || AIRecY(i) != y) continue;
+    nr = AIRecsAtDesc(x, y, recs, 64);       /* FUN_1001ed3c walks the unit table down */
+    for (q = 0; q < nr && s->n < 8; q++) {
+        short u, i = recs[q];
         if (minMP != 0 && AIRecMP(i) < minMP) continue;
         u = AIRecUnits(i);
         if (units + u > 8) continue;
@@ -28067,6 +28111,8 @@ static void AISetOrders(const AIStack *s, short type, short target, unsigned sho
     short i;
     unsigned char group = 0;
     if (s->n == 0) return;
+    RNG_NOTE(26, type, target, UnitUid(s->rec[0], 0));
+    for (i = 1; i < s->n && i < 6; i++) RNG_NOTE(29, i, UnitUid(s->rec[i], 0), 0);
     /* orders to more than one unit share a new group id; one unit gets 0 */
     if (AIStackUnits(s) > 1) group = AINewGroup();
     for (i = 0; i < s->n; i++) {
@@ -28713,7 +28759,7 @@ static short AIMoveStack(AIStack *s, short dx, short dy)
                     (void)AISearchSite(hero, si);            /* FUN_10013a10 */
                     AIUntagStack(s);
                 }
-                for (k = 0; k < s->n; k++) { sAIOrd[s->rec[k]].type = 0; sAIOrd[s->rec[k]].front = 0; }
+                for (k = 0; k < s->n; k++) { sAIOrd[s->rec[k]].type = 0; AIRecSetFront(s->rec[k], 0); }
             }
         }
     } while (again && ++guard < 100);
@@ -28954,7 +29000,7 @@ static void AIStepRedispatch(Boolean late)
                 short j, tgt = sAIOrd[i].target;
                 for (j = AIArmyCount() - 1; j >= 0; j--)
                     if (AIRecMine(j) && AIRecX(j) == AIRecX(i) && AIRecY(j) == AIRecY(i) &&
-                        sAIOrd[j].type == 1 && sAIOrd[j].target == tgt) { sAIOrd[j].type = 0; sAIOrd[j].front = 0; }
+                        sAIOrd[j].type == 1 && sAIOrd[j].target == tgt) { sAIOrd[j].type = 0; AIRecSetFront(j, 0); }
             }
             if (!(sAIOrd[i].flags & AIO_RELEASED) && sAIOrd[i].type == 0) AIRedispatch(i);
         } else {
@@ -29303,6 +29349,8 @@ static Boolean AIGarrison(short ci, Boolean fromFront)
      * unit; the remake moves slots between records) */
     {
         /* the records keep their type/target but lose dest/front/stuck */
+        short q;
+        for (q = 0; q < picked; q++) if (snaps[q].uid >= 0 && snaps[q].uid < UID_MAX) sUidStale[snaps[q].uid] = 0;
         AIRegroup(snaps, picked, ci);
     }
     return true;
@@ -29426,7 +29474,7 @@ static short AIExpandCity(short ci, unsigned char *ordered)
         short na = AIUnitsAtDesc(cx, cy, at, 64), q;
         for (q = 0; q < na && nCand < 8; q++) {
             short r = at[q].rec;
-            if (sAIOrd[r].front != 0 || (sAIOrd[r].flags & AIO_STUCK) || sAIOrd[r].type != 0) continue;
+            if (AIRecFront(r) != 0 || (sAIOrd[r].flags & AIO_STUCK) || sAIOrd[r].type != 0) continue;
             if (skip > 0) { skip--; continue; }
             cand[nCand++] = at[q];
         }
@@ -29487,7 +29535,7 @@ static void AIReleasePool(short ci, Boolean flyersOnly)
         short na = AIUnitsAtDesc(cx, cy, at, 64), q;
         for (q = 0; q < na && nCand < 8; q++) {
             short r = at[q].rec, t = AI_REC(r)[0x16 + at[q].slot];
-            if (sAIOrd[r].front != 0 || (sAIOrd[r].flags & AIO_STUCK) || sAIOrd[r].type != 0) continue;
+            if (AIRecFront(r) != 0 || (sAIOrd[r].flags & AIO_STUCK) || sAIOrd[r].type != 0) continue;
             if (t == 0x1C && anyFront) continue;
             if (flyersOnly && !AIFlies(t)) continue;
             if (skip > 0) { skip--; continue; }
@@ -31829,6 +31877,7 @@ static short AIFrontAttack(short f, AIStack *s, short target)
 {
     AIFront *fr = &gAI->fronts[f];
     short lead = s->n > 0 ? s->rec[0] : -1, i;     /* the re-target measures from list[0] */
+    RNG_NOTE(27, f, target, s->n);
     if (lead >= 0 && !AIIsCity(target)) {
         short best = -1, bestD = 1000;
         for (i = 0; i < 6; i++) {
@@ -31971,6 +32020,7 @@ static Boolean AIFrontLaunch(short f)
     AIFront *fr = &gAI->fronts[f];
     AIStack s;
     short n, i, best = -1, bestScore = -1, minMP;
+    RNG_NOTE(28, f, fr->staging, 0);
     n = AIStackAtAny(AICityX(fr->staging) + 1, AICityY(fr->staging), 0, &s);
     if (n == 0) return false;
     minMP = AIStackMinMP(&s);
@@ -31987,7 +32037,7 @@ static Boolean AIFrontLaunch(short f)
     }
     if (best == -1) return false;
     AIFrontRegisterStack(f, &s);
-    for (i = 0; i < s.n; i++) sAIOrd[s.rec[i]].front = (unsigned char)(f + 1);
+    for (i = 0; i < s.n; i++) AIRecSetFront(s.rec[i], f + 1);
     AIFrontAttack(f, &s, best);
     return true;
 }
